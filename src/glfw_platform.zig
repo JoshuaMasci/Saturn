@@ -2,6 +2,11 @@ const c = @cImport({
     @cInclude("GLFW/glfw3.h");
 });
 
+const vk = @import("vulkan");
+pub extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction;
+pub extern fn glfwGetPhysicalDevicePresentationSupport(instance: vk.Instance, pdev: vk.PhysicalDevice, queuefamily: u32) c_int;
+pub extern fn glfwCreateWindowSurface(instance: vk.Instance, window: *GLFWwindow, allocation_callbacks: ?*const vk.AllocationCallbacks, surface: *vk.SurfaceKHR) vk.Result;
+
 const std = @import("std");
 const panic = std.debug.panic;
 
@@ -16,8 +21,7 @@ fn glfwErrorCallback(err: c_int, description: [*c]const u8) callconv(.C) void {
 fn glfwMouseCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mods: c_int) callconv(.C) void {
     if (action == c.GLFW_PRESS) {
         input.setMouseState(@intCast(usize, button), true);
-    }
-    else if (action == c.GLFW_RELEASE) {
+    } else if (action == c.GLFW_RELEASE) {
         input.setMouseState(@intCast(usize, button), false);
     }
 }
@@ -25,8 +29,7 @@ fn glfwMouseCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mods:
 fn glfwKeyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
     if (action == c.GLFW_PRESS) {
         input.setKeyState(@intCast(usize, key), true);
-    }
-    else if (action == c.GLFW_RELEASE) {
+    } else if (action == c.GLFW_RELEASE) {
         input.setKeyState(@intCast(usize, key), false);
     }
 }
@@ -35,8 +38,7 @@ fn glfwMouseMoveCallback(window: ?*c.GLFWwindow, xpos: f64, ypos: f64) callconv(
     if (window == capturedWindow) {
         input.mouse_axes[0] = @floatCast(f32, xpos);
         input.mouse_axes[1] = @floatCast(f32, ypos);
-    }
-    else {
+    } else {
         // Set mouse pos
     }
 }
@@ -63,6 +65,10 @@ pub fn init() void {
     }
 
     c.glfwWindowHint(c.GLFW_RESIZABLE, c.GL_TRUE);
+
+    if (c.glfwVulkanSupported() == c.GLFW_FALSE) {
+        panic("Vulkan no Supported\n", .{});
+    }
 }
 
 pub fn deinit() void {
@@ -73,9 +79,9 @@ pub fn deinit() void {
 }
 
 pub fn update() void {
-     if (capturedWindow) |windowHandle| {
+    if (capturedWindow) |windowHandle| {
         c.glfwSetCursorPos(windowHandle, 0.0, 0.0);
-     }
+    }
 
     input.update();
     c.glfwPollEvents();
@@ -108,7 +114,7 @@ pub fn createWindow(width: i32, height: i32, title: [:0]const u8) WindowId {
 
 pub fn destoryWindow(windowId: WindowId) void {
     if (windowMap.contains(windowId)) {
-        var handle = windowMap.remove(windowId).?.value;
+        var handle = windowMap.fetchRemove(windowId).?.value;
         c.glfwDestroyWindow(handle);
     }
 }
@@ -171,11 +177,10 @@ pub fn setMouseCaptured(windowId: WindowId, capture: bool) void {
             c.glfwSetInputMode(handle, c.GLFW_CURSOR, c.GLFW_CURSOR_DISABLED);
             c.glfwSetCursorPos(handle, 0.0, 0.0);
             capturedWindow = handle;
-        }
-        else {
+        } else {
             var size = getWindowSize(windowId);
             c.glfwSetInputMode(handle, c.GLFW_CURSOR, c.GLFW_CURSOR_NORMAL);
-            c.glfwSetCursorPos(handle, @intToFloat(f64, size[0]) / 2.0,  @intToFloat(f64, size[1]) / 2.0);
+            c.glfwSetCursorPos(handle, @intToFloat(f64, size[0]) / 2.0, @intToFloat(f64, size[1]) / 2.0);
             capturedWindow = null;
         }
     }
@@ -184,8 +189,7 @@ pub fn setMouseCaptured(windowId: WindowId, capture: bool) void {
 pub fn getMouseCaptured(windowId: WindowId) bool {
     if (capturedWindow) |windowHandle| {
         return true;
-    }
-    else {
+    } else {
         return false;
     }
 }
@@ -209,7 +213,7 @@ pub var input = struct {
     mouse_axes: [2]f32,
 
     pub fn init() Self {
-        return Self {
+        return Self{
             .mouse_buttons = [_]ButtonInput{.{}} ** MouseButtonCount,
             .keyboard_buttons = [_]ButtonInput{.{}} ** KeyboardButtonCount,
             .mouse_axes = [_]f32{ 0.0, 0.0 },
@@ -244,7 +248,6 @@ pub var input = struct {
     pub fn getMouseAxes(self: *Self) [2]f32 {
         return self.mouse_axes;
     }
-
 
     pub fn setKeyState(self: *Self, key: usize, state: bool) void {
         self.keyboard_buttons[key].current_state = state;
