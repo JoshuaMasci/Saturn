@@ -1,32 +1,13 @@
 const std = @import("std");
 
 const glfw = @import("glfw_platform.zig");
+const vk = @import("vulkan.zig");
 
-const vk = @import("vulkan");
-const VK_API_VERSION_1_2 = vk.makeApiVersion(0, 1, 2, 0);
-
-const BaseDispatch = vk.BaseWrapper(.{
-    .CreateInstance,
-});
-
-const InstanceDispatch = vk.InstanceWrapper(.{
-    .DestroyInstance,
-    .CreateDevice,
-    .DestroySurfaceKHR,
-    .EnumeratePhysicalDevices,
-    .GetPhysicalDeviceProperties,
-    .EnumerateDeviceExtensionProperties,
-    .GetPhysicalDeviceSurfaceFormatsKHR,
-    .GetPhysicalDeviceSurfacePresentModesKHR,
-    .GetPhysicalDeviceSurfaceCapabilitiesKHR,
-    .GetPhysicalDeviceQueueFamilyProperties,
-    .GetPhysicalDeviceSurfaceSupportKHR,
-    .GetPhysicalDeviceMemoryProperties,
-    .GetDeviceProcAddr,
-});
+const panic = std.debug.panic;
+const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{});
 
 pub fn main() !void {
-    std.log.info("Hello App", .{});
+    var globalAllocator: GeneralPurposeAllocator = GeneralPurposeAllocator{};
 
     glfw.init();
     defer glfw.deinit();
@@ -36,20 +17,13 @@ pub fn main() !void {
     //glfw.setMouseCaptured(window, true);
     glfw.maximizeWindow(window);
 
-    const saturn_name = "saturn";
-    const saturn_version = vk.makeApiVersion(0, 0, 0, 0);
-
-    const app_info = vk.ApplicationInfo{
-        .p_application_name = saturn_name,
-        .application_version = saturn_version,
-        .p_engine_name = saturn_name,
-        .engine_version = saturn_version,
-        .api_version = VK_API_VERSION_1_2,
-    };
-
-    var base_dispatch = BaseDispatch.load(glfw.glfwGetInstanceProcAddress);
+    var graphics = try vk.Graphics.init(&globalAllocator.allocator, "Saturn Editor", vk.makeVkVersion(0, 0, 0));
+    defer graphics.deinit();
 
     while (glfw.shouldCloseWindow(window)) {
         glfw.update();
     }
+
+    const leaked = globalAllocator.deinit();
+    if (leaked) panic("Error: memory leaked", .{});
 }
