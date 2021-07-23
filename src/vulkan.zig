@@ -92,6 +92,10 @@ const DeviceDispatch = vk.DeviceWrapper(.{
     .CmdCopyBuffer,
 });
 
+//var vkb: BaseDispatch = undefined;
+//var vki: InstanceDispatch = undefined;
+var vkd: DeviceDispatch = undefined;
+
 pub const Graphics = struct {
     const Self = @This();
 
@@ -100,8 +104,13 @@ pub const Graphics = struct {
     //vkd: DeviceDispatch,
 
     instance: vk.Instance,
+    device: Device,
 
-    pub fn init(allocator: *Allocator, app_name: [*:0]const u8, app_version: u32) !Self {
+    pub fn init(
+        allocator: *Allocator,
+        app_name: [*:0]const u8,
+        app_version: u32,
+    ) !Self {
         var glfw_exts_count: u32 = 0;
         const glfw_exts = c.glfwGetRequiredInstanceExtensions(&glfw_exts_count);
         var base_dispatch = try BaseDispatch.load(glfwGetInstanceProcAddress);
@@ -137,16 +146,17 @@ pub const Graphics = struct {
         var pdevice = pdevices[0];
 
         var device = try Device.init(instance_dispatch, pdevice, 0);
-        defer device.deinit();
 
         return Self{
             .vkb = base_dispatch,
             .vki = instance_dispatch,
             .instance = instance,
+            .device = device,
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.device.deinit();
         self.vki.destroyInstance(self.instance, null);
     }
 };
@@ -155,8 +165,6 @@ const required_device_extensions = [_][]const u8{vk.extension_info.khr_swapchain
 
 const Device = struct {
     const Self = @This();
-
-    vkd: DeviceDispatch,
 
     pdevice: vk.PhysicalDevice,
     device: vk.Device,
@@ -188,19 +196,39 @@ const Device = struct {
             .p_enabled_features = null,
         }, null);
 
-        var vkd = try DeviceDispatch.load(device, vki.dispatch.vkGetDeviceProcAddr);
+        vkd = try DeviceDispatch.load(device, vki.dispatch.vkGetDeviceProcAddr);
 
         var graphics_queue = vkd.getDeviceQueue(device, graphics_queue_index, 0);
 
         return Self{
-            .vkd = vkd,
             .pdevice = pdevice,
             .device = device,
             .graphics_queue = graphics_queue,
         };
     }
 
-    fn deinit(self: Self) void {
-        self.vkd.destroyDevice(self.device, null);
+    fn deinit(self: *Self) void {
+        vkd.destroyDevice(self.device, null);
+    }
+};
+
+const MemoryUsage = enum {
+    Staging,
+    CpuRead,
+    DeviceLocal,
+};
+
+const Buffer = struct {
+    device: vk.Device,
+
+    memory: vk.Memory,
+    buffer: vk.Buffer,
+
+    fn init(
+        device: vk.Device,
+        size: u64,
+        memory_usage: MemoryUsage,
+    ) void {
+        return;
     }
 };
