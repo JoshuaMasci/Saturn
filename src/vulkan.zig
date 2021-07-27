@@ -37,6 +37,8 @@ const InstanceDispatch = vk.InstanceWrapper(.{
     .GetPhysicalDeviceSurfaceSupportKHR,
     .GetPhysicalDeviceMemoryProperties,
     .GetDeviceProcAddr,
+    .CreateDebugUtilsMessengerEXT,
+    .DestroyDebugUtilsMessengerEXT,
 });
 
 const DeviceDispatch = vk.DeviceWrapper(.{
@@ -104,6 +106,7 @@ pub const Graphics = struct {
     //vkd: DeviceDispatch,
 
     instance: vk.Instance,
+    debug_callback: DebugCallback,
     device: Device,
 
     pub fn init(
@@ -111,8 +114,6 @@ pub const Graphics = struct {
         app_name: [*:0]const u8,
         app_version: u32,
     ) !Self {
-        var glfw_exts_count: u32 = 0;
-        const glfw_exts = c.glfwGetRequiredInstanceExtensions(&glfw_exts_count);
         var base_dispatch = try BaseDispatch.load(glfwGetInstanceProcAddress);
 
         const app_info = vk.ApplicationInfo{
@@ -123,16 +124,37 @@ pub const Graphics = struct {
             .api_version = VK_API_VERSION_1_2,
         };
 
+        var glfw_exts_count: u32 = 0;
+        const glfw_exts = c.glfwGetRequiredInstanceExtensions(&glfw_exts_count);
+
+        var extensions = std.ArrayList([*:0]const u8).init(allocator);
+        defer extensions.deinit();
+        var i: u32 = 0;
+        while (i < glfw_exts_count) : (i += 1) {
+            try extensions.append(@ptrCast([*:0]const u8, glfw_exts[i]));
+        }
+
+        var layers = std.ArrayList([*:0]const u8).init(allocator);
+        defer layers.deinit();
+
+        //Validation
+        try extensions.append(vk.extension_info.ext_debug_utils.name);
+        try extensions.append(vk.extension_info.ext_debug_report.name);
+        try layers.append("VK_LAYER_KHRONOS_validation");
+
         var instance = try base_dispatch.createInstance(.{
             .flags = .{},
             .p_application_info = &app_info,
-            .enabled_layer_count = 0,
-            .pp_enabled_layer_names = undefined,
-            .enabled_extension_count = glfw_exts_count,
-            .pp_enabled_extension_names = @ptrCast([*]const [*:0]const u8, glfw_exts),
+
+            .enabled_layer_count = @intCast(u32, layers.items.len),
+            .pp_enabled_layer_names = @ptrCast([*]const [*:0]const u8, layers.items),
+            .enabled_extension_count = @intCast(u32, extensions.items.len),
+            .pp_enabled_extension_names = @ptrCast([*]const [*:0]const u8, extensions.items),
         }, null);
 
         var instance_dispatch = try InstanceDispatch.load(instance, glfwGetInstanceProcAddress);
+
+        var debug_callback = try DebugCallback.init(instance, instance_dispatch);
 
         var device_count: u32 = undefined;
         _ = try instance_dispatch.enumeratePhysicalDevices(instance, &device_count, null);
@@ -151,12 +173,14 @@ pub const Graphics = struct {
             .vkb = base_dispatch,
             .vki = instance_dispatch,
             .instance = instance,
+            .debug_callback = debug_callback,
             .device = device,
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.device.deinit();
+        self.debug_callback.deinit();
         self.vki.destroyInstance(self.instance, null);
     }
 };
@@ -230,5 +254,58 @@ const Buffer = struct {
         memory_usage: MemoryUsage,
     ) void {
         return;
+    }
+};
+
+fn debugCallback(
+    message_severity: vk.DebugUtilsMessageSeverityFlagsEXT.IntType,
+    message_types: vk.DebugUtilsMessageTypeFlagsEXT.IntType,
+    p_callback_data: *const vk.DebugUtilsMessengerCallbackDataEXT,
+    p_user_data: *c_void,
+) callconv(.C) vk.Bool32 {
+    //TODO log levels
+    std.log.warn("{s}", .{p_callback_data.p_message});
+    return 0;
+}
+
+const DebugCallback = struct {
+    const Self = @This();
+
+    instance: vk.Instance,
+    vki: InstanceDispatch,
+    debug_messenger: vk.DebugUtilsMessengerEXT,
+
+    fn init(
+        instance: vk.Instance,
+        vki: InstanceDispatch,
+    ) !Self {
+        var debug_callback_info = vk.DebugUtilsMessengerCreateInfoEXT{
+            .flags = .{},
+            .message_severity = vk.DebugUtilsMessageSeverityFlagsEXT{
+                //.verbose_bit_ext = true,
+                //.info_bit_ext = true,
+                .warning_bit_ext = true,
+                .error_bit_ext = true,
+            },
+            .message_type = vk.DebugUtilsMessageTypeFlagsEXT{
+                .general_bit_ext = true,
+                .validation_bit_ext = true,
+                .performance_bit_ext = true,
+            },
+            .pfn_user_callback = debugCallback,
+            .p_user_data = null,
+        };
+
+        var debug_messenger = try vki.createDebugUtilsMessengerEXT(instance, debug_callback_info, null);
+
+        return Self{
+            .instance = instance,
+            .vki = vki,
+            .debug_messenger = debug_messenger,
+        };
+    }
+
+    fn deinit(self: *Self) void {
+        self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, null);
     }
 };
