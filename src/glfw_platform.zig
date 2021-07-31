@@ -1,11 +1,6 @@
-const c = @cImport({
+pub const c = @cImport({
     @cInclude("GLFW/glfw3.h");
 });
-
-const vk = @import("vulkan");
-pub extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction;
-pub extern fn glfwGetPhysicalDevicePresentationSupport(instance: vk.Instance, pdev: vk.PhysicalDevice, queuefamily: u32) c_int;
-pub extern fn glfwCreateWindowSurface(instance: vk.Instance, window: *GLFWwindow, allocation_callbacks: ?*const vk.AllocationCallbacks, surface: *vk.SurfaceKHR) vk.Result;
 
 const std = @import("std");
 const panic = std.debug.panic;
@@ -15,7 +10,7 @@ const ArrayList = std.ArrayList;
 const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{});
 
 fn glfwErrorCallback(err: c_int, description: [*c]const u8) callconv(.C) void {
-    panic("Error: {s}\n", .{@as([*:0]const u8, description)});
+    panic("{s}\n", .{@as([*:0]const u8, description)});
 }
 
 fn glfwMouseCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mods: c_int) callconv(.C) void {
@@ -96,11 +91,11 @@ pub const WindowId = usize;
 const WindowHashMap = std.AutoHashMap(WindowId, *c.GLFWwindow);
 var nextWindowId: WindowId = 0;
 var windowMap: WindowHashMap = undefined;
-pub fn createWindow(width: i32, height: i32, title: [:0]const u8) WindowId {
+pub fn createWindow(width: i32, height: i32, title: [:0]const u8) !WindowId {
+    c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
     var handle = c.glfwCreateWindow(width, height, title, null, null) orelse {
-        panic("Failed to create window", .{});
+        return error.WindowCreationFailed;
     };
-    c.glfwMakeContextCurrent(handle);
     _ = c.glfwSetMouseButtonCallback(handle, glfwMouseCallback);
     _ = c.glfwSetKeyCallback(handle, glfwKeyCallback);
     _ = c.glfwSetCursorPosCallback(handle, glfwMouseMoveCallback);

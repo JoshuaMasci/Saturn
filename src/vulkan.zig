@@ -2,12 +2,10 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const panic = std.debug.panic;
 
-const c = @cImport({
-    @cInclude("GLFW/glfw3.h");
-});
+const glfw = @import("glfw_platform.zig");
 pub extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction;
 pub extern fn glfwGetPhysicalDevicePresentationSupport(instance: vk.Instance, pdev: vk.PhysicalDevice, queuefamily: u32) c_int;
-pub extern fn glfwCreateWindowSurface(instance: vk.Instance, window: *GLFWwindow, allocation_callbacks: ?*const vk.AllocationCallbacks, surface: *vk.SurfaceKHR) vk.Result;
+pub extern fn glfwCreateWindowSurface(instance: vk.Instance, window: *glfw.c.GLFWwindow, allocation_callbacks: ?*const vk.AllocationCallbacks, surface: *vk.SurfaceKHR) vk.Result;
 
 pub fn makeVkVersion(major: u7, minor: u10, patch: u12) u32 {
     return (@as(u32, major) << 22) | (@as(u32, minor) << 12) | patch;
@@ -94,27 +92,27 @@ const DeviceDispatch = vk.DeviceWrapper(.{
     .CmdCopyBuffer,
 });
 
-//var vkb: BaseDispatch = undefined;
-//var vki: InstanceDispatch = undefined;
+var vkb: BaseDispatch = undefined;
+var vki: InstanceDispatch = undefined;
 var vkd: DeviceDispatch = undefined;
 
 pub const Graphics = struct {
     const Self = @This();
 
-    vkb: BaseDispatch,
-    vki: InstanceDispatch,
-    //vkd: DeviceDispatch,
-
+    allocator: *Allocator,
     instance: vk.Instance,
     debug_callback: DebugCallback,
+    surface: vk.SurfaceKHR,
     device: Device,
+    swapchain: Swapchain,
 
     pub fn init(
         allocator: *Allocator,
         app_name: [*:0]const u8,
         app_version: u32,
+        window: glfw.WindowId,
     ) !Self {
-        var base_dispatch = try BaseDispatch.load(glfwGetInstanceProcAddress);
+        vkb = try BaseDispatch.load(glfwGetInstanceProcAddress);
 
         const app_info = vk.ApplicationInfo{
             .p_application_name = app_name,
@@ -125,7 +123,7 @@ pub const Graphics = struct {
         };
 
         var glfw_exts_count: u32 = 0;
-        const glfw_exts = c.glfwGetRequiredInstanceExtensions(&glfw_exts_count);
+        const glfw_exts = glfw.c.glfwGetRequiredInstanceExtensions(&glfw_exts_count);
 
         var extensions = std.ArrayList([*:0]const u8).init(allocator);
         defer extensions.deinit();
@@ -142,7 +140,7 @@ pub const Graphics = struct {
         try extensions.append(vk.extension_info.ext_debug_report.name);
         try layers.append("VK_LAYER_KHRONOS_validation");
 
-        var instance = try base_dispatch.createInstance(.{
+        var instance = try vkb.createInstance(.{
             .flags = .{},
             .p_application_info = &app_info,
 
@@ -152,36 +150,75 @@ pub const Graphics = struct {
             .pp_enabled_extension_names = @ptrCast([*]const [*:0]const u8, extensions.items),
         }, null);
 
-        var instance_dispatch = try InstanceDispatch.load(instance, glfwGetInstanceProcAddress);
+        vki = try InstanceDispatch.load(instance, glfwGetInstanceProcAddress);
 
-        var debug_callback = try DebugCallback.init(instance, instance_dispatch);
+        var debug_callback = try DebugCallback.init(instance);
 
+        //Surface
+        var surface = try Self.createSurface(instance, window);
+
+        //Device
         var device_count: u32 = undefined;
-        _ = try instance_dispatch.enumeratePhysicalDevices(instance, &device_count, null);
+        _ = try vki.enumeratePhysicalDevices(instance, &device_count, null);
 
         const pdevices = try allocator.alloc(vk.PhysicalDevice, device_count);
         defer allocator.free(pdevices);
 
-        _ = try instance_dispatch.enumeratePhysicalDevices(instance, &device_count, pdevices.ptr);
+        _ = try vki.enumeratePhysicalDevices(instance, &device_count, pdevices.ptr);
 
-        //TODO pick device
+        //TODO pick device and queues
         var pdevice = pdevices[0];
+        var graphcis_queue_index: u32 = 0;
 
-        var device = try Device.init(instance_dispatch, pdevice, 0);
+        var supports_surface = try vki.getPhysicalDeviceSurfaceSupportKHR(pdevice, graphcis_queue_index, surface);
+        if (supports_surface == 0) {
+            return error.NoDeviceSurfaceSupport;
+        }
+
+        var device = try Device.init(pdevice, 0);
+
+        //Swapchain
+        //Hardcoded values
+        var window_size = glfw.getWindowSize(window);
+        var swapchain_info = SwapchainInfo{
+            .image_count = 3,
+            .format = vk.SurfaceFormatKHR{
+                .format = .b8g8r8a8_srgb,
+                .color_space = .srgb_nonlinear_khr,
+            },
+            .extent = vk.Extent2D{
+                .width = @intCast(u32, window_size[0]),
+                .height = @intCast(u32, window_size[1]),
+            },
+            .usage = .{ .color_attachment_bit = true, .transfer_dst_bit = true },
+            .mode = .mailbox_khr,
+        };
+        var swapchain = try Swapchain.init(allocator, device, surface, swapchain_info);
 
         return Self{
-            .vkb = base_dispatch,
-            .vki = instance_dispatch,
+            .allocator = allocator,
             .instance = instance,
             .debug_callback = debug_callback,
+            .surface = surface,
             .device = device,
+            .swapchain = swapchain,
         };
     }
 
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: Self) void {
+        self.swapchain.deinit();
         self.device.deinit();
+        vki.destroySurfaceKHR(self.instance, self.surface, null);
         self.debug_callback.deinit();
-        self.vki.destroyInstance(self.instance, null);
+        vki.destroyInstance(self.instance, null);
+    }
+
+    fn createSurface(instance: vk.Instance, windowId: glfw.WindowId) !vk.SurfaceKHR {
+        var surface: vk.SurfaceKHR = undefined;
+        if (glfwCreateWindowSurface(instance, glfw.getWindowHandle(windowId), null, &surface) != .success) {
+            return error.SurfaceCreationFailed;
+        }
+        return surface;
     }
 };
 
@@ -195,7 +232,7 @@ const Device = struct {
     graphics_queue: vk.Queue,
 
     //TODO actually pick queue familes for graphics/present/compute/transfer
-    fn init(vki: InstanceDispatch, pdevice: vk.PhysicalDevice, graphics_queue_index: u32) !Self {
+    fn init(pdevice: vk.PhysicalDevice, graphics_queue_index: u32) !Self {
         const props = vki.getPhysicalDeviceProperties(pdevice);
         std.log.info("Device: \n\tName: {s}\n\tDriver: {}\n\tType: {}", .{ props.device_name, props.driver_version, props.device_type });
 
@@ -231,8 +268,79 @@ const Device = struct {
         };
     }
 
-    fn deinit(self: *Self) void {
+    fn deinit(self: Self) void {
         vkd.destroyDevice(self.device, null);
+    }
+};
+
+const SwapchainInfo = struct {
+    image_count: u32,
+    format: vk.SurfaceFormatKHR,
+    extent: vk.Extent2D,
+    usage: vk.ImageUsageFlags,
+    mode: vk.PresentModeKHR,
+};
+
+//pub const SwapchainId = usize;
+const Swapchain = struct {
+    const Self = @This();
+
+    allocator: *Allocator,
+    device: vk.Device,
+    pdevice: vk.PhysicalDevice,
+    surface: vk.SurfaceKHR,
+
+    handle: vk.SwapchainKHR,
+
+    images: std.ArrayList(vk.Image),
+
+    info: SwapchainInfo,
+
+    fn init(allocator: *Allocator, device: Device, surface: vk.SurfaceKHR, info: SwapchainInfo) !Self {
+        const caps = try vki.getPhysicalDeviceSurfaceCapabilitiesKHR(device.pdevice, surface);
+
+        //TEMP
+        const queue_family_index = [_]u32{0};
+
+        var create_info = vk.SwapchainCreateInfoKHR{
+            .surface = surface,
+            .min_image_count = info.image_count,
+            .image_format = info.format.format,
+            .image_color_space = info.format.color_space,
+            .image_extent = info.extent,
+            .image_array_layers = 1,
+            .image_usage = info.usage,
+            .image_sharing_mode = .exclusive,
+            .queue_family_index_count = queue_family_index.len,
+            .p_queue_family_indices = &queue_family_index,
+            .pre_transform = caps.current_transform,
+            .composite_alpha = .{ .opaque_bit_khr = true },
+            .present_mode = info.mode,
+            .clipped = vk.TRUE,
+            .old_swapchain = .null_handle,
+            .flags = .{},
+        };
+        const handle = try vkd.createSwapchainKHR(device.device, create_info, null);
+
+        var count: u32 = undefined;
+        _ = try vkd.getSwapchainImagesKHR(device.device, handle, &count, null);
+        var images = try std.ArrayList(vk.Image).initCapacity(allocator, count);
+        _ = try vkd.getSwapchainImagesKHR(device.device, handle, &count, @ptrCast([*]vk.Image, images.items));
+
+        return Self{
+            .allocator = allocator,
+            .device = device.device,
+            .pdevice = device.pdevice,
+            .surface = surface,
+            .handle = handle,
+            .images = images,
+            .info = info,
+        };
+    }
+
+    fn deinit(self: Self) void {
+        self.images.deinit();
+        vkd.destroySwapchainKHR(self.device, self.handle, null);
     }
 };
 
@@ -272,12 +380,10 @@ const DebugCallback = struct {
     const Self = @This();
 
     instance: vk.Instance,
-    vki: InstanceDispatch,
     debug_messenger: vk.DebugUtilsMessengerEXT,
 
     fn init(
         instance: vk.Instance,
-        vki: InstanceDispatch,
     ) !Self {
         var debug_callback_info = vk.DebugUtilsMessengerCreateInfoEXT{
             .flags = .{},
@@ -300,12 +406,11 @@ const DebugCallback = struct {
 
         return Self{
             .instance = instance,
-            .vki = vki,
             .debug_messenger = debug_messenger,
         };
     }
 
-    fn deinit(self: *Self) void {
-        self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, null);
+    fn deinit(self: Self) void {
+        vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, null);
     }
 };
