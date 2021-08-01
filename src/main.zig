@@ -26,5 +26,6 @@ pub fn main() !void {
 
     while (glfw.shouldCloseWindow(window)) {
         glfw.update();
+        graphics.draw();
     }
 }

@@ -39,58 +39,7 @@ const InstanceDispatch = vk.InstanceWrapper(.{
     .DestroyDebugUtilsMessengerEXT,
 });
 
-const DeviceDispatch = vk.DeviceWrapper(.{
-    .DestroyDevice,
-    .GetDeviceQueue,
-    .CreateSemaphore,
-    .CreateFence,
-    .CreateImageView,
-    .DestroyImageView,
-    .DestroySemaphore,
-    .DestroyFence,
-    .GetSwapchainImagesKHR,
-    .CreateSwapchainKHR,
-    .DestroySwapchainKHR,
-    .AcquireNextImageKHR,
-    .DeviceWaitIdle,
-    .WaitForFences,
-    .ResetFences,
-    .QueueSubmit,
-    .QueuePresentKHR,
-    .CreateCommandPool,
-    .DestroyCommandPool,
-    .AllocateCommandBuffers,
-    .FreeCommandBuffers,
-    .QueueWaitIdle,
-    .CreateShaderModule,
-    .DestroyShaderModule,
-    .CreatePipelineLayout,
-    .DestroyPipelineLayout,
-    .CreateRenderPass,
-    .DestroyRenderPass,
-    .CreateGraphicsPipelines,
-    .DestroyPipeline,
-    .CreateFramebuffer,
-    .DestroyFramebuffer,
-    .BeginCommandBuffer,
-    .EndCommandBuffer,
-    .AllocateMemory,
-    .FreeMemory,
-    .CreateBuffer,
-    .DestroyBuffer,
-    .GetBufferMemoryRequirements,
-    .MapMemory,
-    .UnmapMemory,
-    .BindBufferMemory,
-    .CmdBeginRenderPass,
-    .CmdEndRenderPass,
-    .CmdBindPipeline,
-    .CmdDraw,
-    .CmdSetViewport,
-    .CmdSetScissor,
-    .CmdBindVertexBuffers,
-    .CmdCopyBuffer,
-});
+const DeviceDispatch = vk.DeviceWrapper(.{ .DestroyDevice, .GetDeviceQueue, .CreateSemaphore, .CreateFence, .CreateImageView, .DestroyImageView, .DestroySemaphore, .DestroyFence, .GetSwapchainImagesKHR, .CreateSwapchainKHR, .DestroySwapchainKHR, .AcquireNextImageKHR, .DeviceWaitIdle, .WaitForFences, .ResetFences, .QueueSubmit, .QueuePresentKHR, .CreateCommandPool, .DestroyCommandPool, .AllocateCommandBuffers, .FreeCommandBuffers, .QueueWaitIdle, .CreateShaderModule, .DestroyShaderModule, .CreatePipelineLayout, .DestroyPipelineLayout, .CreateRenderPass, .DestroyRenderPass, .CreateGraphicsPipelines, .DestroyPipeline, .CreateFramebuffer, .DestroyFramebuffer, .BeginCommandBuffer, .EndCommandBuffer, .AllocateMemory, .FreeMemory, .CreateBuffer, .DestroyBuffer, .GetBufferMemoryRequirements, .MapMemory, .UnmapMemory, .BindBufferMemory, .CmdBeginRenderPass, .CmdEndRenderPass, .CmdBindPipeline, .CmdDraw, .CmdSetViewport, .CmdSetScissor, .CmdBindVertexBuffers, .CmdCopyBuffer, .CmdPipelineBarrier });
 
 var vkb: BaseDispatch = undefined;
 var vki: InstanceDispatch = undefined;
@@ -105,6 +54,12 @@ pub const Graphics = struct {
     surface: vk.SurfaceKHR,
     device: Device,
     swapchain: Swapchain,
+
+    temp_semaphore: vk.Semaphore,
+    present_semaphore: vk.Semaphore,
+    temp_fence: vk.Fence,
+    temp_pool: vk.CommandPool,
+    temp_buffer: vk.CommandBuffer,
 
     pub fn init(
         allocator: *Allocator,
@@ -195,6 +150,31 @@ pub const Graphics = struct {
         };
         var swapchain = try Swapchain.init(allocator, device, surface, swapchain_info);
 
+        //Temp
+        var semaphore = try vkd.createSemaphore(device.device, .{
+            .flags = .{},
+        }, null);
+
+        var semaphore2 = try vkd.createSemaphore(device.device, .{
+            .flags = .{},
+        }, null);
+
+        var fence = try vkd.createFence(device.device, .{
+            .flags = .{ .signaled_bit = true },
+        }, null);
+
+        var pool = try vkd.createCommandPool(device.device, .{
+            .flags = .{ .reset_command_buffer_bit = true },
+            .queue_family_index = graphcis_queue_index,
+        }, null);
+
+        var buffer: vk.CommandBuffer = undefined;
+        try vkd.allocateCommandBuffers(device.device, .{
+            .command_pool = pool,
+            .level = .primary,
+            .command_buffer_count = 1,
+        }, @ptrCast([*]vk.CommandBuffer, &buffer));
+
         return Self{
             .allocator = allocator,
             .instance = instance,
@@ -202,10 +182,22 @@ pub const Graphics = struct {
             .surface = surface,
             .device = device,
             .swapchain = swapchain,
+            .temp_semaphore = semaphore,
+            .present_semaphore = semaphore2,
+            .temp_fence = fence,
+            .temp_pool = pool,
+            .temp_buffer = buffer,
         };
     }
 
     pub fn deinit(self: Self) void {
+        self.device.waitIdle();
+
+        vkd.destroySemaphore(self.device.device, self.temp_semaphore, null);
+        vkd.destroySemaphore(self.device.device, self.present_semaphore, null);
+        vkd.destroyFence(self.device.device, self.temp_fence, null);
+        vkd.destroyCommandPool(self.device.device, self.temp_pool, null);
+
         self.swapchain.deinit();
         self.device.deinit();
         vki.destroySurfaceKHR(self.instance, self.surface, null);
@@ -219,6 +211,65 @@ pub const Graphics = struct {
             return error.SurfaceCreationFailed;
         }
         return surface;
+    }
+
+    pub fn draw(self: Self) void {
+        var fence = @ptrCast([*]const vk.Fence, &self.temp_fence);
+        _ = vkd.waitForFences(self.device.device, 1, fence, 1, std.math.maxInt(u64)) catch {};
+        _ = vkd.resetFences(self.device.device, 1, fence) catch {};
+
+        var image_index = self.swapchain.getNextImage(self.temp_semaphore);
+
+        vkd.beginCommandBuffer(self.temp_buffer, .{
+            .flags = .{},
+            .p_inheritance_info = null,
+        }) catch {};
+
+        var image_barrier = vk.ImageMemoryBarrier{
+            .src_access_mask = .{},
+            .dst_access_mask = .{},
+            .old_layout = .@"undefined",
+            .new_layout = .present_src_khr,
+            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .image = self.swapchain.images.items[image_index],
+            .subresource_range = .{
+                .aspect_mask = .{ .color_bit = true },
+                .base_mip_level = 0,
+                .level_count = 1,
+                .base_array_layer = 0,
+                .layer_count = 1,
+            },
+        };
+        var empty_memory: [*]const vk.MemoryBarrier = undefined;
+        var empty_buffer: [*]const vk.BufferMemoryBarrier = undefined;
+        vkd.cmdPipelineBarrier(self.temp_buffer, .{ .top_of_pipe_bit = true }, .{ .bottom_of_pipe_bit = true }, .{}, 0, empty_memory, 0, empty_buffer, 1, @ptrCast([*]const vk.ImageMemoryBarrier, &image_barrier));
+
+        vkd.endCommandBuffer(self.temp_buffer) catch {};
+
+        var wait_stages = vk.PipelineStageFlags{
+            .color_attachment_output_bit = true,
+        };
+
+        const submitInfo = vk.SubmitInfo{
+            .wait_semaphore_count = 1,
+            .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &self.temp_semaphore),
+            .p_wait_dst_stage_mask = @ptrCast([*]const vk.PipelineStageFlags, &wait_stages),
+            .command_buffer_count = 1,
+            .p_command_buffers = @ptrCast([*]const vk.CommandBuffer, &self.temp_buffer),
+            .signal_semaphore_count = 1,
+            .p_signal_semaphores = @ptrCast([*]const vk.Semaphore, &self.present_semaphore),
+        };
+        vkd.queueSubmit(self.device.graphics_queue, 1, @ptrCast([*]const vk.SubmitInfo, &submitInfo), self.temp_fence) catch {};
+
+        _ = vkd.queuePresentKHR(self.device.graphics_queue, .{
+            .wait_semaphore_count = 1,
+            .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &self.present_semaphore),
+            .swapchain_count = 1,
+            .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &self.swapchain.handle),
+            .p_image_indices = @ptrCast([*]const u32, &image_index),
+            .p_results = null,
+        }) catch {};
     }
 };
 
@@ -270,6 +321,10 @@ const Device = struct {
 
     fn deinit(self: Self) void {
         vkd.destroyDevice(self.device, null);
+    }
+
+    fn waitIdle(self: Self) void {
+        vkd.deviceWaitIdle(self.device) catch panic("Failed to waitIdle", .{});
     }
 };
 
@@ -325,6 +380,10 @@ const Swapchain = struct {
         var count: u32 = undefined;
         _ = try vkd.getSwapchainImagesKHR(device.device, handle, &count, null);
         var images = try std.ArrayList(vk.Image).initCapacity(allocator, count);
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            try images.append(.null_handle);
+        }
         _ = try vkd.getSwapchainImagesKHR(device.device, handle, &count, @ptrCast([*]vk.Image, images.items));
 
         return Self{
@@ -341,6 +400,20 @@ const Swapchain = struct {
     fn deinit(self: Self) void {
         self.images.deinit();
         vkd.destroySwapchainKHR(self.device, self.handle, null);
+    }
+
+    fn getNextImage(self: Self, image_ready: vk.Semaphore) u32 {
+        const result = vkd.acquireNextImageKHR(
+            self.device,
+            self.handle,
+            std.math.maxInt(u64),
+            image_ready,
+            .null_handle,
+        ) catch |err| {
+            panic("Swapchain.acquireNextImageKHR Failed: {}", .{err});
+        };
+
+        return result.image_index;
     }
 };
 
