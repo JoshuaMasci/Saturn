@@ -22,10 +22,12 @@ fn glfwMouseCallback(window: ?*c.GLFWwindow, button: c_int, action: c_int, mods:
 }
 
 fn glfwKeyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.C) void {
-    if (action == c.GLFW_PRESS) {
-        input.setKeyState(@intCast(usize, key), true);
-    } else if (action == c.GLFW_RELEASE) {
-        input.setKeyState(@intCast(usize, key), false);
+    if (key != c.GLFW_KEY_UNKNOWN) {
+        if (action == c.GLFW_PRESS) {
+            input.setKeyState(@intCast(usize, key), true);
+        } else if (action == c.GLFW_RELEASE) {
+            input.setKeyState(@intCast(usize, key), false);
+        }
     }
 }
 
