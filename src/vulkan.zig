@@ -135,20 +135,20 @@ pub const Graphics = struct {
         //Swapchain
         //Hardcoded values
         var window_size = glfw.getWindowSize(window);
-        var swapchain_info = SwapchainInfo{
-            .image_count = 3,
-            .format = vk.SurfaceFormatKHR{
-                .format = .b8g8r8a8_srgb,
-                .color_space = .srgb_nonlinear_khr,
-            },
-            .extent = vk.Extent2D{
-                .width = @intCast(u32, window_size[0]),
-                .height = @intCast(u32, window_size[1]),
-            },
-            .usage = .{ .color_attachment_bit = true, .transfer_dst_bit = true },
-            .mode = .mailbox_khr,
-        };
-        var swapchain = try Swapchain.init(allocator, device, surface, swapchain_info);
+        // var swapchain_info = SwapchainInfo{
+        //     .image_count = 3,
+        //     .format = vk.SurfaceFormatKHR{
+        //         .format = .b8g8r8a8_srgb,
+        //         .color_space = .srgb_nonlinear_khr,
+        //     },
+        //     .extent = vk.Extent2D{
+        //         .width = @intCast(u32, window_size[0]),
+        //         .height = @intCast(u32, window_size[1]),
+        //     },
+        //     .usage = .{ .color_attachment_bit = true, .transfer_dst_bit = true },
+        //     .mode = .mailbox_khr,
+        // };
+        var swapchain = try Swapchain.init(allocator, device, surface);
 
         //Temp
         var semaphore = try vkd.createSemaphore(device.device, .{
@@ -213,7 +213,7 @@ pub const Graphics = struct {
         return surface;
     }
 
-    pub fn draw(self: Self) void {
+    pub fn draw(self: *Self) void {
         var fence = @ptrCast([*]const vk.Fence, &self.temp_fence);
         _ = vkd.waitForFences(self.device.device, 1, fence, 1, std.math.maxInt(u64)) catch {};
         _ = vkd.resetFences(self.device.device, 1, fence) catch {};
@@ -346,55 +346,20 @@ const Swapchain = struct {
     surface: vk.SurfaceKHR,
 
     handle: vk.SwapchainKHR,
-
     images: std.ArrayList(vk.Image),
 
-    info: SwapchainInfo,
-
-    fn init(allocator: *Allocator, device: Device, surface: vk.SurfaceKHR, info: SwapchainInfo) !Self {
-        const caps = try vki.getPhysicalDeviceSurfaceCapabilitiesKHR(device.pdevice, surface);
-
-        //TEMP
-        const queue_family_index = [_]u32{0};
-
-        var create_info = vk.SwapchainCreateInfoKHR{
-            .surface = surface,
-            .min_image_count = info.image_count,
-            .image_format = info.format.format,
-            .image_color_space = info.format.color_space,
-            .image_extent = info.extent,
-            .image_array_layers = 1,
-            .image_usage = info.usage,
-            .image_sharing_mode = .exclusive,
-            .queue_family_index_count = queue_family_index.len,
-            .p_queue_family_indices = &queue_family_index,
-            .pre_transform = caps.current_transform,
-            .composite_alpha = .{ .opaque_bit_khr = true },
-            .present_mode = info.mode,
-            .clipped = vk.TRUE,
-            .old_swapchain = .null_handle,
-            .flags = .{},
-        };
-        const handle = try vkd.createSwapchainKHR(device.device, create_info, null);
-
-        var count: u32 = undefined;
-        _ = try vkd.getSwapchainImagesKHR(device.device, handle, &count, null);
-        var images = try std.ArrayList(vk.Image).initCapacity(allocator, count);
-        var i: usize = 0;
-        while (i < count) : (i += 1) {
-            try images.append(.null_handle);
-        }
-        _ = try vkd.getSwapchainImagesKHR(device.device, handle, &count, @ptrCast([*]vk.Image, images.items));
-
-        return Self{
+    fn init(allocator: *Allocator, device: Device, surface: vk.SurfaceKHR) !Self {
+        var empty_list = std.ArrayList(vk.Image).init(allocator);
+        var self = Self{
             .allocator = allocator,
             .device = device.device,
             .pdevice = device.pdevice,
             .surface = surface,
-            .handle = handle,
-            .images = images,
-            .info = info,
+            .handle = .null_handle,
+            .images = empty_list,
         };
+        try self.rebuild();
+        return self;
     }
 
     fn deinit(self: Self) void {
@@ -402,18 +367,120 @@ const Swapchain = struct {
         vkd.destroySwapchainKHR(self.device, self.handle, null);
     }
 
-    fn getNextImage(self: Self, image_ready: vk.Semaphore) u32 {
-        const result = vkd.acquireNextImageKHR(
+    fn getNextImage(self: *Self, image_ready: vk.Semaphore) u32 {
+        var image_index: u32 = undefined;
+
+        const result_error = vkd.acquireNextImageKHR(
             self.device,
             self.handle,
             std.math.maxInt(u64),
             image_ready,
             .null_handle,
-        ) catch |err| {
-            panic("Swapchain.acquireNextImageKHR Failed: {}", .{err});
+        );
+
+        if (result_error) |result| {
+            return result.image_index;
+        } else |err| switch (err) {
+            error.OutOfDateKHR => {
+                //Recursive call here might be bad, but this should only happen at most 1 time per frame
+                self.rebuild() catch |err2| panic("Swapchain Rebuild Failed: {}", .{err2});
+                return self.getNextImage(image_ready);
+            },
+            else => panic("Swapchain Next Image Failed: {}", .{err}),
+        }
+    }
+
+    fn rebuild(self: *Self) !void {
+        const caps = try vki.getPhysicalDeviceSurfaceCapabilitiesKHR(self.pdevice, self.surface);
+
+        //Hardcoded Temp, TODO fix
+        const queue_family_index = [_]u32{0};
+        const image_useage = vk.ImageUsageFlags{ .color_attachment_bit = true, .transfer_dst_bit = true };
+
+        const image_count = std.math.min(caps.min_image_count + 1, caps.max_image_count);
+        const surface_format = try getSurfaceFormat(self.allocator, self.pdevice, self.surface);
+        const image_extent = caps.current_extent;
+        const present_mode = try getPresentMode(self.allocator, self.pdevice, self.surface);
+
+        var create_info = vk.SwapchainCreateInfoKHR{
+            .surface = self.surface,
+            .min_image_count = image_count,
+            .image_format = surface_format.format,
+            .image_color_space = surface_format.color_space,
+            .image_extent = image_extent,
+            .image_array_layers = 1,
+            .image_usage = image_useage,
+            .image_sharing_mode = .exclusive,
+            .queue_family_index_count = queue_family_index.len,
+            .p_queue_family_indices = &queue_family_index,
+            .pre_transform = caps.current_transform,
+            .composite_alpha = .{ .opaque_bit_khr = true },
+            .present_mode = present_mode,
+            .clipped = vk.TRUE,
+            .old_swapchain = self.handle,
+            .flags = .{},
+        };
+        var swapchain = try vkd.createSwapchainKHR(self.device, create_info, null);
+
+        var count: u32 = undefined;
+        _ = try vkd.getSwapchainImagesKHR(self.device, swapchain, &count, null);
+        var images = try std.ArrayList(vk.Image).initCapacity(self.allocator, count);
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            try images.append(.null_handle);
+        }
+        _ = try vkd.getSwapchainImagesKHR(self.device, swapchain, &count, @ptrCast([*]vk.Image, images.items));
+
+        //Update Object
+        self.handle = swapchain;
+        self.images.deinit();
+        self.images = images;
+    }
+
+    fn getSurfaceFormat(allocator: *Allocator, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.SurfaceFormatKHR {
+        const preferred = vk.SurfaceFormatKHR{
+            .format = .b8g8r8a8_srgb,
+            .color_space = .srgb_nonlinear_khr,
         };
 
-        return result.image_index;
+        var count: u32 = undefined;
+        _ = try vki.getPhysicalDeviceSurfaceFormatsKHR(pdevice, surface, &count, null);
+
+        const surface_formats = try allocator.alloc(vk.SurfaceFormatKHR, count);
+        defer allocator.free(surface_formats);
+
+        _ = try vki.getPhysicalDeviceSurfaceFormatsKHR(pdevice, surface, &count, surface_formats.ptr);
+
+        for (surface_formats) |sfmt| {
+            if (std.meta.eql(sfmt, preferred)) {
+                return preferred;
+            }
+        }
+
+        return surface_formats[0]; // There must always be at least one supported surface format
+    }
+
+    fn getPresentMode(allocator: *Allocator, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.PresentModeKHR {
+        var count: u32 = undefined;
+        _ = try vki.getPhysicalDeviceSurfacePresentModesKHR(pdevice, surface, &count, null);
+
+        const present_modes = try allocator.alloc(vk.PresentModeKHR, count);
+        defer allocator.free(present_modes);
+
+        _ = try vki.getPhysicalDeviceSurfacePresentModesKHR(pdevice, surface, &count, present_modes.ptr);
+
+        const preferred = [_]vk.PresentModeKHR{
+            .mailbox_khr,
+            .immediate_khr,
+        };
+
+        for (preferred) |mode| {
+            if (std.mem.indexOfScalar(vk.PresentModeKHR, present_modes, mode) != null) {
+                return mode;
+            }
+        }
+
+        return .fifo_khr;
     }
 };
 
