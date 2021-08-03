@@ -17,6 +17,8 @@ const VK_API_VERSION_1_2 = vk.makeApiVersion(0, 1, 2, 0);
 const saturn_name = "saturn engine";
 const saturn_version = vk.makeApiVersion(0, 0, 0, 0);
 
+const frames_in_flight: u32 = 3;
+
 const BaseDispatch = vk.BaseWrapper(.{
     .CreateInstance,
 });
@@ -39,13 +41,65 @@ const InstanceDispatch = vk.InstanceWrapper(.{
     .DestroyDebugUtilsMessengerEXT,
 });
 
-const DeviceDispatch = vk.DeviceWrapper(.{ .DestroyDevice, .GetDeviceQueue, .CreateSemaphore, .CreateFence, .CreateImageView, .DestroyImageView, .DestroySemaphore, .DestroyFence, .GetSwapchainImagesKHR, .CreateSwapchainKHR, .DestroySwapchainKHR, .AcquireNextImageKHR, .DeviceWaitIdle, .WaitForFences, .ResetFences, .QueueSubmit, .QueuePresentKHR, .CreateCommandPool, .DestroyCommandPool, .AllocateCommandBuffers, .FreeCommandBuffers, .QueueWaitIdle, .CreateShaderModule, .DestroyShaderModule, .CreatePipelineLayout, .DestroyPipelineLayout, .CreateRenderPass, .DestroyRenderPass, .CreateGraphicsPipelines, .DestroyPipeline, .CreateFramebuffer, .DestroyFramebuffer, .BeginCommandBuffer, .EndCommandBuffer, .AllocateMemory, .FreeMemory, .CreateBuffer, .DestroyBuffer, .GetBufferMemoryRequirements, .MapMemory, .UnmapMemory, .BindBufferMemory, .CmdBeginRenderPass, .CmdEndRenderPass, .CmdBindPipeline, .CmdDraw, .CmdSetViewport, .CmdSetScissor, .CmdBindVertexBuffers, .CmdCopyBuffer, .CmdPipelineBarrier });
+const DeviceDispatch = vk.DeviceWrapper(.{
+    .DestroyDevice,
+    .GetDeviceQueue,
+    .CreateSemaphore,
+    .CreateFence,
+    .CreateImageView,
+    .DestroyImageView,
+    .DestroySemaphore,
+    .DestroyFence,
+    .GetSwapchainImagesKHR,
+    .CreateSwapchainKHR,
+    .DestroySwapchainKHR,
+    .AcquireNextImageKHR,
+    .DeviceWaitIdle,
+    .WaitForFences,
+    .ResetFences,
+    .QueueSubmit,
+    .QueuePresentKHR,
+    .CreateCommandPool,
+    .DestroyCommandPool,
+    .AllocateCommandBuffers,
+    .FreeCommandBuffers,
+    .QueueWaitIdle,
+    .CreateShaderModule,
+    .DestroyShaderModule,
+    .CreatePipelineLayout,
+    .DestroyPipelineLayout,
+    .CreateRenderPass,
+    .DestroyRenderPass,
+    .CreateGraphicsPipelines,
+    .DestroyPipeline,
+    .CreateFramebuffer,
+    .DestroyFramebuffer,
+    .BeginCommandBuffer,
+    .EndCommandBuffer,
+    .AllocateMemory,
+    .FreeMemory,
+    .CreateBuffer,
+    .DestroyBuffer,
+    .GetBufferMemoryRequirements,
+    .MapMemory,
+    .UnmapMemory,
+    .BindBufferMemory,
+    .CmdBeginRenderPass,
+    .CmdEndRenderPass,
+    .CmdBindPipeline,
+    .CmdDraw,
+    .CmdSetViewport,
+    .CmdSetScissor,
+    .CmdBindVertexBuffers,
+    .CmdCopyBuffer,
+    .CmdPipelineBarrier,
+});
 
 var vkb: BaseDispatch = undefined;
 var vki: InstanceDispatch = undefined;
 var vkd: DeviceDispatch = undefined;
 
-pub const Graphics = struct {
+pub const Instance = struct {
     const Self = @This();
 
     allocator: *Allocator,
@@ -123,31 +177,16 @@ pub const Graphics = struct {
 
         //TODO pick device and queues
         var pdevice = pdevices[0];
-        var graphcis_queue_index: u32 = 0;
+        var graphics_queue_index: u32 = 0;
 
-        var supports_surface = try vki.getPhysicalDeviceSurfaceSupportKHR(pdevice, graphcis_queue_index, surface);
+        var supports_surface = try vki.getPhysicalDeviceSurfaceSupportKHR(pdevice, graphics_queue_index, surface);
         if (supports_surface == 0) {
             return error.NoDeviceSurfaceSupport;
         }
 
-        var device = try Device.init(pdevice, 0);
+        var device = try Device.init(allocator, pdevice, 0);
 
         //Swapchain
-        //Hardcoded values
-        var window_size = glfw.getWindowSize(window);
-        // var swapchain_info = SwapchainInfo{
-        //     .image_count = 3,
-        //     .format = vk.SurfaceFormatKHR{
-        //         .format = .b8g8r8a8_srgb,
-        //         .color_space = .srgb_nonlinear_khr,
-        //     },
-        //     .extent = vk.Extent2D{
-        //         .width = @intCast(u32, window_size[0]),
-        //         .height = @intCast(u32, window_size[1]),
-        //     },
-        //     .usage = .{ .color_attachment_bit = true, .transfer_dst_bit = true },
-        //     .mode = .mailbox_khr,
-        // };
         var swapchain = try Swapchain.init(allocator, device, surface);
 
         //Temp
@@ -165,7 +204,7 @@ pub const Graphics = struct {
 
         var pool = try vkd.createCommandPool(device.device, .{
             .flags = .{ .reset_command_buffer_bit = true },
-            .queue_family_index = graphcis_queue_index,
+            .queue_family_index = graphics_queue_index,
         }, null);
 
         var buffer: vk.CommandBuffer = undefined;
@@ -213,17 +252,24 @@ pub const Graphics = struct {
         return surface;
     }
 
-    pub fn draw(self: *Self) void {
+    pub fn draw(self: *Self) !bool {
         var fence = @ptrCast([*]const vk.Fence, &self.temp_fence);
-        _ = vkd.waitForFences(self.device.device, 1, fence, 1, std.math.maxInt(u64)) catch {};
-        _ = vkd.resetFences(self.device.device, 1, fence) catch {};
+        _ = try vkd.waitForFences(self.device.device, 1, fence, 1, std.math.maxInt(u64));
 
-        var image_index = self.swapchain.getNextImage(self.temp_semaphore);
+        var image_index: u32 = undefined;
+        if (self.swapchain.getNextImage(self.temp_semaphore)) |index| {
+            image_index = index;
+        } else {
+            //Swapchain invlaid don't render this frame
+            return false;
+        }
 
-        vkd.beginCommandBuffer(self.temp_buffer, .{
+        _ = try vkd.resetFences(self.device.device, 1, fence);
+
+        try vkd.beginCommandBuffer(self.temp_buffer, .{
             .flags = .{},
             .p_inheritance_info = null,
-        }) catch {};
+        });
 
         var image_barrier = vk.ImageMemoryBarrier{
             .src_access_mask = .{},
@@ -245,7 +291,7 @@ pub const Graphics = struct {
         var empty_buffer: [*]const vk.BufferMemoryBarrier = undefined;
         vkd.cmdPipelineBarrier(self.temp_buffer, .{ .top_of_pipe_bit = true }, .{ .bottom_of_pipe_bit = true }, .{}, 0, empty_memory, 0, empty_buffer, 1, @ptrCast([*]const vk.ImageMemoryBarrier, &image_barrier));
 
-        vkd.endCommandBuffer(self.temp_buffer) catch {};
+        try vkd.endCommandBuffer(self.temp_buffer);
 
         var wait_stages = vk.PipelineStageFlags{
             .color_attachment_output_bit = true,
@@ -260,7 +306,7 @@ pub const Graphics = struct {
             .signal_semaphore_count = 1,
             .p_signal_semaphores = @ptrCast([*]const vk.Semaphore, &self.present_semaphore),
         };
-        vkd.queueSubmit(self.device.graphics_queue, 1, @ptrCast([*]const vk.SubmitInfo, &submitInfo), self.temp_fence) catch {};
+        try vkd.queueSubmit(self.device.graphics_queue, 1, @ptrCast([*]const vk.SubmitInfo, &submitInfo), self.temp_fence);
 
         _ = vkd.queuePresentKHR(self.device.graphics_queue, .{
             .wait_semaphore_count = 1,
@@ -269,21 +315,85 @@ pub const Graphics = struct {
             .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &self.swapchain.handle),
             .p_image_indices = @ptrCast([*]const u32, &image_index),
             .p_results = null,
-        }) catch {};
+        }) catch |err| {
+            switch (err) {
+                error.OutOfDateKHR => {
+                    self.swapchain.invalid = true;
+                },
+                else => return err,
+            }
+        };
+
+        return true;
     }
 };
 
-const required_device_extensions = [_][]const u8{vk.extension_info.khr_swapchain.name};
+const DeviceFrame = struct {
+    const Self = @This();
+    device: vk.Device,
+    image_ready_semaphore: vk.Semaphore,
+    present_semaphore: vk.Semaphore,
+    frame_done_fence: vk.Fence,
+    command_buffer: vk.CommandBuffer,
+
+    fn init(
+        device: vk.Device,
+        pool: vk.CommandPool,
+    ) !Self {
+        var image_ready_semaphore = try vkd.createSemaphore(device, .{
+            .flags = .{},
+        }, null);
+
+        var present_semaphore = try vkd.createSemaphore(device, .{
+            .flags = .{},
+        }, null);
+
+        var frame_done_fence = try vkd.createFence(device, .{
+            .flags = .{ .signaled_bit = true },
+        }, null);
+
+        var command_buffer: vk.CommandBuffer = undefined;
+        try vkd.allocateCommandBuffers(device, .{
+            .command_pool = pool,
+            .level = .primary,
+            .command_buffer_count = 1,
+        }, @ptrCast([*]vk.CommandBuffer, &command_buffer));
+
+        return Self{
+            .device = device,
+            .image_ready_semaphore = image_ready_semaphore,
+            .present_semaphore = present_semaphore,
+            .frame_done_fence = frame_done_fence,
+            .command_buffer = command_buffer,
+        };
+    }
+
+    fn deinit(self: Self) void {
+        vkd.destroySemaphore(self.device, self.image_ready_semaphore, null);
+        vkd.destroySemaphore(self.device, self.present_semaphore, null);
+        vkd.destroyFence(self.device, self.frame_done_fence, null);
+    }
+};
 
 const Device = struct {
     const Self = @This();
 
+    allocator: *Allocator,
     pdevice: vk.PhysicalDevice,
     device: vk.Device,
     graphics_queue: vk.Queue,
 
+    command_pool: vk.CommandPool,
+    frames: []DeviceFrame,
+
     //TODO actually pick queue familes for graphics/present/compute/transfer
-    fn init(pdevice: vk.PhysicalDevice, graphics_queue_index: u32) !Self {
+    fn init(
+        allocator: *Allocator,
+        pdevice: vk.PhysicalDevice,
+        graphics_queue_index: u32,
+    ) !Self {
+        const required_device_extensions = [_][]const u8{vk.extension_info.khr_swapchain.name};
+
         const props = vki.getPhysicalDeviceProperties(pdevice);
         std.log.info("Device: \n\tName: {s}\n\tDriver: {}\n\tType: {}", .{ props.device_name, props.driver_version, props.device_type });
 
@@ -312,14 +422,32 @@ const Device = struct {
 
         var graphics_queue = vkd.getDeviceQueue(device, graphics_queue_index, 0);
 
+        var command_pool = try vkd.createCommandPool(device, .{
+            .flags = .{ .reset_command_buffer_bit = true },
+            .queue_family_index = graphics_queue_index,
+        }, null);
+
+        var frames = try allocator.alloc(DeviceFrame, frames_in_flight);
+        for (frames) |*frame| {
+            frame.* = try DeviceFrame.init(device, command_pool);
+        }
+
         return Self{
+            .allocator = allocator,
             .pdevice = pdevice,
             .device = device,
             .graphics_queue = graphics_queue,
+            .command_pool = command_pool,
+            .frames = frames,
         };
     }
 
     fn deinit(self: Self) void {
+        for (self.frames) |frame| {
+            frame.deinit();
+        }
+        self.allocator.free(self.frames);
+        vkd.destroyCommandPool(self.device, self.command_pool, null);
         vkd.destroyDevice(self.device, null);
     }
 
@@ -345,6 +473,7 @@ const Swapchain = struct {
     pdevice: vk.PhysicalDevice,
     surface: vk.SurfaceKHR,
 
+    invalid: bool,
     handle: vk.SwapchainKHR,
     images: std.ArrayList(vk.Image),
 
@@ -355,6 +484,7 @@ const Swapchain = struct {
             .device = device.device,
             .pdevice = device.pdevice,
             .surface = surface,
+            .invalid = false,
             .handle = .null_handle,
             .images = empty_list,
         };
@@ -367,9 +497,17 @@ const Swapchain = struct {
         vkd.destroySwapchainKHR(self.device, self.handle, null);
     }
 
-    fn getNextImage(self: *Self, image_ready: vk.Semaphore) u32 {
-        var image_index: u32 = undefined;
+    fn getNextImage(self: *Self, image_ready: vk.Semaphore) ?u32 {
+        //Try rebuilding once a frame when invalid
+        if (self.invalid) {
+            self.rebuild() catch |err| panic("Swapchain Rebuild Failed: {}", .{err});
 
+            if (self.invalid) {
+                return null;
+            }
+        }
+
+        var image_index: u32 = undefined;
         const result_error = vkd.acquireNextImageKHR(
             self.device,
             self.handle,
@@ -382,9 +520,8 @@ const Swapchain = struct {
             return result.image_index;
         } else |err| switch (err) {
             error.OutOfDateKHR => {
-                //Recursive call here might be bad, but this should only happen at most 1 time per frame
-                self.rebuild() catch |err2| panic("Swapchain Rebuild Failed: {}", .{err2});
-                return self.getNextImage(image_ready);
+                self.invalid = true;
+                return null;
             },
             else => panic("Swapchain Next Image Failed: {}", .{err}),
         }
@@ -393,13 +530,19 @@ const Swapchain = struct {
     fn rebuild(self: *Self) !void {
         const caps = try vki.getPhysicalDeviceSurfaceCapabilitiesKHR(self.pdevice, self.surface);
 
+        //Invalid if the eiter extent is 0
+        if (caps.current_extent.width == 0 or caps.current_extent.height == 0) {
+            self.invalid = true;
+            return;
+        }
+
         //Hardcoded Temp, TODO fix
         const queue_family_index = [_]u32{0};
         const image_useage = vk.ImageUsageFlags{ .color_attachment_bit = true, .transfer_dst_bit = true };
 
         const image_count = std.math.min(caps.min_image_count + 1, caps.max_image_count);
         const surface_format = try getSurfaceFormat(self.allocator, self.pdevice, self.surface);
-        const image_extent = caps.current_extent;
+        const image_extent = getImageExtent(caps.current_extent, caps.min_image_extent, caps.max_image_extent);
         const present_mode = try getPresentMode(self.allocator, self.pdevice, self.surface);
 
         var create_info = vk.SwapchainCreateInfoKHR{
@@ -432,6 +575,7 @@ const Swapchain = struct {
         _ = try vkd.getSwapchainImagesKHR(self.device, swapchain, &count, @ptrCast([*]vk.Image, images.items));
 
         //Update Object
+        self.invalid = false;
         self.handle = swapchain;
         self.images.deinit();
         self.images = images;
@@ -481,6 +625,13 @@ const Swapchain = struct {
         }
 
         return .fifo_khr;
+    }
+
+    fn getImageExtent(current: vk.Extent2D, min: vk.Extent2D, max: vk.Extent2D) vk.Extent2D {
+        return vk.Extent2D{
+            .width = std.math.clamp(current.width, min.width, max.width),
+            .height = std.math.clamp(current.height, min.height, max.height),
+        };
     }
 };
 

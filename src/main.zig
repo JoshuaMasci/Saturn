@@ -21,11 +21,11 @@ pub fn main() !void {
     //glfw.setMouseCaptured(window, true);
     glfw.maximizeWindow(window);
 
-    var graphics = try vk.Graphics.init(&globalAllocator.allocator, "Saturn Editor", vk.makeVkVersion(0, 0, 0), window);
-    defer graphics.deinit();
+    var instance = try vk.Instance.init(&globalAllocator.allocator, "Saturn Editor", vk.makeVkVersion(0, 0, 0), window);
+    defer instance.deinit();
 
     while (glfw.shouldCloseWindow(window)) {
         glfw.update();
-        graphics.draw();
+        var rendered = try instance.draw();
     }
 }
