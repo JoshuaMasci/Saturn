@@ -272,6 +272,10 @@ const Device = struct {
     //TODO more than one swapchain
     swapchain: Swapchain,
 
+    //TODO temp stuff
+    //temp_layout: vk.PipelineLayout,
+    //temp_pipeline: vk.Pipeline,
+
     //TODO actually pick queue familes for graphics/present/compute/transfer
     fn init(
         allocator: *Allocator,
@@ -446,9 +450,11 @@ const Swapchain = struct {
     invalid: bool,
     handle: vk.SwapchainKHR,
     images: std.ArrayList(vk.Image),
+    image_views: std.ArrayList(vk.ImageView),
+    render_pass: vk.RenderPass,
+    framebuffers: std.ArrayList(vk.Framebuffer),
 
     fn init(allocator: *Allocator, device: vk.Device, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !Self {
-        var empty_list = std.ArrayList(vk.Image).init(allocator);
         var self = Self{
             .allocator = allocator,
             .device = device,
@@ -456,15 +462,30 @@ const Swapchain = struct {
             .surface = surface,
             .invalid = false,
             .handle = .null_handle,
-            .images = empty_list,
+            .images = std.ArrayList(vk.Image).init(allocator),
+            .image_views = std.ArrayList(vk.ImageView).init(allocator),
+            .render_pass = .null_handle,
+            .framebuffers = std.ArrayList(vk.Framebuffer).init(allocator),
         };
         try self.rebuild();
         return self;
     }
 
     fn deinit(self: Self) void {
-        self.images.deinit();
         vkd.destroySwapchainKHR(self.device, self.handle, null);
+        self.images.deinit();
+
+        for (self.image_views.items) |view| {
+            vkd.destroyImageView(self.device, view, null);
+        }
+        self.image_views.deinit();
+
+        for (self.framebuffers.items) |framebuffer| {
+            vkd.destroyFramebuffer(self.device, framebuffer, null);
+        }
+        self.framebuffers.deinit();
+
+        vkd.destroyRenderPass(self.device, self.render_pass, null);
     }
 
     fn getNextImage(self: *Self, image_ready: vk.Semaphore) ?u32 {
@@ -543,12 +564,21 @@ const Swapchain = struct {
             try images.append(.null_handle);
         }
         _ = try vkd.getSwapchainImagesKHR(self.device, swapchain, &count, @ptrCast([*]vk.Image, images.items));
+        var image_views = try createImageViews(self.allocator, self.device, surface_format.format, &images);
+
+        var render_pass = try createRenderPass(self.device, surface_format.format);
+        var framebuffers = try createFramebuffers(self.allocator, self.device, render_pass, surface_format.format, image_extent, &image_views);
+
+        //Destroy old
+        self.deinit();
 
         //Update Object
         self.invalid = false;
         self.handle = swapchain;
-        self.images.deinit();
         self.images = images;
+        self.image_views = image_views;
+        self.render_pass = render_pass;
+        self.framebuffers = framebuffers;
     }
 
     fn getSurfaceFormat(allocator: *Allocator, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.SurfaceFormatKHR {
@@ -603,26 +633,84 @@ const Swapchain = struct {
             .height = std.math.clamp(current.height, min.height, max.height),
         };
     }
-};
 
-const MemoryUsage = enum {
-    Staging,
-    CpuRead,
-    DeviceLocal,
-};
+    fn createImageViews(allocator: *Allocator, device: vk.Device, format: vk.Format, images: *std.ArrayList(vk.Image)) !std.ArrayList(vk.ImageView) {
+        var image_views = try std.ArrayList(vk.ImageView).initCapacity(allocator, images.items.len);
+        for (images.items) |image| {
+            try image_views.append(try vkd.createImageView(device, .{
+                .flags = .{},
+                .image = image,
+                .view_type = .@"2d",
+                .format = format,
+                .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
+                .subresource_range = .{
+                    .aspect_mask = .{ .color_bit = true },
+                    .base_mip_level = 0,
+                    .level_count = 1,
+                    .base_array_layer = 0,
+                    .layer_count = 1,
+                },
+            }, null));
+        }
+        return image_views;
+    }
 
-const Buffer = struct {
-    device: vk.Device,
+    fn createRenderPass(device: vk.Device, format: vk.Format) !vk.RenderPass {
+        const color_attachment = vk.AttachmentDescription{
+            .flags = .{},
+            .format = format,
+            .samples = .{ .@"1_bit" = true },
+            .load_op = .clear,
+            .store_op = .store,
+            .stencil_load_op = .dont_care,
+            .stencil_store_op = .dont_care,
+            .initial_layout = .@"undefined",
+            .final_layout = .present_src_khr,
+        };
 
-    memory: vk.Memory,
-    buffer: vk.Buffer,
+        const color_attachment_ref = vk.AttachmentReference{
+            .attachment = 0,
+            .layout = .color_attachment_optimal,
+        };
 
-    fn init(
-        device: vk.Device,
-        size: u64,
-        memory_usage: MemoryUsage,
-    ) void {
-        return;
+        const subpass = vk.SubpassDescription{
+            .flags = .{},
+            .pipeline_bind_point = .graphics,
+            .input_attachment_count = 0,
+            .p_input_attachments = undefined,
+            .color_attachment_count = 1,
+            .p_color_attachments = @ptrCast([*]const vk.AttachmentReference, &color_attachment_ref),
+            .p_resolve_attachments = null,
+            .p_depth_stencil_attachment = null,
+            .preserve_attachment_count = 0,
+            .p_preserve_attachments = undefined,
+        };
+
+        return try vkd.createRenderPass(device, .{
+            .flags = .{},
+            .attachment_count = 1,
+            .p_attachments = @ptrCast([*]const vk.AttachmentDescription, &color_attachment),
+            .subpass_count = 1,
+            .p_subpasses = @ptrCast([*]const vk.SubpassDescription, &subpass),
+            .dependency_count = 0,
+            .p_dependencies = undefined,
+        }, null);
+    }
+
+    fn createFramebuffers(allocator: *Allocator, device: vk.Device, render_pass: vk.RenderPass, format: vk.Format, extent: vk.Extent2D, image_views: *std.ArrayList(vk.ImageView)) !std.ArrayList(vk.Framebuffer) {
+        var framebuffers = try std.ArrayList(vk.Framebuffer).initCapacity(allocator, image_views.items.len);
+        for (image_views.items) |image_view| {
+            try framebuffers.append(try vkd.createFramebuffer(device, .{
+                .flags = .{},
+                .render_pass = render_pass,
+                .attachment_count = 1,
+                .p_attachments = @ptrCast([*]const vk.ImageView, &image_view),
+                .width = extent.width,
+                .height = extent.height,
+                .layers = 1,
+            }, null));
+        }
+        return framebuffers;
     }
 };
 
