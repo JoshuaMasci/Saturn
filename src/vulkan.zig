@@ -265,6 +265,8 @@ const Device = struct {
     allocator: *Allocator,
     pdevice: vk.PhysicalDevice,
     device: vk.Device,
+    memory_properties: vk.PhysicalDeviceMemoryProperties,
+
     graphics_queue: vk.Queue,
     command_pool: vk.CommandPool,
 
@@ -277,6 +279,7 @@ const Device = struct {
     //TODO temp stuff
     temp_layout: vk.PipelineLayout,
     temp_pipeline: vk.Pipeline,
+    temp_buffer: Buffer,
 
     //TODO actually pick queue familes for graphics/present/compute/transfer
     fn init(
@@ -313,6 +316,8 @@ const Device = struct {
 
         vkd = try DeviceDispatch.load(device, vki.dispatch.vkGetDeviceProcAddr);
 
+        var memory_properties = vki.getPhysicalDeviceMemoryProperties(pdevice);
+
         var graphics_queue = vkd.getDeviceQueue(device, graphics_queue_index, 0);
 
         var command_pool = try vkd.createCommandPool(device, .{
@@ -338,10 +343,11 @@ const Device = struct {
 
         var temp_pipeline = try createTempPipeline(device, temp_layout, swapchain.render_pass);
 
-        return Self{
+        var new_device = Self{
             .allocator = allocator,
             .pdevice = pdevice,
             .device = device,
+            .memory_properties = memory_properties,
             .graphics_queue = graphics_queue,
             .command_pool = command_pool,
             .frame_index = 0,
@@ -349,10 +355,23 @@ const Device = struct {
             .swapchain = swapchain,
             .temp_layout = temp_layout,
             .temp_pipeline = temp_pipeline,
+            .temp_buffer = undefined,
         };
+
+        var buffer = try Buffer.init(
+            &new_device,
+            @sizeOf(@TypeOf(vertices)),
+            .{ .vertex_buffer_bit = true },
+            .{ .host_visible_bit = true },
+        );
+        new_device.temp_buffer = buffer;
+
+        return new_device;
     }
 
     fn deinit(self: Self) void {
+        self.temp_buffer.deinit();
+
         vkd.destroyPipeline(self.device, self.temp_pipeline, null);
         vkd.destroyPipelineLayout(self.device, self.temp_layout, null);
 
@@ -470,6 +489,24 @@ const Device = struct {
 
         self.frame_index = @rem(self.frame_index + 1, self.frames.len);
         return true;
+    }
+
+    //TODO use VMA or alternative
+    fn findMemoryTypeIndex(self: Self, memory_type_bits: u32, flags: vk.MemoryPropertyFlags) !u32 {
+        for (self.memory_properties.memory_types[0..self.memory_properties.memory_type_count]) |memory_type, i| {
+            if (memory_type_bits & (@as(u32, 1) << @truncate(u5, i)) != 0 and memory_type.property_flags.contains(flags)) {
+                return @truncate(u32, i);
+            }
+        }
+
+        return error.NoSuitableMemoryType;
+    }
+
+    pub fn allocate(self: Self, requirements: vk.MemoryRequirements, flags: vk.MemoryPropertyFlags) !vk.DeviceMemory {
+        return try vkd.allocateMemory(self.device, .{
+            .allocation_size = requirements.size,
+            .memory_type_index = try self.findMemoryTypeIndex(requirements.memory_type_bits, flags),
+        }, null);
     }
 
     fn createTempPipeline(device: vk.Device, layout: vk.PipelineLayout, render_pass: vk.RenderPass) !vk.Pipeline {
@@ -900,6 +937,47 @@ const Swapchain = struct {
     }
 };
 
+const Buffer = struct {
+    const Self = @This();
+
+    device: vk.Device,
+
+    handle: vk.Buffer,
+    memory: vk.DeviceMemory,
+
+    size: u32,
+    usage: vk.BufferUsageFlags,
+
+    fn init(device: *Device, size: u32, usage: vk.BufferUsageFlags, memory_type: vk.MemoryPropertyFlags) !Self {
+        const buffer = try vkd.createBuffer(device.device, .{
+            .flags = .{},
+            .size = size,
+            .usage = usage,
+            .sharing_mode = .exclusive,
+            .queue_family_index_count = 0,
+            .p_queue_family_indices = undefined,
+        }, null);
+        const mem_reqs = vkd.getBufferMemoryRequirements(device.device, buffer);
+        const memory = try device.allocate(mem_reqs, memory_type);
+        try vkd.bindBufferMemory(device.device, buffer, memory, 0);
+
+        return Self{
+            .device = device.device,
+            .handle = buffer,
+            .memory = memory,
+            .size = size,
+            .usage = usage,
+        };
+    }
+
+    fn deinit(self: Self) void {
+        vkd.destroyBuffer(self.device, self.handle, null);
+        vkd.freeMemory(self.device, self.memory, null);
+    }
+
+    fn fillBuffer(self: Self) void {}
+};
+
 fn debugCallback(
     message_severity: vk.DebugUtilsMessageSeverityFlagsEXT.IntType,
     message_types: vk.DebugUtilsMessageTypeFlagsEXT.IntType,
@@ -948,4 +1026,36 @@ const DebugCallback = struct {
     fn deinit(self: Self) void {
         vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, null);
     }
+};
+
+const Vertex = struct {
+    const binding_description = vk.VertexInputBindingDescription{
+        .binding = 0,
+        .stride = @sizeOf(Vertex),
+        .input_rate = .vertex,
+    };
+
+    const attribute_description = [_]vk.VertexInputAttributeDescription{
+        .{
+            .binding = 0,
+            .location = 0,
+            .format = .r32g32_sfloat,
+            .offset = @offsetOf(Vertex, "pos"),
+        },
+        .{
+            .binding = 0,
+            .location = 1,
+            .format = .r32g32b32_sfloat,
+            .offset = @offsetOf(Vertex, "color"),
+        },
+    };
+
+    pos: [2]f32,
+    color: [3]f32,
+};
+
+const vertices = [_]Vertex{
+    .{ .pos = .{ 0, -0.5 }, .color = .{ 1, 0, 0 } },
+    .{ .pos = .{ 0.5, 0.5 }, .color = .{ 0, 1, 0 } },
+    .{ .pos = .{ -0.5, 0.5 }, .color = .{ 0, 0, 1 } },
 };
