@@ -96,28 +96,11 @@ pub const ResourceGenStep = struct {
         return self;
     }
 
-    fn renderPath(path: []const u8, writer: anytype) void {
-        const separators = &[_]u8{ std.fs.path.sep_windows, std.fs.path.sep_posix };
-        var i: usize = 0;
-        while (std.mem.indexOfAnyPos(u8, path, i, separators)) |j| {
-            writer.writeAll(path[i..j]) catch unreachable;
-            switch (std.fs.path.sep) {
-                std.fs.path.sep_windows => writer.writeAll("\\\\") catch unreachable,
-                std.fs.path.sep_posix => writer.writeByte(std.fs.path.sep_posix) catch unreachable,
-                else => unreachable,
-            }
-
-            i = j + 1;
-        }
-        writer.writeAll(path[i..]) catch unreachable;
-    }
-
     pub fn addShader(self: *ResourceGenStep, name: []const u8, source: []const u8) void {
         const shader_out_path = self.shader_step.add(source);
         var writer = self.resources.writer();
-
         writer.print("pub const {s} = @embedFile(\"", .{name}) catch unreachable;
-        renderPath(shader_out_path, writer);
+        writer.print("../zig-cache/shaders/{s}", .{source}) catch unreachable; //zig-cache\shaders\assets\tri.frag
         writer.writeAll("\");\n") catch unreachable;
     }
 

@@ -473,20 +473,17 @@ const Device = struct {
     }
 
     fn createTempPipeline(device: vk.Device, layout: vk.PipelineLayout, render_pass: vk.RenderPass) !vk.Pipeline {
-        const vert_spv = resources.tri_vert;
-        const frag_spv = resources.tri_frag;
-
         const vert = try vkd.createShaderModule(device, .{
             .flags = .{},
-            .code_size = vert_spv.len,
-            .p_code = @ptrCast([*]const u32, vert_spv),
+            .code_size = resources.tri_vert.len,
+            .p_code = @ptrCast([*]const u32, resources.tri_vert),
         }, null);
         defer vkd.destroyShaderModule(device, vert, null);
 
         const frag = try vkd.createShaderModule(device, .{
             .flags = .{},
-            .code_size = frag_spv.len,
-            .p_code = @ptrCast([*]const u32, frag_spv),
+            .code_size = resources.tri_frag.len,
+            .p_code = @ptrCast([*]const u32, resources.tri_frag),
         }, null);
         defer vkd.destroyShaderModule(device, frag, null);
 
