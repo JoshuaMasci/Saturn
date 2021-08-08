@@ -2,6 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const panic = std.debug.panic;
 
+const resources = @import("resources");
+
 const glfw = @import("glfw_platform.zig");
 pub extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction;
 pub extern fn glfwGetPhysicalDevicePresentationSupport(instance: vk.Instance, pdev: vk.PhysicalDevice, queuefamily: u32) c_int;
@@ -273,8 +275,8 @@ const Device = struct {
     swapchain: Swapchain,
 
     //TODO temp stuff
-    //temp_layout: vk.PipelineLayout,
-    //temp_pipeline: vk.Pipeline,
+    temp_layout: vk.PipelineLayout,
+    temp_pipeline: vk.Pipeline,
 
     //TODO actually pick queue familes for graphics/present/compute/transfer
     fn init(
@@ -325,6 +327,17 @@ const Device = struct {
 
         var swapchain = try Swapchain.init(allocator, device, pdevice, surface);
 
+        //TODO: bindless layout
+        var temp_layout = try vkd.createPipelineLayout(device, .{
+            .flags = .{},
+            .set_layout_count = 0,
+            .p_set_layouts = undefined,
+            .push_constant_range_count = 0,
+            .p_push_constant_ranges = undefined,
+        }, null);
+
+        var temp_pipeline = try createTempPipeline(device, temp_layout, swapchain.render_pass);
+
         return Self{
             .allocator = allocator,
             .pdevice = pdevice,
@@ -334,10 +347,15 @@ const Device = struct {
             .frame_index = 0,
             .frames = frames,
             .swapchain = swapchain,
+            .temp_layout = temp_layout,
+            .temp_pipeline = temp_pipeline,
         };
     }
 
     fn deinit(self: Self) void {
+        vkd.destroyPipeline(self.device, self.temp_pipeline, null);
+        vkd.destroyPipelineLayout(self.device, self.temp_layout, null);
+
         self.swapchain.deinit();
         for (self.frames) |frame| {
             frame.deinit();
@@ -348,7 +366,7 @@ const Device = struct {
     }
 
     fn waitIdle(self: Self) void {
-        vkd.deviceWaitIdle(self.device) catch panic("Failed to waitIdle", .{});
+        vkd.deviceWaitIdle(self.device) catch panic("Failed to deviceWaitIdle", .{});
     }
 
     pub fn draw(self: *Self) !bool {
@@ -372,25 +390,50 @@ const Device = struct {
             .p_inheritance_info = null,
         });
 
-        var image_barrier = vk.ImageMemoryBarrier{
-            .src_access_mask = .{},
-            .dst_access_mask = .{},
-            .old_layout = .@"undefined",
-            .new_layout = .present_src_khr,
-            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .image = self.swapchain.images.items[image_index],
-            .subresource_range = .{
-                .aspect_mask = .{ .color_bit = true },
-                .base_mip_level = 0,
-                .level_count = 1,
-                .base_array_layer = 0,
-                .layer_count = 1,
-            },
-        };
-        var empty_memory: [*]const vk.MemoryBarrier = undefined;
-        var empty_buffer: [*]const vk.BufferMemoryBarrier = undefined;
-        vkd.cmdPipelineBarrier(current_frame.command_buffer, .{ .top_of_pipe_bit = true }, .{ .bottom_of_pipe_bit = true }, .{}, 0, empty_memory, 0, empty_buffer, 1, @ptrCast([*]const vk.ImageMemoryBarrier, &image_barrier));
+        {
+            const extent = self.swapchain.extent;
+
+            const clear = vk.ClearValue{
+                .color = .{ .float_32 = .{ 0, 0, 0, 1 } },
+            };
+
+            const viewport = vk.Viewport{
+                .x = 0,
+                .y = 0,
+                .width = @intToFloat(f32, extent.width),
+                .height = @intToFloat(f32, extent.height),
+                .min_depth = 0,
+                .max_depth = 1,
+            };
+
+            const scissor = vk.Rect2D{
+                .offset = .{ .x = 0, .y = 0 },
+                .extent = extent,
+            };
+
+            vkd.cmdSetViewport(current_frame.command_buffer, 0, 1, @ptrCast([*]const vk.Viewport, &viewport));
+            vkd.cmdSetScissor(current_frame.command_buffer, 0, 1, @ptrCast([*]const vk.Rect2D, &scissor));
+
+            vkd.cmdBeginRenderPass(
+                current_frame.command_buffer,
+                .{
+                    .render_pass = self.swapchain.render_pass,
+                    .framebuffer = self.swapchain.framebuffers.items[image_index],
+                    .render_area = .{
+                        .offset = .{ .x = 0, .y = 0 },
+                        .extent = extent,
+                    },
+                    .clear_value_count = 1,
+                    .p_clear_values = @ptrCast([*]const vk.ClearValue, &clear),
+                },
+                .@"inline",
+            );
+
+            vkd.cmdBindPipeline(current_frame.command_buffer, .graphics, self.temp_pipeline);
+            vkd.cmdDraw(current_frame.command_buffer, 3, 1, 0, 0);
+
+            vkd.cmdEndRenderPass(current_frame.command_buffer);
+        }
 
         try vkd.endCommandBuffer(current_frame.command_buffer);
 
@@ -428,6 +471,146 @@ const Device = struct {
         self.frame_index = @rem(self.frame_index + 1, self.frames.len);
         return true;
     }
+
+    fn createTempPipeline(device: vk.Device, layout: vk.PipelineLayout, render_pass: vk.RenderPass) !vk.Pipeline {
+        const vert_spv = resources.tri_vert;
+        const frag_spv = resources.tri_frag;
+
+        const vert = try vkd.createShaderModule(device, .{
+            .flags = .{},
+            .code_size = vert_spv.len,
+            .p_code = @ptrCast([*]const u32, vert_spv),
+        }, null);
+        defer vkd.destroyShaderModule(device, vert, null);
+
+        const frag = try vkd.createShaderModule(device, .{
+            .flags = .{},
+            .code_size = frag_spv.len,
+            .p_code = @ptrCast([*]const u32, frag_spv),
+        }, null);
+        defer vkd.destroyShaderModule(device, frag, null);
+
+        const pssci = [_]vk.PipelineShaderStageCreateInfo{
+            .{
+                .flags = .{},
+                .stage = .{ .vertex_bit = true },
+                .module = vert,
+                .p_name = "main",
+                .p_specialization_info = null,
+            },
+            .{
+                .flags = .{},
+                .stage = .{ .fragment_bit = true },
+                .module = frag,
+                .p_name = "main",
+                .p_specialization_info = null,
+            },
+        };
+
+        const pvisci = vk.PipelineVertexInputStateCreateInfo{
+            .flags = .{},
+            .vertex_binding_description_count = 0,
+            .p_vertex_binding_descriptions = undefined,
+            .vertex_attribute_description_count = 0,
+            .p_vertex_attribute_descriptions = undefined,
+        };
+
+        const piasci = vk.PipelineInputAssemblyStateCreateInfo{
+            .flags = .{},
+            .topology = .triangle_list,
+            .primitive_restart_enable = vk.FALSE,
+        };
+
+        const pvsci = vk.PipelineViewportStateCreateInfo{
+            .flags = .{},
+            .viewport_count = 1,
+            .p_viewports = undefined,
+            .scissor_count = 1,
+            .p_scissors = undefined,
+        };
+
+        const prsci = vk.PipelineRasterizationStateCreateInfo{
+            .flags = .{},
+            .depth_clamp_enable = vk.FALSE,
+            .rasterizer_discard_enable = vk.FALSE,
+            .polygon_mode = .fill,
+            .cull_mode = .{ .back_bit = true },
+            .front_face = .clockwise,
+            .depth_bias_enable = vk.FALSE,
+            .depth_bias_constant_factor = 0,
+            .depth_bias_clamp = 0,
+            .depth_bias_slope_factor = 0,
+            .line_width = 1,
+        };
+
+        const pmsci = vk.PipelineMultisampleStateCreateInfo{
+            .flags = .{},
+            .rasterization_samples = .{ .@"1_bit" = true },
+            .sample_shading_enable = vk.FALSE,
+            .min_sample_shading = 1,
+            .p_sample_mask = null,
+            .alpha_to_coverage_enable = vk.FALSE,
+            .alpha_to_one_enable = vk.FALSE,
+        };
+
+        const pcbas = vk.PipelineColorBlendAttachmentState{
+            .blend_enable = vk.FALSE,
+            .src_color_blend_factor = .one,
+            .dst_color_blend_factor = .zero,
+            .color_blend_op = .add,
+            .src_alpha_blend_factor = .one,
+            .dst_alpha_blend_factor = .zero,
+            .alpha_blend_op = .add,
+            .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
+        };
+
+        const pcbsci = vk.PipelineColorBlendStateCreateInfo{
+            .flags = .{},
+            .logic_op_enable = vk.FALSE,
+            .logic_op = .copy,
+            .attachment_count = 1,
+            .p_attachments = @ptrCast([*]const vk.PipelineColorBlendAttachmentState, &pcbas),
+            .blend_constants = [_]f32{ 0, 0, 0, 0 },
+        };
+
+        const dynstate = [_]vk.DynamicState{ .viewport, .scissor };
+        const pdsci = vk.PipelineDynamicStateCreateInfo{
+            .flags = .{},
+            .dynamic_state_count = dynstate.len,
+            .p_dynamic_states = &dynstate,
+        };
+
+        const gpci = vk.GraphicsPipelineCreateInfo{
+            .flags = .{},
+            .stage_count = 2,
+            .p_stages = &pssci,
+            .p_vertex_input_state = &pvisci,
+            .p_input_assembly_state = &piasci,
+            .p_tessellation_state = null,
+            .p_viewport_state = &pvsci,
+            .p_rasterization_state = &prsci,
+            .p_multisample_state = &pmsci,
+            .p_depth_stencil_state = null,
+            .p_color_blend_state = &pcbsci,
+            .p_dynamic_state = &pdsci,
+            .layout = layout,
+            .render_pass = render_pass,
+            .subpass = 0,
+            .base_pipeline_handle = .null_handle,
+            .base_pipeline_index = -1,
+        };
+
+        var pipeline: vk.Pipeline = undefined;
+        _ = try vkd.createGraphicsPipelines(
+            device,
+            .null_handle,
+            1,
+            @ptrCast([*]const vk.GraphicsPipelineCreateInfo, &gpci),
+            null,
+            @ptrCast([*]vk.Pipeline, &pipeline),
+        );
+        return pipeline;
+    }
 };
 
 const SwapchainInfo = struct {
@@ -448,6 +631,7 @@ const Swapchain = struct {
     surface: vk.SurfaceKHR,
 
     invalid: bool,
+    extent: vk.Extent2D,
     handle: vk.SwapchainKHR,
     images: std.ArrayList(vk.Image),
     image_views: std.ArrayList(vk.ImageView),
@@ -461,6 +645,7 @@ const Swapchain = struct {
             .pdevice = pdevice,
             .surface = surface,
             .invalid = false,
+            .extent = vk.Extent2D{ .width = 0, .height = 0 },
             .handle = .null_handle,
             .images = std.ArrayList(vk.Image).init(allocator),
             .image_views = std.ArrayList(vk.ImageView).init(allocator),
@@ -472,6 +657,9 @@ const Swapchain = struct {
     }
 
     fn deinit(self: Self) void {
+        //Wait for all frames to finish before deinitializing swapchain
+        vkd.deviceWaitIdle(self.device) catch panic("Failed to deviceWaitIdle", .{});
+
         vkd.destroySwapchainKHR(self.device, self.handle, null);
         self.images.deinit();
 
@@ -574,6 +762,7 @@ const Swapchain = struct {
 
         //Update Object
         self.invalid = false;
+        self.extent = image_extent;
         self.handle = swapchain;
         self.images = images;
         self.image_views = image_views;
