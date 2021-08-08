@@ -364,6 +364,7 @@ const Device = struct {
             .{ .vertex_buffer_bit = true },
             .{ .host_visible_bit = true },
         );
+        try buffer.fill(Vertex, &vertices);
         new_device.temp_buffer = buffer;
 
         return new_device;
@@ -449,7 +450,10 @@ const Device = struct {
             );
 
             vkd.cmdBindPipeline(current_frame.command_buffer, .graphics, self.temp_pipeline);
-            vkd.cmdDraw(current_frame.command_buffer, 3, 1, 0, 0);
+
+            const offset = [_]vk.DeviceSize{0};
+            vkd.cmdBindVertexBuffers(current_frame.command_buffer, 0, 1, @ptrCast([*]const vk.Buffer, &self.temp_buffer.handle), &offset);
+            vkd.cmdDraw(current_frame.command_buffer, vertices.len, 1, 0, 0);
 
             vkd.cmdEndRenderPass(current_frame.command_buffer);
         }
@@ -543,10 +547,10 @@ const Device = struct {
 
         const pvisci = vk.PipelineVertexInputStateCreateInfo{
             .flags = .{},
-            .vertex_binding_description_count = 0,
-            .p_vertex_binding_descriptions = undefined,
-            .vertex_attribute_description_count = 0,
-            .p_vertex_attribute_descriptions = undefined,
+            .vertex_binding_description_count = 1,
+            .p_vertex_binding_descriptions = @ptrCast([*]const vk.VertexInputBindingDescription, &Vertex.binding_description),
+            .vertex_attribute_description_count = Vertex.attribute_description.len,
+            .p_vertex_attribute_descriptions = &Vertex.attribute_description,
         };
 
         const piasci = vk.PipelineInputAssemblyStateCreateInfo{
@@ -975,7 +979,17 @@ const Buffer = struct {
         vkd.freeMemory(self.device, self.memory, null);
     }
 
-    fn fillBuffer(self: Self) void {}
+    fn fill(
+        self: Self,
+        comptime DataType: type,
+        data: []const DataType,
+    ) !void {
+        //TODO staging buffers and bound checks
+        var gpu_memory = try vkd.mapMemory(self.device, self.memory, 0, vk.WHOLE_SIZE, .{});
+        var gpu_slice = @ptrCast([*]DataType, @alignCast(@alignOf(DataType), gpu_memory));
+        defer vkd.unmapMemory(self.device, self.memory);
+        std.mem.copy(DataType, gpu_slice[0..data.len], data);
+    }
 };
 
 fn debugCallback(
@@ -1040,13 +1054,13 @@ const Vertex = struct {
             .binding = 0,
             .location = 0,
             .format = .r32g32_sfloat,
-            .offset = @offsetOf(Vertex, "pos"),
+            .offset = @byteOffsetOf(Vertex, "pos"),
         },
         .{
             .binding = 0,
             .location = 1,
             .format = .r32g32b32_sfloat,
-            .offset = @offsetOf(Vertex, "color"),
+            .offset = @byteOffsetOf(Vertex, "color"),
         },
     };
 
@@ -1055,7 +1069,7 @@ const Vertex = struct {
 };
 
 const vertices = [_]Vertex{
-    .{ .pos = .{ 0, -0.5 }, .color = .{ 1, 0, 0 } },
-    .{ .pos = .{ 0.5, 0.5 }, .color = .{ 0, 1, 0 } },
-    .{ .pos = .{ -0.5, 0.5 }, .color = .{ 0, 0, 1 } },
+    .{ .pos = .{ 0, -0.75 }, .color = .{ 1, 0, 0 } },
+    .{ .pos = .{ 0.75, 0.75 }, .color = .{ 0, 1, 0 } },
+    .{ .pos = .{ -0.75, 0.75 }, .color = .{ 0, 0, 1 } },
 };
