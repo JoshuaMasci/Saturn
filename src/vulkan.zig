@@ -273,7 +273,6 @@ pub const Device = struct {
 
     //TODO temp stuff
     temp_layout: vk.PipelineLayout,
-    temp_pipeline: vk.Pipeline,
 
     //TODO actually pick queue familes for graphics/present/compute/transfer
     fn init(
@@ -335,8 +334,6 @@ pub const Device = struct {
             .p_push_constant_ranges = undefined,
         }, null);
 
-        var temp_pipeline = try createTempPipeline(device, temp_layout, swapchain.render_pass);
-
         return Self{
             .allocator = allocator,
             .pdevice = pdevice,
@@ -349,14 +346,12 @@ pub const Device = struct {
             .swapchain_index = 0,
             .swapchain = swapchain,
             .temp_layout = temp_layout,
-            .temp_pipeline = temp_pipeline,
         };
     }
 
     pub fn deinit(self: Self) void {
         self.waitIdle();
 
-        vkd.destroyPipeline(self.device, self.temp_pipeline, null);
         vkd.destroyPipelineLayout(self.device, self.temp_layout, null);
 
         self.swapchain.deinit();
@@ -430,8 +425,6 @@ pub const Device = struct {
             .@"inline",
         );
 
-        vkd.cmdBindPipeline(current_frame.command_buffer, .graphics, self.temp_pipeline);
-
         return current_frame.command_buffer;
     }
 
@@ -476,38 +469,26 @@ pub const Device = struct {
         self.frame_index = @rem(self.frame_index + 1, @intCast(u32, self.frames.len));
     }
 
-    //TODO use VMA or alternative
-    fn findMemoryTypeIndex(self: Self, memory_type_bits: u32, flags: vk.MemoryPropertyFlags) !u32 {
-        for (self.memory_properties.memory_types[0..self.memory_properties.memory_type_count]) |memory_type, i| {
-            if (memory_type_bits & (@as(u32, 1) << @truncate(u5, i)) != 0 and memory_type.property_flags.contains(flags)) {
-                return @truncate(u32, i);
-            }
-        }
-
-        return error.NoSuitableMemoryType;
-    }
-
-    pub fn allocate(self: Self, requirements: vk.MemoryRequirements, flags: vk.MemoryPropertyFlags) !vk.DeviceMemory {
-        return try vkd.allocateMemory(self.device, .{
-            .allocation_size = requirements.size,
-            .memory_type_index = try self.findMemoryTypeIndex(requirements.memory_type_bits, flags),
-        }, null);
-    }
-
-    fn createTempPipeline(device: vk.Device, layout: vk.PipelineLayout, render_pass: vk.RenderPass) !vk.Pipeline {
-        const vert = try vkd.createShaderModule(device, .{
+    pub fn createPipeline(
+        self: Self,
+        vert_code: []align(@alignOf(u32)) const u8,
+        frag_code: []align(@alignOf(u32)) const u8,
+        input_binding: *const vk.VertexInputBindingDescription,
+        input_attributes: []const vk.VertexInputAttributeDescription,
+    ) !vk.Pipeline {
+        const vert = try vkd.createShaderModule(self.device, .{
             .flags = .{},
-            .code_size = resources.tri_vert.len,
-            .p_code = @ptrCast([*]const u32, resources.tri_vert),
+            .code_size = vert_code.len,
+            .p_code = std.mem.bytesAsSlice(u32, vert_code).ptr,
         }, null);
-        defer vkd.destroyShaderModule(device, vert, null);
+        defer vkd.destroyShaderModule(self.device, vert, null);
 
-        const frag = try vkd.createShaderModule(device, .{
+        const frag = try vkd.createShaderModule(self.device, .{
             .flags = .{},
-            .code_size = resources.tri_frag.len,
-            .p_code = @ptrCast([*]const u32, resources.tri_frag),
+            .code_size = frag_code.len,
+            .p_code = std.mem.bytesAsSlice(u32, frag_code).ptr,
         }, null);
-        defer vkd.destroyShaderModule(device, frag, null);
+        defer vkd.destroyShaderModule(self.device, frag, null);
 
         const pssci = [_]vk.PipelineShaderStageCreateInfo{
             .{
@@ -529,9 +510,9 @@ pub const Device = struct {
         const pvisci = vk.PipelineVertexInputStateCreateInfo{
             .flags = .{},
             .vertex_binding_description_count = 1,
-            .p_vertex_binding_descriptions = @ptrCast([*]const vk.VertexInputBindingDescription, &Vertex.binding_description),
-            .vertex_attribute_description_count = Vertex.attribute_description.len,
-            .p_vertex_attribute_descriptions = &Vertex.attribute_description,
+            .p_vertex_binding_descriptions = @ptrCast([*]const vk.VertexInputBindingDescription, input_binding),
+            .vertex_attribute_description_count = @intCast(u32, input_attributes.len),
+            .p_vertex_attribute_descriptions = input_attributes.ptr,
         };
 
         const piasci = vk.PipelineInputAssemblyStateCreateInfo{
@@ -612,8 +593,8 @@ pub const Device = struct {
             .p_depth_stencil_state = null,
             .p_color_blend_state = &pcbsci,
             .p_dynamic_state = &pdsci,
-            .layout = layout,
-            .render_pass = render_pass,
+            .layout = self.temp_layout,
+            .render_pass = self.swapchain.render_pass,
             .subpass = 0,
             .base_pipeline_handle = .null_handle,
             .base_pipeline_index = -1,
@@ -621,7 +602,7 @@ pub const Device = struct {
 
         var pipeline: vk.Pipeline = undefined;
         _ = try vkd.createGraphicsPipelines(
-            device,
+            self.device,
             .null_handle,
             1,
             @ptrCast([*]const vk.GraphicsPipelineCreateInfo, &gpci),
@@ -629,6 +610,28 @@ pub const Device = struct {
             @ptrCast([*]vk.Pipeline, &pipeline),
         );
         return pipeline;
+    }
+
+    pub fn destroyPipeline(self: Self, pipeline: vk.Pipeline) void {
+        vkd.destroyPipeline(self.device, pipeline, null);
+    }
+
+    //TODO use VMA or alternative
+    fn findMemoryTypeIndex(self: Self, memory_type_bits: u32, flags: vk.MemoryPropertyFlags) !u32 {
+        for (self.memory_properties.memory_types[0..self.memory_properties.memory_type_count]) |memory_type, i| {
+            if (memory_type_bits & (@as(u32, 1) << @truncate(u5, i)) != 0 and memory_type.property_flags.contains(flags)) {
+                return @truncate(u32, i);
+            }
+        }
+
+        return error.NoSuitableMemoryType;
+    }
+
+    pub fn allocate(self: Self, requirements: vk.MemoryRequirements, flags: vk.MemoryPropertyFlags) !vk.DeviceMemory {
+        return try vkd.allocateMemory(self.device, .{
+            .allocation_size = requirements.size,
+            .memory_type_index = try self.findMemoryTypeIndex(requirements.memory_type_bits, flags),
+        }, null);
     }
 };
 
@@ -1021,30 +1024,4 @@ const DebugCallback = struct {
     fn deinit(self: Self) void {
         vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, null);
     }
-};
-
-const Vertex = struct {
-    const binding_description = vk.VertexInputBindingDescription{
-        .binding = 0,
-        .stride = @sizeOf(Vertex),
-        .input_rate = .vertex,
-    };
-
-    const attribute_description = [_]vk.VertexInputAttributeDescription{
-        .{
-            .binding = 0,
-            .location = 0,
-            .format = .r32g32_sfloat,
-            .offset = @byteOffsetOf(Vertex, "pos"),
-        },
-        .{
-            .binding = 0,
-            .location = 1,
-            .format = .r32g32b32_sfloat,
-            .offset = @byteOffsetOf(Vertex, "color"),
-        },
-    };
-
-    pos: [2]f32,
-    color: [3]f32,
 };

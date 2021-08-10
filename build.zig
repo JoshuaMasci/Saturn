@@ -99,9 +99,9 @@ pub const ResourceGenStep = struct {
     pub fn addShader(self: *ResourceGenStep, name: []const u8, source: []const u8) void {
         const shader_out_path = self.shader_step.add(source);
         var writer = self.resources.writer();
-        writer.print("pub const {s} = @embedFile(\"", .{name}) catch unreachable;
+        writer.print("pub const {s} align(4) = @embedFile(\"", .{name}) catch unreachable;
         writer.print("../zig-cache/shaders/{s}", .{source}) catch unreachable; //zig-cache\shaders\assets\tri.frag
-        writer.writeAll("\");\n") catch unreachable;
+        writer.writeAll("\").*;\n") catch unreachable;
     }
 
     fn make(step: *Step) !void {

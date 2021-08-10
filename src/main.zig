@@ -3,6 +3,8 @@ const std = @import("std");
 const glfw = @import("glfw_platform.zig");
 usingnamespace @import("vulkan.zig");
 
+const resources = @import("resources");
+
 const panic = std.debug.panic;
 const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{});
 
@@ -27,6 +29,14 @@ pub fn main() !void {
     var device = try instance.createDevice(0);
     defer device.deinit();
 
+    var pipeline = try device.createPipeline(
+        &resources.tri_vert,
+        &resources.tri_frag,
+        &Vertex.binding_description,
+        &Vertex.attribute_description,
+    );
+    defer device.destroyPipeline(pipeline);
+
     var tri_buffer = try Buffer.init(
         &device,
         @sizeOf(@TypeOf(vertices)),
@@ -41,6 +51,8 @@ pub fn main() !void {
 
         var result = try device.beginFrame();
         if (result) |command_buffer| {
+            vkd.cmdBindPipeline(command_buffer, .graphics, pipeline);
+
             const offset = [_]vk.DeviceSize{0};
             vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]const vk.Buffer, &tri_buffer.handle), &offset);
             vkd.cmdDraw(command_buffer, vertices.len, 1, 0, 0);
