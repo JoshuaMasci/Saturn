@@ -101,6 +101,8 @@ pub var vkb: BaseDispatch = undefined;
 pub var vki: InstanceDispatch = undefined;
 pub var vkd: DeviceDispatch = undefined;
 
+pub const MaxDeviceCount: u32 = 8;
+
 pub const Instance = struct {
     const Self = @This();
 
@@ -110,6 +112,8 @@ pub const Instance = struct {
     surface: vk.SurfaceKHR,
 
     //device: Device,
+
+    devices: [MaxDeviceCount]?Device,
 
     pub fn init(
         allocator: *Allocator,
@@ -162,11 +166,18 @@ pub const Instance = struct {
         //Surface
         var surface = try Self.createSurface(instance, window);
 
+        var device_array: [MaxDeviceCount]?Device = undefined;
+
+        for (device_array) |*entry| {
+            entry.* = null;
+        }
+
         return Self{
             .allocator = allocator,
             .instance = instance,
             .debug_callback = debug_callback,
             .surface = surface,
+            .devices = device_array,
         };
     }
 
@@ -184,7 +195,7 @@ pub const Instance = struct {
         return surface;
     }
 
-    pub fn createDevice(self: Self, device_index: usize) !Device {
+    pub fn createDevice(self: *Self, device_index: u32) !void {
         var device_count: u32 = undefined;
         _ = try vki.enumeratePhysicalDevices(self.instance, &device_count, null);
 
@@ -202,7 +213,22 @@ pub const Instance = struct {
             return error.NoDeviceSurfaceSupport;
         }
 
-        return try Device.init(self.allocator, pdevice, self.surface, graphics_queue_index);
+        self.devices[device_index] = try Device.init(self.allocator, pdevice, self.surface, graphics_queue_index);
+    }
+
+    pub fn destoryDevice(self: *Self, device_index: u32) void {
+        if (self.devices[device_index]) |*device| {
+            device.deinit();
+        }
+        self.devices[device_index] = null;
+    }
+
+    pub fn getDevice(self: *Self, device_index: u32) !*Device {
+        if (self.devices[device_index]) |*device| {
+            return device;
+        } else {
+            return error.DeviceNotInitialized;
+        }
     }
 };
 
@@ -349,7 +375,7 @@ pub const Device = struct {
         };
     }
 
-    pub fn deinit(self: Self) void {
+    fn deinit(self: Self) void {
         self.waitIdle();
 
         vkd.destroyPipelineLayout(self.device, self.temp_layout, null);

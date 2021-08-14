@@ -35,8 +35,9 @@ fn glfwMouseMoveCallback(window: ?*c.GLFWwindow, xpos: f64, ypos: f64) callconv(
     if (window == capturedWindow) {
         input.mouse_axes[0] = @floatCast(f32, xpos);
         input.mouse_axes[1] = @floatCast(f32, ypos);
+        input.mouse_pos = null;
     } else {
-        // Set mouse pos
+        input.mouse_pos = [2]f32{ @floatCast(f32, xpos), @floatCast(f32, ypos) };
     }
 }
 
@@ -207,12 +208,15 @@ pub var input = struct {
 
     mouse_buttons: [MouseButtonCount]ButtonInput,
     keyboard_buttons: [KeyboardButtonCount]ButtonInput,
+
+    mouse_pos: ?[2]f32,
     mouse_axes: [2]f32,
 
     pub fn init() Self {
         return Self{
             .mouse_buttons = [_]ButtonInput{.{}} ** MouseButtonCount,
             .keyboard_buttons = [_]ButtonInput{.{}} ** KeyboardButtonCount,
+            .mouse_pos = null,
             .mouse_axes = [_]f32{ 0.0, 0.0 },
         };
     }
@@ -240,6 +244,10 @@ pub var input = struct {
     pub fn getMousePressed(self: *Self, mouse_button: usize) bool {
         var button = self.mouse_buttons[mouse_button];
         return button.current_state == true and button.prev_state == false;
+    }
+
+    pub fn getMousePos(self: *Self) ?[2]f32 {
+        return self.mouse_pos;
     }
 
     pub fn getMouseAxes(self: *Self) [2]f32 {

@@ -22,6 +22,7 @@ pub fn build(b: *Builder) void {
     exe.install();
 
     exe.linkLibC();
+    //exe.linkSystemLibrary("c++");
 
     //OS specific libraries
     switch (builtin.os.tag) {
@@ -45,6 +46,10 @@ pub fn build(b: *Builder) void {
             @compileError("Platform not supported, unsure of build requirements");
         },
     }
+
+    //cimgui
+    exe.addIncludeDir("submodules/cimgui/");
+    exe.linkLibrary(imguiLibrary(b));
 
     //Vulkan Bindings
     const vk_gen = vkgen.VkGenerateStep.init(b, vk_xml_path, "vk.zig");
@@ -113,3 +118,29 @@ pub const ResourceGenStep = struct {
         try cwd.writeFile(self.package.path, self.resources.items);
     }
 };
+
+pub fn imguiLibrary(b: *Builder) *std.build.LibExeObjStep {
+    var imgui = b.addStaticLibrary("imgui", null);
+    imgui.linkLibC();
+    imgui.linkSystemLibrary("c++");
+
+    if (builtin.os.tag == .windows) {
+        imgui.linkSystemLibrary("kernel32");
+        imgui.linkSystemLibrary("user32");
+        imgui.linkSystemLibrary("shell32");
+        imgui.linkSystemLibrary("gdi32");
+    }
+
+    imgui.addIncludeDir("submodules/cimgui/");
+    imgui.addIncludeDir("submodules/cimgui/imgui");
+
+    const cpp_args = [_][]const u8{"-Wno-return-type-c-linkage"};
+    imgui.addCSourceFile("submodules/cimgui/imgui/imgui.cpp", &cpp_args);
+    imgui.addCSourceFile("submodules/cimgui/imgui/imgui_demo.cpp", &cpp_args);
+    imgui.addCSourceFile("submodules/cimgui/imgui/imgui_draw.cpp", &cpp_args);
+    imgui.addCSourceFile("submodules/cimgui/imgui/imgui_widgets.cpp", &cpp_args);
+    imgui.addCSourceFile("submodules/cimgui/imgui/imgui_tables.cpp", &cpp_args);
+    imgui.addCSourceFile("submodules/cimgui/cimgui.cpp", &cpp_args);
+
+    return imgui;
+}

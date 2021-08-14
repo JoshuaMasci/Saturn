@@ -1,7 +1,11 @@
 const std = @import("std");
 
 const glfw = @import("glfw_platform.zig");
-usingnamespace @import("vulkan.zig");
+
+const vulkan = @import("vulkan.zig");
+usingnamespace vulkan;
+
+const imgui = @import("Imgui.zig");
 
 const resources = @import("resources");
 
@@ -26,8 +30,10 @@ pub fn main() !void {
     var instance = try Instance.init(&globalAllocator.allocator, "Saturn Editor", makeVkVersion(0, 0, 0), window);
     defer instance.deinit();
 
-    var device = try instance.createDevice(0);
-    defer device.deinit();
+    const DeviceIndex: u32 = 0;
+    try instance.createDevice(DeviceIndex);
+    defer instance.destoryDevice(DeviceIndex);
+    var device: *Device = try instance.getDevice(DeviceIndex);
 
     var pipeline = try device.createPipeline(
         &resources.tri_vert,
@@ -38,7 +44,7 @@ pub fn main() !void {
     defer device.destroyPipeline(pipeline);
 
     var tri_buffer = try Buffer.init(
-        &device,
+        device,
         @sizeOf(@TypeOf(vertices)),
         .{ .vertex_buffer_bit = true },
         .{ .host_visible_bit = true },
@@ -46,8 +52,12 @@ pub fn main() !void {
     defer tri_buffer.deinit();
     try tri_buffer.fill(Vertex, &vertices);
 
+    var imgui_layer = imgui.Layer.init();
+    defer imgui_layer.deinit();
+
     while (glfw.shouldCloseWindow(window)) {
         glfw.update();
+        imgui_layer.update(window);
 
         var result = try device.beginFrame();
         if (result) |command_buffer| {
