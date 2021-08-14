@@ -66,6 +66,10 @@ const DeviceDispatch = vk.DeviceWrapper(.{
     .AllocateCommandBuffers,
     .FreeCommandBuffers,
     .QueueWaitIdle,
+    .CreateDescriptorSetLayout,
+    .DestroyDescriptorSetLayout,
+    .CreateDescriptorPool,
+    .DestroyDescriptorPool,
     .CreateShaderModule,
     .DestroyShaderModule,
     .CreatePipelineLayout,
@@ -298,7 +302,10 @@ pub const Device = struct {
     swapchain: Swapchain,
 
     //TODO temp stuff
-    temp_layout: vk.PipelineLayout,
+    bindless_layout: vk.DescriptorSetLayout,
+    bindless_pool: vk.DescriptorPool,
+    //bindless_descriptor: vk.DescriptorSet,
+    pipeline_layout: vk.PipelineLayout,
 
     //TODO actually pick queue familes for graphics/present/compute/transfer
     fn init(
@@ -352,10 +359,56 @@ pub const Device = struct {
         var swapchain = try Swapchain.init(allocator, device, pdevice, surface);
 
         //TODO: bindless layout
-        var temp_layout = try vkd.createPipelineLayout(device, .{
+        const binding_count = 2048;
+        const all_stages = vk.ShaderStageFlags{
+            .vertex_bit = true,
+            .tessellation_control_bit = true,
+            .tessellation_evaluation_bit = true,
+            .geometry_bit = true,
+            .fragment_bit = true,
+            .compute_bit = true,
+            .task_bit_nv = true,
+            .mesh_bit_nv = true,
+            .raygen_bit_khr = true,
+            .any_hit_bit_khr = true,
+            .closest_hit_bit_khr = true,
+            .miss_bit_khr = true,
+            .intersection_bit_khr = true,
+            .callable_bit_khr = true,
+        };
+
+        const bindings = [_]vk.DescriptorSetLayoutBinding{.{
+            .binding = 0,
+            .descriptor_type = .storage_buffer,
+            .descriptor_count = binding_count,
+            .stage_flags = all_stages,
+            .p_immutable_samplers = null,
+        }};
+
+        const pools = [_]vk.DescriptorPoolSize{
+            .{
+                .type_ = .storage_buffer,
+                .descriptor_count = binding_count,
+            },
+        };
+
+        var bindless_layout = try vkd.createDescriptorSetLayout(device, .{
             .flags = .{},
-            .set_layout_count = 0,
-            .p_set_layouts = undefined,
+            .binding_count = bindings.len,
+            .p_bindings = @ptrCast([*]const vk.DescriptorSetLayoutBinding, &bindings[0]),
+        }, null);
+
+        var bindless_pool = try vkd.createDescriptorPool(device, .{
+            .flags = .{},
+            .max_sets = 1,
+            .pool_size_count = pools.len,
+            .p_pool_sizes = @ptrCast([*]const vk.DescriptorPoolSize, &pools[0]),
+        }, null);
+
+        var pipeline_layout = try vkd.createPipelineLayout(device, .{
+            .flags = .{},
+            .set_layout_count = 1,
+            .p_set_layouts = @ptrCast([*]const vk.DescriptorSetLayout, &bindless_layout),
             .push_constant_range_count = 0,
             .p_push_constant_ranges = undefined,
         }, null);
@@ -371,14 +424,18 @@ pub const Device = struct {
             .frame_index = 0,
             .swapchain_index = 0,
             .swapchain = swapchain,
-            .temp_layout = temp_layout,
+            .bindless_layout = bindless_layout,
+            .bindless_pool = bindless_pool,
+            .pipeline_layout = pipeline_layout,
         };
     }
 
     fn deinit(self: Self) void {
         self.waitIdle();
 
-        vkd.destroyPipelineLayout(self.device, self.temp_layout, null);
+        vkd.destroyDescriptorPool(self.device, self.bindless_pool, null);
+        vkd.destroyPipelineLayout(self.device, self.pipeline_layout, null);
+        vkd.destroyDescriptorSetLayout(self.device, self.bindless_layout, null);
 
         self.swapchain.deinit();
         for (self.frames) |frame| {
@@ -619,7 +676,7 @@ pub const Device = struct {
             .p_depth_stencil_state = null,
             .p_color_blend_state = &pcbsci,
             .p_dynamic_state = &pdsci,
-            .layout = self.temp_layout,
+            .layout = self.pipeline_layout,
             .render_pass = self.swapchain.render_pass,
             .subpass = 0,
             .base_pipeline_handle = .null_handle,
@@ -949,6 +1006,10 @@ const Swapchain = struct {
         }
         return framebuffers;
     }
+};
+
+const BindlessDescriptor = struct {
+    const Self = @This();
 };
 
 pub const Buffer = struct {
