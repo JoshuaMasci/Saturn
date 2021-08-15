@@ -68,6 +68,7 @@ const DeviceDispatch = vk.DeviceWrapper(.{
     .DestroyDescriptorSetLayout,
     .CreateDescriptorPool,
     .DestroyDescriptorPool,
+    .AllocateDescriptorSets,
     .CreateShaderModule,
     .DestroyShaderModule,
     .CreatePipelineLayout,
@@ -97,6 +98,7 @@ const DeviceDispatch = vk.DeviceWrapper(.{
     .CmdBindVertexBuffers,
     .CmdCopyBuffer,
     .CmdPipelineBarrier,
+    .CmdBindDescriptorSets,
 });
 
 pub var vkb: BaseDispatch = undefined;
@@ -454,6 +456,17 @@ pub const Device = struct {
                 .p_clear_values = @ptrCast([*]const vk.ClearValue, &clear),
             },
             .@"inline",
+        );
+
+        vkd.cmdBindDescriptorSets(
+            current_frame.command_buffer,
+            .graphics,
+            self.resources.pipeline_layout,
+            0,
+            1,
+            @ptrCast([*]const vk.DescriptorSet, &self.resources.descriptor_set),
+            0,
+            undefined,
         );
 
         return current_frame.command_buffer;
@@ -975,7 +988,7 @@ const DeviceResources = struct {
     pipeline_layout: vk.PipelineLayout,
 
     descriptor_pool: vk.DescriptorPool,
-    //descriptor_set: vk.DescriptorSet,
+    descriptor_set: vk.DescriptorSet,
 
     pub fn init(allocator: *Allocator, pdevice: vk.PhysicalDevice, device: vk.Device, binding_counts: ResourceBindingCounts) !Self {
         const all_stages = vk.ShaderStageFlags{
@@ -1031,6 +1044,17 @@ const DeviceResources = struct {
             .p_pool_sizes = @ptrCast([*]const vk.DescriptorPoolSize, &pools[0]),
         }, null);
 
+        var descriptor_set: vk.DescriptorSet = .null_handle;
+        _ = try vkd.allocateDescriptorSets(
+            device,
+            .{
+                .descriptor_pool = descriptor_pool,
+                .descriptor_set_count = 1,
+                .p_set_layouts = @ptrCast([*]const vk.DescriptorSetLayout, &descriptor_layout),
+            },
+            @ptrCast([*]vk.DescriptorSet, &descriptor_set),
+        );
+
         return Self{
             .allocator = allocator,
             .pdevice = pdevice,
@@ -1038,6 +1062,7 @@ const DeviceResources = struct {
             .descriptor_layout = descriptor_layout,
             .pipeline_layout = pipeline_layout,
             .descriptor_pool = descriptor_pool,
+            .descriptor_set = descriptor_set,
         };
     }
 
