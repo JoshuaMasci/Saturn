@@ -190,9 +190,9 @@ pub const Instance = struct {
         };
     }
 
-    pub fn deinit(self: Self) void {
-        for (self.devices) |option_device| {
-            if (option_device) |device| {
+    pub fn deinit(self: *Self) void {
+        for (self.devices) |*option_device| {
+            if (option_device.*) |*device| {
                 device.deinit();
             }
         }
@@ -297,7 +297,6 @@ pub const Device = struct {
     allocator: *Allocator,
     pdevice: vk.PhysicalDevice,
     device: vk.Device,
-    memory_properties: vk.PhysicalDeviceMemoryProperties,
 
     graphics_queue: vk.Queue,
     command_pool: vk.CommandPool,
@@ -346,8 +345,6 @@ pub const Device = struct {
 
         vkd = try DeviceDispatch.load(device, vki.dispatch.vkGetDeviceProcAddr);
 
-        var memory_properties = vki.getPhysicalDeviceMemoryProperties(pdevice);
-
         var graphics_queue = vkd.getDeviceQueue(device, graphics_queue_index, 0);
 
         var command_pool = try vkd.createCommandPool(device, .{
@@ -371,7 +368,6 @@ pub const Device = struct {
             .allocator = allocator,
             .pdevice = pdevice,
             .device = device,
-            .memory_properties = memory_properties,
             .graphics_queue = graphics_queue,
             .command_pool = command_pool,
             .frames = frames,
@@ -382,7 +378,7 @@ pub const Device = struct {
         };
     }
 
-    fn deinit(self: Self) void {
+    fn deinit(self: *Self) void {
         self.waitIdle();
 
         self.resources.deinit();
@@ -658,24 +654,6 @@ pub const Device = struct {
 
     pub fn destroyPipeline(self: Self, pipeline: vk.Pipeline) void {
         vkd.destroyPipeline(self.device, pipeline, null);
-    }
-
-    //TODO use VMA or alternative
-    fn findMemoryTypeIndex(self: Self, memory_type_bits: u32, flags: vk.MemoryPropertyFlags) !u32 {
-        for (self.memory_properties.memory_types[0..self.memory_properties.memory_type_count]) |memory_type, i| {
-            if (memory_type_bits & (@as(u32, 1) << @truncate(u5, i)) != 0 and memory_type.property_flags.contains(flags)) {
-                return @truncate(u32, i);
-            }
-        }
-
-        return error.NoSuitableMemoryType;
-    }
-
-    pub fn allocate(self: Self, requirements: vk.MemoryRequirements, flags: vk.MemoryPropertyFlags) !vk.DeviceMemory {
-        return try vkd.allocateMemory(self.device, .{
-            .allocation_size = requirements.size,
-            .memory_type_index = try self.findMemoryTypeIndex(requirements.memory_type_bits, flags),
-        }, null);
     }
 };
 
@@ -983,6 +961,7 @@ const DeviceResources = struct {
     allocator: *Allocator,
     pdevice: vk.PhysicalDevice,
     device: vk.Device,
+    memory_properties: vk.PhysicalDeviceMemoryProperties,
 
     descriptor_layout: vk.DescriptorSetLayout,
     pipeline_layout: vk.PipelineLayout,
@@ -990,7 +969,14 @@ const DeviceResources = struct {
     descriptor_pool: vk.DescriptorPool,
     descriptor_set: vk.DescriptorSet,
 
+    //TEMP binding array
+    buffers: std.AutoHashMap(u32, Buffer),
+    next_buffer_index: u32 = 0,
+    freed_buffer_indexs: std.ArrayList(u32),
+
     pub fn init(allocator: *Allocator, pdevice: vk.PhysicalDevice, device: vk.Device, binding_counts: ResourceBindingCounts) !Self {
+        var memory_properties = vki.getPhysicalDeviceMemoryProperties(pdevice);
+
         const all_stages = vk.ShaderStageFlags{
             .vertex_bit = true,
             .tessellation_control_bit = true,
@@ -1016,18 +1002,28 @@ const DeviceResources = struct {
             .p_immutable_samplers = null,
         }};
 
-        var descriptor_layout = try vkd.createDescriptorSetLayout(device, .{
-            .flags = .{},
-            .binding_count = bindings.len,
-            .p_bindings = @ptrCast([*]const vk.DescriptorSetLayoutBinding, &bindings[0]),
-        }, null);
+        var descriptor_layout = try vkd.createDescriptorSetLayout(
+            device,
+            .{
+                .flags = .{},
+                .binding_count = bindings.len,
+                .p_bindings = @ptrCast([*]const vk.DescriptorSetLayoutBinding, &bindings[0]),
+            },
+            null,
+        );
+
+        var push_constant_range = vk.PushConstantRange{
+            .stage_flags = all_stages,
+            .offset = 0,
+            .size = binding_counts.push_constant_size,
+        };
 
         var pipeline_layout = try vkd.createPipelineLayout(device, .{
             .flags = .{},
             .set_layout_count = 1,
             .p_set_layouts = @ptrCast([*]const vk.DescriptorSetLayout, &descriptor_layout),
-            .push_constant_range_count = 0,
-            .p_push_constant_ranges = undefined,
+            .push_constant_range_count = 1,
+            .p_push_constant_ranges = @ptrCast([*]const vk.PushConstantRange, &push_constant_range),
         }, null);
 
         const pools = [_]vk.DescriptorPoolSize{
@@ -1055,21 +1051,87 @@ const DeviceResources = struct {
             @ptrCast([*]vk.DescriptorSet, &descriptor_set),
         );
 
+        var buffers = std.AutoHashMap(u32, Buffer).init(allocator);
+        var freed_buffer_indexs = std.ArrayList(u32).init(allocator);
+
         return Self{
             .allocator = allocator,
             .pdevice = pdevice,
             .device = device,
+            .memory_properties = memory_properties,
             .descriptor_layout = descriptor_layout,
             .pipeline_layout = pipeline_layout,
             .descriptor_pool = descriptor_pool,
             .descriptor_set = descriptor_set,
+
+            .buffers = buffers,
+            .freed_buffer_indexs = freed_buffer_indexs,
         };
     }
 
-    fn deinit(self: Self) void {
+    fn deinit(self: *Self) void {
+        var iterator = self.buffers.iterator();
+        while (iterator.next()) |buffer| {
+            buffer.value_ptr.deinit();
+        }
+
         vkd.destroyDescriptorPool(self.device, self.descriptor_pool, null);
         vkd.destroyPipelineLayout(self.device, self.pipeline_layout, null);
         vkd.destroyDescriptorSetLayout(self.device, self.descriptor_layout, null);
+
+        self.buffers.deinit();
+        self.freed_buffer_indexs.deinit();
+    }
+
+    //TODO use VMA or alternative
+    fn findMemoryTypeIndex(self: Self, memory_type_bits: u32, flags: vk.MemoryPropertyFlags) !u32 {
+        for (self.memory_properties.memory_types[0..self.memory_properties.memory_type_count]) |memory_type, i| {
+            if (memory_type_bits & (@as(u32, 1) << @truncate(u5, i)) != 0 and memory_type.property_flags.contains(flags)) {
+                return @truncate(u32, i);
+            }
+        }
+
+        return error.NoSuitableMemoryType;
+    }
+
+    pub fn allocate(self: Self, requirements: vk.MemoryRequirements, flags: vk.MemoryPropertyFlags) !vk.DeviceMemory {
+        return try vkd.allocateMemory(self.device, .{
+            .allocation_size = requirements.size,
+            .memory_type_index = try self.findMemoryTypeIndex(requirements.memory_type_bits, flags),
+        }, null);
+    }
+
+    fn getBufferIndex(self: *Self) u32 {
+        var new_index: u32 = undefined;
+        if (self.freed_buffer_indexs.items.len > 0) {
+            new_index = self.freed_buffer_indexs.pop();
+        } else {
+            new_index = self.next_buffer_index;
+            self.next_buffer_index += 1;
+        }
+
+        return new_index;
+    }
+
+    pub fn createBuffer(self: *Self, size: u32, usage: vk.BufferUsageFlags, memory_type: vk.MemoryPropertyFlags) !u32 {
+        var index = self.getBufferIndex();
+        try self.buffers.put(index, try Buffer.init(self, size, usage, memory_type));
+        return index;
+    }
+
+    pub fn destoryBuffer(self: *Self, index: u32) void {
+        //TODO add it to a delete queue
+        var buffer_optional = self.buffers.fetchRemove(index);
+        if (buffer_optional) |buffer| {
+            buffer.value.deinit();
+        }
+        self.freed_buffer_indexs.append(index) catch {
+            panic("Failed to append freed index", .{});
+        };
+    }
+
+    pub fn getBuffer(self: Self, index: u32) ?Buffer {
+        return self.buffers.get(index);
     }
 };
 
@@ -1084,7 +1146,7 @@ pub const Buffer = struct {
     size: u32,
     usage: vk.BufferUsageFlags,
 
-    pub fn init(device: *Device, size: u32, usage: vk.BufferUsageFlags, memory_type: vk.MemoryPropertyFlags) !Self {
+    pub fn init(device: *DeviceResources, size: u32, usage: vk.BufferUsageFlags, memory_type: vk.MemoryPropertyFlags) !Self {
         const buffer = try vkd.createBuffer(device.device, .{
             .flags = .{},
             .size = size,

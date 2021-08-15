@@ -43,13 +43,18 @@ pub fn main() !void {
     );
     defer device.destroyPipeline(pipeline);
 
-    var tri_buffer = try Buffer.init(
-        device,
+    var tri_buffer_index = try device.resources.createBuffer(
         @sizeOf(@TypeOf(vertices)),
         .{ .vertex_buffer_bit = true },
         .{ .host_visible_bit = true },
     );
-    defer tri_buffer.deinit();
+    defer device.resources.destoryBuffer(tri_buffer_index);
+    var tri_buffer: Buffer = undefined;
+    if (device.resources.getBuffer(tri_buffer_index)) |buffer| {
+        tri_buffer = buffer;
+    } else {
+        panic("Failed to retrive buffer", .{});
+    }
     try tri_buffer.fill(Vertex, &vertices);
 
     var imgui_layer = imgui.Layer.init();
