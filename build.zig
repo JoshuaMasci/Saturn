@@ -22,7 +22,6 @@ pub fn build(b: *Builder) void {
     exe.install();
 
     exe.linkLibC();
-    //exe.linkSystemLibrary("c++");
 
     //OS specific libraries
     switch (builtin.os.tag) {
