@@ -14,17 +14,19 @@ pub const Layer = struct {
     io: *c.ImGuiIO,
 
     pub fn init() Self {
-        var context = c.igCreateContext(undefined);
-        var io = c.igGetIO();
-        io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
-        io.*.DeltaTime = 1.0 / 60.0;
+        var context = c.igCreateContext(null);
+
+        var io: *c.ImGuiIO = c.igGetIO();
+        io.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
+        io.DeltaTime = 1.0 / 60.0;
+
+        c.igStyleColorsDark(null);
 
         var pixels: ?[*]u8 = undefined;
         var width: i32 = undefined;
         var height: i32 = undefined;
         var bytes: i32 = 0;
-
-        c.ImFontAtlas_GetTexDataAsRGBA32(io.*.Fonts, @ptrCast([*c][*c]u8, &pixels), &width, &height, &bytes);
+        c.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, @ptrCast([*c][*c]u8, &pixels), &width, &height, &bytes);
 
         return Self{
             .context = context,
@@ -51,16 +53,11 @@ pub const Layer = struct {
                 .y = mouse_pos[1],
             };
         }
-
-        std.log.info("Here1", .{});
         c.igNewFrame();
-        std.log.info("Here2.1", .{});
     }
 
     pub fn draw(self: Self, command_buffer: vulkan.vk.CommandBuffer) void {
-        std.log.info("Here2.2", .{});
         c.igEndFrame();
-        std.log.info("Here3", .{});
         c.igRender();
     }
 };
