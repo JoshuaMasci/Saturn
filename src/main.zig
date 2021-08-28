@@ -31,7 +31,8 @@ pub fn main() !void {
     defer instance.deinit();
 
     const DeviceIndex: u32 = 0;
-    try instance.createDevice(DeviceIndex);
+    const FramesInFlightCount: u32 = 3;
+    try instance.createDevice(DeviceIndex, FramesInFlightCount);
     defer instance.destoryDevice(DeviceIndex);
     var device: *Device = try instance.getDevice(DeviceIndex);
 
@@ -57,7 +58,7 @@ pub fn main() !void {
     }
     try tri_buffer.fill(Vertex, &vertices);
 
-    var imgui_layer = imgui.Layer.init();
+    var imgui_layer = try imgui.Layer.init(device);
     defer imgui_layer.deinit();
 
     while (glfw.shouldCloseWindow(window)) {
@@ -82,9 +83,11 @@ pub fn main() !void {
 }
 
 const Vertex = struct {
+    const Self = @This();
+
     const binding_description = vk.VertexInputBindingDescription{
         .binding = 0,
-        .stride = @sizeOf(Vertex),
+        .stride = @sizeOf(Self),
         .input_rate = .vertex,
     };
 
@@ -93,13 +96,13 @@ const Vertex = struct {
             .binding = 0,
             .location = 0,
             .format = .r32g32_sfloat,
-            .offset = @byteOffsetOf(Vertex, "pos"),
+            .offset = @byteOffsetOf(Self, "pos"),
         },
         .{
             .binding = 0,
             .location = 1,
             .format = .r32g32b32_sfloat,
-            .offset = @byteOffsetOf(Vertex, "color"),
+            .offset = @byteOffsetOf(Self, "color"),
         },
     };
 

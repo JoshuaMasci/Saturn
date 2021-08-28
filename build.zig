@@ -59,6 +59,10 @@ pub fn build(b: *Builder) void {
     const res = ResourceGenStep.init(b, "resources.zig");
     res.addShader("tri_vert", "assets/tri.vert");
     res.addShader("tri_frag", "assets/tri.frag");
+
+    res.addShader("imgui_vert", "assets/imgui.vert");
+    res.addShader("imgui_frag", "assets/imgui.frag");
+
     exe.step.dependOn(&res.step);
     exe.addPackage(res.package);
 

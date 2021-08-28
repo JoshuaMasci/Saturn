@@ -17,8 +17,6 @@ const VK_API_VERSION_1_2 = vk.makeApiVersion(0, 1, 2, 0);
 const saturn_name = "saturn engine";
 const saturn_version = vk.makeApiVersion(0, 0, 0, 0);
 
-const frames_in_flight: u32 = 3;
-
 const BaseDispatch = vk.BaseWrapper(.{
     .CreateInstance,
 });
@@ -214,7 +212,7 @@ pub const Instance = struct {
         return surface;
     }
 
-    pub fn createDevice(self: *Self, device_index: u32) !void {
+    pub fn createDevice(self: *Self, device_index: u32, frames_in_flight: u32) !void {
 
         //TODO pick queues
         var pdevice = self.pdevices[device_index];
@@ -225,7 +223,7 @@ pub const Instance = struct {
             return error.NoDeviceSurfaceSupport;
         }
 
-        self.devices[device_index] = try Device.init(self.allocator, pdevice, self.surface, graphics_queue_index);
+        self.devices[device_index] = try Device.init(self.allocator, pdevice, self.surface, graphics_queue_index, frames_in_flight);
     }
 
     pub fn destoryDevice(self: *Self, device_index: u32) void {
@@ -316,6 +314,7 @@ pub const Device = struct {
         pdevice: vk.PhysicalDevice,
         surface: vk.SurfaceKHR,
         graphics_queue_index: u32,
+        frames_in_flight: u32,
     ) !Self {
         const required_device_extensions = [_][]const u8{vk.extension_info.khr_swapchain.name};
 
@@ -359,10 +358,16 @@ pub const Device = struct {
 
         var swapchain = try Swapchain.init(allocator, device, pdevice, surface);
 
-        var resources = try DeviceResources.init(allocator, pdevice, device, .{
-            .push_constant_size = 128,
-            .storage_buffer = 2048,
-        });
+        var resources = try DeviceResources.init(
+            allocator,
+            pdevice,
+            device,
+            .{
+                .push_constant_size = 128,
+                .storage_buffer = 2048,
+            },
+            frames_in_flight,
+        );
 
         return Self{
             .allocator = allocator,
@@ -401,6 +406,9 @@ pub const Device = struct {
 
         var fence = @ptrCast([*]const vk.Fence, &current_frame.frame_done_fence);
         _ = try vkd.waitForFences(self.device, 1, fence, 1, std.math.maxInt(u64));
+
+        self.resources.current_frame = self.frame_index;
+        self.resources.flushResources();
 
         if (self.swapchain.getNextImage(current_frame.image_ready_semaphore)) |index| {
             self.swapchain_index = index;
@@ -955,6 +963,11 @@ const ResourceBindingCounts = struct {
     // var acceleration_structure,
 };
 
+const BufferResource = struct {
+    index: u32,
+    buffer: Buffer,
+};
+
 const DeviceResources = struct {
     const Self = @This();
 
@@ -969,12 +982,16 @@ const DeviceResources = struct {
     descriptor_pool: vk.DescriptorPool,
     descriptor_set: vk.DescriptorSet,
 
-    //TEMP binding array
+    //Non Descriptor Buffers
     buffers: std.AutoHashMap(u32, Buffer),
     next_buffer_index: u32 = 0,
     freed_buffer_indexs: std.ArrayList(u32),
 
-    pub fn init(allocator: *Allocator, pdevice: vk.PhysicalDevice, device: vk.Device, binding_counts: ResourceBindingCounts) !Self {
+    //Resource Deleters
+    current_frame: u32 = 0,
+    deleted_buffers: []std.ArrayList(BufferResource),
+
+    pub fn init(allocator: *Allocator, pdevice: vk.PhysicalDevice, device: vk.Device, binding_counts: ResourceBindingCounts, frames_in_flight: u32) !Self {
         var memory_properties = vki.getPhysicalDeviceMemoryProperties(pdevice);
 
         const all_stages = vk.ShaderStageFlags{
@@ -1054,6 +1071,11 @@ const DeviceResources = struct {
         var buffers = std.AutoHashMap(u32, Buffer).init(allocator);
         var freed_buffer_indexs = std.ArrayList(u32).init(allocator);
 
+        var deleted_buffers = try allocator.alloc(std.ArrayList(BufferResource), frames_in_flight);
+        for (deleted_buffers) |*delete_list| {
+            delete_list.* = std.ArrayList(BufferResource).init(allocator);
+        }
+
         return Self{
             .allocator = allocator,
             .pdevice = pdevice,
@@ -1066,6 +1088,8 @@ const DeviceResources = struct {
 
             .buffers = buffers,
             .freed_buffer_indexs = freed_buffer_indexs,
+
+            .deleted_buffers = deleted_buffers,
         };
     }
 
@@ -1081,6 +1105,14 @@ const DeviceResources = struct {
 
         self.buffers.deinit();
         self.freed_buffer_indexs.deinit();
+
+        for (self.deleted_buffers) |*delete_list| {
+            for (delete_list.items) |resource| {
+                resource.buffer.deinit();
+            }
+            delete_list.deinit();
+        }
+        self.allocator.free(self.deleted_buffers);
     }
 
     //TODO use VMA or alternative
@@ -1122,16 +1154,29 @@ const DeviceResources = struct {
     pub fn destoryBuffer(self: *Self, index: u32) void {
         //TODO add it to a delete queue
         var buffer_optional = self.buffers.fetchRemove(index);
+
         if (buffer_optional) |buffer| {
-            buffer.value.deinit();
+            self.deleted_buffers[self.current_frame].append(
+                .{
+                    .index = index,
+                    .buffer = buffer.value,
+                },
+            ) catch panic("Failed to append to ArrayList!", .{});
         }
-        self.freed_buffer_indexs.append(index) catch {
-            panic("Failed to append freed index", .{});
-        };
     }
 
     pub fn getBuffer(self: Self, index: u32) ?Buffer {
         return self.buffers.get(index);
+    }
+
+    fn flushResources(self: *Self) void {
+        for (self.deleted_buffers[self.current_frame].items) |resource| {
+            resource.buffer.deinit();
+            self.freed_buffer_indexs.append(resource.index) catch {
+                panic("Failed to append freed index", .{});
+            };
+        }
+        self.deleted_buffers[self.current_frame].clearRetainingCapacity();
     }
 };
 
