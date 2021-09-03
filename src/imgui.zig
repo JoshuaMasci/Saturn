@@ -96,25 +96,53 @@ pub const Layer = struct {
             push_data[1] = 2.0 / draw_data.DisplaySize.y;
 
             //Translate
-            push_data[0] = -1.0 - (draw_data.DisplayPos.x * push_data[0]);
-            push_data[1] = -1.0 - (draw_data.DisplayPos.y * push_data[1]);
+            push_data[2] = -1.0 - (draw_data.DisplayPos.x * push_data[0]);
+            push_data[3] = -1.0 - (draw_data.DisplayPos.y * push_data[1]);
 
             vulkan.vkd.cmdPushConstants(command_buffer, self.device.resources.pipeline_layout, vulkan.ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
 
             var i: u32 = 0;
             while (i < draw_data.CmdListsCount) : (i += 1) {
-                var cmd_list: *c.ImDrawList = draw_data.CmdList[i];
+                var cmd_list: *c.ImDrawList = draw_data.CmdLists[i];
 
-                var vertex_buffer_index = try self.device.resources.createBuffer(
-                    @sizeOf(@TypeOf(vertices)),
-                    .{ .vertex_buffer_bit = true },
-                    .{ .host_visible_bit = true },
-                );
+                var vertex_data: []c.ImDrawVert = undefined;
+                vertex_data.ptr = cmd_list.VtxBuffer.Data;
+                vertex_data.len = @intCast(usize, cmd_list.VtxBuffer.Size);
+                var vertex_data_size = @intCast(u32, vertex_data.len * @sizeOf(c.ImDrawVert));
+                var vertex_buffer_index = try self.device.resources.createBufferFill(vertex_data_size, .{ .vertex_buffer_bit = true }, .{ .host_visible_bit = true }, c.ImDrawVert, vertex_data);
                 defer self.device.resources.destoryBuffer(vertex_buffer_index);
 
-                var vertex_buffer: Buffer = undefined;
-                if (device.resources.getBuffer(vertex_buffer_index)) |buffer| {
-                    vertex_buffer = buffer;
+                var index_data: []c.ImDrawIdx = undefined;
+                index_data.ptr = cmd_list.IdxBuffer.Data;
+                index_data.len = @intCast(usize, cmd_list.IdxBuffer.Size);
+                var index_data_size = @intCast(u32, index_data.len * @sizeOf(c.ImDrawIdx));
+                var index_data_index = try self.device.resources.createBufferFill(index_data_size, .{ .index_buffer_bit = true }, .{ .host_visible_bit = true }, c.ImDrawIdx, index_data);
+                defer self.device.resources.destoryBuffer(index_data_index);
+
+                var vertex_buffer_res = self.device.resources.getBuffer(vertex_buffer_index);
+                if (vertex_buffer_res) |*vertex_buffer| {
+                    var offset: u64 = 0;
+                    vulkan.vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]vulkan.vk.Buffer, &vertex_buffer.handle), @ptrCast([*]const u64, &offset));
+                }
+
+                var index_buffer_res = self.device.resources.getBuffer(index_data_index);
+                if (index_buffer_res) |*index_buffer| {
+                    var offset: u64 = 0;
+                    vulkan.vkd.cmdBindIndexBuffer(command_buffer, index_buffer.handle, 0, vulkan.vk.IndexType.uint16);
+                }
+
+                var cmd_i: u32 = 0;
+                while (cmd_i < cmd_list.CmdBuffer.Size) : (cmd_i += 1) {
+                    var pcmd: c.ImDrawCmd = cmd_list.CmdBuffer.Data[cmd_i];
+
+                    vulkan.vkd.cmdDrawIndexed(
+                        command_buffer,
+                        pcmd.ElemCount,
+                        1,
+                        pcmd.IdxOffset,
+                        0,
+                        0,
+                    );
                 }
             }
         }

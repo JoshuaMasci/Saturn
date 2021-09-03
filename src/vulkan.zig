@@ -95,10 +95,12 @@ const DeviceDispatch = vk.DeviceWrapper(.{
     .CmdSetViewport,
     .CmdSetScissor,
     .CmdBindVertexBuffers,
+    .CmdBindIndexBuffer,
     .CmdCopyBuffer,
     .CmdPipelineBarrier,
     .CmdBindDescriptorSets,
     .CmdPushConstants,
+    .CmdDrawIndexed,
 });
 
 pub const ALL_SHADER_STAGES = vk.ShaderStageFlags{
@@ -1135,9 +1137,29 @@ const DeviceResources = struct {
         return new_index;
     }
 
-    pub fn createBuffer(self: *Self, size: u32, usage: vk.BufferUsageFlags, memory_type: vk.MemoryPropertyFlags) !u32 {
+    pub fn createBuffer(
+        self: *Self,
+        size: u32,
+        usage: vk.BufferUsageFlags,
+        memory_type: vk.MemoryPropertyFlags,
+    ) !u32 {
         var index = self.getBufferIndex();
         try self.buffers.put(index, try Buffer.init(self, size, usage, memory_type));
+        return index;
+    }
+
+    pub fn createBufferFill(
+        self: *Self,
+        size: u32,
+        usage: vk.BufferUsageFlags,
+        memory_type: vk.MemoryPropertyFlags,
+        comptime DataType: type,
+        data: []const DataType,
+    ) !u32 {
+        var index = self.getBufferIndex();
+        var buffer = try Buffer.init(self, size, usage, memory_type);
+        try buffer.fill(DataType, data);
+        try self.buffers.put(index, buffer);
         return index;
     }
 
@@ -1146,13 +1168,6 @@ const DeviceResources = struct {
         var buffer_optional = self.buffers.fetchRemove(index);
 
         if (buffer_optional) |buffer| {
-            // self.deleted_buffers[self.current_frame].append(
-            //     .{
-            //         .index = index,
-            //         .buffer = buffer.value,
-            //     },
-            // ) catch panic("Failed to append to ArrayList!", .{});
-
             self.buffer_deleter.append(self.current_frame, buffer.value);
             self.buffer_freed_indexes.append(index) catch {
                 panic("Failed to append freed index", .{});

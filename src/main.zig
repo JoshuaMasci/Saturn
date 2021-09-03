@@ -73,7 +73,7 @@ pub fn main() !void {
             vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]const vk.Buffer, &tri_buffer.handle), &offset);
             vkd.cmdDraw(command_buffer, vertices.len, 1, 0, 0);
 
-            imgui_layer.draw(command_buffer);
+            try imgui_layer.draw(command_buffer);
 
             try device.endFrame();
         }
