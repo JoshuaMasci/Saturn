@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const panic = std.debug.panic;
+usingnamespace @import("resource_deleter.zig");
 
 const glfw = @import("glfw_platform.zig");
 pub extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction;
@@ -97,7 +98,25 @@ const DeviceDispatch = vk.DeviceWrapper(.{
     .CmdCopyBuffer,
     .CmdPipelineBarrier,
     .CmdBindDescriptorSets,
+    .CmdPushConstants,
 });
+
+pub const ALL_SHADER_STAGES = vk.ShaderStageFlags{
+    .vertex_bit = true,
+    .tessellation_control_bit = true,
+    .tessellation_evaluation_bit = true,
+    .geometry_bit = true,
+    .fragment_bit = true,
+    .compute_bit = true,
+    .task_bit_nv = true,
+    .mesh_bit_nv = true,
+    .raygen_bit_khr = true,
+    .any_hit_bit_khr = true,
+    .closest_hit_bit_khr = true,
+    .miss_bit_khr = true,
+    .intersection_bit_khr = true,
+    .callable_bit_khr = true,
+};
 
 pub var vkb: BaseDispatch = undefined;
 pub var vki: InstanceDispatch = undefined;
@@ -984,38 +1003,21 @@ const DeviceResources = struct {
 
     //Non Descriptor Buffers
     buffers: std.AutoHashMap(u32, Buffer),
-    next_buffer_index: u32 = 0,
-    freed_buffer_indexs: std.ArrayList(u32),
+    buffer_index_next: u32 = 0,
+    buffer_freed_indexes: std.ArrayList(u32),
 
     //Resource Deleters
     current_frame: u32 = 0,
-    deleted_buffers: []std.ArrayList(BufferResource),
+    buffer_deleter: ResourceDeleter(Buffer),
 
     pub fn init(allocator: *Allocator, pdevice: vk.PhysicalDevice, device: vk.Device, binding_counts: ResourceBindingCounts, frames_in_flight: u32) !Self {
         var memory_properties = vki.getPhysicalDeviceMemoryProperties(pdevice);
-
-        const all_stages = vk.ShaderStageFlags{
-            .vertex_bit = true,
-            .tessellation_control_bit = true,
-            .tessellation_evaluation_bit = true,
-            .geometry_bit = true,
-            .fragment_bit = true,
-            .compute_bit = true,
-            .task_bit_nv = true,
-            .mesh_bit_nv = true,
-            .raygen_bit_khr = true,
-            .any_hit_bit_khr = true,
-            .closest_hit_bit_khr = true,
-            .miss_bit_khr = true,
-            .intersection_bit_khr = true,
-            .callable_bit_khr = true,
-        };
 
         const bindings = [_]vk.DescriptorSetLayoutBinding{.{
             .binding = 0,
             .descriptor_type = .storage_buffer,
             .descriptor_count = binding_counts.storage_buffer,
-            .stage_flags = all_stages,
+            .stage_flags = ALL_SHADER_STAGES,
             .p_immutable_samplers = null,
         }};
 
@@ -1030,7 +1032,7 @@ const DeviceResources = struct {
         );
 
         var push_constant_range = vk.PushConstantRange{
-            .stage_flags = all_stages,
+            .stage_flags = ALL_SHADER_STAGES,
             .offset = 0,
             .size = binding_counts.push_constant_size,
         };
@@ -1069,12 +1071,8 @@ const DeviceResources = struct {
         );
 
         var buffers = std.AutoHashMap(u32, Buffer).init(allocator);
-        var freed_buffer_indexs = std.ArrayList(u32).init(allocator);
-
-        var deleted_buffers = try allocator.alloc(std.ArrayList(BufferResource), frames_in_flight);
-        for (deleted_buffers) |*delete_list| {
-            delete_list.* = std.ArrayList(BufferResource).init(allocator);
-        }
+        var buffer_freed_indexes = std.ArrayList(u32).init(allocator);
+        var buffer_deleter = try ResourceDeleter(Buffer).init(allocator, frames_in_flight);
 
         return Self{
             .allocator = allocator,
@@ -1087,9 +1085,8 @@ const DeviceResources = struct {
             .descriptor_set = descriptor_set,
 
             .buffers = buffers,
-            .freed_buffer_indexs = freed_buffer_indexs,
-
-            .deleted_buffers = deleted_buffers,
+            .buffer_freed_indexes = buffer_freed_indexes,
+            .buffer_deleter = buffer_deleter,
         };
     }
 
@@ -1104,15 +1101,8 @@ const DeviceResources = struct {
         vkd.destroyDescriptorSetLayout(self.device, self.descriptor_layout, null);
 
         self.buffers.deinit();
-        self.freed_buffer_indexs.deinit();
-
-        for (self.deleted_buffers) |*delete_list| {
-            for (delete_list.items) |resource| {
-                resource.buffer.deinit();
-            }
-            delete_list.deinit();
-        }
-        self.allocator.free(self.deleted_buffers);
+        self.buffer_freed_indexes.deinit();
+        self.buffer_deleter.deinit();
     }
 
     //TODO use VMA or alternative
@@ -1135,11 +1125,11 @@ const DeviceResources = struct {
 
     fn getBufferIndex(self: *Self) u32 {
         var new_index: u32 = undefined;
-        if (self.freed_buffer_indexs.items.len > 0) {
-            new_index = self.freed_buffer_indexs.pop();
+        if (self.buffer_freed_indexes.items.len > 0) {
+            new_index = self.buffer_freed_indexes.pop();
         } else {
-            new_index = self.next_buffer_index;
-            self.next_buffer_index += 1;
+            new_index = self.buffer_index_next;
+            self.buffer_index_next += 1;
         }
 
         return new_index;
@@ -1156,12 +1146,17 @@ const DeviceResources = struct {
         var buffer_optional = self.buffers.fetchRemove(index);
 
         if (buffer_optional) |buffer| {
-            self.deleted_buffers[self.current_frame].append(
-                .{
-                    .index = index,
-                    .buffer = buffer.value,
-                },
-            ) catch panic("Failed to append to ArrayList!", .{});
+            // self.deleted_buffers[self.current_frame].append(
+            //     .{
+            //         .index = index,
+            //         .buffer = buffer.value,
+            //     },
+            // ) catch panic("Failed to append to ArrayList!", .{});
+
+            self.buffer_deleter.append(self.current_frame, buffer.value);
+            self.buffer_freed_indexes.append(index) catch {
+                panic("Failed to append freed index", .{});
+            };
         }
     }
 
@@ -1170,13 +1165,14 @@ const DeviceResources = struct {
     }
 
     fn flushResources(self: *Self) void {
-        for (self.deleted_buffers[self.current_frame].items) |resource| {
-            resource.buffer.deinit();
-            self.freed_buffer_indexs.append(resource.index) catch {
-                panic("Failed to append freed index", .{});
-            };
-        }
-        self.deleted_buffers[self.current_frame].clearRetainingCapacity();
+        self.buffer_deleter.flush(self.current_frame);
+        // for (self.deleted_buffers[self.current_frame].items) |resource| {
+        //     resource.buffer.deinit();
+        //     self.buffer_freed_indexes.append(resource.index) catch {
+        //         panic("Failed to append freed index", .{});
+        //     };
+        // }
+        // self.deleted_buffers[self.current_frame].clearRetainingCapacity();
     }
 };
 

@@ -70,14 +70,54 @@ pub const Layer = struct {
         c.igNewFrame();
     }
 
-    pub fn draw(self: Self, command_buffer: vulkan.vk.CommandBuffer) void {
+    pub fn draw(self: Self, command_buffer: vulkan.vk.CommandBuffer) !void {
         var open = true;
         c.igShowDemoWindow(&open);
 
         c.igEndFrame();
         c.igRender();
 
+        var draw_data: *c.ImDrawData = c.igGetDrawData();
+
+        var size_x = draw_data.DisplaySize.x * draw_data.FramebufferScale.x;
+        var size_y = draw_data.DisplaySize.y * draw_data.FramebufferScale.y;
+        if (size_x <= 0 or size_y <= 0) {
+            return;
+        }
+
         vulkan.vkd.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
+        //TODO descriptor set
+
+        {
+            var push_data: [4]f32 = undefined;
+
+            //Scale
+            push_data[0] = 2.0 / draw_data.DisplaySize.x;
+            push_data[1] = 2.0 / draw_data.DisplaySize.y;
+
+            //Translate
+            push_data[0] = -1.0 - (draw_data.DisplayPos.x * push_data[0]);
+            push_data[1] = -1.0 - (draw_data.DisplayPos.y * push_data[1]);
+
+            vulkan.vkd.cmdPushConstants(command_buffer, self.device.resources.pipeline_layout, vulkan.ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
+
+            var i: u32 = 0;
+            while (i < draw_data.CmdListsCount) : (i += 1) {
+                var cmd_list: *c.ImDrawList = draw_data.CmdList[i];
+
+                var vertex_buffer_index = try self.device.resources.createBuffer(
+                    @sizeOf(@TypeOf(vertices)),
+                    .{ .vertex_buffer_bit = true },
+                    .{ .host_visible_bit = true },
+                );
+                defer self.device.resources.destoryBuffer(vertex_buffer_index);
+
+                var vertex_buffer: Buffer = undefined;
+                if (device.resources.getBuffer(vertex_buffer_index)) |buffer| {
+                    vertex_buffer = buffer;
+                }
+            }
+        }
     }
 };
 
