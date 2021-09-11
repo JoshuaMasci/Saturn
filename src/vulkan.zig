@@ -603,7 +603,7 @@ pub const Device = struct {
             .depth_clamp_enable = vk.FALSE,
             .rasterizer_discard_enable = vk.FALSE,
             .polygon_mode = .fill,
-            .cull_mode = .{ .back_bit = true },
+            .cull_mode = .{},
             .front_face = .clockwise,
             .depth_bias_enable = vk.FALSE,
             .depth_bias_constant_factor = 0,
@@ -623,12 +623,12 @@ pub const Device = struct {
         };
 
         const pcbas = vk.PipelineColorBlendAttachmentState{
-            .blend_enable = vk.FALSE,
-            .src_color_blend_factor = .one,
-            .dst_color_blend_factor = .zero,
+            .blend_enable = vk.TRUE,
+            .src_color_blend_factor = .src_alpha,
+            .dst_color_blend_factor = .one_minus_src_alpha,
             .color_blend_op = .add,
-            .src_alpha_blend_factor = .one,
-            .dst_alpha_blend_factor = .zero,
+            .src_alpha_blend_factor = .src_alpha,
+            .dst_alpha_blend_factor = .one_minus_src_alpha,
             .alpha_blend_op = .add,
             .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
         };
@@ -844,7 +844,7 @@ const Swapchain = struct {
 
     fn getSurfaceFormat(allocator: *Allocator, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.SurfaceFormatKHR {
         const preferred = vk.SurfaceFormatKHR{
-            .format = .b8g8r8a8_srgb,
+            .format = .b8g8r8a8_unorm,
             .color_space = .srgb_nonlinear_khr,
         };
 

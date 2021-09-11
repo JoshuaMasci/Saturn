@@ -25,7 +25,7 @@ pub const Layer = struct {
         io.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
         io.DeltaTime = 1.0 / 60.0;
 
-        c.igStyleColorsDark(null);
+        //c.igStyleColorsDark(null);
 
         var pixels: ?[*]u8 = undefined;
         var width: i32 = undefined;
@@ -67,6 +67,13 @@ pub const Layer = struct {
                 .y = mouse_pos[1],
             };
         }
+
+        self.io.MouseDown[0] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_LEFT);
+        self.io.MouseDown[1] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_RIGHT);
+        self.io.MouseDown[2] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_MIDDLE);
+        self.io.MouseDown[3] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_4);
+        self.io.MouseDown[4] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_5);
+
         c.igNewFrame();
     }
 
@@ -100,6 +107,9 @@ pub const Layer = struct {
             push_data[3] = -1.0 - (draw_data.DisplayPos.y * push_data[1]);
 
             vulkan.vkd.cmdPushConstants(command_buffer, self.device.resources.pipeline_layout, vulkan.ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
+
+            var clip_offset = draw_data.DisplayPos;
+            var clip_scale = draw_data.FramebufferScale;
 
             var i: u32 = 0;
             while (i < draw_data.CmdListsCount) : (i += 1) {
@@ -135,14 +145,41 @@ pub const Layer = struct {
                 while (cmd_i < cmd_list.CmdBuffer.Size) : (cmd_i += 1) {
                     var pcmd: c.ImDrawCmd = cmd_list.CmdBuffer.Data[cmd_i];
 
-                    vulkan.vkd.cmdDrawIndexed(
-                        command_buffer,
-                        pcmd.ElemCount,
-                        1,
-                        pcmd.IdxOffset,
-                        0,
-                        0,
-                    );
+                    if (pcmd.UserCallback) |callback| {
+                        //callback(cmd_list, pcmd);
+                    } else {
+                        var clip_rect: c.ImVec4 = undefined;
+                        clip_rect.x = (pcmd.ClipRect.x - clip_offset.x) * clip_scale.x;
+                        clip_rect.y = (pcmd.ClipRect.y - clip_offset.y) * clip_scale.y;
+                        clip_rect.z = (pcmd.ClipRect.z - clip_offset.x) * clip_scale.x;
+                        clip_rect.w = (pcmd.ClipRect.w - clip_offset.y) * clip_scale.y;
+
+                        if (clip_rect.x < draw_data.DisplaySize.x and clip_rect.y < draw_data.DisplaySize.y and clip_rect.z >= 0.0 and clip_rect.w >= 0.0) {
+                            // Negative offsets are illegal for Set Scissor
+                            if (clip_rect.x < 0.0) {
+                                clip_rect.x = 0.0;
+                            }
+                            if (clip_rect.y < 0.0) {
+                                clip_rect.y = 0.0;
+                            }
+
+                            var scissor_rect: vulkan.vk.Rect2D = undefined;
+                            scissor_rect.offset.x = @floatToInt(i32, clip_rect.x);
+                            scissor_rect.offset.y = @floatToInt(i32, clip_rect.y);
+                            scissor_rect.extent.width = @floatToInt(u32, clip_rect.z - clip_rect.x);
+                            scissor_rect.extent.height = @floatToInt(u32, clip_rect.w - clip_rect.y);
+                            vulkan.vkd.cmdSetScissor(command_buffer, 0, 1, @ptrCast([*]const vulkan.vk.Rect2D, &scissor_rect));
+
+                            vulkan.vkd.cmdDrawIndexed(
+                                command_buffer,
+                                pcmd.ElemCount,
+                                1,
+                                pcmd.IdxOffset,
+                                0,
+                                0,
+                            );
+                        }
+                    }
                 }
             }
         }
