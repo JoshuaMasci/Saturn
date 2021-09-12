@@ -27,7 +27,7 @@ pub fn main() !void {
     //glfw.setMouseCaptured(window, true);
     glfw.maximizeWindow(window);
 
-    var instance = try Instance.init(&globalAllocator.allocator, "Saturn Editor", makeVkVersion(0, 0, 0), window);
+    var instance = try Instance.init(&globalAllocator.allocator, "Saturn Editor", AppVersion(0, 0, 0, 0), window);
     defer instance.deinit();
 
     const DeviceIndex: u32 = 0;
@@ -67,11 +67,11 @@ pub fn main() !void {
 
         var result = try device.beginFrame();
         if (result) |command_buffer| {
-            vkd.cmdBindPipeline(command_buffer, .graphics, pipeline);
+            vk.vkd.cmdBindPipeline(command_buffer, .graphics, pipeline);
 
             const offset = [_]vk.DeviceSize{0};
-            vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]const vk.Buffer, &tri_buffer.handle), &offset);
-            vkd.cmdDraw(command_buffer, vertices.len, 1, 0, 0);
+            vk.vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]const vk.Buffer, &tri_buffer.handle), &offset);
+            vk.vkd.cmdDraw(command_buffer, vertices.len, 1, 0, 0);
 
             try imgui_layer.draw(command_buffer);
 

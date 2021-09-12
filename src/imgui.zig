@@ -92,7 +92,7 @@ pub const Layer = struct {
             return;
         }
 
-        vulkan.vkd.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
+        vulkan.vk.vkd.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
         //TODO descriptor set
 
         {
@@ -106,7 +106,7 @@ pub const Layer = struct {
             push_data[2] = -1.0 - (draw_data.DisplayPos.x * push_data[0]);
             push_data[3] = -1.0 - (draw_data.DisplayPos.y * push_data[1]);
 
-            vulkan.vkd.cmdPushConstants(command_buffer, self.device.resources.pipeline_layout, vulkan.ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
+            vulkan.vk.vkd.cmdPushConstants(command_buffer, self.device.resources.pipeline_layout, vulkan.ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
 
             var clip_offset = draw_data.DisplayPos;
             var clip_scale = draw_data.FramebufferScale;
@@ -132,13 +132,13 @@ pub const Layer = struct {
                 var vertex_buffer_res = self.device.resources.getBuffer(vertex_buffer_index);
                 if (vertex_buffer_res) |*vertex_buffer| {
                     var offset: u64 = 0;
-                    vulkan.vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]vulkan.vk.Buffer, &vertex_buffer.handle), @ptrCast([*]const u64, &offset));
+                    vulkan.vk.vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]vulkan.vk.Buffer, &vertex_buffer.handle), @ptrCast([*]const u64, &offset));
                 }
 
                 var index_buffer_res = self.device.resources.getBuffer(index_data_index);
                 if (index_buffer_res) |*index_buffer| {
                     var offset: u64 = 0;
-                    vulkan.vkd.cmdBindIndexBuffer(command_buffer, index_buffer.handle, 0, vulkan.vk.IndexType.uint16);
+                    vulkan.vk.vkd.cmdBindIndexBuffer(command_buffer, index_buffer.handle, 0, vulkan.vk.IndexType.uint16);
                 }
 
                 var cmd_i: u32 = 0;
@@ -168,9 +168,9 @@ pub const Layer = struct {
                             scissor_rect.offset.y = @floatToInt(i32, clip_rect.y);
                             scissor_rect.extent.width = @floatToInt(u32, clip_rect.z - clip_rect.x);
                             scissor_rect.extent.height = @floatToInt(u32, clip_rect.w - clip_rect.y);
-                            vulkan.vkd.cmdSetScissor(command_buffer, 0, 1, @ptrCast([*]const vulkan.vk.Rect2D, &scissor_rect));
+                            vulkan.vk.vkd.cmdSetScissor(command_buffer, 0, 1, @ptrCast([*]const vulkan.vk.Rect2D, &scissor_rect));
 
-                            vulkan.vkd.cmdDrawIndexed(
+                            vulkan.vk.vkd.cmdDrawIndexed(
                                 command_buffer,
                                 pcmd.ElemCount,
                                 1,
