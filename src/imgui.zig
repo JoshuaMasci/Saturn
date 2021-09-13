@@ -9,6 +9,23 @@ pub const c = @cImport({
     @cInclude("cimgui.h");
 });
 
+const ALL_SHADER_STAGES = vulkan.vk.ShaderStageFlags{
+    .vertex_bit = true,
+    .tessellation_control_bit = true,
+    .tessellation_evaluation_bit = true,
+    .geometry_bit = true,
+    .fragment_bit = true,
+    .compute_bit = true,
+    .task_bit_nv = true,
+    .mesh_bit_nv = true,
+    .raygen_bit_khr = true,
+    .any_hit_bit_khr = true,
+    .closest_hit_bit_khr = true,
+    .miss_bit_khr = true,
+    .intersection_bit_khr = true,
+    .callable_bit_khr = true,
+};
+
 pub const Layer = struct {
     const Self = @This();
 
@@ -73,11 +90,13 @@ pub const Layer = struct {
         self.io.MouseDown[2] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_MIDDLE);
         self.io.MouseDown[3] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_4);
         self.io.MouseDown[4] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_5);
+    }
 
+    pub fn beginFrame(self: Self) void {
         c.igNewFrame();
     }
 
-    pub fn draw(self: Self, command_buffer: vulkan.vk.CommandBuffer) !void {
+    pub fn endFrame(self: Self, command_buffer: vulkan.vk.CommandBuffer) !void {
         var open = true;
         c.igShowDemoWindow(&open);
 
@@ -106,7 +125,7 @@ pub const Layer = struct {
             push_data[2] = -1.0 - (draw_data.DisplayPos.x * push_data[0]);
             push_data[3] = -1.0 - (draw_data.DisplayPos.y * push_data[1]);
 
-            vulkan.vk.vkd.cmdPushConstants(command_buffer, self.device.resources.pipeline_layout, vulkan.ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
+            vulkan.vk.vkd.cmdPushConstants(command_buffer, self.device.resources.pipeline_layout, ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
 
             var clip_offset = draw_data.DisplayPos;
             var clip_scale = draw_data.FramebufferScale;

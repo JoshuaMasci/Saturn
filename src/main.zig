@@ -10,12 +10,12 @@ const imgui = @import("Imgui.zig");
 const resources = @import("resources");
 
 const panic = std.debug.panic;
-const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{});
+const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
 
 pub fn main() !void {
-    var globalAllocator: GeneralPurposeAllocator = GeneralPurposeAllocator{};
+    var global_allocator: GeneralPurposeAllocator = GeneralPurposeAllocator{};
     defer {
-        const leaked = globalAllocator.deinit();
+        const leaked = global_allocator.deinit();
         if (leaked) panic("Error: memory leaked", .{});
     }
 
@@ -27,7 +27,7 @@ pub fn main() !void {
     //glfw.setMouseCaptured(window, true);
     glfw.maximizeWindow(window);
 
-    var instance = try Instance.init(&globalAllocator.allocator, "Saturn Editor", AppVersion(0, 0, 0, 0), window);
+    var instance = try Instance.init(&global_allocator.allocator, "Saturn Editor", AppVersion(0, 0, 0, 0), window);
     defer instance.deinit();
 
     const DeviceIndex: u32 = 0;
@@ -73,7 +73,8 @@ pub fn main() !void {
             vk.vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]const vk.Buffer, &tri_buffer.handle), &offset);
             vk.vkd.cmdDraw(command_buffer, vertices.len, 1, 0, 0);
 
-            try imgui_layer.draw(command_buffer);
+            imgui_layer.beginFrame();
+            try imgui_layer.endFrame(command_buffer);
 
             try device.endFrame();
         }

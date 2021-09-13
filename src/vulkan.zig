@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const panic = std.debug.panic;
-usingnamespace @import("resource_deleter.zig");
 
 const glfw = @import("glfw_platform.zig");
 pub extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction;
@@ -13,26 +12,11 @@ const VK_API_VERSION_1_2 = vk.makeApiVersion(0, 1, 2, 0);
 pub const AppVersion = vk.makeApiVersion;
 
 usingnamespace @import("swapchain.zig");
+usingnamespace @import("device_resources.zig");
+pub usingnamespace @import("buffer.zig");
 
 const saturn_name = "saturn engine";
 const saturn_version = vk.makeApiVersion(0, 0, 0, 0);
-
-pub const ALL_SHADER_STAGES = vk.ShaderStageFlags{
-    .vertex_bit = true,
-    .tessellation_control_bit = true,
-    .tessellation_evaluation_bit = true,
-    .geometry_bit = true,
-    .fragment_bit = true,
-    .compute_bit = true,
-    .task_bit_nv = true,
-    .mesh_bit_nv = true,
-    .raygen_bit_khr = true,
-    .any_hit_bit_khr = true,
-    .closest_hit_bit_khr = true,
-    .miss_bit_khr = true,
-    .intersection_bit_khr = true,
-    .callable_bit_khr = true,
-};
 
 pub const MaxDeviceCount: u32 = 8;
 
@@ -176,25 +160,25 @@ pub const Instance = struct {
 const DeviceFrame = struct {
     const Self = @This();
     device: vk.Device,
+    frame_done_fence: vk.Fence,
     image_ready_semaphore: vk.Semaphore,
     present_semaphore: vk.Semaphore,
-    frame_done_fence: vk.Fence,
     command_buffer: vk.CommandBuffer,
 
     fn init(
         device: vk.Device,
         pool: vk.CommandPool,
     ) !Self {
+        var frame_done_fence = try vk.vkd.createFence(device, .{
+            .flags = .{ .signaled_bit = true },
+        }, null);
+
         var image_ready_semaphore = try vk.vkd.createSemaphore(device, .{
             .flags = .{},
         }, null);
 
         var present_semaphore = try vk.vkd.createSemaphore(device, .{
             .flags = .{},
-        }, null);
-
-        var frame_done_fence = try vk.vkd.createFence(device, .{
-            .flags = .{ .signaled_bit = true },
         }, null);
 
         var command_buffer: vk.CommandBuffer = undefined;
@@ -206,17 +190,17 @@ const DeviceFrame = struct {
 
         return Self{
             .device = device,
+            .frame_done_fence = frame_done_fence,
             .image_ready_semaphore = image_ready_semaphore,
             .present_semaphore = present_semaphore,
-            .frame_done_fence = frame_done_fence,
             .command_buffer = command_buffer,
         };
     }
 
     fn deinit(self: Self) void {
+        vk.vkd.destroyFence(self.device, self.frame_done_fence, null);
         vk.vkd.destroySemaphore(self.device, self.image_ready_semaphore, null);
         vk.vkd.destroySemaphore(self.device, self.present_semaphore, null);
-        vk.vkd.destroyFence(self.device, self.frame_done_fence, null);
     }
 };
 
@@ -296,6 +280,8 @@ pub const Device = struct {
             .{
                 .push_constant_size = 128,
                 .storage_buffer = 2048,
+                .sampled_image = 2048,
+                .sampler = 128,
             },
             frames_in_flight,
         );
@@ -593,273 +579,6 @@ pub const Device = struct {
 
     pub fn destroyPipeline(self: Self, pipeline: vk.Pipeline) void {
         vk.vkd.destroyPipeline(self.device, pipeline, null);
-    }
-};
-
-const ResourceBindingCounts = struct {
-    push_constant_size: u32,
-    storage_buffer: u32,
-    // var sampled_image,
-    // var storage_image,
-    // var sampler,
-    // var acceleration_structure,
-};
-
-const BufferResource = struct {
-    index: u32,
-    buffer: Buffer,
-};
-
-const DeviceResources = struct {
-    const Self = @This();
-
-    allocator: *Allocator,
-    pdevice: vk.PhysicalDevice,
-    device: vk.Device,
-    memory_properties: vk.PhysicalDeviceMemoryProperties,
-
-    descriptor_layout: vk.DescriptorSetLayout,
-    pipeline_layout: vk.PipelineLayout,
-
-    descriptor_pool: vk.DescriptorPool,
-    descriptor_set: vk.DescriptorSet,
-
-    //Non Descriptor Buffers
-    buffers: std.AutoHashMap(u32, Buffer),
-    buffer_index_next: u32 = 0,
-    buffer_freed_indexes: std.ArrayList(u32),
-
-    //Resource Deleters
-    current_frame: u32 = 0,
-    buffer_deleter: ResourceDeleter(Buffer),
-
-    pub fn init(allocator: *Allocator, pdevice: vk.PhysicalDevice, device: vk.Device, binding_counts: ResourceBindingCounts, frames_in_flight: u32) !Self {
-        var memory_properties = vk.vki.getPhysicalDeviceMemoryProperties(pdevice);
-
-        const bindings = [_]vk.DescriptorSetLayoutBinding{.{
-            .binding = 0,
-            .descriptor_type = .storage_buffer,
-            .descriptor_count = binding_counts.storage_buffer,
-            .stage_flags = ALL_SHADER_STAGES,
-            .p_immutable_samplers = null,
-        }};
-
-        var descriptor_layout = try vk.vkd.createDescriptorSetLayout(
-            device,
-            .{
-                .flags = .{},
-                .binding_count = bindings.len,
-                .p_bindings = @ptrCast([*]const vk.DescriptorSetLayoutBinding, &bindings[0]),
-            },
-            null,
-        );
-
-        var push_constant_range = vk.PushConstantRange{
-            .stage_flags = ALL_SHADER_STAGES,
-            .offset = 0,
-            .size = binding_counts.push_constant_size,
-        };
-
-        var pipeline_layout = try vk.vkd.createPipelineLayout(device, .{
-            .flags = .{},
-            .set_layout_count = 1,
-            .p_set_layouts = @ptrCast([*]const vk.DescriptorSetLayout, &descriptor_layout),
-            .push_constant_range_count = 1,
-            .p_push_constant_ranges = @ptrCast([*]const vk.PushConstantRange, &push_constant_range),
-        }, null);
-
-        const pools = [_]vk.DescriptorPoolSize{
-            .{
-                .type_ = .storage_buffer,
-                .descriptor_count = binding_counts.storage_buffer,
-            },
-        };
-
-        var descriptor_pool = try vk.vkd.createDescriptorPool(device, .{
-            .flags = .{},
-            .max_sets = 1,
-            .pool_size_count = pools.len,
-            .p_pool_sizes = @ptrCast([*]const vk.DescriptorPoolSize, &pools[0]),
-        }, null);
-
-        var descriptor_set: vk.DescriptorSet = .null_handle;
-        _ = try vk.vkd.allocateDescriptorSets(
-            device,
-            .{
-                .descriptor_pool = descriptor_pool,
-                .descriptor_set_count = 1,
-                .p_set_layouts = @ptrCast([*]const vk.DescriptorSetLayout, &descriptor_layout),
-            },
-            @ptrCast([*]vk.DescriptorSet, &descriptor_set),
-        );
-
-        var buffers = std.AutoHashMap(u32, Buffer).init(allocator);
-        var buffer_freed_indexes = std.ArrayList(u32).init(allocator);
-        var buffer_deleter = try ResourceDeleter(Buffer).init(allocator, frames_in_flight);
-
-        return Self{
-            .allocator = allocator,
-            .pdevice = pdevice,
-            .device = device,
-            .memory_properties = memory_properties,
-            .descriptor_layout = descriptor_layout,
-            .pipeline_layout = pipeline_layout,
-            .descriptor_pool = descriptor_pool,
-            .descriptor_set = descriptor_set,
-
-            .buffers = buffers,
-            .buffer_freed_indexes = buffer_freed_indexes,
-            .buffer_deleter = buffer_deleter,
-        };
-    }
-
-    fn deinit(self: *Self) void {
-        var iterator = self.buffers.iterator();
-        while (iterator.next()) |buffer| {
-            buffer.value_ptr.deinit();
-        }
-
-        vk.vkd.destroyDescriptorPool(self.device, self.descriptor_pool, null);
-        vk.vkd.destroyPipelineLayout(self.device, self.pipeline_layout, null);
-        vk.vkd.destroyDescriptorSetLayout(self.device, self.descriptor_layout, null);
-
-        self.buffers.deinit();
-        self.buffer_freed_indexes.deinit();
-        self.buffer_deleter.deinit();
-    }
-
-    //TODO use VMA or alternative
-    fn findMemoryTypeIndex(self: Self, memory_type_bits: u32, flags: vk.MemoryPropertyFlags) !u32 {
-        for (self.memory_properties.memory_types[0..self.memory_properties.memory_type_count]) |memory_type, i| {
-            if (memory_type_bits & (@as(u32, 1) << @truncate(u5, i)) != 0 and memory_type.property_flags.contains(flags)) {
-                return @truncate(u32, i);
-            }
-        }
-
-        return error.NoSuitableMemoryType;
-    }
-
-    pub fn allocate(self: Self, requirements: vk.MemoryRequirements, flags: vk.MemoryPropertyFlags) !vk.DeviceMemory {
-        return try vk.vkd.allocateMemory(self.device, .{
-            .allocation_size = requirements.size,
-            .memory_type_index = try self.findMemoryTypeIndex(requirements.memory_type_bits, flags),
-        }, null);
-    }
-
-    fn getBufferIndex(self: *Self) u32 {
-        var new_index: u32 = undefined;
-        if (self.buffer_freed_indexes.items.len > 0) {
-            new_index = self.buffer_freed_indexes.pop();
-        } else {
-            new_index = self.buffer_index_next;
-            self.buffer_index_next += 1;
-        }
-
-        return new_index;
-    }
-
-    pub fn createBuffer(
-        self: *Self,
-        size: u32,
-        usage: vk.BufferUsageFlags,
-        memory_type: vk.MemoryPropertyFlags,
-    ) !u32 {
-        var index = self.getBufferIndex();
-        try self.buffers.put(index, try Buffer.init(self, size, usage, memory_type));
-        return index;
-    }
-
-    pub fn createBufferFill(
-        self: *Self,
-        size: u32,
-        usage: vk.BufferUsageFlags,
-        memory_type: vk.MemoryPropertyFlags,
-        comptime DataType: type,
-        data: []const DataType,
-    ) !u32 {
-        var index = self.getBufferIndex();
-        var buffer = try Buffer.init(self, size, usage, memory_type);
-        try buffer.fill(DataType, data);
-        try self.buffers.put(index, buffer);
-        return index;
-    }
-
-    pub fn destoryBuffer(self: *Self, index: u32) void {
-        //TODO add it to a delete queue
-        var buffer_optional = self.buffers.fetchRemove(index);
-
-        if (buffer_optional) |buffer| {
-            self.buffer_deleter.append(self.current_frame, buffer.value);
-            self.buffer_freed_indexes.append(index) catch {
-                panic("Failed to append freed index", .{});
-            };
-        }
-    }
-
-    pub fn getBuffer(self: Self, index: u32) ?Buffer {
-        return self.buffers.get(index);
-    }
-
-    fn flushResources(self: *Self) void {
-        self.buffer_deleter.flush(self.current_frame);
-        // for (self.deleted_buffers[self.current_frame].items) |resource| {
-        //     resource.buffer.deinit();
-        //     self.buffer_freed_indexes.append(resource.index) catch {
-        //         panic("Failed to append freed index", .{});
-        //     };
-        // }
-        // self.deleted_buffers[self.current_frame].clearRetainingCapacity();
-    }
-};
-
-pub const Buffer = struct {
-    const Self = @This();
-
-    device: vk.Device,
-
-    handle: vk.Buffer,
-    memory: vk.DeviceMemory,
-
-    size: u32,
-    usage: vk.BufferUsageFlags,
-
-    pub fn init(device: *DeviceResources, size: u32, usage: vk.BufferUsageFlags, memory_type: vk.MemoryPropertyFlags) !Self {
-        const buffer = try vk.vkd.createBuffer(device.device, .{
-            .flags = .{},
-            .size = size,
-            .usage = usage,
-            .sharing_mode = .exclusive,
-            .queue_family_index_count = 0,
-            .p_queue_family_indices = undefined,
-        }, null);
-        const mem_reqs = vk.vkd.getBufferMemoryRequirements(device.device, buffer);
-        const memory = try device.allocate(mem_reqs, memory_type);
-        try vk.vkd.bindBufferMemory(device.device, buffer, memory, 0);
-
-        return Self{
-            .device = device.device,
-            .handle = buffer,
-            .memory = memory,
-            .size = size,
-            .usage = usage,
-        };
-    }
-
-    pub fn deinit(self: Self) void {
-        vk.vkd.destroyBuffer(self.device, self.handle, null);
-        vk.vkd.freeMemory(self.device, self.memory, null);
-    }
-
-    pub fn fill(
-        self: Self,
-        comptime DataType: type,
-        data: []const DataType,
-    ) !void {
-        //TODO staging buffers and bound checks
-        var gpu_memory = try vk.vkd.mapMemory(self.device, self.memory, 0, vk.WHOLE_SIZE, .{});
-        var gpu_slice = @ptrCast([*]DataType, @alignCast(@alignOf(DataType), gpu_memory));
-        defer vk.vkd.unmapMemory(self.device, self.memory);
-        std.mem.copy(DataType, gpu_slice[0..data.len], data);
     }
 };
 
