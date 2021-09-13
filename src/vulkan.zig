@@ -204,6 +204,18 @@ const DeviceFrame = struct {
     }
 };
 
+pub const PipelineSettings = struct {
+    cull_mode: vk.CullModeFlags = .{ .back_bit = true },
+
+    blend_enable: bool = false,
+    src_color_blend_factor: vk.BlendFactor = .one,
+    dst_color_blend_factor: vk.BlendFactor = .zero,
+    color_blend_op: vk.BlendOp = .add,
+    src_alpha_blend_factor: vk.BlendFactor = .one,
+    dst_alpha_blend_factor: vk.BlendFactor = .zero,
+    alpha_blend_op: vk.BlendOp = .add,
+};
+
 pub const Device = struct {
     const Self = @This();
 
@@ -440,6 +452,7 @@ pub const Device = struct {
         frag_code: []align(@alignOf(u32)) const u8,
         input_binding: *const vk.VertexInputBindingDescription,
         input_attributes: []const vk.VertexInputAttributeDescription,
+        settings: *const PipelineSettings,
     ) !vk.Pipeline {
         const vert = try vk.vkd.createShaderModule(self.device, .{
             .flags = .{},
@@ -499,8 +512,8 @@ pub const Device = struct {
             .depth_clamp_enable = vk.FALSE,
             .rasterizer_discard_enable = vk.FALSE,
             .polygon_mode = .fill,
-            .cull_mode = .{},
-            .front_face = .clockwise,
+            .cull_mode = settings.cull_mode,
+            .front_face = .counter_clockwise,
             .depth_bias_enable = vk.FALSE,
             .depth_bias_constant_factor = 0,
             .depth_bias_clamp = 0,
@@ -518,14 +531,19 @@ pub const Device = struct {
             .alpha_to_one_enable = vk.FALSE,
         };
 
+        var blend_enable: vk.Bool32 = vk.FALSE;
+        if (settings.blend_enable) {
+            blend_enable = vk.TRUE;
+        }
+
         const pcbas = vk.PipelineColorBlendAttachmentState{
             .blend_enable = vk.TRUE,
-            .src_color_blend_factor = .src_alpha,
-            .dst_color_blend_factor = .one_minus_src_alpha,
-            .color_blend_op = .add,
-            .src_alpha_blend_factor = .src_alpha,
-            .dst_alpha_blend_factor = .one_minus_src_alpha,
-            .alpha_blend_op = .add,
+            .src_color_blend_factor = settings.src_color_blend_factor,
+            .dst_color_blend_factor = settings.dst_color_blend_factor,
+            .color_blend_op = settings.color_blend_op,
+            .src_alpha_blend_factor = settings.src_alpha_blend_factor,
+            .dst_alpha_blend_factor = settings.dst_alpha_blend_factor,
+            .alpha_blend_op = settings.alpha_blend_op,
             .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
         };
 
@@ -545,6 +563,7 @@ pub const Device = struct {
             .p_dynamic_states = &dynstate,
         };
 
+        //TODO: depth testing
         const gpci = vk.GraphicsPipelineCreateInfo{
             .flags = .{},
             .stage_count = 2,

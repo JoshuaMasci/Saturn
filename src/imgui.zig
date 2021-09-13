@@ -55,6 +55,16 @@ pub const Layer = struct {
             &resources.imgui_frag,
             &ImguiVertex.binding_description,
             &ImguiVertex.attribute_description,
+            &.{
+                .cull_mode = .{},
+                .blend_enable = true,
+                .src_color_blend_factor = .src_alpha,
+                .dst_color_blend_factor = .one_minus_src_alpha,
+                .color_blend_op = .add,
+                .src_alpha_blend_factor = .src_alpha,
+                .dst_alpha_blend_factor = .one_minus_src_alpha,
+                .alpha_blend_op = .add,
+            },
         );
 
         return Self{

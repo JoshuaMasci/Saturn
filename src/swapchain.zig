@@ -174,13 +174,14 @@ pub const Swapchain = struct {
 
         _ = try vk.vki.getPhysicalDeviceSurfaceFormatsKHR(pdevice, surface, &count, surface_formats.ptr);
 
-        for (surface_formats) |sfmt| {
-            if (std.meta.eql(sfmt, preferred)) {
+        for (surface_formats) |surface_format| {
+            if (preferred.format == surface_format.format and preferred.color_space == surface_format.color_space) {
                 return preferred;
             }
         }
 
-        return surface_formats[0]; // There must always be at least one supported surface format
+        // There must always be at least one supported surface format
+        return surface_formats[0];
     }
 
     fn getPresentMode(allocator: *Allocator, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.PresentModeKHR {

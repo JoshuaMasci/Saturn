@@ -41,6 +41,7 @@ pub fn main() !void {
         &resources.tri_frag,
         &Vertex.binding_description,
         &Vertex.attribute_description,
+        &.{},
     );
     defer device.destroyPipeline(pipeline);
 
@@ -113,6 +114,6 @@ const Vertex = struct {
 
 pub const vertices = [_]Vertex{
     .{ .pos = .{ 0, -0.75 }, .color = .{ 1, 0, 0 } },
-    .{ .pos = .{ 0.75, 0.75 }, .color = .{ 0, 1, 0 } },
-    .{ .pos = .{ -0.75, 0.75 }, .color = .{ 0, 0, 1 } },
+    .{ .pos = .{ -0.75, 0.75 }, .color = .{ 0, 1, 0 } },
+    .{ .pos = .{ 0.75, 0.75 }, .color = .{ 0, 0, 1 } },
 };
