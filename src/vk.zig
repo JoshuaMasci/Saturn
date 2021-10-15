@@ -27,6 +27,7 @@ pub const InstanceDispatch = InstanceWrapper(.{
     .DestroyDebugUtilsMessengerEXT,
 });
 
+//TODO Split wrappers by extension maybe?
 pub const DeviceDispatch = DeviceWrapper(.{
     .DestroyDevice,
     .GetDeviceQueue,
@@ -88,4 +89,7 @@ pub const DeviceDispatch = DeviceWrapper(.{
     .CmdBindDescriptorSets,
     .CmdPushConstants,
     .CmdDrawIndexed,
+    .CreateImage,
+    .DestroyImage,
+    .GetImageMemoryRequirements,
 });

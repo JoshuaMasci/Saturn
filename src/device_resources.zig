@@ -7,6 +7,7 @@ const vk = @import("vk.zig");
 usingnamespace @import("resource_deleter.zig");
 usingnamespace @import("id_pool.zig");
 usingnamespace @import("buffer.zig");
+usingnamespace @import("texture.zig");
 
 const ALL_SHADER_STAGES = vk.ShaderStageFlags{
     .vertex_bit = true,
@@ -48,13 +49,19 @@ pub const DeviceResources = struct {
     descriptor_pool: vk.DescriptorPool,
     descriptor_set: vk.DescriptorSet,
 
+    current_frame: u32 = 0,
+
     //Buffers
     buffers: std.AutoHashMap(u32, Buffer),
     buffer_id_pool: IdPool,
+    buffer_deleter: ResourceDeleter(Buffer),
+
+    //Textures
+    textures: std.AutoHashMap(u32, Texture),
+    texture_id_pool: IdPool,
+    texture_deleter: ResourceDeleter(Texture),
 
     //Resource Deleters
-    current_frame: u32 = 0,
-    buffer_deleter: ResourceDeleter(Buffer),
 
     pub fn init(allocator: *Allocator, pdevice: vk.PhysicalDevice, device: vk.Device, binding_counts: ResourceBindingCounts, frames_in_flight: u32) !Self {
         var memory_properties = vk.vki.getPhysicalDeviceMemoryProperties(pdevice);
@@ -117,6 +124,7 @@ pub const DeviceResources = struct {
         );
 
         var buffer_deleter = try ResourceDeleter(Buffer).init(allocator, frames_in_flight);
+        var texture_deleter = try ResourceDeleter(Texture).init(allocator, frames_in_flight);
 
         return Self{
             .allocator = allocator,
@@ -131,6 +139,10 @@ pub const DeviceResources = struct {
             .buffers = std.AutoHashMap(u32, Buffer).init(allocator),
             .buffer_id_pool = IdPool.init(allocator, 0),
             .buffer_deleter = buffer_deleter,
+
+            .textures = std.AutoHashMap(u32, Texture).init(allocator),
+            .texture_id_pool = IdPool.init(allocator, 0),
+            .texture_deleter = texture_deleter,
         };
     }
 
@@ -147,6 +159,10 @@ pub const DeviceResources = struct {
         self.buffers.deinit();
         self.buffer_id_pool.deinit();
         self.buffer_deleter.deinit();
+
+        self.textures.deinit();
+        self.texture_id_pool.deinit();
+        self.texture_deleter.deinit();
     }
 
     //TODO use VMA or alternative

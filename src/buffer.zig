@@ -18,14 +18,18 @@ pub const Buffer = struct {
     usage: vk.BufferUsageFlags,
 
     pub fn init(device: *DeviceResources, size: u32, usage: vk.BufferUsageFlags, memory_type: vk.MemoryPropertyFlags) !Self {
-        const buffer = try vk.vkd.createBuffer(device.device, .{
-            .flags = .{},
-            .size = size,
-            .usage = usage,
-            .sharing_mode = .exclusive,
-            .queue_family_index_count = 0,
-            .p_queue_family_indices = undefined,
-        }, null);
+        const buffer = try vk.vkd.createBuffer(
+            device.device,
+            .{
+                .flags = .{},
+                .size = size,
+                .usage = usage,
+                .sharing_mode = .exclusive,
+                .queue_family_index_count = 0,
+                .p_queue_family_indices = undefined,
+            },
+            null,
+        );
         const mem_reqs = vk.vkd.getBufferMemoryRequirements(device.device, buffer);
         const memory = try device.allocate(mem_reqs, memory_type);
         try vk.vkd.bindBufferMemory(device.device, buffer, memory, 0);
