@@ -12,6 +12,8 @@ const resources = @import("resources");
 const panic = std.debug.panic;
 const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
 
+const math = @import("math/vector3.zig");
+
 pub fn main() !void {
     var global_allocator: GeneralPurposeAllocator = GeneralPurposeAllocator{};
     defer {
@@ -62,7 +64,7 @@ pub fn main() !void {
     var imgui_layer = try imgui.Layer.init(device);
     defer imgui_layer.deinit();
 
-    while (glfw.shouldCloseWindow(window)) {
+    while (glfw.shouldCloseWindow(window) and false) {
         glfw.update();
         imgui_layer.update(window);
 
