@@ -1,8 +1,8 @@
 const std = @import("std");
 
-const glfw = @import("glfw_platform.zig");
+const glfw = @import("glfw/platform.zig");
 
-const vulkan = @import("vulkan.zig");
+const vulkan = @import("vulkan/vulkan.zig");
 usingnamespace vulkan;
 
 const imgui = @import("Imgui.zig");
@@ -11,8 +11,6 @@ const resources = @import("resources");
 
 const panic = std.debug.panic;
 const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
-
-const math = @import("math/math.zig");
 
 pub fn main() !void {
     var global_allocator: GeneralPurposeAllocator = GeneralPurposeAllocator{};

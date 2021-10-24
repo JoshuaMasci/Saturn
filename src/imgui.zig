@@ -1,6 +1,6 @@
 const std = @import("std");
-const glfw = @import("glfw_platform.zig");
-const vulkan = @import("vulkan.zig");
+const glfw = @import("glfw/platform.zig");
+const vulkan = @import("vulkan/vulkan.zig");
 
 const resources = @import("resources");
 

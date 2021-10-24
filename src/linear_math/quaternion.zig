@@ -1,5 +1,4 @@
 const std = @import("std");
-
 const vec3 = @import("vector3.zig");
 
 pub fn quaternion(comptime T: type) type {
