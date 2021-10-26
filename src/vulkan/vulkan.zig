@@ -18,8 +18,6 @@ pub usingnamespace @import("buffer.zig");
 const saturn_name = "saturn engine";
 const saturn_version = vk.makeApiVersion(0, 0, 0, 0);
 
-pub const MaxDeviceCount: u32 = 8;
-
 pub const Instance = struct {
     const Self = @This();
 
@@ -29,7 +27,6 @@ pub const Instance = struct {
     surface: vk.SurfaceKHR,
 
     pdevices: []vk.PhysicalDevice,
-    devices: []?Device,
 
     pub fn init(
         allocator: *Allocator,
@@ -88,38 +85,23 @@ pub const Instance = struct {
         var pdevices: []vk.PhysicalDevice = try allocator.alloc(vk.PhysicalDevice, device_count);
         _ = try vk.vki.enumeratePhysicalDevices(instance, &device_count, pdevices.ptr);
 
-        var devices = try allocator.alloc(?Device, device_count);
-        for (devices) |*entry| {
-            entry.* = null;
-        }
-
         return Self{
             .allocator = allocator,
             .instance = instance,
             .debug_callback = debug_callback,
             .surface = surface,
             .pdevices = pdevices,
-            .devices = devices,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.devices) |*option_device| {
-            if (option_device.*) |*device| {
-                device.deinit();
-            }
-        }
-
         vk.vki.destroySurfaceKHR(self.instance, self.surface, null);
-
-        self.allocator.free(self.devices);
         self.allocator.free(self.pdevices);
-
         self.debug_callback.deinit();
         vk.vki.destroyInstance(self.instance, null);
     }
 
-    fn createSurface(instance: vk.Instance, windowId: glfw.WindowId) !vk.SurfaceKHR {
+    pub fn createSurface(instance: vk.Instance, windowId: glfw.WindowId) !vk.SurfaceKHR {
         var surface: vk.SurfaceKHR = undefined;
         if (glfwCreateWindowSurface(instance, glfw.getWindowHandle(windowId), null, &surface) != .success) {
             return error.SurfaceCreationFailed;
@@ -127,8 +109,7 @@ pub const Instance = struct {
         return surface;
     }
 
-    pub fn createDevice(self: *Self, device_index: u32, frames_in_flight: u32) !void {
-
+    pub fn createDevice(self: *Self, device_index: u32, frames_in_flight: u32) !Device {
         //TODO pick queues
         var pdevice = self.pdevices[device_index];
         var graphics_queue_index: u32 = 0;
@@ -138,22 +119,7 @@ pub const Instance = struct {
             return error.NoDeviceSurfaceSupport;
         }
 
-        self.devices[device_index] = try Device.init(self.allocator, pdevice, self.surface, graphics_queue_index, frames_in_flight);
-    }
-
-    pub fn destoryDevice(self: *Self, device_index: u32) void {
-        if (self.devices[device_index]) |*device| {
-            device.deinit();
-        }
-        self.devices[device_index] = null;
-    }
-
-    pub fn getDevice(self: *Self, device_index: u32) !*Device {
-        if (self.devices[device_index]) |*device| {
-            return device;
-        } else {
-            return error.DeviceNotInitialized;
-        }
+        return try Device.init(self.allocator, pdevice, self.surface, graphics_queue_index, frames_in_flight);
     }
 };
 
@@ -312,7 +278,7 @@ pub const Device = struct {
         };
     }
 
-    fn deinit(self: *Self) void {
+    pub fn deinit(self: *Self) void {
         self.waitIdle();
 
         self.resources.deinit();

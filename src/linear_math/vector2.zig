@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn vector2(comptime T: type) type {
+pub fn Vector2Fn(comptime T: type) type {
     return struct {
         const Self = @This();
         const type_info = @typeInfo(T);

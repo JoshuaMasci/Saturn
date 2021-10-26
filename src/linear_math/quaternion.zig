@@ -1,7 +1,7 @@
 const std = @import("std");
-const vec3 = @import("vector3.zig");
+usingnamespace @import("vector3.zig");
 
-pub fn quaternion(comptime T: type) type {
+pub fn QuaternionFn(comptime T: type) type {
     if (@typeInfo(T) != .Float) {
         @compileError("Quaternion not implemented for " ++ @typeName(T));
     }
@@ -18,9 +18,9 @@ pub fn quaternion(comptime T: type) type {
 
         pub const identity = Self{ .data = [_]T{ 1, 0, 0, 0 } };
 
-        pub fn axis_angle(axis: vec3.vector3(T), angle_rad: T) Self {
+        pub fn axis_angle(axis: Vector3Fn(T), angle_rad: T) Self {
             var angle_2 = angle_rad * 0.5;
-            var sin = vec3.vector3(T).new_value(@sin(angle_2));
+            var sin = Vector3Fn(T).new_value(@sin(angle_2));
             var values = axis.normalize().mul(sin).data;
 
             return Self{
