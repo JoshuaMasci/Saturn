@@ -62,7 +62,7 @@ pub const Device = struct {
     }
 
     pub fn waitIdle(self: Self) void {
-        vk.vkd.deviceWaitIdle(self.handle) catch panic("Failed to deviceWaitIdle", .{});
+        self.dispatch.deviceWaitIdle(self.handle) catch panic("Failed to deviceWaitIdle", .{});
     }
 };
 

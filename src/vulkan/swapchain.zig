@@ -52,22 +52,22 @@ pub const Swapchain = struct {
 
     pub fn deinit(self: Self) void {
         //Wait for all frames to finish before deinitializing swapchain
-        self.device.disptach.deviceWaitIdle(self.device.handle) catch {};
+        self.device.dispatch.deviceWaitIdle(self.device.handle) catch {};
 
-        self.device.disptach.destroySwapchainKHR(self.device.handle, self.handle, null);
+        self.device.dispatch.destroySwapchainKHR(self.device.handle, self.handle, null);
         self.images.deinit();
 
         for (self.image_views.items) |view| {
-            self.device.disptach.destroyImageView(self.device.handle, view, null);
+            self.device.dispatch.destroyImageView(self.device.handle, view, null);
         }
         self.image_views.deinit();
 
         for (self.framebuffers.items) |framebuffer| {
-            self.device.disptach.destroyFramebuffer(self.device.handle, framebuffer, null);
+            self.device.dispatch.destroyFramebuffer(self.device.handle, framebuffer, null);
         }
         self.framebuffers.deinit();
 
-        self.device.disptach.destroyRenderPass(self.device.handle, self.render_pass, null);
+        self.device.dispatch.destroyRenderPass(self.device.handle, self.render_pass, null);
     }
 
     pub fn getNextImage(self: *Self, image_ready: vk.Semaphore) ?u32 {
@@ -81,8 +81,8 @@ pub const Swapchain = struct {
         }
 
         var image_index: u32 = undefined;
-        const result_error = self.device.disptach.acquireNextImageKHR(
-            self.device,
+        const result_error = self.device.dispatch.acquireNextImageKHR(
+            self.device.handle,
             self.handle,
             std.math.maxInt(u64),
             image_ready,
@@ -136,16 +136,16 @@ pub const Swapchain = struct {
             .old_swapchain = self.handle,
             .flags = .{},
         };
-        var swapchain = try self.device.disptach.createSwapchainKHR(self.device.handle, create_info, null);
+        var swapchain = try self.device.dispatch.createSwapchainKHR(self.device.handle, create_info, null);
 
         var count: u32 = undefined;
-        _ = try self.device.disptach.getSwapchainImagesKHR(self.device.handle, swapchain, &count, null);
+        _ = try self.device.dispatch.getSwapchainImagesKHR(self.device.handle, swapchain, &count, null);
         var images = try std.ArrayList(vk.Image).initCapacity(self.allocator, count);
         var i: usize = 0;
         while (i < count) : (i += 1) {
             try images.append(.null_handle);
         }
-        _ = try self.device.disptach.getSwapchainImagesKHR(self.device.handle, swapchain, &count, @ptrCast([*]vk.Image, images.items));
+        _ = try self.device.dispatch.getSwapchainImagesKHR(self.device.handle, swapchain, &count, @ptrCast([*]vk.Image, images.items));
 
         var image_views = try createImageViews(self.allocator, self.device, surface_format.format, &images);
         var render_pass = try createRenderPass(self.device, surface_format.format);
@@ -222,7 +222,7 @@ pub const Swapchain = struct {
     fn createImageViews(allocator: *Allocator, device: Device, format: vk.Format, images: *std.ArrayList(vk.Image)) !std.ArrayList(vk.ImageView) {
         var image_views = try std.ArrayList(vk.ImageView).initCapacity(allocator, images.items.len);
         for (images.items) |image| {
-            try image_views.append(try device.disptach.createImageView(device, .{
+            try image_views.append(try device.dispatch.createImageView(device.handle, .{
                 .flags = .{},
                 .image = image,
                 .view_type = .@"2d",
@@ -271,7 +271,7 @@ pub const Swapchain = struct {
             .p_preserve_attachments = undefined,
         };
 
-        return try device.disptach.createRenderPass(device, .{
+        return try device.dispatch.createRenderPass(device.handle, .{
             .flags = .{},
             .attachment_count = 1,
             .p_attachments = @ptrCast([*]const vk.AttachmentDescription, &color_attachment),
@@ -285,7 +285,7 @@ pub const Swapchain = struct {
     fn createFramebuffers(allocator: *Allocator, device: Device, render_pass: vk.RenderPass, format: vk.Format, extent: vk.Extent2D, image_views: *std.ArrayList(vk.ImageView)) !std.ArrayList(vk.Framebuffer) {
         var framebuffers = try std.ArrayList(vk.Framebuffer).initCapacity(allocator, image_views.items.len);
         for (image_views.items) |image_view| {
-            try framebuffers.append(try device.disptach.createFramebuffer(device, .{
+            try framebuffers.append(try device.dispatch.createFramebuffer(device.handle, .{
                 .flags = .{},
                 .render_pass = render_pass,
                 .attachment_count = 1,

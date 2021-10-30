@@ -11,6 +11,8 @@ usingnamespace @import("vulkan/swapchain.zig");
 const imgui = @import("Imgui.zig");
 const resources = @import("resources");
 
+const GPU_TIMEOUT: u64 = std.math.maxInt(u64);
+
 const ColorVertex = struct {
     const Self = @This();
 
@@ -52,6 +54,8 @@ pub const Renderer = struct {
     instance: Instance,
     device: Device,
     surface: vk.SurfaceKHR,
+    swapchain: Swapchain,
+    swapchain_index: u32,
 
     graphics_queue: vk.Queue,
     graphics_command_pool: vk.CommandPool,
@@ -61,10 +65,18 @@ pub const Renderer = struct {
 
     pub fn init(allocator: *Allocator, window: *glfw.c.GLFWwindow) !Self {
         var instance = try Instance.init(allocator, "Saturn Editor", AppVersion(0, 0, 0, 0));
+
         var selected_device = instance.pdevices[0];
         var selected_queue_index: u32 = 0;
         var device = try Device.init(allocator, instance.dispatch, selected_device, selected_queue_index);
         var surface = try createSurface(instance.handle, window);
+
+        var supports_surface = try instance.dispatch.getPhysicalDeviceSurfaceSupportKHR(selected_device, selected_queue_index, surface);
+        if (supports_surface == 0) {
+            return error.NoDeviceSurfaceSupport;
+        }
+
+        var swapchain = try Swapchain.init(allocator, instance.dispatch, device, selected_device, surface);
 
         var graphics_queue = device.dispatch.getDeviceQueue(device.handle, selected_queue_index, 0);
         var graphics_command_pool = try device.dispatch.createCommandPool(
@@ -83,6 +95,8 @@ pub const Renderer = struct {
             .instance = instance,
             .device = device,
             .surface = surface,
+            .swapchain = swapchain,
+            .swapchain_index = 0,
             .graphics_queue = graphics_queue,
             .graphics_command_pool = graphics_command_pool,
             .device_frame = device_frame,
@@ -90,14 +104,120 @@ pub const Renderer = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.device.waitIdle();
         self.device_frame.deinit();
+        self.swapchain.deinit();
         self.device.dispatch.destroyCommandPool(self.device.handle, self.graphics_command_pool, null);
         self.device.deinit();
         self.instance.dispatch.destroySurfaceKHR(self.instance.handle, self.surface, null);
         self.instance.deinit();
     }
 
-    pub fn render(self: *Self) void {}
+    pub fn render(self: *Self) !void {
+        var begin_result = try self.beginFrame();
+        if (begin_result) |command_buffer| {
+            try self.endFrame();
+        }
+    }
+
+    fn beginFrame(self: *Self) !?vk.CommandBuffer {
+        var current_frame = &self.device_frame;
+        var fence = @ptrCast([*]const vk.Fence, &current_frame.frame_done_fence);
+        _ = try self.device.dispatch.waitForFences(self.device.handle, 1, fence, 1, GPU_TIMEOUT);
+
+        if (self.swapchain.getNextImage(current_frame.image_ready_semaphore)) |index| {
+            self.swapchain_index = index;
+        } else {
+            //Swapchain invlaid don't render this frame
+            return null;
+        }
+
+        _ = try self.device.dispatch.resetFences(self.device.handle, 1, fence);
+
+        try self.device.dispatch.beginCommandBuffer(current_frame.command_buffer, .{
+            .flags = .{},
+            .p_inheritance_info = null,
+        });
+
+        const extent = self.swapchain.extent;
+
+        const clear = vk.ClearValue{
+            .color = .{ .float_32 = .{ 0, 0, 0, 1 } },
+        };
+
+        const viewport = vk.Viewport{
+            .x = 0,
+            .y = 0,
+            .width = @intToFloat(f32, extent.width),
+            .height = @intToFloat(f32, extent.height),
+            .min_depth = 0,
+            .max_depth = 1,
+        };
+
+        const scissor = vk.Rect2D{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = extent,
+        };
+
+        self.device.dispatch.cmdSetViewport(current_frame.command_buffer, 0, 1, @ptrCast([*]const vk.Viewport, &viewport));
+        self.device.dispatch.cmdSetScissor(current_frame.command_buffer, 0, 1, @ptrCast([*]const vk.Rect2D, &scissor));
+
+        self.device.dispatch.cmdBeginRenderPass(
+            current_frame.command_buffer,
+            .{
+                .render_pass = self.swapchain.render_pass,
+                .framebuffer = self.swapchain.framebuffers.items[self.swapchain_index],
+                .render_area = .{
+                    .offset = .{ .x = 0, .y = 0 },
+                    .extent = extent,
+                },
+                .clear_value_count = 1,
+                .p_clear_values = @ptrCast([*]const vk.ClearValue, &clear),
+            },
+            .@"inline",
+        );
+
+        return current_frame.command_buffer;
+    }
+
+    fn endFrame(self: *Self) !void {
+        var current_frame = &self.device_frame;
+
+        self.device.dispatch.cmdEndRenderPass(current_frame.command_buffer);
+
+        try self.device.dispatch.endCommandBuffer(current_frame.command_buffer);
+
+        var wait_stages = vk.PipelineStageFlags{
+            .color_attachment_output_bit = true,
+        };
+
+        const submitInfo = vk.SubmitInfo{
+            .wait_semaphore_count = 1,
+            .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.image_ready_semaphore),
+            .p_wait_dst_stage_mask = @ptrCast([*]const vk.PipelineStageFlags, &wait_stages),
+            .command_buffer_count = 1,
+            .p_command_buffers = @ptrCast([*]const vk.CommandBuffer, &current_frame.command_buffer),
+            .signal_semaphore_count = 1,
+            .p_signal_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.present_semaphore),
+        };
+        try self.device.dispatch.queueSubmit(self.graphics_queue, 1, @ptrCast([*]const vk.SubmitInfo, &submitInfo), current_frame.frame_done_fence);
+
+        _ = self.device.dispatch.queuePresentKHR(self.graphics_queue, .{
+            .wait_semaphore_count = 1,
+            .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.present_semaphore),
+            .swapchain_count = 1,
+            .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &self.swapchain.handle),
+            .p_image_indices = @ptrCast([*]const u32, &self.swapchain_index),
+            .p_results = null,
+        }) catch |err| {
+            switch (err) {
+                error.OutOfDateKHR => {
+                    self.swapchain.invalid = true;
+                },
+                else => return err,
+            }
+        };
+    }
 };
 
 fn createSurface(instance: vk.Instance, window: *glfw.c.GLFWwindow) !vk.SurfaceKHR {
