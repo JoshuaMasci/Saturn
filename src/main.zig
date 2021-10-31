@@ -26,6 +26,7 @@ pub fn main() !void {
 
     while (glfw.shouldCloseWindow(window)) {
         glfw.update();
+        vulkan_renderer.update(window);
         try vulkan_renderer.render();
     }
 }

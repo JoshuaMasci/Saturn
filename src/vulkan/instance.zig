@@ -10,7 +10,7 @@ const glfw = @import("../glfw/platform.zig");
 extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction;
 extern fn glfwGetPhysicalDevicePresentationSupport(instance: vk.Instance, pdev: vk.PhysicalDevice, queuefamily: u32) c_int;
 
-const saturn_name = "saturn engine";
+const saturn_name = "Saturn Engine";
 const saturn_version = vk.makeApiVersion(0, 0, 0, 0);
 
 pub const Instance = struct {

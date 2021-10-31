@@ -63,6 +63,8 @@ pub const Renderer = struct {
     //TODO: multiple frames in flight
     device_frame: DeviceFrame,
 
+    imgui_layer: imgui.Layer,
+
     pub fn init(allocator: *Allocator, window: *glfw.c.GLFWwindow) !Self {
         var instance = try Instance.init(allocator, "Saturn Editor", AppVersion(0, 0, 0, 0));
 
@@ -90,6 +92,8 @@ pub const Renderer = struct {
 
         var device_frame = try DeviceFrame.init(device, graphics_command_pool);
 
+        var imgui_layer = try imgui.Layer.init(allocator, device, swapchain.render_pass);
+
         return Self{
             .allocator = allocator,
             .instance = instance,
@@ -100,11 +104,13 @@ pub const Renderer = struct {
             .graphics_queue = graphics_queue,
             .graphics_command_pool = graphics_command_pool,
             .device_frame = device_frame,
+            .imgui_layer = imgui_layer,
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.device.waitIdle();
+        self.imgui_layer.deinit();
         self.device_frame.deinit();
         self.swapchain.deinit();
         self.device.dispatch.destroyCommandPool(self.device.handle, self.graphics_command_pool, null);
@@ -113,9 +119,15 @@ pub const Renderer = struct {
         self.instance.deinit();
     }
 
+    pub fn update(self: Self, window: glfw.WindowId) void {
+        self.imgui_layer.update(window);
+    }
+
     pub fn render(self: *Self) !void {
         var begin_result = try self.beginFrame();
         if (begin_result) |command_buffer| {
+            self.imgui_layer.beginFrame();
+            try self.imgui_layer.endFrame(command_buffer);
             try self.endFrame();
         }
     }

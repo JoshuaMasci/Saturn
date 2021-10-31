@@ -1,6 +1,9 @@
-const std = @import("std");
+usingnamespace @import("core.zig");
 const glfw = @import("glfw/platform.zig");
-const vulkan = @import("vulkan/vulkan.zig");
+
+const vk = @import("vulkan");
+usingnamespace @import("vulkan/device.zig");
+usingnamespace @import("vulkan/buffer.zig");
 
 const resources = @import("resources");
 
@@ -9,7 +12,7 @@ pub const c = @cImport({
     @cInclude("cimgui.h");
 });
 
-const ALL_SHADER_STAGES = vulkan.vk.ShaderStageFlags{
+const ALL_SHADER_STAGES = vk.ShaderStageFlags{
     .vertex_bit = true,
     .tessellation_control_bit = true,
     .tessellation_evaluation_bit = true,
@@ -29,20 +32,23 @@ const ALL_SHADER_STAGES = vulkan.vk.ShaderStageFlags{
 pub const Layer = struct {
     const Self = @This();
 
+    allocator: *Allocator,
     context: *c.ImGuiContext,
     io: *c.ImGuiIO,
 
-    device: *vulkan.Device,
-    pipeline: vulkan.vk.Pipeline,
+    device: Device,
+    pipeline_layout: vk.PipelineLayout,
+    pipeline: vk.Pipeline,
 
-    pub fn init(device: *vulkan.Device) !Self {
+    freed_buffers: std.ArrayList(Buffer),
+
+    pub fn init(allocator: *Allocator, device: Device, render_pass: vk.RenderPass) !Self {
         var context = c.igCreateContext(null);
 
         var io: *c.ImGuiIO = c.igGetIO();
         io.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
         io.DeltaTime = 1.0 / 60.0;
-
-        //c.igStyleColorsDark(null);
+        c.igStyleColorsDark(null);
 
         var pixels: ?[*]u8 = undefined;
         var width: i32 = undefined;
@@ -50,7 +56,23 @@ pub const Layer = struct {
         var bytes: i32 = 0;
         c.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, @ptrCast([*c][*c]u8, &pixels), &width, &height, &bytes);
 
+        var push_constant_range = vk.PushConstantRange{
+            .stage_flags = ALL_SHADER_STAGES,
+            .offset = 0,
+            .size = 128,
+        };
+
+        var pipeline_layout = try device.dispatch.createPipelineLayout(device.handle, .{
+            .flags = .{},
+            .set_layout_count = 0,
+            .p_set_layouts = undefined,
+            .push_constant_range_count = 1,
+            .p_push_constant_ranges = @ptrCast([*]const vk.PushConstantRange, &push_constant_range),
+        }, null);
+
         var pipeline = try device.createPipeline(
+            pipeline_layout,
+            render_pass,
             &resources.imgui_vert,
             &resources.imgui_frag,
             &ImguiVertex.binding_description,
@@ -67,16 +89,27 @@ pub const Layer = struct {
             },
         );
 
+        var freed_buffers = std.ArrayList(Buffer).init(allocator);
+
         return Self{
+            .allocator = allocator,
             .context = context,
             .io = io,
             .device = device,
             .pipeline = pipeline,
+            .pipeline_layout = pipeline_layout,
+            .freed_buffers = freed_buffers,
         };
     }
 
     pub fn deinit(self: Self) void {
-        self.device.destroyPipeline(self.pipeline);
+        for (self.freed_buffers.items) |buffer| {
+            buffer.deinit();
+        }
+        self.freed_buffers.deinit();
+
+        self.device.dispatch.destroyPipeline(self.device.handle, self.pipeline, null);
+        self.device.dispatch.destroyPipelineLayout(self.device.handle, self.pipeline_layout, null);
         c.igDestroyContext(self.context);
     }
 
@@ -102,11 +135,16 @@ pub const Layer = struct {
         self.io.MouseDown[4] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_5);
     }
 
-    pub fn beginFrame(self: Self) void {
+    pub fn beginFrame(self: *Self) void {
+        for (self.freed_buffers.items) |buffer| {
+            buffer.deinit();
+        }
+        self.freed_buffers.clearRetainingCapacity();
+
         c.igNewFrame();
     }
 
-    pub fn endFrame(self: Self, command_buffer: vulkan.vk.CommandBuffer) !void {
+    pub fn endFrame(self: *Self, command_buffer: vk.CommandBuffer) !void {
         var open = true;
         c.igShowDemoWindow(&open);
 
@@ -121,9 +159,7 @@ pub const Layer = struct {
             return;
         }
 
-        vulkan.vk.vkd.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
-        //TODO descriptor set
-
+        self.device.dispatch.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
         {
             var push_data: [4]f32 = undefined;
 
@@ -135,7 +171,7 @@ pub const Layer = struct {
             push_data[2] = -1.0 - (draw_data.DisplayPos.x * push_data[0]);
             push_data[3] = -1.0 - (draw_data.DisplayPos.y * push_data[1]);
 
-            vulkan.vk.vkd.cmdPushConstants(command_buffer, self.device.resources.pipeline_layout, ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
+            self.device.dispatch.cmdPushConstants(command_buffer, self.pipeline_layout, ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
 
             var clip_offset = draw_data.DisplayPos;
             var clip_scale = draw_data.FramebufferScale;
@@ -148,27 +184,21 @@ pub const Layer = struct {
                 vertex_data.ptr = cmd_list.VtxBuffer.Data;
                 vertex_data.len = @intCast(usize, cmd_list.VtxBuffer.Size);
                 var vertex_data_size = @intCast(u32, vertex_data.len * @sizeOf(c.ImDrawVert));
-                var vertex_buffer_index = try self.device.resources.createBufferFill(vertex_data_size, .{ .vertex_buffer_bit = true }, .{ .host_visible_bit = true }, c.ImDrawVert, vertex_data);
-                defer self.device.resources.destoryBuffer(vertex_buffer_index);
+                var vertex_buffer = try Buffer.init(self.device, vertex_data_size, .{ .vertex_buffer_bit = true }, .{ .host_visible_bit = true });
+                try vertex_buffer.fill(c.ImDrawVert, vertex_data);
+                try self.freed_buffers.append(vertex_buffer);
 
                 var index_data: []c.ImDrawIdx = undefined;
                 index_data.ptr = cmd_list.IdxBuffer.Data;
                 index_data.len = @intCast(usize, cmd_list.IdxBuffer.Size);
                 var index_data_size = @intCast(u32, index_data.len * @sizeOf(c.ImDrawIdx));
-                var index_data_index = try self.device.resources.createBufferFill(index_data_size, .{ .index_buffer_bit = true }, .{ .host_visible_bit = true }, c.ImDrawIdx, index_data);
-                defer self.device.resources.destoryBuffer(index_data_index);
+                var index_buffer = try Buffer.init(self.device, index_data_size, .{ .index_buffer_bit = true }, .{ .host_visible_bit = true });
+                try index_buffer.fill(c.ImDrawIdx, index_data);
+                try self.freed_buffers.append(index_buffer);
 
-                var vertex_buffer_res = self.device.resources.getBuffer(vertex_buffer_index);
-                if (vertex_buffer_res) |*vertex_buffer| {
-                    var offset: u64 = 0;
-                    vulkan.vk.vkd.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]vulkan.vk.Buffer, &vertex_buffer.handle), @ptrCast([*]const u64, &offset));
-                }
-
-                var index_buffer_res = self.device.resources.getBuffer(index_data_index);
-                if (index_buffer_res) |*index_buffer| {
-                    var offset: u64 = 0;
-                    vulkan.vk.vkd.cmdBindIndexBuffer(command_buffer, index_buffer.handle, 0, vulkan.vk.IndexType.uint16);
-                }
+                var offset: u64 = 0;
+                self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]vk.Buffer, &vertex_buffer.handle), @ptrCast([*]const u64, &offset));
+                self.device.dispatch.cmdBindIndexBuffer(command_buffer, index_buffer.handle, 0, vk.IndexType.uint16);
 
                 var cmd_i: u32 = 0;
                 while (cmd_i < cmd_list.CmdBuffer.Size) : (cmd_i += 1) {
@@ -192,21 +222,13 @@ pub const Layer = struct {
                                 clip_rect.y = 0.0;
                             }
 
-                            var scissor_rect: vulkan.vk.Rect2D = undefined;
+                            var scissor_rect: vk.Rect2D = undefined;
                             scissor_rect.offset.x = @floatToInt(i32, clip_rect.x);
                             scissor_rect.offset.y = @floatToInt(i32, clip_rect.y);
                             scissor_rect.extent.width = @floatToInt(u32, clip_rect.z - clip_rect.x);
                             scissor_rect.extent.height = @floatToInt(u32, clip_rect.w - clip_rect.y);
-                            vulkan.vk.vkd.cmdSetScissor(command_buffer, 0, 1, @ptrCast([*]const vulkan.vk.Rect2D, &scissor_rect));
-
-                            vulkan.vk.vkd.cmdDrawIndexed(
-                                command_buffer,
-                                pcmd.ElemCount,
-                                1,
-                                pcmd.IdxOffset,
-                                0,
-                                0,
-                            );
+                            self.device.dispatch.cmdSetScissor(command_buffer, 0, 1, @ptrCast([*]const vk.Rect2D, &scissor_rect));
+                            self.device.dispatch.cmdDrawIndexed(command_buffer, pcmd.ElemCount, 1, pcmd.IdxOffset, 0, 0);
                         }
                     }
                 }
@@ -218,13 +240,13 @@ pub const Layer = struct {
 const ImguiVertex = struct {
     const Self = @This();
 
-    const binding_description = vulkan.vk.VertexInputBindingDescription{
+    const binding_description = vk.VertexInputBindingDescription{
         .binding = 0,
         .stride = @sizeOf(Self),
         .input_rate = .vertex,
     };
 
-    const attribute_description = [_]vulkan.vk.VertexInputAttributeDescription{
+    const attribute_description = [_]vk.VertexInputAttributeDescription{
         .{
             .binding = 0,
             .location = 0,
