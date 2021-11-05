@@ -29,6 +29,11 @@ const ALL_SHADER_STAGES = vk.ShaderStageFlags{
     .callable_bit_khr = true,
 };
 
+const SHADER_STAGES = vk.ShaderStageFlags{
+    .vertex_bit = true,
+    .fragment_bit = true,
+};
+
 pub const Layer = struct {
     const Self = @This();
 
@@ -57,7 +62,7 @@ pub const Layer = struct {
         c.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, @ptrCast([*c][*c]u8, &pixels), &width, &height, &bytes);
 
         var push_constant_range = vk.PushConstantRange{
-            .stage_flags = ALL_SHADER_STAGES,
+            .stage_flags = SHADER_STAGES,
             .offset = 0,
             .size = 128,
         };
@@ -171,7 +176,7 @@ pub const Layer = struct {
             push_data[2] = -1.0 - (draw_data.DisplayPos.x * push_data[0]);
             push_data[3] = -1.0 - (draw_data.DisplayPos.y * push_data[1]);
 
-            self.device.dispatch.cmdPushConstants(command_buffer, self.pipeline_layout, ALL_SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
+            self.device.dispatch.cmdPushConstants(command_buffer, self.pipeline_layout, SHADER_STAGES, 0, @sizeOf(@TypeOf(push_data)), &push_data);
 
             var clip_offset = draw_data.DisplayPos;
             var clip_scale = draw_data.FramebufferScale;

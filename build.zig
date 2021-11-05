@@ -6,6 +6,7 @@ const vk_glslc_path = "C:/VulkanSDK/1.2.189.2/Bin/glslc.exe";
 
 //Hardcoded paths
 const vkgen = @import("submodules/vulkan-zig/generator/index.zig");
+const glfw = @import("submodules/mach-glfw/build.zig");
 
 const builtin = @import("builtin");
 const std = @import("std");
@@ -45,6 +46,10 @@ pub fn build(b: *Builder) void {
             @compileError("Platform not supported, unsure of build requirements");
         },
     }
+
+    //mach-glfw
+    exe.addPackagePath("glfw", "submodules/mach-glfw/src/main.zig");
+    glfw.link(b, exe, .{});
 
     //cimgui
     exe.addIncludeDir("submodules/cimgui/");
