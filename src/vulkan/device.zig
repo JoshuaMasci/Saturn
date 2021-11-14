@@ -351,6 +351,7 @@ pub const DeviceDispatch = vk.DeviceWrapper(.{
     .MapMemory,
     .UnmapMemory,
     .BindBufferMemory,
+    .BindImageMemory,
     .CmdBeginRenderPass,
     .CmdEndRenderPass,
     .CmdBindPipeline,

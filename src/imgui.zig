@@ -4,6 +4,7 @@ const glfw = @import("glfw/platform.zig");
 const vk = @import("vulkan");
 usingnamespace @import("vulkan/device.zig");
 usingnamespace @import("vulkan/buffer.zig");
+usingnamespace @import("vulkan/image.zig");
 
 const resources = @import("resources");
 
@@ -47,6 +48,8 @@ pub const Layer = struct {
 
     freed_buffers: std.ArrayList(Buffer),
 
+    texture_atlas: Image,
+
     pub fn init(allocator: *Allocator, device: Device, render_pass: vk.RenderPass) !Self {
         var context = c.igCreateContext(null);
 
@@ -60,6 +63,30 @@ pub const Layer = struct {
         var height: i32 = undefined;
         var bytes: i32 = 0;
         c.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, @ptrCast([*c][*c]u8, &pixels), &width, &height, &bytes);
+
+        //TODO: init texture
+        var texture_atlas = try Image.init(device, .{
+            .flags = .{},
+            .image_type = .@"2d",
+            .format = .r8g8b8a8_unorm,
+            .extent = .{
+                .width = @intCast(u32, width),
+                .height = @intCast(u32, height),
+                .depth = 1,
+            },
+            .mip_levels = 1,
+            .array_layers = 1,
+            .samples = .{ .@"1_bit" = true },
+            .tiling = .optimal,
+            .usage = .{
+                .sampled_bit = true,
+                .transfer_dst_bit = true,
+            },
+            .sharing_mode = .exclusive,
+            .queue_family_index_count = 0,
+            .p_queue_family_indices = undefined,
+            .initial_layout = .@"undefined",
+        }, .{ .device_local_bit = true });
 
         var push_constant_range = vk.PushConstantRange{
             .stage_flags = SHADER_STAGES,
@@ -104,10 +131,13 @@ pub const Layer = struct {
             .pipeline = pipeline,
             .pipeline_layout = pipeline_layout,
             .freed_buffers = freed_buffers,
+            .texture_atlas = texture_atlas,
         };
     }
 
     pub fn deinit(self: Self) void {
+        self.texture_atlas.deinit();
+
         for (self.freed_buffers.items) |buffer| {
             buffer.deinit();
         }

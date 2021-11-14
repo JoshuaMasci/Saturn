@@ -76,6 +76,7 @@ pub const DeviceDispatch = DeviceWrapper(.{
     .MapMemory,
     .UnmapMemory,
     .BindBufferMemory,
+    .BindImageMemory,
     .CmdBeginRenderPass,
     .CmdEndRenderPass,
     .CmdBindPipeline,

@@ -1,8 +1,8 @@
 //Paths needed to be updated per system
 const glfw_include_path = "C:/glfw-3.3.4/include";
 const glfw_lib_path = "C:/glfw-3.3.4/lib-vc2019/";
-const vk_xml_path = "C:/VulkanSDK/1.2.189.2/share/vulkan/registry/vk.xml";
-const vk_glslc_path = "C:/VulkanSDK/1.2.189.2/Bin/glslc.exe";
+const vk_xml_path = "C:/VulkanSDK/1.2.162.0/share/vulkan/registry/vk.xml";
+const vk_glslc_path = "C:/VulkanSDK/1.2.162.0/Bin/glslc.exe";
 
 //Hardcoded paths
 const vkgen = @import("submodules/vulkan-zig/generator/index.zig");

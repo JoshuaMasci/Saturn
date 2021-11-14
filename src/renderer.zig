@@ -92,6 +92,9 @@ pub const Renderer = struct {
 
         var device_frame = try DeviceFrame.init(device, graphics_command_pool);
 
+        var command_buffer = try beginSingleUseCommandBuffer(device, graphics_command_pool);
+        try endSingleUseCommandBuffer(device, graphics_queue, graphics_command_pool, command_buffer);
+
         var imgui_layer = try imgui.Layer.init(allocator, device, swapchain.render_pass);
 
         return Self{
@@ -232,6 +235,42 @@ pub const Renderer = struct {
     }
 };
 
+fn beginSingleUseCommandBuffer(device: Device, command_pool: vk.CommandPool) !vk.CommandBuffer {
+    var command_buffer: vk.CommandBuffer = undefined;
+    try device.dispatch.allocateCommandBuffers(device.handle, .{
+        .command_pool = command_pool,
+        .level = .primary,
+        .command_buffer_count = 1,
+    }, @ptrCast([*]vk.CommandBuffer, &command_buffer));
+    try device.dispatch.beginCommandBuffer(command_buffer, .{
+        .flags = .{},
+        .p_inheritance_info = null,
+    });
+    return command_buffer;
+}
+
+fn endSingleUseCommandBuffer(device: Device, queue: vk.Queue, command_pool: vk.CommandPool, command_buffer: vk.CommandBuffer) !void {
+    try device.dispatch.endCommandBuffer(command_buffer);
+
+    const submitInfo = vk.SubmitInfo{
+        .wait_semaphore_count = 0,
+        .p_wait_semaphores = undefined,
+        .p_wait_dst_stage_mask = undefined,
+        .command_buffer_count = 1,
+        .p_command_buffers = @ptrCast([*]const vk.CommandBuffer, &command_buffer),
+        .signal_semaphore_count = 0,
+        .p_signal_semaphores = undefined,
+    };
+    try device.dispatch.queueSubmit(queue, 1, @ptrCast([*]const vk.SubmitInfo, &submitInfo), vk.Fence.null_handle);
+    try device.dispatch.queueWaitIdle(queue);
+    device.dispatch.freeCommandBuffers(
+        device.handle,
+        command_pool,
+        1,
+        @ptrCast([*]const vk.CommandBuffer, &command_buffer),
+    );
+}
+
 fn createSurface(instance: vk.Instance, window: *glfw.c.GLFWwindow) !vk.SurfaceKHR {
     var surface: vk.SurfaceKHR = undefined;
     if (glfwCreateWindowSurface(instance, window, null, &surface) != .success) {
@@ -285,4 +324,8 @@ const DeviceFrame = struct {
         self.device.dispatch.destroySemaphore(self.device.handle, self.image_ready_semaphore, null);
         self.device.dispatch.destroySemaphore(self.device.handle, self.present_semaphore, null);
     }
+};
+
+pub const TransferQueue = struct {
+    const Self = @This();
 };

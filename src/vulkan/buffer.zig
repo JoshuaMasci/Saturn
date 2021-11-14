@@ -25,8 +25,8 @@ pub const Buffer = struct {
             },
             null,
         );
-        const mem_reqs = device.dispatch.getBufferMemoryRequirements(device.handle, buffer);
-        const memory = try device.allocate_memory(mem_reqs, memory_type);
+        var mem_reqs = device.dispatch.getBufferMemoryRequirements(device.handle, buffer);
+        var memory = try device.allocate_memory(mem_reqs, memory_type);
         try device.dispatch.bindBufferMemory(device.handle, buffer, memory, 0);
 
         return Self{
