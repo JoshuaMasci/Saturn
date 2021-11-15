@@ -1,6 +1,6 @@
 //Paths needed to be updated per system
+//TODO: create config file for it
 const vk_xml_path = "C:/VulkanSDK/1.2.189.2/share/vulkan/registry/vk.xml";
-const vk_glslc_path = "C:/VulkanSDK/1.2.189.2/Bin/glslc.exe";
 
 //Submodules paths
 const vkgen = @import("submodules/vulkan-zig/generator/index.zig");
@@ -102,7 +102,7 @@ pub const ResourceGenStep = struct {
         const shader_out_path = self.shader_step.add(source);
         var writer = self.resources.writer();
         writer.print("pub const {s} align(4) = @embedFile(\"", .{name}) catch unreachable;
-        writer.print("../zig-cache/shaders/{s}", .{source}) catch unreachable; //zig-cache\shaders\assets\tri.frag
+        writer.print("../zig-cache/shaders/{s}", .{source}) catch unreachable;
         writer.writeAll("\").*;\n") catch unreachable;
     }
 

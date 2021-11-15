@@ -141,24 +141,24 @@ fn debugCallback(
     return 0;
 }
 
-pub const BaseDispatch = vk.BaseWrapper(.{
-    .CreateInstance,
+pub const BaseDispatch = vk.BaseWrapper(&.{
+    .createInstance,
 });
 
-pub const InstanceDispatch = vk.InstanceWrapper(.{
-    .DestroyInstance,
-    .CreateDevice,
-    .DestroySurfaceKHR,
-    .EnumeratePhysicalDevices,
-    .GetPhysicalDeviceProperties,
-    .EnumerateDeviceExtensionProperties,
-    .GetPhysicalDeviceSurfaceFormatsKHR,
-    .GetPhysicalDeviceSurfacePresentModesKHR,
-    .GetPhysicalDeviceSurfaceCapabilitiesKHR,
-    .GetPhysicalDeviceQueueFamilyProperties,
-    .GetPhysicalDeviceSurfaceSupportKHR,
-    .GetPhysicalDeviceMemoryProperties,
-    .GetDeviceProcAddr,
-    .CreateDebugUtilsMessengerEXT,
-    .DestroyDebugUtilsMessengerEXT,
+pub const InstanceDispatch = vk.InstanceWrapper(&.{
+    .destroyInstance,
+    .createDevice,
+    .destroySurfaceKHR,
+    .enumeratePhysicalDevices,
+    .getPhysicalDeviceProperties,
+    .enumerateDeviceExtensionProperties,
+    .getPhysicalDeviceSurfaceFormatsKHR,
+    .getPhysicalDeviceSurfacePresentModesKHR,
+    .getPhysicalDeviceSurfaceCapabilitiesKHR,
+    .getPhysicalDeviceQueueFamilyProperties,
+    .getPhysicalDeviceSurfaceSupportKHR,
+    .getPhysicalDeviceMemoryProperties,
+    .getDeviceProcAddr,
+    .createDebugUtilsMessengerEXT,
+    .destroyDebugUtilsMessengerEXT,
 });
