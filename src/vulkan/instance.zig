@@ -6,9 +6,7 @@ const vk = @import("vulkan");
 const VK_API_VERSION_1_2 = vk.makeApiVersion(0, 1, 2, 0);
 pub const AppVersion = vk.makeApiVersion;
 
-const glfw = @import("../glfw/platform.zig");
-extern fn glfwGetInstanceProcAddress(instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction;
-extern fn glfwGetPhysicalDevicePresentationSupport(instance: vk.Instance, pdev: vk.PhysicalDevice, queuefamily: u32) c_int;
+const glfw = @import("glfw");
 
 const saturn_name = "Saturn Engine";
 const saturn_version = vk.makeApiVersion(0, 0, 0, 0);
@@ -27,7 +25,8 @@ pub const Instance = struct {
         app_name: [*:0]const u8,
         app_version: u32,
     ) !Self {
-        var base_dispatch = try BaseDispatch.load(glfwGetInstanceProcAddress);
+        const vk_proc = @ptrCast(fn (instance: vk.Instance, procname: [*:0]const u8) vk.PfnVoidFunction, glfw.getInstanceProcAddress);
+        var base_dispatch = try BaseDispatch.load(vk_proc);
 
         const app_info = vk.ApplicationInfo{
             .p_application_name = app_name,
@@ -37,14 +36,12 @@ pub const Instance = struct {
             .api_version = VK_API_VERSION_1_2,
         };
 
-        var glfw_exts_count: u32 = 0;
-        const glfw_exts = glfw.c.glfwGetRequiredInstanceExtensions(&glfw_exts_count);
-
+        const glfw_exts = try glfw.getRequiredInstanceExtensions();
         var extensions = std.ArrayList([*:0]const u8).init(allocator);
         defer extensions.deinit();
-        var i: u32 = 0;
-        while (i < glfw_exts_count) : (i += 1) {
-            try extensions.append(@ptrCast([*:0]const u8, glfw_exts[i]));
+
+        for (glfw_exts) |extension| {
+            try extensions.append(extension);
         }
 
         var layers = std.ArrayList([*:0]const u8).init(allocator);
@@ -65,7 +62,7 @@ pub const Instance = struct {
             .pp_enabled_extension_names = @ptrCast([*]const [*:0]const u8, extensions.items),
         }, null);
 
-        var dispatch = try InstanceDispatch.load(handle, glfwGetInstanceProcAddress);
+        var dispatch = try InstanceDispatch.load(handle, vk_proc);
 
         var debug_callback = try DebugCallback.init(handle, dispatch);
 

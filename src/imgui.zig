@@ -1,5 +1,5 @@
 usingnamespace @import("core.zig");
-const glfw = @import("glfw/platform.zig");
+const glfw = @import("glfw");
 
 const vk = @import("vulkan");
 usingnamespace @import("vulkan/device.zig");
@@ -7,6 +7,8 @@ usingnamespace @import("vulkan/buffer.zig");
 usingnamespace @import("vulkan/image.zig");
 
 const resources = @import("resources");
+
+const Input = @import("input.zig").Input;
 
 pub const c = @cImport({
     @cDefine("CIMGUI_DEFINE_ENUMS_AND_STRUCTS", "");
@@ -148,26 +150,31 @@ pub const Layer = struct {
         c.igDestroyContext(self.context);
     }
 
-    pub fn update(self: Self, window: glfw.WindowId) void {
+    pub fn update(self: Self, window: glfw.Window, input: *Input) void {
         //Window size update
-        var size = glfw.getWindowSize(window);
-        self.io.DisplaySize = c.ImVec2{
-            .x = @intToFloat(f32, size[0]),
-            .y = @intToFloat(f32, size[1]),
+
+        var size = window.getSize() catch |err| {
+            std.log.err("Failed to get window size, can't use imgui", .{});
+            return;
         };
 
-        if (glfw.input.getMousePos()) |mouse_pos| {
+        self.io.DisplaySize = c.ImVec2{
+            .x = @intToFloat(f32, size.width),
+            .y = @intToFloat(f32, size.height),
+        };
+
+        if (input.getMousePos()) |mouse_pos| {
             self.io.MousePos = c.ImVec2{
                 .x = mouse_pos[0],
                 .y = mouse_pos[1],
             };
         }
 
-        self.io.MouseDown[0] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_LEFT);
-        self.io.MouseDown[1] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_RIGHT);
-        self.io.MouseDown[2] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_MIDDLE);
-        self.io.MouseDown[3] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_4);
-        self.io.MouseDown[4] = glfw.input.getMouseDown(glfw.c.GLFW_MOUSE_BUTTON_5);
+        self.io.MouseDown[0] = input.getMouseDown(glfw.mouse_button.MouseButton.left);
+        self.io.MouseDown[1] = input.getMouseDown(glfw.mouse_button.MouseButton.right);
+        self.io.MouseDown[2] = input.getMouseDown(glfw.mouse_button.MouseButton.middle);
+        self.io.MouseDown[3] = input.getMouseDown(glfw.mouse_button.MouseButton.four);
+        self.io.MouseDown[4] = input.getMouseDown(glfw.mouse_button.MouseButton.five);
     }
 
     pub fn beginFrame(self: *Self) void {

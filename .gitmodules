@@ -6,4 +6,4 @@
 	url = https://github.com/cimgui/cimgui.git
 [submodule "submodules/mach-glfw"]
 	path = submodules/mach-glfw
-	url = https://github.com/hexops/mach-glfw.git
+	url = https://github.com/JoshuaMasci/mach-glfw.git

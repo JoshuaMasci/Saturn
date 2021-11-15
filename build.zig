@@ -1,10 +1,8 @@
 //Paths needed to be updated per system
-const glfw_include_path = "C:/glfw-3.3.4/include";
-const glfw_lib_path = "C:/glfw-3.3.4/lib-vc2019/";
-const vk_xml_path = "C:/VulkanSDK/1.2.162.0/share/vulkan/registry/vk.xml";
-const vk_glslc_path = "C:/VulkanSDK/1.2.162.0/Bin/glslc.exe";
+const vk_xml_path = "C:/VulkanSDK/1.2.189.2/share/vulkan/registry/vk.xml";
+const vk_glslc_path = "C:/VulkanSDK/1.2.189.2/Bin/glslc.exe";
 
-//Hardcoded paths
+//Submodules paths
 const vkgen = @import("submodules/vulkan-zig/generator/index.zig");
 const glfw = @import("submodules/mach-glfw/build.zig");
 
@@ -31,17 +29,8 @@ pub fn build(b: *Builder) void {
             exe.linkSystemLibrary("user32");
             exe.linkSystemLibrary("shell32");
             exe.linkSystemLibrary("gdi32");
-
-            exe.addIncludeDir(glfw_include_path);
-            exe.addLibPath(glfw_lib_path);
-
-            //Use dll since zig 0.8.0 doesn't like static win glfw
-            exe.linkSystemLibrary("glfw3dll");
-            b.installBinFile(glfw_lib_path ++ "glfw3.dll", "glfw3.dll");
         },
-        .linux => {
-            exe.linkSystemLibrary("glfw3");
-        },
+        .linux => {},
         else => {
             @compileError("Platform not supported, unsure of build requirements");
         },

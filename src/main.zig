@@ -3,7 +3,9 @@ const panic = std.debug.panic;
 
 pub const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
 
-const glfw = @import("glfw/platform.zig");
+const glfw = @import("glfw");
+
+const Input = @import("input.zig").Input;
 const renderer = @import("renderer.zig");
 
 pub fn main() !void {
@@ -13,20 +15,28 @@ pub fn main() !void {
         if (leaked) panic("Error: memory leaked", .{});
     }
 
-    glfw.init();
-    defer glfw.deinit();
+    var allocator = &global_allocator.allocator;
 
-    var window = try glfw.createWindow(1600, 900, "Saturn V0.0");
-    defer glfw.destoryWindow(window);
-    //glfw.setMouseCaptured(window, true);
-    glfw.maximizeWindow(window);
+    try glfw.init();
+    defer glfw.terminate();
 
-    var vulkan_renderer = try renderer.Renderer.init(&global_allocator.allocator, glfw.getWindowHandle(window));
+    try glfw.Window.hint(.client_api, glfw.no_api);
+    const window = try glfw.Window.create(1600, 900, "Saturn V0.0", null, null);
+    defer window.destroy();
+
+    try window.maximize();
+
+    var input = try Input.init(window, allocator);
+    defer input.deinit();
+
+    var vulkan_renderer = try renderer.Renderer.init(allocator, window);
     defer vulkan_renderer.deinit();
 
-    while (glfw.shouldCloseWindow(window)) {
-        glfw.update();
-        vulkan_renderer.update(window);
+    while (!window.shouldClose()) {
+        input.update();
+        try glfw.pollEvents();
+
+        vulkan_renderer.update(window, &input);
         try vulkan_renderer.render();
     }
 }

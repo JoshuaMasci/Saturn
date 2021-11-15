@@ -1,7 +1,6 @@
 usingnamespace @import("core.zig");
 
-const glfw = @import("glfw/platform.zig");
-extern fn glfwCreateWindowSurface(instance: vk.Instance, window: *glfw.c.GLFWwindow, allocation_callbacks: ?*const vk.AllocationCallbacks, surface: *vk.SurfaceKHR) vk.Result;
+const glfw = @import("glfw");
 
 const vk = @import("vulkan");
 usingnamespace @import("vulkan/instance.zig");
@@ -10,6 +9,7 @@ usingnamespace @import("vulkan/swapchain.zig");
 
 const imgui = @import("Imgui.zig");
 const resources = @import("resources");
+const Input = @import("input.zig").Input;
 
 const GPU_TIMEOUT: u64 = std.math.maxInt(u64);
 
@@ -65,7 +65,12 @@ pub const Renderer = struct {
 
     imgui_layer: imgui.Layer,
 
-    pub fn init(allocator: *Allocator, window: *glfw.c.GLFWwindow) !Self {
+    pub fn init(allocator: *Allocator, window: glfw.Window) !Self {
+        const vulkan_support = try glfw.vulkanSupported();
+        if (!vulkan_support) {
+            return error.VulkanNotSupported;
+        }
+
         var instance = try Instance.init(allocator, "Saturn Editor", AppVersion(0, 0, 0, 0));
 
         var selected_device = instance.pdevices[0];
@@ -122,8 +127,8 @@ pub const Renderer = struct {
         self.instance.deinit();
     }
 
-    pub fn update(self: Self, window: glfw.WindowId) void {
-        self.imgui_layer.update(window);
+    pub fn update(self: Self, window: glfw.Window, input: *Input) void {
+        self.imgui_layer.update(window, input);
     }
 
     pub fn render(self: *Self) !void {
@@ -271,9 +276,9 @@ fn endSingleUseCommandBuffer(device: Device, queue: vk.Queue, command_pool: vk.C
     );
 }
 
-fn createSurface(instance: vk.Instance, window: *glfw.c.GLFWwindow) !vk.SurfaceKHR {
+fn createSurface(instance: vk.Instance, window: glfw.Window) !vk.SurfaceKHR {
     var surface: vk.SurfaceKHR = undefined;
-    if (glfwCreateWindowSurface(instance, window, null, &surface) != .success) {
+    if ((try glfw.createWindowSurface(instance, window, null, &surface)) != @enumToInt(vk.Result.success)) {
         return error.SurfaceCreationFailed;
     }
     return surface;
