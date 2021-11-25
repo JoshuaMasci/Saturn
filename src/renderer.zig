@@ -7,6 +7,8 @@ usingnamespace @import("vulkan/instance.zig");
 usingnamespace @import("vulkan/device.zig");
 usingnamespace @import("vulkan/swapchain.zig");
 
+const TransferQueue = @import("transfer_queue.zig").TransferQueue;
+
 const imgui = @import("Imgui.zig");
 const resources = @import("resources");
 const Input = @import("input.zig").Input;
@@ -62,6 +64,11 @@ pub const Renderer = struct {
 
     //TODO: multiple frames in flight
     device_frame: DeviceFrame,
+    transfer_queue: TransferQueue,
+
+    images_descriptor_layout: vk.DescriptorSetLayout,
+    images_descriptor_pool: vk.DescriptorPool,
+    images_descriptor_set: vk.DescriptorSet,
 
     imgui_layer: imgui.Layer,
 
@@ -95,12 +102,57 @@ pub const Renderer = struct {
             null,
         );
 
+        const sampled_image_count: u32 = 1024;
+
+        const bindings = [_]vk.DescriptorSetLayoutBinding{.{
+            .binding = 0,
+            .descriptor_type = .sampled_image,
+            .descriptor_count = sampled_image_count,
+            .stage_flags = .{ .fragment_bit = true },
+            .p_immutable_samplers = null,
+        }};
+        const pool_sizes = [_]vk.DescriptorPoolSize{.{
+            .type_ = .sampled_image,
+            .descriptor_count = sampled_image_count,
+        }};
+
+        var images_descriptor_layout = try device.dispatch.createDescriptorSetLayout(
+            device.handle,
+            .{
+                .flags = .{ .update_after_bind_pool_bit = true },
+                .binding_count = bindings.len,
+                .p_bindings = @ptrCast([*]const vk.DescriptorSetLayoutBinding, &bindings[0]),
+            },
+            null,
+        );
+
+        var images_descriptor_pool = try device.dispatch.createDescriptorPool(device.handle, .{
+            .flags = .{ .update_after_bind_bit = true },
+            .max_sets = 1,
+            .pool_size_count = pool_sizes.len,
+            .p_pool_sizes = @ptrCast([*]const vk.DescriptorPoolSize, &pool_sizes[0]),
+        }, null);
+
+        var images_descriptor_set: vk.DescriptorSet = .null_handle;
+        _ = try device.dispatch.allocateDescriptorSets(
+            device.handle,
+            .{
+                .descriptor_pool = images_descriptor_pool,
+                .descriptor_set_count = 1,
+                .p_set_layouts = @ptrCast([*]const vk.DescriptorSetLayout, &images_descriptor_layout),
+            },
+            @ptrCast([*]vk.DescriptorSet, &images_descriptor_set),
+        );
+
         var device_frame = try DeviceFrame.init(device, graphics_command_pool);
+
+        var transfer_queue = TransferQueue.init(allocator, device);
 
         var command_buffer = try beginSingleUseCommandBuffer(device, graphics_command_pool);
         try endSingleUseCommandBuffer(device, graphics_queue, graphics_command_pool, command_buffer);
 
-        var imgui_layer = try imgui.Layer.init(allocator, device, swapchain.render_pass);
+        var descriptor_set_layouts = [_]vk.DescriptorSetLayout{images_descriptor_layout};
+        var imgui_layer = try imgui.Layer.init(allocator, device, &transfer_queue, swapchain.render_pass, &descriptor_set_layouts);
 
         return Self{
             .allocator = allocator,
@@ -112,13 +164,20 @@ pub const Renderer = struct {
             .graphics_queue = graphics_queue,
             .graphics_command_pool = graphics_command_pool,
             .device_frame = device_frame,
+            .transfer_queue = transfer_queue,
+            .images_descriptor_layout = images_descriptor_layout,
+            .images_descriptor_pool = images_descriptor_pool,
+            .images_descriptor_set = images_descriptor_set,
             .imgui_layer = imgui_layer,
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.device.waitIdle();
+        self.device.dispatch.destroyDescriptorPool(self.device.handle, self.images_descriptor_pool, null);
+        self.device.dispatch.destroyDescriptorSetLayout(self.device.handle, self.images_descriptor_layout, null);
         self.imgui_layer.deinit();
+        self.transfer_queue.deinit();
         self.device_frame.deinit();
         self.swapchain.deinit();
         self.device.dispatch.destroyCommandPool(self.device.handle, self.graphics_command_pool, null);
@@ -135,7 +194,7 @@ pub const Renderer = struct {
         var begin_result = try self.beginFrame();
         if (begin_result) |command_buffer| {
             self.imgui_layer.beginFrame();
-            try self.imgui_layer.endFrame(command_buffer);
+            try self.imgui_layer.endFrame(command_buffer, &[_]vk.DescriptorSet{self.images_descriptor_set});
             try self.endFrame();
         }
     }
@@ -329,8 +388,4 @@ const DeviceFrame = struct {
         self.device.dispatch.destroySemaphore(self.device.handle, self.image_ready_semaphore, null);
         self.device.dispatch.destroySemaphore(self.device.handle, self.present_semaphore, null);
     }
-};
-
-pub const TransferQueue = struct {
-    const Self = @This();
 };

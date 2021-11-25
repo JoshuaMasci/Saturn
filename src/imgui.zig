@@ -6,9 +6,10 @@ usingnamespace @import("vulkan/device.zig");
 usingnamespace @import("vulkan/buffer.zig");
 usingnamespace @import("vulkan/image.zig");
 
-const resources = @import("resources");
-
+const TransferQueue = @import("transfer_queue.zig").TransferQueue;
 const Input = @import("input.zig").Input;
+
+const resources = @import("resources");
 
 pub const c = @cImport({
     @cDefine("CIMGUI_DEFINE_ENUMS_AND_STRUCTS", "");
@@ -52,7 +53,7 @@ pub const Layer = struct {
 
     texture_atlas: Image,
 
-    pub fn init(allocator: *Allocator, device: Device, render_pass: vk.RenderPass) !Self {
+    pub fn init(allocator: *Allocator, device: Device, transfer_queue: *TransferQueue, render_pass: vk.RenderPass, descriptor_set_layouts: []vk.DescriptorSetLayout) !Self {
         var context = c.igCreateContext(null);
 
         var io: *c.ImGuiIO = c.igGetIO();
@@ -64,6 +65,7 @@ pub const Layer = struct {
         var width: i32 = undefined;
         var height: i32 = undefined;
         var bytes: i32 = 0;
+
         c.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, @ptrCast([*c][*c]u8, &pixels), &width, &height, &bytes);
 
         //TODO: init texture
@@ -90,6 +92,13 @@ pub const Layer = struct {
             .initial_layout = .@"undefined",
         }, .{ .device_local_bit = true });
 
+        if (pixels) |pixel_data| {
+            var pixel_slice: []u8 = undefined;
+            pixel_slice.ptr = pixel_data;
+            pixel_slice.len = @intCast(usize, bytes);
+            transfer_queue.copyToImage(texture_atlas, u8, pixel_slice);
+        }
+
         var push_constant_range = vk.PushConstantRange{
             .stage_flags = SHADER_STAGES,
             .offset = 0,
@@ -98,8 +107,8 @@ pub const Layer = struct {
 
         var pipeline_layout = try device.dispatch.createPipelineLayout(device.handle, .{
             .flags = .{},
-            .set_layout_count = 0,
-            .p_set_layouts = undefined,
+            .set_layout_count = @intCast(u32, descriptor_set_layouts.len),
+            .p_set_layouts = @ptrCast([*]const vk.DescriptorSetLayout, descriptor_set_layouts.ptr),
             .push_constant_range_count = 1,
             .p_push_constant_ranges = @ptrCast([*]const vk.PushConstantRange, &push_constant_range),
         }, null);
@@ -186,7 +195,7 @@ pub const Layer = struct {
         c.igNewFrame();
     }
 
-    pub fn endFrame(self: *Self, command_buffer: vk.CommandBuffer) !void {
+    pub fn endFrame(self: *Self, command_buffer: vk.CommandBuffer, descriptor_sets: []vk.DescriptorSet) !void {
         var open = true;
         c.igShowDemoWindow(&open);
 
@@ -200,6 +209,17 @@ pub const Layer = struct {
         if (size_x <= 0 or size_y <= 0) {
             return;
         }
+
+        self.device.dispatch.cmdBindDescriptorSets(
+            command_buffer,
+            .graphics,
+            self.pipeline_layout,
+            0,
+            @intCast(u32, descriptor_sets.len),
+            @ptrCast([*]const vk.DescriptorSet, descriptor_sets.ptr),
+            0,
+            undefined,
+        );
 
         self.device.dispatch.cmdBindPipeline(command_buffer, .graphics, self.pipeline);
         {
@@ -226,7 +246,7 @@ pub const Layer = struct {
                 vertex_data.ptr = cmd_list.VtxBuffer.Data;
                 vertex_data.len = @intCast(usize, cmd_list.VtxBuffer.Size);
                 var vertex_data_size = @intCast(u32, vertex_data.len * @sizeOf(c.ImDrawVert));
-                var vertex_buffer = try Buffer.init(self.device, vertex_data_size, .{ .vertex_buffer_bit = true }, .{ .host_visible_bit = true });
+                var vertex_buffer = try Buffer.init(self.device, vertex_data_size, .{ .vertex_buffer_bit = true }, .{ .host_visible_bit = true, .host_coherent_bit = true });
                 try vertex_buffer.fill(c.ImDrawVert, vertex_data);
                 try self.freed_buffers.append(vertex_buffer);
 
@@ -234,7 +254,7 @@ pub const Layer = struct {
                 index_data.ptr = cmd_list.IdxBuffer.Data;
                 index_data.len = @intCast(usize, cmd_list.IdxBuffer.Size);
                 var index_data_size = @intCast(u32, index_data.len * @sizeOf(c.ImDrawIdx));
-                var index_buffer = try Buffer.init(self.device, index_data_size, .{ .index_buffer_bit = true }, .{ .host_visible_bit = true });
+                var index_buffer = try Buffer.init(self.device, index_data_size, .{ .index_buffer_bit = true }, .{ .host_visible_bit = true, .host_coherent_bit = true });
                 try index_buffer.fill(c.ImDrawIdx, index_data);
                 try self.freed_buffers.append(index_buffer);
 
