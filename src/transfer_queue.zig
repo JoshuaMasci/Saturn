@@ -69,6 +69,12 @@ pub const TransferQueue = struct {
                 .{ .transfer_bit = true },
             );
 
+            var image_extent: vk.Extent3D = .{
+                .width = image_transfer.image.size.width,
+                .height = image_transfer.image.size.height,
+                .depth = 1,
+            };
+
             var region = vk.BufferImageCopy{
                 .buffer_offset = 0,
                 .buffer_row_length = 0,
@@ -80,7 +86,7 @@ pub const TransferQueue = struct {
                     .layer_count = 1,
                 },
                 .image_offset = .{ .x = 0, .y = 0, .z = 0 },
-                .image_extent = image_transfer.image.size,
+                .image_extent = image_extent,
             };
 
             self.device.dispatch.cmdCopyBufferToImage(

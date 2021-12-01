@@ -52,6 +52,7 @@ pub const Layer = struct {
     freed_buffers: std.ArrayList(Buffer),
 
     texture_atlas: Image,
+    texture_sampler: vk.Sampler,
 
     pub fn init(allocator: *Allocator, device: Device, transfer_queue: *TransferQueue, render_pass: vk.RenderPass, descriptor_set_layouts: []vk.DescriptorSetLayout) !Self {
         var context = c.igCreateContext(null);
@@ -69,28 +70,16 @@ pub const Layer = struct {
         c.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, @ptrCast([*c][*c]u8, &pixels), &width, &height, &bytes);
 
         //TODO: init texture
-        var texture_atlas = try Image.init(device, .{
-            .flags = .{},
-            .image_type = .@"2d",
-            .format = .r8g8b8a8_unorm,
-            .extent = .{
+        var texture_atlas = try Image.init(
+            device,
+            .r8g8b8a8_unorm,
+            .{
                 .width = @intCast(u32, width),
                 .height = @intCast(u32, height),
-                .depth = 1,
             },
-            .mip_levels = 1,
-            .array_layers = 1,
-            .samples = .{ .@"1_bit" = true },
-            .tiling = .optimal,
-            .usage = .{
-                .sampled_bit = true,
-                .transfer_dst_bit = true,
-            },
-            .sharing_mode = .exclusive,
-            .queue_family_index_count = 0,
-            .p_queue_family_indices = undefined,
-            .initial_layout = .@"undefined",
-        }, .{ .device_local_bit = true });
+            .{ .device_local_bit = true },
+        );
+        try texture_atlas.createImageView();
 
         if (pixels) |pixel_data| {
             var pixel_slice: []u8 = undefined;
@@ -98,6 +87,29 @@ pub const Layer = struct {
             pixel_slice.len = @intCast(usize, width * height * bytes);
             transfer_queue.copyToImage(texture_atlas, u8, pixel_slice);
         }
+
+        var texture_sampler = try device.dispatch.createSampler(
+            device.handle,
+            .{
+                .flags = .{},
+                .mag_filter = .linear,
+                .min_filter = .linear,
+                .mipmap_mode = .linear,
+                .address_mode_u = .clamp_to_border,
+                .address_mode_v = .clamp_to_border,
+                .address_mode_w = .clamp_to_border,
+                .mip_lod_bias = 0.0,
+                .anisotropy_enable = vk.FALSE,
+                .max_anisotropy = 0.0,
+                .compare_enable = vk.FALSE,
+                .compare_op = .always,
+                .min_lod = 0.0,
+                .max_lod = 0.0,
+                .border_color = .float_transparent_black,
+                .unnormalized_coordinates = vk.FALSE,
+            },
+            null,
+        );
 
         var push_constant_range = vk.PushConstantRange{
             .stage_flags = SHADER_STAGES,
@@ -143,11 +155,14 @@ pub const Layer = struct {
             .pipeline_layout = pipeline_layout,
             .freed_buffers = freed_buffers,
             .texture_atlas = texture_atlas,
+            .texture_sampler = texture_sampler,
         };
     }
 
     pub fn deinit(self: Self) void {
         self.texture_atlas.deinit();
+
+        self.device.dispatch.destroySampler(self.device.handle, self.texture_sampler, null);
 
         for (self.freed_buffers.items) |buffer| {
             buffer.deinit();

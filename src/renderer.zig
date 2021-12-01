@@ -102,17 +102,16 @@ pub const Renderer = struct {
             null,
         );
 
-        const sampled_image_count: u32 = 1024;
-
+        const sampled_image_count: u32 = 1;
         const bindings = [_]vk.DescriptorSetLayoutBinding{.{
             .binding = 0,
-            .descriptor_type = .sampled_image,
+            .descriptor_type = .combined_image_sampler,
             .descriptor_count = sampled_image_count,
             .stage_flags = .{ .fragment_bit = true },
             .p_immutable_samplers = null,
         }};
         const pool_sizes = [_]vk.DescriptorPoolSize{.{
-            .type_ = .sampled_image,
+            .type_ = .combined_image_sampler,
             .descriptor_count = sampled_image_count,
         }};
 
@@ -154,8 +153,28 @@ pub const Renderer = struct {
         var descriptor_set_layouts = [_]vk.DescriptorSetLayout{images_descriptor_layout};
         var imgui_layer = try imgui.Layer.init(allocator, device, &transfer_queue, swapchain.render_pass, &descriptor_set_layouts);
 
+        var image_write = vk.DescriptorImageInfo{
+            .sampler = imgui_layer.texture_sampler,
+            .image_view = imgui_layer.texture_atlas.image_view,
+            .image_layout = .shader_read_only_optimal,
+        };
+
+        var write_descriptor_set = vk.WriteDescriptorSet{
+            .dst_set = images_descriptor_set,
+            .dst_binding = 0,
+            .dst_array_element = 0,
+            .descriptor_count = 1,
+            .descriptor_type = .combined_image_sampler,
+            .p_image_info = @ptrCast([*]vk.DescriptorImageInfo, &image_write),
+            .p_buffer_info = undefined,
+            .p_texel_buffer_view = undefined,
+        };
         device.dispatch.updateDescriptorSets(
             device.handle,
+            1,
+            @ptrCast([*]vk.WriteDescriptorSet, &write_descriptor_set),
+            0,
+            undefined,
         );
 
         return Self{
