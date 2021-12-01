@@ -1,6 +1,6 @@
 //Paths needed to be updated per system
 //TODO: create config file for it
-const vk_xml_path = "C:/VulkanSDK/1.2.189.2/share/vulkan/registry/vk.xml";
+const vk_xml_path = "C:/VulkanSDK/1.2.198.0/share/vulkan/registry/vk.xml";
 
 //Submodules paths
 const vkgen = @import("submodules/vulkan-zig/generator/index.zig");

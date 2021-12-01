@@ -16,6 +16,7 @@ pub const TransferQueue = struct {
     device: Device,
 
     image_transfers: ImageTransferQueue,
+    previous_image_transfers: ?ImageTransferQueue,
 
     pub fn init(
         allocator: *Allocator,
@@ -25,6 +26,7 @@ pub const TransferQueue = struct {
             .allocator = allocator,
             .device = device,
             .image_transfers = ImageTransferQueue.init(allocator),
+            .previous_image_transfers = null,
         };
     }
 
@@ -58,16 +60,63 @@ pub const TransferQueue = struct {
             transitionImageLayout(
                 self.device,
                 command_buffer,
-                image_transfer.image,
+                image_transfer.image.handle,
                 .@"undefined",
-                .general,
+                .transfer_dst_optimal,
                 .{},
-                .transfer_write_bit,
+                .{ .transfer_write_bit = true },
+                .{ .top_of_pipe_bit = true },
+                .{ .transfer_bit = true },
+            );
+
+            var region = vk.BufferImageCopy{
+                .buffer_offset = 0,
+                .buffer_row_length = 0,
+                .buffer_image_height = 0,
+                .image_subresource = .{
+                    .aspect_mask = .{ .color_bit = true },
+                    .mip_level = 0,
+                    .base_array_layer = 0,
+                    .layer_count = 1,
+                },
+                .image_offset = .{ .x = 0, .y = 0, .z = 0 },
+                .image_extent = image_transfer.image.size,
+            };
+
+            self.device.dispatch.cmdCopyBufferToImage(
+                command_buffer,
+                image_transfer.staging_buffer.handle,
+                image_transfer.image.handle,
+                .transfer_dst_optimal,
+                1,
+                @ptrCast([*]const vk.BufferImageCopy, &region),
+            );
+
+            transitionImageLayout(
+                self.device,
+                command_buffer,
+                image_transfer.image.handle,
+                .transfer_dst_optimal,
+                .shader_read_only_optimal,
+                .{ .transfer_write_bit = true },
+                .{ .shader_read_bit = true },
+                .{ .transfer_bit = true },
+                .{ .fragment_shader_bit = true },
             );
         }
 
-        //TODO: this
-        self.image_transfers.clearRetainingCapacity();
+        self.previous_image_transfers = self.image_transfers;
+        self.image_transfers = ImageTransferQueue.init(self.allocator);
+    }
+
+    pub fn clearResources(self: *Self) void {
+        if (self.previous_image_transfers) |image_transfers| {
+            for (image_transfers.items) |image_transfer| {
+                image_transfer.staging_buffer.deinit();
+            }
+            image_transfers.deinit();
+            self.previous_image_transfers = null;
+        }
     }
 };
 
@@ -79,6 +128,8 @@ fn transitionImageLayout(
     new_layout: vk.ImageLayout,
     src_access_mask: vk.AccessFlags,
     dst_access_mask: vk.AccessFlags,
+    src_stage_mask: vk.PipelineStageFlags,
+    dst_stage_mask: vk.PipelineStageFlags,
 ) void {
     var image_barrier = vk.ImageMemoryBarrier{
         .src_access_mask = src_access_mask,
@@ -89,7 +140,7 @@ fn transitionImageLayout(
         .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
         .image = image,
         .subresource_range = .{
-            .aspect_mask = .color_bit,
+            .aspect_mask = .{ .color_bit = true },
             .base_mip_level = 0,
             .level_count = 1,
             .base_array_layer = 0,
@@ -98,15 +149,15 @@ fn transitionImageLayout(
     };
 
     device.dispatch.cmdPipelineBarrier(
-        device.handle,
         command_buffer,
-        .{ .top_of_pipe_bit = true },
-        .{ .transfer_bit = true },
+        src_stage_mask,
+        dst_stage_mask,
         .{},
         0,
         undefined,
         0,
         undefined,
         1,
+        @ptrCast([*]const vk.ImageMemoryBarrier, &image_barrier),
     );
 }

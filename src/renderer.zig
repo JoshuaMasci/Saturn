@@ -154,6 +154,10 @@ pub const Renderer = struct {
         var descriptor_set_layouts = [_]vk.DescriptorSetLayout{images_descriptor_layout};
         var imgui_layer = try imgui.Layer.init(allocator, device, &transfer_queue, swapchain.render_pass, &descriptor_set_layouts);
 
+        device.dispatch.updateDescriptorSets(
+            device.handle,
+        );
+
         return Self{
             .allocator = allocator,
             .instance = instance,
@@ -213,10 +217,14 @@ pub const Renderer = struct {
 
         _ = try self.device.dispatch.resetFences(self.device.handle, 1, fence);
 
+        self.transfer_queue.clearResources();
+
         try self.device.dispatch.beginCommandBuffer(current_frame.command_buffer, .{
             .flags = .{},
             .p_inheritance_info = null,
         });
+
+        self.transfer_queue.commitTransfers(current_frame.command_buffer);
 
         const extent = self.swapchain.extent;
 

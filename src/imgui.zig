@@ -95,7 +95,7 @@ pub const Layer = struct {
         if (pixels) |pixel_data| {
             var pixel_slice: []u8 = undefined;
             pixel_slice.ptr = pixel_data;
-            pixel_slice.len = @intCast(usize, bytes);
+            pixel_slice.len = @intCast(usize, width * height * bytes);
             transfer_queue.copyToImage(texture_atlas, u8, pixel_slice);
         }
 

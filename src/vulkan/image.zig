@@ -12,6 +12,8 @@ pub const Image = struct {
     handle: vk.Image,
     memory: vk.DeviceMemory,
 
+    size: vk.Extent3D,
+
     pub fn init(device: Device, create_info: vk.ImageCreateInfo, memory_type: vk.MemoryPropertyFlags) !Self {
         var image = try device.dispatch.createImage(
             device.handle,
@@ -27,6 +29,7 @@ pub const Image = struct {
             .device = device,
             .handle = image,
             .memory = memory,
+            .size = create_info.extent,
         };
     }
 

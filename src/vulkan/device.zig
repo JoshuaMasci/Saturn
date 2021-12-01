@@ -365,6 +365,7 @@ pub const DeviceDispatch = vk.DeviceWrapper(&.{
     .cmdBindDescriptorSets,
     .cmdPushConstants,
     .cmdDrawIndexed,
+    .cmdCopyBufferToImage,
     .createImage,
     .destroyImage,
     .getImageMemoryRequirements,
