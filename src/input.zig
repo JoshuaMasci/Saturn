@@ -5,6 +5,7 @@ const glfw = @import("glfw");
 
 const MouseButtonCount: usize = @enumToInt(glfw.mouse_button.last);
 const KeyboardButtonCount: usize = @enumToInt(glfw.Key.last());
+pub const TextInput = std.ArrayList(u16);
 
 const ButtonInput = struct {
     current_state: bool = false,
@@ -56,10 +57,21 @@ fn mouse_entered(window: glfw.Window, entered: bool) void {
     }
 }
 
+fn text_entered(window: glfw.Window, character_u21: u21) void {
+    var internal_result = window.getUserPointer(*InputData);
+    if (internal_result) |internal| {
+        var character = @intCast(u16, character_u21);
+        internal.text_input.append(character) catch {
+            panic("Failed to append text_input!", .{});
+        };
+    }
+}
+
 const InputData = struct {
     mouse_buttons: [MouseButtonCount]ButtonInput = [_]ButtonInput{.{}} ** MouseButtonCount,
     keyboard_buttons: [KeyboardButtonCount]ButtonInput = [_]ButtonInput{.{}} ** KeyboardButtonCount,
     mouse_pos: ?[2]f32 = null,
+    text_input: TextInput,
 };
 
 pub const Input = struct {
@@ -71,12 +83,14 @@ pub const Input = struct {
 
     pub fn init(window: glfw.Window, allocator: *Allocator) !Self {
         var internal = try allocator.create(InputData);
+        internal.text_input = TextInput.init(allocator);
         window.setUserPointer(*InputData, internal);
 
         window.setKeyCallback(key_callback);
         window.setMouseButtonCallback(mouse_button_callback);
         window.setCursorPosCallback(mouse_move_button);
         window.setCursorEnterCallback(mouse_entered);
+        window.setCharCallback(text_entered);
 
         return Self{
             .allocator = allocator,
@@ -94,6 +108,7 @@ pub const Input = struct {
         //Clear Window User Pointer
         var internal = self.window.getInternal();
         internal.user_pointer = null;
+        self.internal.text_input.deinit();
         self.allocator.destroy(self.internal);
     }
 
@@ -122,12 +137,20 @@ pub const Input = struct {
         return self.internal.mouse_pos;
     }
 
-    pub fn getKeyDown(self: *Self, key: usize) bool {
-        return self.internal.keyboard_buttons[key].current_state == true;
+    pub fn getKeyDown(self: *Self, key: glfw.Key) bool {
+        var key_int = @intCast(usize, @enumToInt(key));
+        return self.internal.keyboard_buttons[key_int].current_state == true;
     }
 
-    pub fn getKeyPressed(self: *Self, key: usize) bool {
-        var button = self.internal.keyboard_buttons[key];
+    pub fn getKeyPressed(self: *Self, key: glfw.Key) bool {
+        var key_int = @intCast(usize, @enumToInt(key));
+        var button = self.internal.keyboard_buttons[key_int];
         return button.current_state == true and button.prev_state == false;
+    }
+
+    pub fn getAndClearTextInput(self: *Self) TextInput {
+        var temp = self.internal.text_input;
+        self.internal.text_input = TextInput.init(self.allocator);
+        return temp;
     }
 };

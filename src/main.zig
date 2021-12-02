@@ -32,11 +32,15 @@ pub fn main() !void {
     var vulkan_renderer = try renderer.Renderer.init(allocator, window);
     defer vulkan_renderer.deinit();
 
+    var prev_time: f64 = 0.0;
     while (!window.shouldClose()) {
+        var current_time = glfw.getTime();
+
         input.update();
         try glfw.pollEvents();
 
-        vulkan_renderer.update(window, &input);
+        vulkan_renderer.update(window, &input, @floatCast(f32, current_time - prev_time));
         try vulkan_renderer.render();
+        prev_time = current_time;
     }
 }

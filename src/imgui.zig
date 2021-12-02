@@ -146,6 +146,29 @@ pub const Layer = struct {
 
         var freed_buffers = std.ArrayList(Buffer).init(allocator);
 
+        //KeyMap
+        io.KeyMap[c.ImGuiKey_Tab] = @enumToInt(glfw.Key.tab);
+        io.KeyMap[c.ImGuiKey_LeftArrow] = @enumToInt(glfw.Key.left);
+        io.KeyMap[c.ImGuiKey_RightArrow] = @enumToInt(glfw.Key.right);
+        io.KeyMap[c.ImGuiKey_UpArrow] = @enumToInt(glfw.Key.up);
+        io.KeyMap[c.ImGuiKey_DownArrow] = @enumToInt(glfw.Key.down);
+        io.KeyMap[c.ImGuiKey_PageUp] = @enumToInt(glfw.Key.page_up);
+        io.KeyMap[c.ImGuiKey_PageDown] = @enumToInt(glfw.Key.page_down);
+        io.KeyMap[c.ImGuiKey_End] = @enumToInt(glfw.Key.end);
+        io.KeyMap[c.ImGuiKey_Insert] = @enumToInt(glfw.Key.insert);
+        io.KeyMap[c.ImGuiKey_Delete] = @enumToInt(glfw.Key.delete);
+        io.KeyMap[c.ImGuiKey_Backspace] = @enumToInt(glfw.Key.backspace);
+        io.KeyMap[c.ImGuiKey_Space] = @enumToInt(glfw.Key.space);
+        io.KeyMap[c.ImGuiKey_Enter] = @enumToInt(glfw.Key.enter);
+        io.KeyMap[c.ImGuiKey_Escape] = @enumToInt(glfw.Key.escape);
+        io.KeyMap[c.ImGuiKey_KeyPadEnter] = @enumToInt(glfw.Key.kp_enter);
+        io.KeyMap[c.ImGuiKey_A] = @enumToInt(glfw.Key.a);
+        io.KeyMap[c.ImGuiKey_C] = @enumToInt(glfw.Key.c);
+        io.KeyMap[c.ImGuiKey_V] = @enumToInt(glfw.Key.v);
+        io.KeyMap[c.ImGuiKey_X] = @enumToInt(glfw.Key.x);
+        io.KeyMap[c.ImGuiKey_Y] = @enumToInt(glfw.Key.y);
+        io.KeyMap[c.ImGuiKey_Z] = @enumToInt(glfw.Key.z);
+
         return Self{
             .allocator = allocator,
             .context = context,
@@ -174,9 +197,10 @@ pub const Layer = struct {
         c.igDestroyContext(self.context);
     }
 
-    pub fn update(self: Self, window: glfw.Window, input: *Input) void {
-        //Window size update
+    pub fn update(self: Self, window: glfw.Window, input: *Input, delta_time: f32) void {
+        self.io.DeltaTime = delta_time;
 
+        //Window size update
         var size = window.getSize() catch |err| {
             std.log.err("Failed to get window size, can't use imgui", .{});
             return;
@@ -194,11 +218,22 @@ pub const Layer = struct {
             };
         }
 
-        self.io.MouseDown[0] = input.getMouseDown(glfw.mouse_button.MouseButton.left);
-        self.io.MouseDown[1] = input.getMouseDown(glfw.mouse_button.MouseButton.right);
-        self.io.MouseDown[2] = input.getMouseDown(glfw.mouse_button.MouseButton.middle);
-        self.io.MouseDown[3] = input.getMouseDown(glfw.mouse_button.MouseButton.four);
-        self.io.MouseDown[4] = input.getMouseDown(glfw.mouse_button.MouseButton.five);
+        const mouse_buttons = [_]glfw.mouse_button.MouseButton{ glfw.mouse_button.MouseButton.left, glfw.mouse_button.MouseButton.right, glfw.mouse_button.MouseButton.middle, glfw.mouse_button.MouseButton.four, glfw.mouse_button.MouseButton.five };
+        for (mouse_buttons) |button, index| {
+            self.io.MouseDown[index] = input.getMouseDown(button);
+        }
+
+        const keyboard_buttons = [_]glfw.Key{ glfw.Key.tab, glfw.Key.left, glfw.Key.right, glfw.Key.up, glfw.Key.down, glfw.Key.page_up, glfw.Key.page_down, glfw.Key.end, glfw.Key.insert, glfw.Key.delete, glfw.Key.backspace, glfw.Key.space, glfw.Key.enter, glfw.Key.escape, glfw.Key.kp_enter, glfw.Key.a, glfw.Key.c, glfw.Key.v, glfw.Key.x, glfw.Key.y, glfw.Key.z };
+        for (keyboard_buttons) |button| {
+            var index = @intCast(usize, @enumToInt(button));
+            self.io.KeysDown[index] = input.getKeyDown(button);
+        }
+
+        var text_input = input.getAndClearTextInput();
+        defer text_input.deinit();
+        for (text_input.items) |character| {
+            c.ImGuiIO_AddInputCharacterUTF16(self.io, character);
+        }
     }
 
     pub fn beginFrame(self: *Self) void {

@@ -209,8 +209,8 @@ pub const Renderer = struct {
         self.instance.deinit();
     }
 
-    pub fn update(self: Self, window: glfw.Window, input: *Input) void {
-        self.imgui_layer.update(window, input);
+    pub fn update(self: Self, window: glfw.Window, input: *Input, delta_time: f32) void {
+        self.imgui_layer.update(window, input, delta_time);
     }
 
     pub fn render(self: *Self) !void {
