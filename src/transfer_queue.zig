@@ -92,17 +92,17 @@ pub const TransferQueue = struct {
 
     pub fn commitTransfers(self: *Self, command_buffer: vk.CommandBuffer) void {
         for (self.buffer_transfers.items) |buffer_transfer| {
-            var region = vk.BufferCopy{
+            var region = [_]vk.BufferCopy{.{
                 .src_offset = 0,
                 .dst_offset = buffer_transfer.buffer_offset,
                 .size = @intCast(vk.DeviceSize, buffer_transfer.staging_buffer.size),
-            };
+            }};
             self.device.dispatch.cmdCopyBuffer(
                 command_buffer,
                 buffer_transfer.staging_buffer.handle,
                 buffer_transfer.buffer.handle,
                 1,
-                @ptrCast([*]const vk.BufferCopy, &region),
+                &region,
             );
         }
         self.previous_buffer_transfers = self.buffer_transfers;
@@ -127,7 +127,7 @@ pub const TransferQueue = struct {
                 .depth = 1,
             };
 
-            var region = vk.BufferImageCopy{
+            var region = [_]vk.BufferImageCopy{.{
                 .buffer_offset = 0,
                 .buffer_row_length = 0,
                 .buffer_image_height = 0,
@@ -139,7 +139,7 @@ pub const TransferQueue = struct {
                 },
                 .image_offset = .{ .x = 0, .y = 0, .z = 0 },
                 .image_extent = image_extent,
-            };
+            }};
 
             self.device.dispatch.cmdCopyBufferToImage(
                 command_buffer,
@@ -147,7 +147,7 @@ pub const TransferQueue = struct {
                 image_transfer.image.handle,
                 .transfer_dst_optimal,
                 1,
-                @ptrCast([*]const vk.BufferImageCopy, &region),
+                &region,
             );
 
             transitionImageLayout(
@@ -191,7 +191,7 @@ fn transitionImageLayout(
     src_stage_mask: vk.PipelineStageFlags,
     dst_stage_mask: vk.PipelineStageFlags,
 ) void {
-    var image_barrier = vk.ImageMemoryBarrier{
+    var image_barrier = [_]vk.ImageMemoryBarrier{.{
         .src_access_mask = src_access_mask,
         .dst_access_mask = dst_access_mask,
         .old_layout = old_layout,
@@ -206,7 +206,7 @@ fn transitionImageLayout(
             .base_array_layer = 0,
             .layer_count = 1,
         },
-    };
+    }};
 
     device.dispatch.cmdPipelineBarrier(
         command_buffer,
@@ -218,7 +218,7 @@ fn transitionImageLayout(
         0,
         undefined,
         1,
-        @ptrCast([*]const vk.ImageMemoryBarrier, &image_barrier),
+        &image_barrier,
     );
 }
 

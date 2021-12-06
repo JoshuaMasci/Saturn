@@ -126,7 +126,7 @@ pub const Renderer = struct {
             .{
                 .flags = .{ .update_after_bind_pool_bit = true },
                 .binding_count = bindings.len,
-                .p_bindings = @ptrCast([*]const vk.DescriptorSetLayoutBinding, &bindings[0]),
+                .p_bindings = &bindings,
             },
             null,
         );
@@ -135,7 +135,7 @@ pub const Renderer = struct {
             .flags = .{ .update_after_bind_bit = true },
             .max_sets = 1,
             .pool_size_count = pool_sizes.len,
-            .p_pool_sizes = @ptrCast([*]const vk.DescriptorPoolSize, &pool_sizes[0]),
+            .p_pool_sizes = &pool_sizes,
         }, null);
 
         var images_descriptor_set: vk.DescriptorSet = .null_handle;
@@ -266,26 +266,26 @@ pub const Renderer = struct {
 
         const extent = self.swapchain.extent;
 
-        const clear = vk.ClearValue{
-            .color = .{ .float_32 = .{ 0, 0, 0, 1 } },
-        };
-
-        const viewport = vk.Viewport{
+        const viewports = [_]vk.Viewport{.{
             .x = 0,
             .y = 0,
             .width = @intToFloat(f32, extent.width),
             .height = @intToFloat(f32, extent.height),
             .min_depth = 0,
             .max_depth = 1,
-        };
+        }};
 
-        const scissor = vk.Rect2D{
+        const scissors = [_]vk.Rect2D{.{
             .offset = .{ .x = 0, .y = 0 },
             .extent = extent,
-        };
+        }};
 
-        self.device.dispatch.cmdSetViewport(current_frame.command_buffer, 0, 1, @ptrCast([*]const vk.Viewport, &viewport));
-        self.device.dispatch.cmdSetScissor(current_frame.command_buffer, 0, 1, @ptrCast([*]const vk.Rect2D, &scissor));
+        self.device.dispatch.cmdSetViewport(current_frame.command_buffer, 0, 1, &viewports);
+        self.device.dispatch.cmdSetScissor(current_frame.command_buffer, 0, 1, &scissors);
+
+        const clears_values = [_]vk.ClearValue{.{
+            .color = .{ .float_32 = .{ 0, 0, 0, 1 } },
+        }};
 
         self.device.dispatch.cmdBeginRenderPass(
             current_frame.command_buffer,
@@ -297,7 +297,7 @@ pub const Renderer = struct {
                     .extent = extent,
                 },
                 .clear_value_count = 1,
-                .p_clear_values = @ptrCast([*]const vk.ClearValue, &clear),
+                .p_clear_values = &clears_values,
             },
             .@"inline",
         );
@@ -316,23 +316,23 @@ pub const Renderer = struct {
             .color_attachment_output_bit = true,
         };
 
-        const submitInfo = vk.SubmitInfo{
+        const submit_infos = [_]vk.SubmitInfo{.{
             .wait_semaphore_count = 1,
-            .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.image_ready_semaphore),
-            .p_wait_dst_stage_mask = @ptrCast([*]const vk.PipelineStageFlags, &wait_stages),
+            .p_wait_semaphores = &[_]vk.Semaphore{current_frame.image_ready_semaphore},
+            .p_wait_dst_stage_mask = &[_]vk.PipelineStageFlags{wait_stages},
             .command_buffer_count = 1,
-            .p_command_buffers = @ptrCast([*]const vk.CommandBuffer, &current_frame.command_buffer),
+            .p_command_buffers = &[_]vk.CommandBuffer{current_frame.command_buffer},
             .signal_semaphore_count = 1,
-            .p_signal_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.present_semaphore),
-        };
-        try self.device.dispatch.queueSubmit(self.graphics_queue, 1, @ptrCast([*]const vk.SubmitInfo, &submitInfo), current_frame.frame_done_fence);
+            .p_signal_semaphores = &[_]vk.Semaphore{current_frame.present_semaphore},
+        }};
+        try self.device.dispatch.queueSubmit(self.graphics_queue, 1, &submit_infos, current_frame.frame_done_fence);
 
         _ = self.device.dispatch.queuePresentKHR(self.graphics_queue, .{
             .wait_semaphore_count = 1,
-            .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.present_semaphore),
+            .p_wait_semaphores = &[_]vk.Semaphore{current_frame.present_semaphore},
             .swapchain_count = 1,
-            .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &self.swapchain.handle),
-            .p_image_indices = @ptrCast([*]const u32, &self.swapchain_index),
+            .p_swapchains = &[_]vk.SwapchainKHR{self.swapchain.handle},
+            .p_image_indices = &[_]u32{self.swapchain_index},
             .p_results = null,
         }) catch |err| {
             switch (err) {
