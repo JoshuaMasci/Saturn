@@ -7,6 +7,8 @@ usingnamespace @import("vulkan/instance.zig");
 usingnamespace @import("vulkan/device.zig");
 usingnamespace @import("vulkan/swapchain.zig");
 
+usingnamespace @import("renderer/mesh.zig");
+
 const TransferQueue = @import("transfer_queue.zig").TransferQueue;
 
 const imgui = @import("Imgui.zig");
@@ -71,6 +73,10 @@ pub const Renderer = struct {
     images_descriptor_set: vk.DescriptorSet,
 
     imgui_layer: imgui.Layer,
+
+    tri_pipeline_layout: vk.PipelineLayout,
+    tri_pipeline: vk.Pipeline,
+    tri_mesh: Mesh,
 
     pub fn init(allocator: *Allocator, window: glfw.Window) !Self {
         const vulkan_support = try glfw.vulkanSupported();
@@ -177,6 +183,10 @@ pub const Renderer = struct {
             undefined,
         );
 
+        var tri_mesh = try Mesh.init(ColorVertex, u32, device, 3, 3);
+        transfer_queue.copyToBuffer(tri_mesh.vertex_buffer, ColorVertex, &vertices);
+        transfer_queue.copyToBuffer(tri_mesh.index_buffer, u32, &[_]u32{ 0, 1, 2 });
+
         return Self{
             .allocator = allocator,
             .instance = instance,
@@ -192,11 +202,20 @@ pub const Renderer = struct {
             .images_descriptor_pool = images_descriptor_pool,
             .images_descriptor_set = images_descriptor_set,
             .imgui_layer = imgui_layer,
+
+            .tri_pipeline_layout = vk.PipelineLayout.null_handle,
+            .tri_pipeline = vk.Pipeline.null_handle,
+            .tri_mesh = tri_mesh,
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.device.waitIdle();
+
+        self.device.dispatch.destroyPipeline(self.device.handle, self.tri_pipeline, null);
+        self.device.dispatch.destroyPipelineLayout(self.device.handle, self.tri_pipeline_layout, null);
+        self.tri_mesh.deinit();
+
         self.device.dispatch.destroyDescriptorPool(self.device.handle, self.images_descriptor_pool, null);
         self.device.dispatch.destroyDescriptorSetLayout(self.device.handle, self.images_descriptor_layout, null);
         self.imgui_layer.deinit();

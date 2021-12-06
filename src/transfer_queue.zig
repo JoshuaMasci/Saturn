@@ -9,11 +9,20 @@ const ImageTransferQueue = std.ArrayList(struct {
     staging_buffer: Buffer,
 });
 
+const BufferTransferQueue = std.ArrayList(struct {
+    buffer: Buffer,
+    buffer_offset: u32,
+    staging_buffer: Buffer,
+});
+
 pub const TransferQueue = struct {
     const Self = @This();
 
     allocator: *Allocator,
     device: Device,
+
+    buffer_transfers: BufferTransferQueue,
+    previous_buffer_transfers: ?BufferTransferQueue,
 
     image_transfers: ImageTransferQueue,
     previous_image_transfers: ?ImageTransferQueue,
@@ -27,14 +36,40 @@ pub const TransferQueue = struct {
             .device = device,
             .image_transfers = ImageTransferQueue.init(allocator),
             .previous_image_transfers = null,
+            .buffer_transfers = BufferTransferQueue.init(allocator),
+            .previous_buffer_transfers = null,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.image_transfers.items) |transfer| {
-            transfer.staging_buffer.deinit();
+        deleteTransferList(BufferTransferQueue, self.buffer_transfers);
+        if (self.previous_buffer_transfers) |buffer_transfer| {
+            deleteTransferList(BufferTransferQueue, buffer_transfer);
         }
-        self.image_transfers.deinit();
+
+        deleteTransferList(ImageTransferQueue, self.image_transfers);
+        if (self.previous_image_transfers) |image_transfers| {
+            deleteTransferList(ImageTransferQueue, image_transfers);
+        }
+    }
+
+    pub fn copyToBuffer(self: *Self, buffer: Buffer, comptime Type: type, data: []const Type) void {
+        var staging_buffer_size = @intCast(u32, @sizeOf(Type) * data.len);
+        var staging_buffer = Buffer.init(self.device, staging_buffer_size, .{ .transfer_src_bit = true }, .{ .host_visible_bit = true, .host_coherent_bit = true }) catch {
+            std.debug.panic("Failed to create staging buffer", .{});
+        };
+
+        staging_buffer.fill(Type, data) catch {
+            std.debug.panic("Failed to fill staging buffer", .{});
+        };
+
+        self.buffer_transfers.append(.{
+            .buffer = buffer,
+            .buffer_offset = 0,
+            .staging_buffer = staging_buffer,
+        }) catch {
+            std.debug.panic("Failed to append buffer transfer queue", .{});
+        };
     }
 
     pub fn copyToImage(self: *Self, image: Image, comptime Type: type, data: []const Type) void {
@@ -56,6 +91,23 @@ pub const TransferQueue = struct {
     }
 
     pub fn commitTransfers(self: *Self, command_buffer: vk.CommandBuffer) void {
+        for (self.buffer_transfers.items) |buffer_transfer| {
+            var region = vk.BufferCopy{
+                .src_offset = 0,
+                .dst_offset = buffer_transfer.buffer_offset,
+                .size = @intCast(vk.DeviceSize, buffer_transfer.staging_buffer.size),
+            };
+            self.device.dispatch.cmdCopyBuffer(
+                command_buffer,
+                buffer_transfer.staging_buffer.handle,
+                buffer_transfer.buffer.handle,
+                1,
+                @ptrCast([*]const vk.BufferCopy, &region),
+            );
+        }
+        self.previous_buffer_transfers = self.buffer_transfers;
+        self.buffer_transfers = BufferTransferQueue.init(self.allocator);
+
         for (self.image_transfers.items) |image_transfer| {
             transitionImageLayout(
                 self.device,
@@ -116,11 +168,13 @@ pub const TransferQueue = struct {
     }
 
     pub fn clearResources(self: *Self) void {
+        if (self.previous_buffer_transfers) |buffer_transfers| {
+            deleteTransferList(BufferTransferQueue, buffer_transfers);
+            self.previous_buffer_transfers = null;
+        }
+
         if (self.previous_image_transfers) |image_transfers| {
-            for (image_transfers.items) |image_transfer| {
-                image_transfer.staging_buffer.deinit();
-            }
-            image_transfers.deinit();
+            deleteTransferList(ImageTransferQueue, image_transfers);
             self.previous_image_transfers = null;
         }
     }
@@ -166,4 +220,11 @@ fn transitionImageLayout(
         1,
         @ptrCast([*]const vk.ImageMemoryBarrier, &image_barrier),
     );
+}
+
+fn deleteTransferList(comptime Type: type, array_list: Type) void {
+    for (array_list.items) |item| {
+        item.staging_buffer.deinit();
+    }
+    array_list.deinit();
 }
