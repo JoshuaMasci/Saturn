@@ -308,8 +308,7 @@ pub const Layer = struct {
                 try index_buffer.fill(c.ImDrawIdx, index_data);
                 try self.freed_buffers.append(index_buffer);
 
-                var offset: u64 = 0;
-                self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, @ptrCast([*]vk.Buffer, &vertex_buffer.handle), @ptrCast([*]const u64, &offset));
+                self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, &[_]vk.Buffer{vertex_buffer.handle}, &[_]u64{0});
                 self.device.dispatch.cmdBindIndexBuffer(command_buffer, index_buffer.handle, 0, vk.IndexType.uint16);
 
                 var cmd_i: u32 = 0;

@@ -183,6 +183,33 @@ pub const Renderer = struct {
             undefined,
         );
 
+        var tri_pipeline_layout = try device.dispatch.createPipelineLayout(device.handle, .{
+            .flags = .{},
+            .set_layout_count = 0,
+            .p_set_layouts = undefined,
+            .push_constant_range_count = 0,
+            .p_push_constant_ranges = undefined,
+        }, null);
+
+        var tri_pipeline = try device.createPipeline(
+            tri_pipeline_layout,
+            swapchain.render_pass,
+            &resources.tri_vert,
+            &resources.tri_frag,
+            &ColorVertex.binding_description,
+            &ColorVertex.attribute_description,
+            &.{
+                .cull_mode = .{},
+                .blend_enable = false,
+                .src_color_blend_factor = .src_alpha,
+                .dst_color_blend_factor = .one_minus_src_alpha,
+                .color_blend_op = .add,
+                .src_alpha_blend_factor = .src_alpha,
+                .dst_alpha_blend_factor = .one_minus_src_alpha,
+                .alpha_blend_op = .add,
+            },
+        );
+
         var tri_mesh = try Mesh.init(ColorVertex, u32, device, 3, 3);
         transfer_queue.copyToBuffer(tri_mesh.vertex_buffer, ColorVertex, &vertices);
         transfer_queue.copyToBuffer(tri_mesh.index_buffer, u32, &[_]u32{ 0, 1, 2 });
@@ -203,8 +230,8 @@ pub const Renderer = struct {
             .images_descriptor_set = images_descriptor_set,
             .imgui_layer = imgui_layer,
 
-            .tri_pipeline_layout = vk.PipelineLayout.null_handle,
-            .tri_pipeline = vk.Pipeline.null_handle,
+            .tri_pipeline_layout = tri_pipeline_layout,
+            .tri_pipeline = tri_pipeline,
             .tri_mesh = tri_mesh,
         };
     }
@@ -235,6 +262,11 @@ pub const Renderer = struct {
     pub fn render(self: *Self) !void {
         var begin_result = try self.beginFrame();
         if (begin_result) |command_buffer| {
+            self.device.dispatch.cmdBindPipeline(command_buffer, .graphics, self.tri_pipeline);
+            self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, &[_]vk.Buffer{self.tri_mesh.vertex_buffer.handle}, &[_]u64{0});
+            self.device.dispatch.cmdBindIndexBuffer(command_buffer, self.tri_mesh.index_buffer.handle, 0, vk.IndexType.uint32);
+            self.device.dispatch.cmdDrawIndexed(command_buffer, self.tri_mesh.index_count, 1, 0, 0, 0);
+
             self.imgui_layer.beginFrame();
             try self.imgui_layer.endFrame(command_buffer, &[_]vk.DescriptorSet{self.images_descriptor_set});
             try self.endFrame();
@@ -435,3 +467,5 @@ const DeviceFrame = struct {
         self.device.dispatch.destroySemaphore(self.device.handle, self.present_semaphore, null);
     }
 };
+
+fn createTempPipeline() void {}
