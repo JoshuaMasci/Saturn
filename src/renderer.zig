@@ -17,6 +17,8 @@ const Input = @import("input.zig").Input;
 
 const GPU_TIMEOUT: u64 = std.math.maxInt(u64);
 
+const obj = @import("utils/obj_loader.zig");
+
 const ColorVertex = struct {
     const Self = @This();
 
@@ -45,7 +47,7 @@ const ColorVertex = struct {
     color: Vector3,
 };
 
-pub const vertices = [_]ColorVertex{
+pub const tri_vertices = [_]ColorVertex{
     .{ .pos = Vector3.new(0, -0.75, 0.0), .color = Vector3.new(1, 0, 0) },
     .{ .pos = Vector3.new(-0.75, 0.75, 0.0), .color = Vector3.new(0, 1, 0) },
     .{ .pos = Vector3.new(0.75, 0.75, 0.0), .color = Vector3.new(0, 0, 1) },
@@ -77,6 +79,8 @@ pub const Renderer = struct {
     tri_pipeline_layout: vk.PipelineLayout,
     tri_pipeline: vk.Pipeline,
     tri_mesh: Mesh,
+
+    obj_mesh: ?Mesh,
 
     pub fn init(allocator: *Allocator, window: glfw.Window) !Self {
         const vulkan_support = try glfw.vulkanSupported();
@@ -211,8 +215,14 @@ pub const Renderer = struct {
         );
 
         var tri_mesh = try Mesh.init(ColorVertex, u32, device, 3, 3);
-        transfer_queue.copyToBuffer(tri_mesh.vertex_buffer, ColorVertex, &vertices);
+        transfer_queue.copyToBuffer(tri_mesh.vertex_buffer, ColorVertex, &tri_vertices);
         transfer_queue.copyToBuffer(tri_mesh.index_buffer, u32, &[_]u32{ 0, 1, 2 });
+
+        // var obj_file = try std.fs.cwd().openFile("assets/sphere.obj", std.fs.File.OpenFlags{ .read = true });
+        // defer obj_file.close();
+        // var obj_reader = obj_file.reader();
+        // var obj_mesh = try obj.parseObjFile(allocator, obj_reader, .{});
+        // defer obj_mesh.deinit();
 
         return Self{
             .allocator = allocator,
@@ -233,6 +243,7 @@ pub const Renderer = struct {
             .tri_pipeline_layout = tri_pipeline_layout,
             .tri_pipeline = tri_pipeline,
             .tri_mesh = tri_mesh,
+            .obj_mesh = null,
         };
     }
 
@@ -242,6 +253,10 @@ pub const Renderer = struct {
         self.device.dispatch.destroyPipeline(self.device.handle, self.tri_pipeline, null);
         self.device.dispatch.destroyPipelineLayout(self.device.handle, self.tri_pipeline_layout, null);
         self.tri_mesh.deinit();
+
+        if (self.obj_mesh) |mesh| {
+            mesh.deinit();
+        }
 
         self.device.dispatch.destroyDescriptorPool(self.device.handle, self.images_descriptor_pool, null);
         self.device.dispatch.destroyDescriptorSetLayout(self.device.handle, self.images_descriptor_layout, null);
@@ -263,9 +278,16 @@ pub const Renderer = struct {
         var begin_result = try self.beginFrame();
         if (begin_result) |command_buffer| {
             self.device.dispatch.cmdBindPipeline(command_buffer, .graphics, self.tri_pipeline);
-            self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, &[_]vk.Buffer{self.tri_mesh.vertex_buffer.handle}, &[_]u64{0});
-            self.device.dispatch.cmdBindIndexBuffer(command_buffer, self.tri_mesh.index_buffer.handle, 0, vk.IndexType.uint32);
-            self.device.dispatch.cmdDrawIndexed(command_buffer, self.tri_mesh.index_count, 1, 0, 0, 0);
+
+            if (self.obj_mesh) |mesh| {
+                self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, &[_]vk.Buffer{mesh.vertex_buffer.handle}, &[_]u64{0});
+                self.device.dispatch.cmdBindIndexBuffer(command_buffer, mesh.index_buffer.handle, 0, vk.IndexType.uint32);
+                self.device.dispatch.cmdDrawIndexed(command_buffer, mesh.index_count, 1, 0, 0, 0);
+            } else {
+                self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, &[_]vk.Buffer{self.tri_mesh.vertex_buffer.handle}, &[_]u64{0});
+                self.device.dispatch.cmdBindIndexBuffer(command_buffer, self.tri_mesh.index_buffer.handle, 0, vk.IndexType.uint32);
+                self.device.dispatch.cmdDrawIndexed(command_buffer, self.tri_mesh.index_count, 1, 0, 0, 0);
+            }
 
             self.imgui_layer.beginFrame();
             try self.imgui_layer.endFrame(command_buffer, &[_]vk.DescriptorSet{self.images_descriptor_set});
@@ -375,6 +397,32 @@ pub const Renderer = struct {
             }
         };
     }
+
+    pub fn loadMeshTemp(self: *Self, file_path: []const u8) !void {
+        //"assets/sphere.obj"
+        var obj_file = try std.fs.cwd().openFile(file_path, std.fs.File.OpenFlags{ .read = true });
+        defer obj_file.close();
+        var obj_reader = obj_file.reader();
+        var obj_mesh = try obj.parseObjFile(self.allocator, obj_reader, .{});
+        defer obj_mesh.deinit();
+
+        var vertices = try self.allocator.alloc(ColorVertex, obj_mesh.positions.len);
+        defer self.allocator.free(vertices);
+
+        var i: usize = 0;
+        while (i < vertices.len) : (i += 1) {
+            vertices[i].pos = .{
+                .data = obj_mesh.positions[i],
+            };
+            var uv = obj_mesh.uvs[i];
+            vertices[i].color = Vector3.new(uv[0], uv[1], 0.0);
+        }
+
+        var mesh = try Mesh.init(ColorVertex, u32, self.device, @intCast(u32, vertices.len), @intCast(u32, obj_mesh.indices.len));
+        self.transfer_queue.copyToBuffer(mesh.vertex_buffer, ColorVertex, vertices);
+        self.transfer_queue.copyToBuffer(mesh.index_buffer, u32, obj_mesh.indices);
+        self.obj_mesh = mesh;
+    }
 };
 
 fn beginSingleUseCommandBuffer(device: Device, command_pool: vk.CommandPool) !vk.CommandBuffer {
@@ -467,5 +515,3 @@ const DeviceFrame = struct {
         self.device.dispatch.destroySemaphore(self.device.handle, self.present_semaphore, null);
     }
 };
-
-fn createTempPipeline() void {}

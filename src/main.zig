@@ -31,6 +31,7 @@ pub fn main() !void {
 
     var vulkan_renderer = try renderer.Renderer.init(allocator, window);
     defer vulkan_renderer.deinit();
+    try vulkan_renderer.loadMeshTemp("assets/sphere.obj");
 
     var prev_time: f64 = 0.0;
     while (!window.shouldClose()) {
