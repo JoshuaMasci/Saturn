@@ -4,20 +4,18 @@ const glfw = @import("glfw");
 
 const vk = @import("vulkan");
 usingnamespace @import("vulkan/instance.zig");
-usingnamespace @import("vulkan/device.zig");
-usingnamespace @import("vulkan/swapchain.zig");
+const Device = @import("vulkan/device.zig").Device;
+const Swapchain = @import("vulkan/swapchain.zig").Swapchain;
 
-usingnamespace @import("renderer/mesh.zig");
-
+const Mesh = @import("renderer/mesh.zig").Mesh;
 const TransferQueue = @import("transfer_queue.zig").TransferQueue;
+const MeshManager = @import("renderer/mesh_manager.zig").MeshManager;
 
 const imgui = @import("Imgui.zig");
 const resources = @import("resources");
 const Input = @import("input.zig").Input;
 
 const GPU_TIMEOUT: u64 = std.math.maxInt(u64);
-
-const obj = @import("utils/obj_loader.zig");
 
 const ColorVertex = struct {
     const Self = @This();
@@ -76,11 +74,11 @@ pub const Renderer = struct {
 
     imgui_layer: imgui.Layer,
 
+    meshes: MeshManager,
+
     tri_pipeline_layout: vk.PipelineLayout,
     tri_pipeline: vk.Pipeline,
     tri_mesh: Mesh,
-
-    obj_mesh: ?Mesh,
 
     pub fn init(allocator: *Allocator, window: glfw.Window) !Self {
         const vulkan_support = try glfw.vulkanSupported();
@@ -218,11 +216,10 @@ pub const Renderer = struct {
         transfer_queue.copyToBuffer(tri_mesh.vertex_buffer, ColorVertex, &tri_vertices);
         transfer_queue.copyToBuffer(tri_mesh.index_buffer, u32, &[_]u32{ 0, 1, 2 });
 
-        // var obj_file = try std.fs.cwd().openFile("assets/sphere.obj", std.fs.File.OpenFlags{ .read = true });
-        // defer obj_file.close();
-        // var obj_reader = obj_file.reader();
-        // var obj_mesh = try obj.parseObjFile(allocator, obj_reader, .{});
-        // defer obj_mesh.deinit();
+        var meshes = MeshManager.init(allocator, device);
+
+        //TODO: temp call
+        var mesh_id = meshes.load("assets/sphere.obj");
 
         return Self{
             .allocator = allocator,
@@ -239,27 +236,24 @@ pub const Renderer = struct {
             .images_descriptor_pool = images_descriptor_pool,
             .images_descriptor_set = images_descriptor_set,
             .imgui_layer = imgui_layer,
-
+            .meshes = meshes,
             .tri_pipeline_layout = tri_pipeline_layout,
             .tri_pipeline = tri_pipeline,
             .tri_mesh = tri_mesh,
-            .obj_mesh = null,
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.device.waitIdle();
 
+        //TODO: temp
         self.device.dispatch.destroyPipeline(self.device.handle, self.tri_pipeline, null);
         self.device.dispatch.destroyPipelineLayout(self.device.handle, self.tri_pipeline_layout, null);
         self.tri_mesh.deinit();
 
-        if (self.obj_mesh) |mesh| {
-            mesh.deinit();
-        }
-
         self.device.dispatch.destroyDescriptorPool(self.device.handle, self.images_descriptor_pool, null);
         self.device.dispatch.destroyDescriptorSetLayout(self.device.handle, self.images_descriptor_layout, null);
+        self.meshes.deinit();
         self.imgui_layer.deinit();
         self.transfer_queue.deinit();
         self.device_frame.deinit();
@@ -279,7 +273,7 @@ pub const Renderer = struct {
         if (begin_result) |command_buffer| {
             self.device.dispatch.cmdBindPipeline(command_buffer, .graphics, self.tri_pipeline);
 
-            if (self.obj_mesh) |mesh| {
+            if (self.meshes.get(0)) |mesh| {
                 self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, &[_]vk.Buffer{mesh.vertex_buffer.handle}, &[_]u64{0});
                 self.device.dispatch.cmdBindIndexBuffer(command_buffer, mesh.index_buffer.handle, 0, vk.IndexType.uint32);
                 self.device.dispatch.cmdDrawIndexed(command_buffer, mesh.index_count, 1, 0, 0, 0);
@@ -310,6 +304,7 @@ pub const Renderer = struct {
         _ = try self.device.dispatch.resetFences(self.device.handle, 1, fence);
 
         self.transfer_queue.clearResources();
+        self.meshes.flush();
 
         try self.device.dispatch.beginCommandBuffer(current_frame.command_buffer, .{
             .flags = .{},
@@ -317,6 +312,7 @@ pub const Renderer = struct {
         });
 
         self.transfer_queue.commitTransfers(current_frame.command_buffer);
+        self.meshes.transfers.commitTransfers(current_frame.command_buffer);
 
         const extent = self.swapchain.extent;
 
@@ -396,32 +392,6 @@ pub const Renderer = struct {
                 else => return err,
             }
         };
-    }
-
-    pub fn loadMeshTemp(self: *Self, file_path: []const u8) !void {
-        //"assets/sphere.obj"
-        var obj_file = try std.fs.cwd().openFile(file_path, std.fs.File.OpenFlags{ .read = true });
-        defer obj_file.close();
-        var obj_reader = obj_file.reader();
-        var obj_mesh = try obj.parseObjFile(self.allocator, obj_reader, .{});
-        defer obj_mesh.deinit();
-
-        var vertices = try self.allocator.alloc(ColorVertex, obj_mesh.positions.len);
-        defer self.allocator.free(vertices);
-
-        var i: usize = 0;
-        while (i < vertices.len) : (i += 1) {
-            vertices[i].pos = .{
-                .data = obj_mesh.positions[i],
-            };
-            var uv = obj_mesh.uvs[i];
-            vertices[i].color = Vector3.new(uv[0], uv[1], 0.0);
-        }
-
-        var mesh = try Mesh.init(ColorVertex, u32, self.device, @intCast(u32, vertices.len), @intCast(u32, obj_mesh.indices.len));
-        self.transfer_queue.copyToBuffer(mesh.vertex_buffer, ColorVertex, vertices);
-        self.transfer_queue.copyToBuffer(mesh.index_buffer, u32, obj_mesh.indices);
-        self.obj_mesh = mesh;
     }
 };
 
