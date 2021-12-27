@@ -97,7 +97,7 @@ pub fn Matrix4Fn(comptime T: type) type {
                     .{
                         -(right + left) / (right - left),
                         -(top + bottom) / (top - bottom),
-                        -zNear / (zFar - zNear),
+                        -near / (far - near),
                         1,
                     },
                 },
@@ -142,24 +142,40 @@ pub fn Matrix4Fn(comptime T: type) type {
             };
         }
 
-        pub fn mul(self: Self, other: Self) Self {
-            var lhs = self.data;
-            var rhs = other.transpose().data;
-
-            var result = Self.zero;
-            var row: u8 = 0;
-            while (row < 4) : (row += 1) {
-                var column: u8 = 0;
-                while (column < 4) : (column += 1) {
-                    //Force to product to slice
-                    var products: [4]f32 = lhs[row] * rhs[column];
-                    //TODO: unroll or use SIMD?
-                    for (products) |value| {
-                        result.data[row][column] += value;
+        pub fn mul(left: Self, right: Self) Self {
+            var mat = Self.zero;
+            var columns: usize = 0;
+            while (columns < 4) : (columns += 1) {
+                var rows: usize = 0;
+                while (rows < 4) : (rows += 1) {
+                    var sum: T = 0.0;
+                    var current_mat: usize = 0;
+                    while (current_mat < 4) : (current_mat += 1) {
+                        sum += left.data[current_mat][rows] * right.data[columns][current_mat];
                     }
+                    mat.data[columns][rows] = sum;
                 }
             }
-            return result;
+
+            return mat;
+            //TODO: fix this
+            // var lhs = self.data;
+            // var rhs = other.transpose().data;
+
+            // var result = Self.zero;
+            // var row: u8 = 0;
+            // while (row < 4) : (row += 1) {
+            //     var column: u8 = 0;
+            //     while (column < 4) : (column += 1) {
+            //         //Force to product to slice
+            //         var products: [4]f32 = lhs[row] * rhs[column];
+            //         //TODO: unroll or use SIMD?
+            //         for (products) |value| {
+            //             result.data[row][column] += value;
+            //         }
+            //     }
+            // }
+            // return result;
         }
     };
 }

@@ -68,8 +68,8 @@ pub const MeshManager = struct {
             vertices[i].pos = .{
                 .data = obj_mesh.positions[i],
             };
-            var uv = obj_mesh.uvs[i];
-            vertices[i].color = Vector3.new(uv[0], uv[1], 0.0);
+            var normal = obj_mesh.normals[i];
+            vertices[i].color = Vector3.new(normal[0], normal[1], normal[2]).abs();
         }
 
         var mesh = try Mesh.init(ColorVertex, u32, self.device, @intCast(u32, vertices.len), @intCast(u32, obj_mesh.indices.len));

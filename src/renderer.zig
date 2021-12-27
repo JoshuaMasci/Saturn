@@ -185,12 +185,18 @@ pub const Renderer = struct {
             undefined,
         );
 
+        var push_constant_range = vk.PushConstantRange{
+            .stage_flags = .{ .vertex_bit = true },
+            .offset = 0,
+            .size = 64,
+        };
+
         var tri_pipeline_layout = try device.dispatch.createPipelineLayout(device.handle, .{
             .flags = .{},
             .set_layout_count = 0,
             .p_set_layouts = undefined,
-            .push_constant_range_count = 0,
-            .p_push_constant_ranges = undefined,
+            .push_constant_range_count = 1,
+            .p_push_constant_ranges = @ptrCast([*]const vk.PushConstantRange, &push_constant_range),
         }, null);
 
         var tri_pipeline = try device.createPipeline(
@@ -272,6 +278,15 @@ pub const Renderer = struct {
         var begin_result = try self.beginFrame();
         if (begin_result) |command_buffer| {
             self.device.dispatch.cmdBindPipeline(command_buffer, .graphics, self.tri_pipeline);
+
+            var size = self.swapchain.extent;
+
+            var model = Matrix4.model(Vector3.new(0, 0, 5), Quaternion.identity, Vector3.one);
+            var view = Matrix4.view_lh(Vector3.new(0, 0, -5), Quaternion.identity);
+            var perspective = Matrix4.perspective_lh_zo(3.1415926 / 4.0, @intToFloat(f32, size.width) / @intToFloat(f32, size.height), 0.1, 100);
+            var mvp = perspective.mul(view).mul(model);
+
+            self.device.dispatch.cmdPushConstants(command_buffer, self.tri_pipeline_layout, .{ .vertex_bit = true }, 0, @sizeOf(Matrix4), &mvp.data);
 
             if (self.meshes.get(0)) |mesh| {
                 self.device.dispatch.cmdBindVertexBuffers(command_buffer, 0, 1, &[_]vk.Buffer{mesh.vertex_buffer.handle}, &[_]u64{0});

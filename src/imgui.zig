@@ -205,7 +205,6 @@ pub const Layer = struct {
             std.log.err("Failed to get window size, can't use imgui", .{});
             return;
         };
-
         self.io.DisplaySize = c.ImVec2{
             .x = @intToFloat(f32, size.width),
             .y = @intToFloat(f32, size.height),
