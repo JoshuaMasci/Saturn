@@ -87,6 +87,7 @@ pub fn Matrix4Fn(comptime T: type) type {
         pub fn model(p: Vec3Type, r: QuatType, s: Vec3Type) Self {
             return Self.translation(p).mul(Self.rotation(r)).mul(Self.scale(s));
         }
+
         pub fn orthographic_lh_zo(left: T, right: T, bottom: T, top: T, near: T, far: T) Self {
             return Self{
                 .data = .{
@@ -115,9 +116,18 @@ pub fn Matrix4Fn(comptime T: type) type {
             };
         }
 
-        //TODO: this
-        pub fn view_lh() Self {
-            return Self.identity;
+        pub fn view_lh(pos: Vec3Type, rot: QuatType) Self {
+            var r = rot.rotate(Vec3Type.xaxis).normalize();
+            var u = rot.rotate(Vec3Type.yaxis).normalize();
+            var f = rot.rotate(Vec3Type.zaxis).normalize();
+            return Self{
+                .data = .{
+                    .{ r.data[0], u.data[0], f.data[0], 0 },
+                    .{ r.data[1], u.data[1], f.data[1], 0 },
+                    .{ r.data[2], u.data[2], f.data[2], 0 },
+                    .{ -r.dot(pos), -u.dot(pos), -f.dot(pos), 1 },
+                },
+            };
         }
 
         pub fn transpose(mat: Self) Self {
