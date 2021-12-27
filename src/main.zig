@@ -9,6 +9,22 @@ const Input = @import("input.zig").Input;
 const renderer = @import("renderer.zig");
 
 pub fn main() !void {
+    // var identity = Matrix4.identity;
+    // var scale = Matrix4.scale(Vector3.new(1, 2, 3));
+    // var translation = Matrix4.translation(Vector3.new(1, 2, 3));
+    // var rotation = Matrix4.rotation(Quaternion.axisAngle(Vector3.yaxis, 3.1415926 / 4.0));
+    // var multiply = translation.mul(scale).mul(rotation);
+    // var model = Matrix4.model(Vector3.new(1, 2, 3), Quaternion.axisAngle(Vector3.yaxis, 3.1415926 / 4.0), Vector3.new(1, 2, 3));
+    // var perspective = Matrix4.perspective_lh_zo(3.1415926 / 4.0, 1, 0.1, 100);
+
+    // std.log.info("Identity   : {d:0.2}", .{identity.data});
+    // std.log.info("scale      : {d:0.2}", .{scale.data});
+    // std.log.info("translation: {d:0.2}", .{translation.data});
+    // std.log.info("rotation   : {d:0.2}", .{rotation.data});
+    // std.log.info("multiply   : {d:0.2}", .{multiply.data});
+    // std.log.info("model      : {d:0.2}", .{model.data});
+    // std.log.info("perspective: {d:0.2}", .{perspective.data});
+
     var global_allocator: GeneralPurposeAllocator = GeneralPurposeAllocator{};
     defer {
         const leaked = global_allocator.deinit();

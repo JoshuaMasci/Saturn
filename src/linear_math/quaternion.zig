@@ -3,10 +3,11 @@ usingnamespace @import("vector3.zig");
 
 pub fn QuaternionFn(comptime T: type) type {
     if (@typeInfo(T) != .Float) {
-        @compileError("Quaternion not implemented for " ++ @typeName(T));
+        @compileError("Quaternion not implemented for " ++ @typeName(T) ++ " must use float type");
     }
     return struct {
         const Self = @This();
+        const Vec3Type = Vector3Fn(T);
 
         const W = 0;
         const X = 1;
@@ -18,13 +19,13 @@ pub fn QuaternionFn(comptime T: type) type {
 
         pub const identity = Self{ .data = [_]T{ 1, 0, 0, 0 } };
 
-        pub fn axis_angle(axis: Vector3Fn(T), angle_rad: T) Self {
+        pub fn axisAngle(axis: Vec3Type, angle_rad: T) Self {
             var angle_2 = angle_rad * 0.5;
-            var sin = Vector3Fn(T).new_value(@sin(angle_2));
+            var sin = Vec3Type.new_value(@sin(angle_2));
             var values = axis.normalize().mul(sin).data;
 
             return Self{
-                .data = [_]T{ @cos(angle_rad), values[0], values[1], values[2] },
+                .data = [_]T{ @cos(angle_2), values[0], values[1], values[2] },
             };
         }
 
@@ -41,11 +42,11 @@ pub fn QuaternionFn(comptime T: type) type {
             return self.data / [_]T{ len, len, len, len };
         }
 
-        pub fn length(self: *Self) T {
+        pub fn length(self: Self) T {
             return @sqrt(self.length2());
         }
 
-        pub fn length2(self: *Self) T {
+        pub fn length2(self: Self) T {
             var data = self.data * self.data;
             return data[W] +
                 data[X] +
@@ -65,6 +66,19 @@ pub fn QuaternionFn(comptime T: type) type {
                     (l[W] * r[Z]) + (l[Z] * r[W]) + (l[X] * r[Y]) - (l[Y] * r[X]),
                 },
             };
+        }
+
+        pub fn rotate(self: Self, vec: Vec3Type) Vec3Type {
+            var u = Vec3Type.new(
+                self.data[X],
+                self.data[Y],
+                self.data[Z],
+            );
+            var w = self.data[W];
+            var uv = u.cross(vec);
+            var uuv = u.cross(uv);
+            var r = vec.add(uv.scale(w).add(uuv).scale(2));
+            return r;
         }
     };
 }
