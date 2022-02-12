@@ -1,7 +1,7 @@
 const std = @import("std");
 
-usingnamespace @import("vector3.zig");
-usingnamespace @import("quaternion.zig");
+pub const Vector3 = @import("vector3.zig");
+pub const Quaternion = @import("quaternion.zig");
 
 pub fn Matrix4Fn(comptime T: type) type {
     if (@typeInfo(T) != .Float) {
@@ -9,8 +9,8 @@ pub fn Matrix4Fn(comptime T: type) type {
     }
     return struct {
         const Self = @This();
-        const Vec3Type = Vector3Fn(T);
-        const QuatType = QuaternionFn(T);
+        const Vec3Type = Vector3.Vector3Fn(T);
+        const QuatType = Quaternion.QuaternionFn(T);
 
         data: [4]std.meta.Vector(4, T),
 

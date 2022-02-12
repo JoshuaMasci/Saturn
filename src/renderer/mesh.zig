@@ -1,5 +1,5 @@
-usingnamespace @import("../vulkan/device.zig");
-usingnamespace @import("../vulkan/buffer.zig");
+const Device = @import("vulkan/device.zig").Device;
+const Buffer = @import("vulkan/buffer.zig").Buffer;
 
 pub const Mesh = struct {
     const Self = @This();

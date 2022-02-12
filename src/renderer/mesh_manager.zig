@@ -1,4 +1,6 @@
-usingnamespace @import("../core.zig");
+const std = @import("std");
+pub const Vector3 = @import("../linear_math/vector3.zig").Vector3Fn(f32);
+
 const Device = @import("../vulkan/device.zig").Device;
 const Mesh = @import("mesh.zig").Mesh;
 const TransferQueue = @import("../transfer_queue.zig").TransferQueue;
@@ -13,7 +15,7 @@ const ColorVertex = struct {
 pub const MeshManager = struct {
     const Self = @This();
 
-    allocator: *Allocator,
+    allocator: std.mem.Allocator,
     device: Device,
 
     id_next: u16 = 0,
@@ -21,7 +23,7 @@ pub const MeshManager = struct {
     transfers: TransferQueue,
     delete_list: std.ArrayList(Mesh),
 
-    pub fn init(allocator: *Allocator, device: Device) Self {
+    pub fn init(allocator: std.mem.Allocator, device: Device) Self {
         return Self{
             .allocator = allocator,
             .device = device,

@@ -8,7 +8,7 @@ const InstanceDispatch = @import("instance.zig").InstanceDispatch;
 pub const Device = struct {
     const Self = @This();
 
-    allocator: *Allocator,
+    allocator: std.mem.Allocator,
     pdevice: vk.PhysicalDevice,
     handle: vk.Device,
     dispatch: *DeviceDispatch,
@@ -16,7 +16,7 @@ pub const Device = struct {
     memory_properties: vk.PhysicalDeviceMemoryProperties,
 
     pub fn init(
-        allocator: *Allocator,
+        allocator: std.mem.Allocator,
         instance_dispatch: InstanceDispatch,
         pdevice: vk.PhysicalDevice,
         graphics_queue_index: u32,

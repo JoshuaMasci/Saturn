@@ -17,7 +17,7 @@ pub const SwapchainInfo = struct {
 pub const Swapchain = struct {
     const Self = @This();
 
-    allocator: *Allocator,
+    allocator: std.mem.Allocator,
     instance_dispatch: InstanceDispatch,
     device: Device,
     pdevice: vk.PhysicalDevice,
@@ -31,7 +31,7 @@ pub const Swapchain = struct {
     render_pass: vk.RenderPass,
     framebuffers: std.ArrayList(vk.Framebuffer),
 
-    pub fn init(allocator: *Allocator, instance_dispatch: InstanceDispatch, device: Device, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !Self {
+    pub fn init(allocator: std.mem.Allocator, instance_dispatch: InstanceDispatch, device: Device, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !Self {
         var self = Self{
             .allocator = allocator,
             .instance_dispatch = instance_dispatch,
@@ -164,7 +164,7 @@ pub const Swapchain = struct {
         self.framebuffers = framebuffers;
     }
 
-    fn getSurfaceFormat(allocator: *Allocator, instance_dispatch: InstanceDispatch, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.SurfaceFormatKHR {
+    fn getSurfaceFormat(allocator: std.mem.Allocator, instance_dispatch: InstanceDispatch, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.SurfaceFormatKHR {
         const preferred = vk.SurfaceFormatKHR{
             .format = .b8g8r8a8_unorm,
             .color_space = .srgb_nonlinear_khr,
@@ -188,7 +188,7 @@ pub const Swapchain = struct {
         return surface_formats[0];
     }
 
-    fn getPresentMode(allocator: *Allocator, instance_dispatch: InstanceDispatch, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.PresentModeKHR {
+    fn getPresentMode(allocator: std.mem.Allocator, instance_dispatch: InstanceDispatch, pdevice: vk.PhysicalDevice, surface: vk.SurfaceKHR) !vk.PresentModeKHR {
         var count: u32 = undefined;
         _ = try instance_dispatch.getPhysicalDeviceSurfacePresentModesKHR(pdevice, surface, &count, null);
 
@@ -219,7 +219,7 @@ pub const Swapchain = struct {
         };
     }
 
-    fn createImageViews(allocator: *Allocator, device: Device, format: vk.Format, images: *std.ArrayList(vk.Image)) !std.ArrayList(vk.ImageView) {
+    fn createImageViews(allocator: std.mem.Allocator, device: Device, format: vk.Format, images: *std.ArrayList(vk.Image)) !std.ArrayList(vk.ImageView) {
         var image_views = try std.ArrayList(vk.ImageView).initCapacity(allocator, images.items.len);
         for (images.items) |image| {
             try image_views.append(try device.dispatch.createImageView(device.handle, .{
@@ -282,7 +282,7 @@ pub const Swapchain = struct {
         }, null);
     }
 
-    fn createFramebuffers(allocator: *Allocator, device: Device, render_pass: vk.RenderPass, format: vk.Format, extent: vk.Extent2D, image_views: *std.ArrayList(vk.ImageView)) !std.ArrayList(vk.Framebuffer) {
+    fn createFramebuffers(allocator: std.mem.Allocator, device: Device, render_pass: vk.RenderPass, format: vk.Format, extent: vk.Extent2D, image_views: *std.ArrayList(vk.ImageView)) !std.ArrayList(vk.Framebuffer) {
         var framebuffers = try std.ArrayList(vk.Framebuffer).initCapacity(allocator, image_views.items.len);
         for (image_views.items) |image_view| {
             try framebuffers.append(try device.dispatch.createFramebuffer(device.handle, .{

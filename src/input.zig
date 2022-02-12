@@ -1,4 +1,4 @@
-usingnamespace @import("core.zig");
+pub const std = @import("std");
 const panic = std.debug.panic;
 
 const glfw = @import("glfw");
@@ -12,10 +12,10 @@ const ButtonInput = struct {
     prev_state: bool = false,
 };
 
-fn key_callback(window: glfw.Window, key: glfw.Key, scancode: isize, action: glfw.Action, mods: glfw.Mods) void {
+fn key_callback(window: glfw.Window, key: glfw.Key, scancode: i32, action: glfw.Action, mods: glfw.Mods) void {
     _ = scancode;
     _ = mods;
-    var internal_result = window.getUserPointer(*InputData);
+    var internal_result = window.getUserPointer(InputData);
     if (internal_result) |internal| {
         if (key != glfw.Key.unknown) {
             var key_int = @intCast(usize, @enumToInt(key));
@@ -30,7 +30,7 @@ fn key_callback(window: glfw.Window, key: glfw.Key, scancode: isize, action: glf
 
 fn mouse_button_callback(window: glfw.Window, button: glfw.mouse_button.MouseButton, action: glfw.Action, mods: glfw.Mods) void {
     _ = mods;
-    var internal_result = window.getUserPointer(*InputData);
+    var internal_result = window.getUserPointer(InputData);
     if (internal_result) |internal| {
         var button_int = @intCast(usize, @enumToInt(button));
         if (action == glfw.Action.press) {
@@ -42,14 +42,14 @@ fn mouse_button_callback(window: glfw.Window, button: glfw.mouse_button.MouseBut
 }
 
 fn mouse_move_button(window: glfw.Window, xpos: f64, ypos: f64) void {
-    var internal_result = window.getUserPointer(*InputData);
+    var internal_result = window.getUserPointer(InputData);
     if (internal_result) |internal| {
         internal.mouse_pos = [2]f32{ @floatCast(f32, xpos), @floatCast(f32, ypos) };
     }
 }
 
 fn mouse_entered(window: glfw.Window, entered: bool) void {
-    var internal_result = window.getUserPointer(*InputData);
+    var internal_result = window.getUserPointer(InputData);
     if (internal_result) |internal| {
         if (!entered) {
             internal.mouse_pos = null;
@@ -58,7 +58,7 @@ fn mouse_entered(window: glfw.Window, entered: bool) void {
 }
 
 fn text_entered(window: glfw.Window, character_u21: u21) void {
-    var internal_result = window.getUserPointer(*InputData);
+    var internal_result = window.getUserPointer(InputData);
     if (internal_result) |internal| {
         var character = @intCast(u16, character_u21);
         internal.text_input.append(character) catch {
@@ -77,14 +77,14 @@ const InputData = struct {
 pub const Input = struct {
     const Self = @This();
 
-    allocator: *Allocator,
+    allocator: std.mem.Allocator,
     window: glfw.Window,
     internal: *InputData,
 
-    pub fn init(window: glfw.Window, allocator: *Allocator) !Self {
+    pub fn init(window: glfw.Window, allocator: std.mem.Allocator) !Self {
         var internal = try allocator.create(InputData);
         internal.text_input = TextInput.init(allocator);
-        window.setUserPointer(*InputData, internal);
+        window.setUserPointer(internal);
 
         window.setKeyCallback(key_callback);
         window.setMouseButtonCallback(mouse_button_callback);
@@ -104,10 +104,9 @@ pub const Input = struct {
         self.window.setMouseButtonCallback(null);
         self.window.setCursorPosCallback(null);
         self.window.setCursorEnterCallback(null);
+        self.window.setUserPointer(null);
 
         //Clear Window User Pointer
-        var internal = self.window.getInternal();
-        internal.user_pointer = null;
         self.internal.text_input.deinit();
         self.allocator.destroy(self.internal);
     }

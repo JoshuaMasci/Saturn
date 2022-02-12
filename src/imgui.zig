@@ -1,10 +1,10 @@
-usingnamespace @import("core.zig");
+pub const std = @import("std");
 const glfw = @import("glfw");
 
 const vk = @import("vulkan");
-usingnamespace @import("vulkan/device.zig");
-usingnamespace @import("vulkan/buffer.zig");
-usingnamespace @import("vulkan/image.zig");
+const Device = @import("vulkan/device.zig").Device;
+const Buffer = @import("vulkan/buffer.zig").Buffer;
+const Image @import("vulkan/image.zig").Image;
 
 const TransferQueue = @import("transfer_queue.zig").TransferQueue;
 const Input = @import("input.zig").Input;
@@ -41,7 +41,7 @@ const SHADER_STAGES = vk.ShaderStageFlags{
 pub const Layer = struct {
     const Self = @This();
 
-    allocator: *Allocator,
+    allocator: std.mem.Allocator,
     context: *c.ImGuiContext,
     io: *c.ImGuiIO,
 
@@ -54,7 +54,7 @@ pub const Layer = struct {
     texture_atlas: Image,
     texture_sampler: vk.Sampler,
 
-    pub fn init(allocator: *Allocator, device: Device, transfer_queue: *TransferQueue, render_pass: vk.RenderPass, descriptor_set_layouts: []vk.DescriptorSetLayout) !Self {
+    pub fn init(allocator: std.mem.Allocator, device: Device, transfer_queue: *TransferQueue, render_pass: vk.RenderPass, descriptor_set_layouts: []vk.DescriptorSetLayout) !Self {
         var context = c.igCreateContext(null);
 
         var io: *c.ImGuiIO = c.igGetIO();
@@ -361,19 +361,19 @@ const ImguiVertex = struct {
             .binding = 0,
             .location = 0,
             .format = .r32g32_sfloat,
-            .offset = @byteOffsetOf(Self, "pos"),
+            .offset = @offsetOf(Self, "pos"),
         },
         .{
             .binding = 0,
             .location = 1,
             .format = .r32g32_sfloat,
-            .offset = @byteOffsetOf(Self, "uv"),
+            .offset = @offsetOf(Self, "uv"),
         },
         .{
             .binding = 0,
             .location = 2,
             .format = .r8g8b8a8_unorm,
-            .offset = @byteOffsetOf(Self, "color"),
+            .offset = @offsetOf(Self, "color"),
         },
     };
 

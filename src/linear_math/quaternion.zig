@@ -1,5 +1,6 @@
 const std = @import("std");
-usingnamespace @import("vector3.zig");
+
+pub const Vector3 = @import("linear_math/vector3.zig");
 
 pub fn QuaternionFn(comptime T: type) type {
     if (@typeInfo(T) != .Float) {
@@ -7,7 +8,7 @@ pub fn QuaternionFn(comptime T: type) type {
     }
     return struct {
         const Self = @This();
-        const Vec3Type = Vector3Fn(T);
+        const Vec3Type = Vector3.Vector3Fn(T);
 
         const W = 0;
         const X = 1;

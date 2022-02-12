@@ -25,7 +25,7 @@ const Index = struct {
 };
 
 pub fn parseObjFile(
-    allocator: *std.mem.Allocator,
+    allocator: std.mem.Allocator,
     reader: anytype,
     comptime config: Config,
 ) !Mesh {

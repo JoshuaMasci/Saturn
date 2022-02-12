@@ -1,8 +1,8 @@
-usingnamespace @import("core.zig");
+pub const std = @import("std");
 const vk = @import("vulkan");
-usingnamespace @import("vulkan/device.zig");
-usingnamespace @import("vulkan/buffer.zig");
-usingnamespace @import("vulkan/image.zig");
+const Device = @import("vulkan/device.zig").Device;
+const Buffer = @import("vulkan/buffer.zig").Buffer;
+const Image @import("vulkan/image.zig").Image;
 
 const ImageTransferQueue = std.ArrayList(struct {
     image: Image,
@@ -18,7 +18,7 @@ const BufferTransferQueue = std.ArrayList(struct {
 pub const TransferQueue = struct {
     const Self = @This();
 
-    allocator: *Allocator,
+    allocator: std.mem.Allocator,
     device: Device,
 
     buffer_transfers: BufferTransferQueue,
@@ -28,7 +28,7 @@ pub const TransferQueue = struct {
     previous_image_transfers: ?ImageTransferQueue,
 
     pub fn init(
-        allocator: *Allocator,
+        allocator: std.mem.Allocator,
         device: Device,
     ) Self {
         return Self{

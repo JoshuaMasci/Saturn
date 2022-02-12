@@ -14,14 +14,14 @@ const saturn_version = vk.makeApiVersion(0, 0, 0, 0);
 pub const Instance = struct {
     const Self = @This();
 
-    allocator: *Allocator,
+    allocator: std.mem.Allocator,
     handle: vk.Instance,
     dispatch: InstanceDispatch,
     debug_callback: DebugCallback,
     pdevices: []vk.PhysicalDevice,
 
     pub fn init(
-        allocator: *Allocator,
+        allocator: std.mem.Allocator,
         app_name: [*:0]const u8,
         app_version: u32,
     ) !Self {
@@ -134,8 +134,10 @@ fn debugCallback(
     message_severity: vk.DebugUtilsMessageSeverityFlagsEXT.IntType,
     message_types: vk.DebugUtilsMessageTypeFlagsEXT.IntType,
     p_callback_data: *const vk.DebugUtilsMessengerCallbackDataEXT,
-    p_user_data: *c_void,
+    p_user_data: *anyopaque,
 ) callconv(.C) vk.Bool32 {
+    var _ = p_user_data;
+
     //TODO log levels
     std.log.warn("{s}", .{p_callback_data.p_message});
     return 0;

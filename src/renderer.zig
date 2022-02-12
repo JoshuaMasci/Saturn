@@ -1,9 +1,15 @@
-usingnamespace @import("core.zig");
-
+pub const std = @import("std");
 const glfw = @import("glfw");
 
+pub const Vector2 = @import("linear_math/vector2.zig").Vector2Fn(f32);
+pub const Vector3 = @import("linear_math/vector3.zig").Vector3Fn(f32);
+pub const Vector4 = @import("linear_math/vector4.zig").Vector4Fn(f32);
+pub const Quaternion = @import("linear_math/quaternion.zig").QuaternionFn(f32);
+pub const Matrix4 = @import("linear_math/matrix4.zig").Matrix4Fn(f32);
+
 const vk = @import("vulkan");
-usingnamespace @import("vulkan/instance.zig");
+const Instance = @import("vulkan/instance.zig").Instance;
+const AppVersion = @import("vulkan/instance.zig").AppVersion;
 const Device = @import("vulkan/device.zig").Device;
 const Swapchain = @import("vulkan/swapchain.zig").Swapchain;
 
@@ -31,13 +37,13 @@ const ColorVertex = struct {
             .binding = 0,
             .location = 0,
             .format = .r32g32b32_sfloat,
-            .offset = @byteOffsetOf(Self, "pos"),
+            .offset = @offsetOf(Self, "pos"),
         },
         .{
             .binding = 0,
             .location = 1,
             .format = .r32g32b32_sfloat,
-            .offset = @byteOffsetOf(Self, "color"),
+            .offset = @offsetOf(Self, "color"),
         },
     };
 
@@ -54,7 +60,7 @@ pub const tri_vertices = [_]ColorVertex{
 pub const Renderer = struct {
     const Self = @This();
 
-    allocator: *Allocator,
+    allocator: std.mem.Allocator,
     instance: Instance,
     device: Device,
     surface: vk.SurfaceKHR,
@@ -80,7 +86,7 @@ pub const Renderer = struct {
     tri_pipeline: vk.Pipeline,
     tri_mesh: Mesh,
 
-    pub fn init(allocator: *Allocator, window: glfw.Window) !Self {
+    pub fn init(allocator: std.mem.Allocator, window: glfw.Window) !Self {
         const vulkan_support = try glfw.vulkanSupported();
         if (!vulkan_support) {
             return error.VulkanNotSupported;
@@ -225,7 +231,7 @@ pub const Renderer = struct {
         var meshes = MeshManager.init(allocator, device);
 
         //TODO: temp call
-        var mesh_id = meshes.load("assets/sphere.obj");
+        //var mesh_id = meshes.load("assets/sphere.obj");
 
         return Self{
             .allocator = allocator,
