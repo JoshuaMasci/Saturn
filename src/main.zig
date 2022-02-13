@@ -8,6 +8,8 @@ const glfw = @import("glfw");
 const Input = @import("input.zig").Input;
 //const renderer = @import("renderer.zig");
 
+const render_graph = @import("render_graph.zig");
+
 pub fn main() !void {
     // var identity = Matrix4.identity;
     // var scale = Matrix4.scale(Vector3.new(1, 2, 3));
@@ -56,8 +58,40 @@ pub fn main() !void {
         input.update();
         try glfw.pollEvents();
 
+        var render_graph_builder = render_graph.RenderGraphBuilder.init(allocator);
+        defer render_graph_builder.deinit();
+
+        var some_buffer = render_graph_builder.createBuffer(.{
+            .size = 16,
+            .usage = .{ .storage_buffer_bit = true },
+            .location = .gpu_only,
+        });
+        var some_image = render_graph_builder.createImage(.{
+            .size = .{ 16, 16 },
+            .format = .r8g8b8a8_unorm,
+            .usage = .{ .storage_bit = true },
+            .location = .gpu_only,
+        });
+
+        var test_pass = render_graph_builder.createRenderPass("TestRenderPass");
+        render_graph_builder.addBufferAccess(test_pass, some_buffer, .shader_read);
+        render_graph_builder.addRaster(test_pass, &[_]render_graph.ImageResourceHandle{some_image}, null);
+        render_graph_builder.addRenderFunction(test_pass, null, testRenderFunction);
+
         // vulkan_renderer.update(window, &input, @floatCast(f32, current_time - prev_time));
         // try vulkan_renderer.render();
         prev_time = current_time;
+    }
+}
+
+const TestData = struct {
+    some: i32,
+};
+
+fn testRenderFunction(data: *render_graph.RenderPassData) void {
+    if (data.get(TestData)) |test_data| {
+        std.log.info("testRenderFunction data: {}", .{test_data.some});
+    } else {
+        std.log.info("testRenderFunction data: null", .{});
     }
 }
