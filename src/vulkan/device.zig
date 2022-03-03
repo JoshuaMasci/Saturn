@@ -11,9 +11,11 @@ pub const Device = struct {
     allocator: std.mem.Allocator,
     pdevice: vk.PhysicalDevice,
     handle: vk.Device,
-    dispatch: *DeviceDispatch,
     graphics_queue: vk.Queue,
     memory_properties: vk.PhysicalDeviceMemoryProperties,
+    base: *DeviceBase,
+    sync2: *Sync2,
+    dynamic_rendering: *DynamicRendering,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -21,7 +23,20 @@ pub const Device = struct {
         pdevice: vk.PhysicalDevice,
         graphics_queue_index: u32,
     ) !Self {
-        const required_device_extensions = [_][]const u8{vk.extension_info.khr_swapchain.name};
+        var device_extensions = std.ArrayList([*:0]const u8).init(allocator);
+        defer device_extensions.deinit();
+        try device_extensions.append(vk.extension_info.khr_swapchain.name);
+
+        //TODO: use the feature version now that both are core?
+        try device_extensions.append(vk.extension_info.khr_synchronization_2.name);
+        try device_extensions.append(vk.extension_info.khr_dynamic_rendering.name);
+
+        // const should_raytrace: bool = false;
+        // if (should_raytrace) {
+        //     try device_extensions.append(vk.extension_info.khr_acceleration_structure.name);
+        //     try device_extensions.append(vk.extension_info.khr_ray_tracing_pipeline.name);
+        //     try device_extensions.append(vk.extension_info.khr_ray_query.name);
+        // }
 
         const props = instance_dispatch.getPhysicalDeviceProperties(pdevice);
         std.log.info("Device: \n\tName: {s}\n\tDriver: {}\n\tType: {}", .{ props.device_name, props.driver_version, props.device_type });
@@ -36,82 +51,51 @@ pub const Device = struct {
             },
         };
 
-        var handle = try instance_dispatch.createDevice(pdevice, .{
+        var handle = try instance_dispatch.createDevice(pdevice, &.{
             .flags = .{},
             .queue_create_info_count = 1,
             .p_queue_create_infos = &qci,
             .enabled_layer_count = 0,
             .pp_enabled_layer_names = undefined,
-            .enabled_extension_count = required_device_extensions.len,
-            .pp_enabled_extension_names = @ptrCast([*]const [*:0]const u8, &required_device_extensions),
+            .enabled_extension_count = @intCast(u32, device_extensions.items.len),
+            .pp_enabled_extension_names = device_extensions.items.ptr,
             .p_enabled_features = null,
         }, null);
 
-        var dispatch: *DeviceDispatch = try allocator.create(DeviceDispatch);
-        dispatch.* = try DeviceDispatch.load(handle, instance_dispatch.dispatch.vkGetDeviceProcAddr);
+        var base: *DeviceBase = try allocator.create(DeviceBase);
+        base.* = try DeviceBase.load(handle, instance_dispatch.dispatch.vkGetDeviceProcAddr);
 
-        var graphics_queue = dispatch.getDeviceQueue(handle, graphics_queue_index, 0);
+        var graphics_queue = base.getDeviceQueue(handle, graphics_queue_index, 0);
 
         var memory_properties = instance_dispatch.getPhysicalDeviceMemoryProperties(pdevice);
+
+        var sync2 = try allocator.create(Sync2);
+        sync2.* = try Sync2.load(handle, instance_dispatch.dispatch.vkGetDeviceProcAddr);
+
+        var dynamic_rendering = try allocator.create(DynamicRendering);
+        dynamic_rendering.* = try DynamicRendering.load(handle, instance_dispatch.dispatch.vkGetDeviceProcAddr);
 
         return Self{
             .allocator = allocator,
             .pdevice = pdevice,
             .handle = handle,
-            .dispatch = dispatch,
             .graphics_queue = graphics_queue,
             .memory_properties = memory_properties,
+            .base = base,
+            .sync2 = sync2,
+            .dynamic_rendering = dynamic_rendering,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.dispatch.destroyDevice(self.handle, null);
-        self.allocator.destroy(self.dispatch);
+        self.base.destroyDevice(self.handle, null);
+        self.allocator.destroy(self.base);
+        self.allocator.destroy(self.sync2);
+        self.allocator.destroy(self.dynamic_rendering);
     }
 
     pub fn waitIdle(self: Self) void {
-        self.dispatch.deviceWaitIdle(self.handle) catch panic("Failed to deviceWaitIdle", .{});
-    }
-
-    pub fn endFrame(self: *Self) !void {
-        var current_frame = &self.frames[self.frame_index];
-
-        self.dispatch.cmdEndRenderPass(current_frame.command_buffer);
-
-        try self.dispatch.endCommandBuffer(current_frame.command_buffer);
-
-        var wait_stages = vk.PipelineStageFlags{
-            .color_attachment_output_bit = true,
-        };
-
-        const submitInfo = vk.SubmitInfo{
-            .wait_semaphore_count = 1,
-            .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.image_ready_semaphore),
-            .p_wait_dst_stage_mask = @ptrCast([*]const vk.PipelineStageFlags, &wait_stages),
-            .command_buffer_count = 1,
-            .p_command_buffers = @ptrCast([*]const vk.CommandBuffer, &current_frame.command_buffer),
-            .signal_semaphore_count = 1,
-            .p_signal_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.present_semaphore),
-        };
-        try self.dispatch.queueSubmit(self.graphics_queue, 1, @ptrCast([*]const vk.SubmitInfo, &submitInfo), current_frame.frame_done_fence);
-
-        _ = self.dispatch.queuePresentKHR(self.graphics_queue, .{
-            .wait_semaphore_count = 1,
-            .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &current_frame.present_semaphore),
-            .swapchain_count = 1,
-            .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &self.swapchain.handle),
-            .p_image_indices = @ptrCast([*]const u32, &self.swapchain_index),
-            .p_results = null,
-        }) catch |err| {
-            switch (err) {
-                error.OutOfDateKHR => {
-                    self.swapchain.invalid = true;
-                },
-                else => return err,
-            }
-        };
-
-        self.frame_index = @rem(self.frame_index + 1, @intCast(u32, self.frames.len));
+        self.base.deviceWaitIdle(self.handle) catch panic("Failed to deviceWaitIdle", .{});
     }
 
     //TODO: use VMA
@@ -128,248 +112,178 @@ pub const Device = struct {
 
     //TODO: track memory allocations
     pub fn allocate_memory(self: Self, requirements: vk.MemoryRequirements, flags: vk.MemoryPropertyFlags) !vk.DeviceMemory {
-        return try self.dispatch.allocateMemory(self.handle, .{
+        return try self.base.allocateMemory(self.handle, .{
             .allocation_size = requirements.size,
             .memory_type_index = try self.findMemoryTypeIndex(requirements.memory_type_bits, flags),
         }, null);
     }
 
     pub fn free_memory(self: Self, memory: vk.DeviceMemory) void {
-        self.dispatch.freeMemory(self.handle, memory, null);
-    }
-
-    pub fn createPipeline(
-        self: Self,
-        pipeline_layout: vk.PipelineLayout,
-        render_pass: vk.RenderPass,
-        vert_code: []align(@alignOf(u32)) const u8,
-        frag_code: []align(@alignOf(u32)) const u8,
-        input_binding: *const vk.VertexInputBindingDescription,
-        input_attributes: []const vk.VertexInputAttributeDescription,
-        settings: *const PipelineState,
-    ) !vk.Pipeline {
-        const vert = try self.dispatch.createShaderModule(self.handle, .{
-            .flags = .{},
-            .code_size = vert_code.len,
-            .p_code = std.mem.bytesAsSlice(u32, vert_code).ptr,
-        }, null);
-        defer self.dispatch.destroyShaderModule(self.handle, vert, null);
-
-        const frag = try self.dispatch.createShaderModule(self.handle, .{
-            .flags = .{},
-            .code_size = frag_code.len,
-            .p_code = std.mem.bytesAsSlice(u32, frag_code).ptr,
-        }, null);
-        defer self.dispatch.destroyShaderModule(self.handle, frag, null);
-
-        const pssci = [_]vk.PipelineShaderStageCreateInfo{
-            .{
-                .flags = .{},
-                .stage = .{ .vertex_bit = true },
-                .module = vert,
-                .p_name = "main",
-                .p_specialization_info = null,
-            },
-            .{
-                .flags = .{},
-                .stage = .{ .fragment_bit = true },
-                .module = frag,
-                .p_name = "main",
-                .p_specialization_info = null,
-            },
-        };
-
-        const pvisci = vk.PipelineVertexInputStateCreateInfo{
-            .flags = .{},
-            .vertex_binding_description_count = 1,
-            .p_vertex_binding_descriptions = @ptrCast([*]const vk.VertexInputBindingDescription, input_binding),
-            .vertex_attribute_description_count = @intCast(u32, input_attributes.len),
-            .p_vertex_attribute_descriptions = input_attributes.ptr,
-        };
-
-        const piasci = vk.PipelineInputAssemblyStateCreateInfo{
-            .flags = .{},
-            .topology = .triangle_list,
-            .primitive_restart_enable = vk.FALSE,
-        };
-
-        const pvsci = vk.PipelineViewportStateCreateInfo{
-            .flags = .{},
-            .viewport_count = 1,
-            .p_viewports = undefined,
-            .scissor_count = 1,
-            .p_scissors = undefined,
-        };
-
-        const prsci = vk.PipelineRasterizationStateCreateInfo{
-            .flags = .{},
-            .depth_clamp_enable = vk.FALSE,
-            .rasterizer_discard_enable = vk.FALSE,
-            .polygon_mode = .fill,
-            .cull_mode = settings.cull_mode,
-            .front_face = .counter_clockwise,
-            .depth_bias_enable = vk.FALSE,
-            .depth_bias_constant_factor = 0,
-            .depth_bias_clamp = 0,
-            .depth_bias_slope_factor = 0,
-            .line_width = 1,
-        };
-
-        const pmsci = vk.PipelineMultisampleStateCreateInfo{
-            .flags = .{},
-            .rasterization_samples = .{ .@"1_bit" = true },
-            .sample_shading_enable = vk.FALSE,
-            .min_sample_shading = 1,
-            .p_sample_mask = null,
-            .alpha_to_coverage_enable = vk.FALSE,
-            .alpha_to_one_enable = vk.FALSE,
-        };
-
-        var blend_enable: vk.Bool32 = vk.FALSE;
-        if (settings.blend_enable) {
-            blend_enable = vk.TRUE;
-        }
-
-        const pcbas = vk.PipelineColorBlendAttachmentState{
-            .blend_enable = vk.TRUE,
-            .src_color_blend_factor = settings.src_color_blend_factor,
-            .dst_color_blend_factor = settings.dst_color_blend_factor,
-            .color_blend_op = settings.color_blend_op,
-            .src_alpha_blend_factor = settings.src_alpha_blend_factor,
-            .dst_alpha_blend_factor = settings.dst_alpha_blend_factor,
-            .alpha_blend_op = settings.alpha_blend_op,
-            .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
-        };
-
-        const pcbsci = vk.PipelineColorBlendStateCreateInfo{
-            .flags = .{},
-            .logic_op_enable = vk.FALSE,
-            .logic_op = .copy,
-            .attachment_count = 1,
-            .p_attachments = @ptrCast([*]const vk.PipelineColorBlendAttachmentState, &pcbas),
-            .blend_constants = [_]f32{ 0, 0, 0, 0 },
-        };
-
-        const dynstate = [_]vk.DynamicState{ .viewport, .scissor };
-        const pdsci = vk.PipelineDynamicStateCreateInfo{
-            .flags = .{},
-            .dynamic_state_count = dynstate.len,
-            .p_dynamic_states = &dynstate,
-        };
-
-        //TODO: depth testing
-        const gpci = vk.GraphicsPipelineCreateInfo{
-            .flags = .{},
-            .stage_count = 2,
-            .p_stages = &pssci,
-            .p_vertex_input_state = &pvisci,
-            .p_input_assembly_state = &piasci,
-            .p_tessellation_state = null,
-            .p_viewport_state = &pvsci,
-            .p_rasterization_state = &prsci,
-            .p_multisample_state = &pmsci,
-            .p_depth_stencil_state = null,
-            .p_color_blend_state = &pcbsci,
-            .p_dynamic_state = &pdsci,
-            .layout = pipeline_layout,
-            .render_pass = render_pass,
-            .subpass = 0,
-            .base_pipeline_handle = .null_handle,
-            .base_pipeline_index = -1,
-        };
-
-        var pipeline: vk.Pipeline = undefined;
-        _ = try self.dispatch.createGraphicsPipelines(
-            self.handle,
-            .null_handle,
-            1,
-            @ptrCast([*]const vk.GraphicsPipelineCreateInfo, &gpci),
-            null,
-            @ptrCast([*]vk.Pipeline, &pipeline),
-        );
-        return pipeline;
+        self.base.freeMemory(self.handle, memory, null);
     }
 };
 
-pub const PipelineState = struct {
-    cull_mode: vk.CullModeFlags = .{ .back_bit = true },
-    blend_enable: bool = false,
-    src_color_blend_factor: vk.BlendFactor = .one,
-    dst_color_blend_factor: vk.BlendFactor = .zero,
-    color_blend_op: vk.BlendOp = .add,
-    src_alpha_blend_factor: vk.BlendFactor = .one,
-    dst_alpha_blend_factor: vk.BlendFactor = .zero,
-    alpha_blend_op: vk.BlendOp = .add,
-};
+pub const DeviceBase = vk.DeviceWrapper(.{
+    .allocateCommandBuffers = true,
+    .allocateDescriptorSets = true,
+    .allocateMemory = true,
+    .beginCommandBuffer = true,
+    .bindBufferMemory = true,
+    .bindBufferMemory2 = true,
+    .bindImageMemory = true,
+    .bindImageMemory2 = true,
+    .cmdBeginQuery = true,
+    .cmdBeginRenderPass = true,
+    .cmdBeginRenderPass2 = true,
+    .cmdBindDescriptorSets = true,
+    .cmdBindIndexBuffer = true,
+    .cmdBindPipeline = true,
+    .cmdBindVertexBuffers = true,
+    .cmdBlitImage = true,
+    .cmdClearAttachments = true,
+    .cmdClearColorImage = true,
+    .cmdClearDepthStencilImage = true,
+    .cmdCopyBuffer = true,
+    .cmdCopyBufferToImage = true,
+    .cmdCopyImage = true,
+    .cmdCopyImageToBuffer = true,
+    .cmdCopyQueryPoolResults = true,
+    .cmdDispatch = true,
+    .cmdDispatchBase = true,
+    .cmdDispatchIndirect = true,
+    .cmdDraw = true,
+    .cmdDrawIndexed = true,
+    .cmdDrawIndexedIndirect = true,
+    .cmdDrawIndexedIndirectCount = true,
+    .cmdDrawIndirect = true,
+    .cmdDrawIndirectCount = true,
+    .cmdEndQuery = true,
+    .cmdEndRenderPass = true,
+    .cmdEndRenderPass2 = true,
+    .cmdExecuteCommands = true,
+    .cmdFillBuffer = true,
+    .cmdNextSubpass = true,
+    .cmdNextSubpass2 = true,
+    .cmdPipelineBarrier = true,
+    .cmdPushConstants = true,
+    .cmdResetEvent = true,
+    .cmdResetQueryPool = true,
+    .cmdResolveImage = true,
+    .cmdSetBlendConstants = true,
+    .cmdSetDepthBias = true,
+    .cmdSetDepthBounds = true,
+    .cmdSetDeviceMask = true,
+    .cmdSetEvent = true,
+    .cmdSetLineWidth = true,
+    .cmdSetScissor = true,
+    .cmdSetStencilCompareMask = true,
+    .cmdSetStencilReference = true,
+    .cmdSetStencilWriteMask = true,
+    .cmdSetViewport = true,
+    .cmdUpdateBuffer = true,
+    .cmdWaitEvents = true,
+    .cmdWriteTimestamp = true,
+    .createBuffer = true,
+    .createBufferView = true,
+    .createCommandPool = true,
+    .createComputePipelines = true,
+    .createDescriptorPool = true,
+    .createDescriptorSetLayout = true,
+    .createDescriptorUpdateTemplate = true,
+    .createEvent = true,
+    .createFence = true,
+    .createFramebuffer = true,
+    .createGraphicsPipelines = true,
+    .createImage = true,
+    .createImageView = true,
+    .createPipelineCache = true,
+    .createPipelineLayout = true,
+    .createQueryPool = true,
+    .createRenderPass = true,
+    .createRenderPass2 = true,
+    .createSampler = true,
+    .createSamplerYcbcrConversion = true,
+    .createSemaphore = true,
+    .createShaderModule = true,
+    .destroyBuffer = true,
+    .destroyBufferView = true,
+    .destroyCommandPool = true,
+    .destroyDescriptorPool = true,
+    .destroyDescriptorSetLayout = true,
+    .destroyDescriptorUpdateTemplate = true,
+    .destroyDevice = true,
+    .destroyEvent = true,
+    .destroyFence = true,
+    .destroyFramebuffer = true,
+    .destroyImage = true,
+    .destroyImageView = true,
+    .destroyPipeline = true,
+    .destroyPipelineCache = true,
+    .destroyPipelineLayout = true,
+    .destroyQueryPool = true,
+    .destroyRenderPass = true,
+    .destroySampler = true,
+    .destroySamplerYcbcrConversion = true,
+    .destroySemaphore = true,
+    .destroyShaderModule = true,
+    .deviceWaitIdle = true,
+    .endCommandBuffer = true,
+    .flushMappedMemoryRanges = true,
+    .freeCommandBuffers = true,
+    .freeDescriptorSets = true,
+    .freeMemory = true,
+    .getBufferDeviceAddress = true,
+    .getBufferMemoryRequirements = true,
+    .getBufferMemoryRequirements2 = true,
+    .getBufferOpaqueCaptureAddress = true,
+    .getDescriptorSetLayoutSupport = true,
+    .getDeviceGroupPeerMemoryFeatures = true,
+    .getDeviceMemoryCommitment = true,
+    .getDeviceMemoryOpaqueCaptureAddress = true,
+    .getDeviceQueue = true,
+    .getEventStatus = true,
+    .getFenceStatus = true,
+    .getImageMemoryRequirements = true,
+    .getImageMemoryRequirements2 = true,
+    .getImageSparseMemoryRequirements = true,
+    .getImageSparseMemoryRequirements2 = true,
+    .getImageSubresourceLayout = true,
+    .getPipelineCacheData = true,
+    .getQueryPoolResults = true,
+    .getRenderAreaGranularity = true,
+    .getSemaphoreCounterValue = true,
+    .invalidateMappedMemoryRanges = true,
+    .mapMemory = true,
+    .mergePipelineCaches = true,
+    .queueBindSparse = true,
+    .queueSubmit = true,
+    .queueWaitIdle = true,
+    .resetCommandBuffer = true,
+    .resetCommandPool = true,
+    .resetDescriptorPool = true,
+    .resetEvent = true,
+    .resetFences = true,
+    .resetQueryPool = true,
+    .setEvent = true,
+    .signalSemaphore = true,
+    .trimCommandPool = true,
+    .unmapMemory = true,
+    .updateDescriptorSetWithTemplate = true,
+    .updateDescriptorSets = true,
+    .waitForFences = true,
+    .waitSemaphores = true,
+});
 
-//TODO Split wrappers by extension maybe?
-pub const DeviceDispatch = vk.DeviceWrapper(&.{
-    .acquireNextImageKHR,
-    .allocateCommandBuffers,
-    .allocateDescriptorSets,
-    .allocateMemory,
-    .beginCommandBuffer,
-    .bindBufferMemory,
-    .bindImageMemory,
-    .cmdBeginRenderPass,
-    .cmdBindDescriptorSets,
-    .cmdBindIndexBuffer,
-    .cmdBindPipeline,
-    .cmdBindVertexBuffers,
-    .cmdCopyBuffer,
-    .cmdCopyBufferToImage,
-    .cmdDraw,
-    .cmdDrawIndexed,
-    .cmdEndRenderPass,
-    .cmdPipelineBarrier,
-    .cmdPushConstants,
-    .cmdSetScissor,
-    .cmdSetViewport,
-    .createBuffer,
-    .createCommandPool,
-    .createDescriptorPool,
-    .createDescriptorSetLayout,
-    .createFence,
-    .createFramebuffer,
-    .createGraphicsPipelines,
-    .createImage,
-    .createImageView,
-    .createPipelineLayout,
-    .createRenderPass,
-    .createSampler,
-    .createSemaphore,
-    .createShaderModule,
-    .createSwapchainKHR,
-    .destroyBuffer,
-    .destroyCommandPool,
-    .destroyDescriptorPool,
-    .destroyDescriptorSetLayout,
-    .destroyFence,
-    .destroyFramebuffer,
-    .destroyImage,
-    .destroyImageView,
-    .destroyPipeline,
-    .destroyPipelineLayout,
-    .destroyRenderPass,
-    .destroySampler,
-    .destroySemaphore,
-    .destroyShaderModule,
-    .destroySwapchainKHR,
-    .deviceWaitIdle,
-    .endCommandBuffer,
-    .freeCommandBuffers,
-    .freeMemory,
-    .getBufferMemoryRequirements,
-    .getDeviceQueue,
-    .getImageMemoryRequirements,
-    .getSwapchainImagesKHR,
-    .mapMemory,
-    .queuePresentKHR,
-    .queueSubmit,
-    .queueWaitIdle,
-    .resetFences,
-    .unmapMemory,
-    .updateDescriptorSets,
-    .waitForFences,
-    .destroyDevice,
+pub const Sync2 = vk.DeviceWrapper(.{
+    .cmdPipelineBarrier2 = true,
+    .cmdResetEvent2 = true,
+    .cmdSetEvent2 = true,
+    .cmdWaitEvents2 = true,
+    .cmdWriteTimestamp2 = true,
+    .queueSubmit2 = true,
+});
+
+pub const DynamicRendering = vk.DeviceWrapper(.{
+    .cmdBeginRendering = true,
+    .cmdEndRendering = true,
 });

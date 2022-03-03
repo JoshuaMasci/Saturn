@@ -6,9 +6,13 @@ pub const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{ .e
 const glfw = @import("glfw");
 
 const Input = @import("input.zig").Input;
-//const renderer = @import("renderer.zig");
 
-const render_graph = @import("render_graph.zig");
+const vulkan = @import("vulkan/instance.zig");
+const Device = @import("vulkan/device.zig").Device;
+const RenderDevice = @import("render_device.zig").RenderDevice;
+
+const render_graph = @import("renderer/render_graph.zig");
+const pipeline = @import("renderer/pipeline.zig");
 
 pub fn main() !void {
     // var identity = Matrix4.identity;
@@ -48,8 +52,17 @@ pub fn main() !void {
     var input = try Input.init(window, allocator);
     defer input.deinit();
 
-    // var vulkan_renderer = try renderer.Renderer.init(allocator, window);
-    // defer vulkan_renderer.deinit();
+    var instance = try vulkan.Instance.init(allocator, "Saturn RenderGraph Test", vulkan.AppVersion(0, 0, 1, 0));
+    defer instance.deinit();
+    var selected_device = instance.pdevices[0];
+    var selected_queue_index: u32 = 0;
+
+    //TODO: worry about pointer referencing if moved out of main!
+    var device = try Device.init(allocator, instance.dispatch, selected_device, selected_queue_index);
+    defer device.deinit();
+
+    var render_device = try RenderDevice.init(allocator, &device);
+    defer render_device.deinit();
 
     var prev_time: f64 = 0.0;
     while (!window.shouldClose()) {
@@ -78,8 +91,6 @@ pub fn main() !void {
         render_graph_builder.addRaster(test_pass, &[_]render_graph.ImageResourceHandle{some_image}, null);
         render_graph_builder.addRenderFunction(test_pass, null, testRenderFunction);
 
-        // vulkan_renderer.update(window, &input, @floatCast(f32, current_time - prev_time));
-        // try vulkan_renderer.render();
         prev_time = current_time;
     }
 }

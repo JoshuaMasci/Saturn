@@ -3,7 +3,6 @@ const Allocator = std.mem.Allocator;
 const panic = std.debug.panic;
 
 const vk = @import("vulkan");
-const VK_API_VERSION_1_2 = vk.makeApiVersion(0, 1, 2, 0);
 pub const AppVersion = vk.makeApiVersion;
 
 const glfw = @import("glfw");
@@ -33,13 +32,15 @@ pub const Instance = struct {
             .application_version = app_version,
             .p_engine_name = saturn_name,
             .engine_version = saturn_version,
-            .api_version = VK_API_VERSION_1_2,
+            .api_version = vk.API_VERSION_1_3,
         };
 
-        const glfw_exts = try glfw.getRequiredInstanceExtensions();
         var extensions = std.ArrayList([*:0]const u8).init(allocator);
         defer extensions.deinit();
 
+        try extensions.append(vk.extension_info.khr_get_physical_device_properties_2.name);
+
+        const glfw_exts = try glfw.getRequiredInstanceExtensions();
         for (glfw_exts) |extension| {
             try extensions.append(extension);
         }
@@ -52,10 +53,9 @@ pub const Instance = struct {
         try extensions.append(vk.extension_info.ext_debug_report.name);
         try layers.append("VK_LAYER_KHRONOS_validation");
 
-        var handle = try base_dispatch.createInstance(.{
+        var handle = try base_dispatch.createInstance(&.{
             .flags = .{},
             .p_application_info = &app_info,
-
             .enabled_layer_count = @intCast(u32, layers.items.len),
             .pp_enabled_layer_names = @ptrCast([*]const [*:0]const u8, layers.items),
             .enabled_extension_count = @intCast(u32, extensions.items.len),
@@ -116,7 +116,7 @@ const DebugCallback = struct {
             .p_user_data = null,
         };
 
-        var debug_messenger = try dispatch.createDebugUtilsMessengerEXT(instance, debug_callback_info, null);
+        var debug_messenger = try dispatch.createDebugUtilsMessengerEXT(instance, &debug_callback_info, null);
 
         return Self{
             .instance = instance,
@@ -133,34 +133,49 @@ const DebugCallback = struct {
 fn debugCallback(
     message_severity: vk.DebugUtilsMessageSeverityFlagsEXT.IntType,
     message_types: vk.DebugUtilsMessageTypeFlagsEXT.IntType,
-    p_callback_data: *const vk.DebugUtilsMessengerCallbackDataEXT,
-    p_user_data: *anyopaque,
+    p_callback_data: ?*const vk.DebugUtilsMessengerCallbackDataEXT,
+    p_user_data: ?*anyopaque,
 ) callconv(.C) vk.Bool32 {
-    var _ = p_user_data;
+    _ = message_types;
+    _ = p_user_data;
 
-    //TODO log levels
-    std.log.warn("{s}", .{p_callback_data.p_message});
+    if (p_callback_data) |callback_data| {
+        var message_level = vk.DebugUtilsMessageSeverityFlagsEXT.fromInt(message_severity);
+        if (message_level.verbose_bit_ext) {
+            std.log.debug("{s}", .{callback_data.p_message});
+        } else if (message_level.info_bit_ext) {
+            std.log.info("{s}", .{callback_data.p_message});
+        } else if (message_level.warning_bit_ext) {
+            std.log.warn("{s}", .{callback_data.p_message});
+        } else if (message_level.error_bit_ext) {
+            std.log.err("{s}", .{callback_data.p_message});
+        } else {
+            std.log.err("UNKNOWN Message Severity {s}", .{callback_data.p_message});
+        }
+    }
+
     return 0;
 }
 
-pub const BaseDispatch = vk.BaseWrapper(&.{
-    .createInstance,
+pub const BaseDispatch = vk.BaseWrapper(.{
+    .createInstance = true,
 });
 
-pub const InstanceDispatch = vk.InstanceWrapper(&.{
-    .destroyInstance,
-    .createDevice,
-    .destroySurfaceKHR,
-    .enumeratePhysicalDevices,
-    .getPhysicalDeviceProperties,
-    .enumerateDeviceExtensionProperties,
-    .getPhysicalDeviceSurfaceFormatsKHR,
-    .getPhysicalDeviceSurfacePresentModesKHR,
-    .getPhysicalDeviceSurfaceCapabilitiesKHR,
-    .getPhysicalDeviceQueueFamilyProperties,
-    .getPhysicalDeviceSurfaceSupportKHR,
-    .getPhysicalDeviceMemoryProperties,
-    .getDeviceProcAddr,
-    .createDebugUtilsMessengerEXT,
-    .destroyDebugUtilsMessengerEXT,
+pub const InstanceDispatch = vk.InstanceWrapper(.{
+    .destroyInstance = true,
+    .createDevice = true,
+    .destroySurfaceKHR = true,
+    .enumeratePhysicalDevices = true,
+    .getPhysicalDeviceProperties = true,
+    .getPhysicalDeviceFeatures2 = true,
+    .enumerateDeviceExtensionProperties = true,
+    .getPhysicalDeviceSurfaceFormatsKHR = true,
+    .getPhysicalDeviceSurfacePresentModesKHR = true,
+    .getPhysicalDeviceSurfaceCapabilitiesKHR = true,
+    .getPhysicalDeviceQueueFamilyProperties = true,
+    .getPhysicalDeviceSurfaceSupportKHR = true,
+    .getPhysicalDeviceMemoryProperties = true,
+    .getDeviceProcAddr = true,
+    .createDebugUtilsMessengerEXT = true,
+    .destroyDebugUtilsMessengerEXT = true,
 });

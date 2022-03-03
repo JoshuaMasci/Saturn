@@ -1,4 +1,4 @@
-pub const std = @import("std");
+const std = @import("std");
 
 //TODO: don't rely on vulkan definitons
 const vk = @import("vulkan");

@@ -2,7 +2,7 @@ pub const std = @import("std");
 const vk = @import("vulkan");
 const Device = @import("vulkan/device.zig").Device;
 const Buffer = @import("vulkan/buffer.zig").Buffer;
-const Image @import("vulkan/image.zig").Image;
+const Image = @import("vulkan/image.zig").Image;
 
 const ImageTransferQueue = std.ArrayList(struct {
     image: Image,
