@@ -1,57 +1,62 @@
 const std = @import("std");
+const vk = @import("vulkan");
 
-const vk = @import("vk.zig");
-usingnamespace @import("device.zig");
+const Device = @import("device.zig");
+const DeviceAllocator = @import("device_allocator.zig");
 
-pub const Buffer = struct {
-    const Self = @This();
-
-    device: Device,
-    handle: vk.Buffer,
-    memory: vk.DeviceMemory,
-    size: u32,
+pub const Description = struct {
+    size: usize,
     usage: vk.BufferUsageFlags,
-
-    pub fn init(device: Device, size: u32, usage: vk.BufferUsageFlags, memory_type: vk.MemoryPropertyFlags) !Self {
-        const buffer = try device.dispatch.createBuffer(
-            device.handle,
-            .{
-                .flags = .{},
-                .size = size,
-                .usage = usage,
-                .sharing_mode = .exclusive,
-                .queue_family_index_count = 0,
-                .p_queue_family_indices = undefined,
-            },
-            null,
-        );
-        var mem_reqs = device.dispatch.getBufferMemoryRequirements(device.handle, buffer);
-        var memory = try device.allocate_memory(mem_reqs, memory_type);
-        try device.dispatch.bindBufferMemory(device.handle, buffer, memory, 0);
-
-        return Self{
-            .device = device,
-            .handle = buffer,
-            .memory = memory,
-            .size = size,
-            .usage = usage,
-        };
-    }
-
-    pub fn deinit(self: Self) void {
-        self.device.dispatch.destroyBuffer(self.device.handle, self.handle, null);
-        self.device.free_memory(self.memory);
-    }
-
-    pub fn fill(
-        self: Self,
-        comptime DataType: type,
-        data: []const DataType,
-    ) !void {
-        //TODO staging buffers and bound checks
-        var gpu_memory = try self.device.dispatch.mapMemory(self.device.handle, self.memory, 0, vk.WHOLE_SIZE, .{});
-        var gpu_slice = @ptrCast([*]DataType, @alignCast(@alignOf(DataType), gpu_memory));
-        defer self.device.dispatch.unmapMemory(self.device.handle, self.memory);
-        std.mem.copy(DataType, gpu_slice[0..data.len], data);
-    }
+    memory_usage: DeviceAllocator.MemoryUsage,
 };
+
+const Self = @This();
+
+device: *Device,
+allocator: *DeviceAllocator,
+description: Description,
+handle: vk.Buffer,
+allocation: DeviceAllocator.Allocation,
+
+pub fn init(
+    device: *Device,
+    allocator: *DeviceAllocator,
+    description: Description,
+) !Self {
+    var buffer = try device.base.createBuffer(
+        device.handle,
+        &.{
+            .flags = .{},
+            .size = description.size,
+            .usage = description.usage,
+            .sharing_mode = .exclusive,
+            .queue_family_index_count = 0,
+            .p_queue_family_indices = undefined,
+        },
+        null,
+    );
+    var memory_requirements = device.base.getBufferMemoryRequirements(device.handle, buffer);
+    var allocation = try allocator.allocate(memory_requirements, description.memory_usage);
+    try device.base.bindBufferMemory(device.handle, buffer, allocation.memory, allocation.offset);
+
+    return Self{
+        .device = device,
+        .allocator = allocator,
+        .description = description,
+        .handle = buffer,
+        .allocation = allocation,
+    };
+}
+
+pub fn deinit(self: Self) void {
+    self.device.base.destroyBuffer(self.device.handle, self.handle, null);
+    self.allocator.free(self.allocation);
+}
+
+pub fn fill(self: *Self, comptime DataType: type, data: []const DataType) !void {
+    var gpu_memory = try self.device.base.mapMemory(self.device.handle, self.allocation.memory, self.allocation.offset, vk.WHOLE_SIZE, .{});
+    defer self.device.base.unmapMemory(self.device.handle, self.allocation.memory);
+
+    var gpu_slice = @ptrCast([*]DataType, @alignCast(@alignOf(DataType), gpu_memory));
+    std.mem.copy(DataType, gpu_slice[0..data.len], data);
+}

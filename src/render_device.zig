@@ -1,7 +1,13 @@
 const std = @import("std");
 const vk = @import("vulkan");
-const Device = @import("vulkan/device.zig").Device;
-const IdPool = @import("id_pool.zig").IdPool;
+
+const Device = @import("vulkan/device.zig");
+
+const DeviceAllocator = @import("vulkan/device_allocator.zig");
+const TransferQueue = @import("vulkan/transfer_queue.zig");
+const Buffer = @import("vulkan/buffer.zig");
+const Image = @import("vulkan/image.zig");
+const IdPool = @import("id_pool.zig");
 
 //TODO Generate based on device support
 const ALL_STAGES = vk.ShaderStageFlags{
@@ -25,16 +31,25 @@ const BindingCount = struct {
     storage_buffer: u32,
 };
 
+//TODO: create empty buffer and images
+// fn writeNullDescriptor(allocator: std.mem.Allocator, device: *Device, binding_counts: BindingCount, descriptor_set: vk.DescriptorSet) !void {
+//     var descriptor_writes = try std.ArrayList(vk.WriteDescriptorSet).initCapacity(allocator, binding_counts.storage_buffer);
+//     defer descriptor_writes.deinit();
+//     var null_buffer_info = &vk.DescriptorBufferInfo{};
+// }
+
 //Bindless descriptor
 const DescriptorSet = struct {
     const Self = @This();
+    allocator: std.mem.Allocator,
+    binding_counts: BindingCount,
     device: *Device,
     layout: vk.DescriptorSetLayout,
     pool: vk.DescriptorPool,
     set: vk.DescriptorSet,
     storage_buffer_indices: IdPool,
 
-    fn init(device: *Device, allocator: std.mem.Allocator, binding_counts: BindingCount) !Self {
+    fn init(allocator: std.mem.Allocator, device: *Device, binding_counts: BindingCount) !Self {
         var bindings = &[_]vk.DescriptorSetLayoutBinding{.{
             .binding = 0,
             .descriptor_type = .storage_buffer,
@@ -68,6 +83,8 @@ const DescriptorSet = struct {
         }, @ptrCast([*]vk.DescriptorSet, &set));
 
         return Self{
+            .allocator = allocator,
+            .binding_counts = binding_counts,
             .device = device,
             .layout = layout,
             .pool = pool,
@@ -83,9 +100,6 @@ const DescriptorSet = struct {
     }
 };
 
-//Manages creation and descruction of all buffers and images
-const Resources = struct {};
-
 //Manages creation and descruction of all pipelines (except ray-tracing)
 const PipelineCache = struct {};
 
@@ -93,13 +107,38 @@ pub const RenderDevice = struct {
     const Self = @This();
     allocator: std.mem.Allocator,
     device: *Device,
+    device_allocator: *DeviceAllocator,
+    transfer_queue: *TransferQueue,
     descriptor_set: DescriptorSet,
-    resources: Resources,
     pipeline_layout: vk.PipelineLayout,
     pipeline_cache: PipelineCache,
 
     pub fn init(allocator: std.mem.Allocator, device: *Device) !Self {
-        var descriptor_set = try DescriptorSet.init(device, allocator, .{ .storage_buffer = 4096 });
+        var device_allocator = try allocator.create(DeviceAllocator);
+        device_allocator.* = DeviceAllocator.init(device);
+
+        var transfer_queue = try allocator.create(TransferQueue);
+        transfer_queue.* = TransferQueue.init(allocator, device, device_allocator);
+
+        // var empty_buffer = try Buffer.init(
+        //     device,
+        //     device_allocator,
+        //     .{
+        //         .size = 16,
+        //         .usage = .{ .storage_buffer_bit = true },
+        //         .memory_usage = .gpu_only,
+        //     },
+        // );
+
+        var empty_image = try Image.init(device, device_allocator, .{
+            .size = .{ 1, 1 },
+            .format = .r8g8b8a8_unorm,
+            .usage = .{ .storage_bit = true },
+            .memory_usage = .gpu_only,
+        });
+        transfer_queue.copyToImage(empty_image, u8, &[_]u8{ 0, 0, 0, 0 });
+
+        var descriptor_set = try DescriptorSet.init(allocator, device, .{ .storage_buffer = 4096 });
 
         var descriptor_set_layouts = &[_]vk.DescriptorSetLayout{descriptor_set.layout};
         var push_constant_ranges = &[_]vk.PushConstantRange{.{
@@ -118,15 +157,50 @@ pub const RenderDevice = struct {
         return Self{
             .allocator = allocator,
             .device = device,
+            .device_allocator = device_allocator,
+            .transfer_queue = transfer_queue,
             .descriptor_set = descriptor_set,
             .pipeline_layout = pipeline_layout,
             .pipeline_cache = .{},
-            .resources = .{},
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.device.base.destroyPipelineLayout(self.device.handle, self.pipeline_layout, null);
         self.descriptor_set.deinit();
+
+        self.transfer_queue.deinit();
+        self.allocator.destroy(self.transfer_queue);
+
+        self.device_allocator.deinit();
+        self.allocator.destroy(self.device_allocator);
+    }
+
+    pub fn createBuffer(self: *Self, description: Buffer.Description) !Buffer {
+        return try Buffer.init(self.device, self.device_allocator, description);
+    }
+
+    pub fn destroyBuffer(self: *Self, buffer: Buffer) void {
+        _ = self;
+        return buffer.deinit();
+    }
+
+    pub fn fillBuffer(self: *Self, buffer: Buffer, comptime DataType: type, data: []const DataType) !void {
+        //TODO: transfer queue!!!
+
+        var gpu_memory = try self.device.base.mapMemory(self.device.handle, buffer.allocation.memory, buffer.allocation.offset, vk.WHOLE_SIZE, .{});
+        defer self.device.base.unmapMemory(self.device.handle, buffer.allocation.memory);
+
+        var gpu_slice = @ptrCast([*]DataType, @alignCast(@alignOf(DataType), gpu_memory));
+        std.mem.copy(DataType, gpu_slice[0..data.len], data);
+    }
+
+    pub fn createImage(self: *Self, description: Image.Description) !Image {
+        return try Image.init(self.device, self.device_allocator, description);
+    }
+
+    pub fn destroyImage(self: *Self, image: Image) void {
+        _ = self;
+        image.deinit();
     }
 };

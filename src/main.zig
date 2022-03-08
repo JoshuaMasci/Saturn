@@ -8,7 +8,7 @@ const glfw = @import("glfw");
 const Input = @import("input.zig").Input;
 
 const vulkan = @import("vulkan/instance.zig");
-const Device = @import("vulkan/device.zig").Device;
+const Device = @import("vulkan/device.zig");
 const RenderDevice = @import("render_device.zig").RenderDevice;
 
 const render_graph = @import("renderer/render_graph.zig");
@@ -46,7 +46,6 @@ pub fn main() !void {
         .client_api = .no_api,
     });
     defer window.destroy();
-
     try window.maximize();
 
     var input = try Input.init(window, allocator);
@@ -64,6 +63,25 @@ pub fn main() !void {
     var render_device = try RenderDevice.init(allocator, &device);
     defer render_device.deinit();
 
+    //TEST_CODE_START
+    var permanent_buffer = try render_device.createBuffer(.{
+        .size = 16,
+        .usage = .{ .storage_buffer_bit = true },
+        .memory_usage = .cpu_to_gpu,
+    });
+    defer render_device.destroyBuffer(permanent_buffer);
+    var some_data = [_]u8{ 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+    try render_device.fillBuffer(permanent_buffer, u8, &some_data);
+
+    var permanent_image = try render_device.createImage(.{
+        .size = .{ 16, 16 },
+        .format = .r8g8b8a8_unorm,
+        .usage = .{ .storage_bit = true },
+        .memory_usage = .gpu_only,
+    });
+    defer render_device.destroyImage(permanent_image);
+    //TEST_CODE_END
+
     var prev_time: f64 = 0.0;
     while (!window.shouldClose()) {
         var current_time = glfw.getTime();
@@ -71,6 +89,7 @@ pub fn main() !void {
         input.update();
         try glfw.pollEvents();
 
+        //TEST_CODE_START
         var render_graph_builder = render_graph.RenderGraphBuilder.init(allocator);
         defer render_graph_builder.deinit();
 
@@ -90,6 +109,7 @@ pub fn main() !void {
         render_graph_builder.addBufferAccess(test_pass, some_buffer, .shader_read);
         render_graph_builder.addRaster(test_pass, &[_]render_graph.ImageResourceHandle{some_image}, null);
         render_graph_builder.addRenderFunction(test_pass, null, testRenderFunction);
+        //TEST_CODE_END
 
         prev_time = current_time;
     }

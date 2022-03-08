@@ -41,8 +41,8 @@ pub fn build(b: *Builder) void {
     glfw.link(b, exe, .{});
 
     //cimgui
-    exe.addIncludeDir("submodules/cimgui/");
-    exe.linkLibrary(imguiLibrary(b));
+    exe.addIncludeDir("submodules/cimgui/"); //TODO: zig-ify the headers
+    exe.linkLibrary(imguiLibrary(b, exe));
 
     //Vulkan Bindings
     const vk_gen = vkgen.VkGenerateStep.init(b, vk_xml_path, "vk.zig");
@@ -138,28 +138,25 @@ pub const ResourceGenStep = struct {
     }
 };
 
-pub fn imguiLibrary(b: *Builder) *std.build.LibExeObjStep {
-    var imgui = b.addStaticLibrary("imgui", null);
-    imgui.linkLibC();
-    imgui.linkSystemLibrary("c++");
+//TODO: move to seprate package???
+pub fn imguiLibrary(b: *Builder, step: *std.build.LibExeObjStep) *std.build.LibExeObjStep {
+    var lib = b.addStaticLibrary("imgui", null);
+    lib.setBuildMode(step.build_mode);
+    lib.setTarget(step.target);
 
-    if (builtin.os.tag == .windows) {
-        imgui.linkSystemLibrary("kernel32");
-        imgui.linkSystemLibrary("user32");
-        imgui.linkSystemLibrary("shell32");
-        imgui.linkSystemLibrary("gdi32");
-    }
+    lib.linkLibC();
+    lib.linkSystemLibrary("c++");
 
-    imgui.addIncludeDir("submodules/cimgui/");
-    imgui.addIncludeDir("submodules/cimgui/imgui");
+    lib.addIncludeDir("submodules/cimgui/");
+    lib.addIncludeDir("submodules/cimgui/imgui");
 
     const cpp_args = [_][]const u8{"-Wno-return-type-c-linkage"};
-    imgui.addCSourceFile("submodules/cimgui/imgui/imgui.cpp", &cpp_args);
-    imgui.addCSourceFile("submodules/cimgui/imgui/imgui_demo.cpp", &cpp_args);
-    imgui.addCSourceFile("submodules/cimgui/imgui/imgui_draw.cpp", &cpp_args);
-    imgui.addCSourceFile("submodules/cimgui/imgui/imgui_widgets.cpp", &cpp_args);
-    imgui.addCSourceFile("submodules/cimgui/imgui/imgui_tables.cpp", &cpp_args);
-    imgui.addCSourceFile("submodules/cimgui/cimgui.cpp", &cpp_args);
+    lib.addCSourceFile("submodules/cimgui/imgui/imgui.cpp", &cpp_args);
+    lib.addCSourceFile("submodules/cimgui/imgui/imgui_demo.cpp", &cpp_args);
+    lib.addCSourceFile("submodules/cimgui/imgui/imgui_draw.cpp", &cpp_args);
+    lib.addCSourceFile("submodules/cimgui/imgui/imgui_widgets.cpp", &cpp_args);
+    lib.addCSourceFile("submodules/cimgui/imgui/imgui_tables.cpp", &cpp_args);
+    lib.addCSourceFile("submodules/cimgui/cimgui.cpp", &cpp_args);
 
-    return imgui;
+    return lib;
 }
