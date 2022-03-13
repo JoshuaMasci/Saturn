@@ -4,10 +4,11 @@ const panic = std.debug.panic;
 pub const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
 
 const glfw = @import("glfw");
+const vk = @import("vulkan");
 
 const Input = @import("input.zig").Input;
 
-const vulkan = @import("vulkan/instance.zig");
+const Instance = @import("vulkan/instance.zig");
 const Device = @import("vulkan/device.zig");
 const RenderDevice = @import("render_device.zig").RenderDevice;
 const Renderer = @import("renderer.zig").Renderer;
@@ -36,8 +37,13 @@ pub fn main() !void {
     var input = try Input.init(window, allocator);
     defer input.deinit();
 
-    var instance = try vulkan.Instance.init(allocator, "Saturn RenderGraph Test", vulkan.AppVersion(0, 0, 1, 0));
+    var instance = try Instance.init(allocator, "Saturn RenderGraph Test", Instance.AppVersion(0, 0, 1, 0));
     defer instance.deinit();
+
+    var surface = try instance.createSurface(window);
+    defer instance.destroySurface(surface);
+
+    //TODO: select_device correctly
     var selected_device = instance.pdevices[0];
     var selected_queue_index: u32 = 0;
 
@@ -48,7 +54,7 @@ pub fn main() !void {
     var render_device = try RenderDevice.init(allocator, &device);
     defer render_device.deinit();
 
-    var renderer = try Renderer.init(allocator, &render_device);
+    var renderer = try Renderer.init(allocator, &render_device, surface);
     defer renderer.deinit();
 
     //TEST_CODE_START
@@ -98,6 +104,8 @@ pub fn main() !void {
         render_graph_builder.addRaster(test_pass, &[_]render_graph.ImageResourceHandle{some_image}, null);
         render_graph_builder.addRenderFunction(test_pass, null, testRenderFunction);
         //TEST_CODE_END
+
+        try renderer.render();
 
         prev_time = current_time;
     }

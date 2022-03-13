@@ -13,6 +13,7 @@ handle: vk.Device,
 graphics_queue_index: u32,
 graphics_queue: vk.Queue,
 memory_properties: vk.PhysicalDeviceMemoryProperties,
+instance: *InstanceDispatch,
 base: *DeviceBase,
 sync2: *Sync2,
 dynamic_rendering: *DynamicRendering,
@@ -62,6 +63,9 @@ pub fn init(
         .p_enabled_features = null,
     }, null);
 
+    var instance: *InstanceDispatch = try allocator.create(InstanceDispatch);
+    instance.* = instance_dispatch;
+
     var base: *DeviceBase = try allocator.create(DeviceBase);
     base.* = try DeviceBase.load(handle, instance_dispatch.dispatch.vkGetDeviceProcAddr);
 
@@ -82,6 +86,7 @@ pub fn init(
         .graphics_queue_index = graphics_queue_index,
         .graphics_queue = graphics_queue,
         .memory_properties = memory_properties,
+        .instance = instance,
         .base = base,
         .sync2 = sync2,
         .dynamic_rendering = dynamic_rendering,
@@ -90,6 +95,7 @@ pub fn init(
 
 pub fn deinit(self: *Self) void {
     self.base.destroyDevice(self.handle, null);
+    self.allocator.destroy(self.instance);
     self.allocator.destroy(self.base);
     self.allocator.destroy(self.sync2);
     self.allocator.destroy(self.dynamic_rendering);
@@ -252,6 +258,13 @@ pub const DeviceBase = vk.DeviceWrapper(.{
     .updateDescriptorSets = true,
     .waitForFences = true,
     .waitSemaphores = true,
+
+    //Swapchain Ext
+    .createSwapchainKHR = true,
+    .destroySwapchainKHR = true,
+    .getSwapchainImagesKHR = true,
+    .acquireNextImageKHR = true,
+    .queuePresentKHR = true,
 });
 
 pub const Sync2 = vk.DeviceWrapper(.{
