@@ -13,28 +13,15 @@ const Builder = std.build.Builder;
 const Pkg = std.build.Pkg;
 
 pub fn build(b: *Builder) void {
-    const mode = b.standardReleaseOptions();
-
     var exe = b.addExecutable("Saturn", "src/main.zig");
-
-    exe.setBuildMode(mode);
     exe.install();
 
-    exe.linkLibC();
+    const target = b.standardTargetOptions(.{});
+    exe.setTarget(target);
+    const mode = b.standardReleaseOptions();
+    exe.setBuildMode(mode);
 
-    //OS specific libraries
-    switch (builtin.os.tag) {
-        .windows => {
-            exe.linkSystemLibrary("kernel32");
-            exe.linkSystemLibrary("user32");
-            exe.linkSystemLibrary("shell32");
-            exe.linkSystemLibrary("gdi32");
-        },
-        .linux => {},
-        else => {
-            @compileError("Platform not supported, unsure of build requirements");
-        },
-    }
+    exe.linkLibC();
 
     //mach-glfw
     exe.addPackagePath("glfw", "submodules/mach-glfw/src/main.zig");

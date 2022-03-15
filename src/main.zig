@@ -13,7 +13,7 @@ const Device = @import("vulkan/device.zig");
 const RenderDevice = @import("render_device.zig").RenderDevice;
 const Renderer = @import("renderer.zig").Renderer;
 
-const render_graph = @import("renderer/render_graph.zig");
+const graph = @import("renderer/render_graph.zig");
 const pipeline = @import("renderer/pipeline.zig");
 
 pub fn main() !void {
@@ -84,28 +84,28 @@ pub fn main() !void {
         try glfw.pollEvents();
 
         //TEST_CODE_START
-        var render_graph_builder = render_graph.RenderGraphBuilder.init(allocator);
-        defer render_graph_builder.deinit();
+        var render_graph = graph.RenderGraph.init(allocator); //TODO: get render_graph from renderer so it has the swapchain image as a resource
+        defer render_graph.deinit();
 
-        var some_buffer = render_graph_builder.createBuffer(.{
+        var some_buffer = render_graph.createBuffer(.{
             .size = 16,
             .usage = .{ .storage_buffer_bit = true },
-            .location = .gpu_only,
+            .memory_usage = .gpu_only,
         });
-        var some_image = render_graph_builder.createImage(.{
+        var some_image = render_graph.createImage(.{
             .size = .{ 16, 16 },
             .format = .r8g8b8a8_unorm,
             .usage = .{ .storage_bit = true },
-            .location = .gpu_only,
+            .memory_usage = .gpu_only,
         });
 
-        var test_pass = render_graph_builder.createRenderPass("TestRenderPass");
-        render_graph_builder.addBufferAccess(test_pass, some_buffer, .shader_read);
-        render_graph_builder.addRaster(test_pass, &[_]render_graph.ImageResourceHandle{some_image}, null);
-        render_graph_builder.addRenderFunction(test_pass, null, testRenderFunction);
+        var test_pass = render_graph.createRenderPass("TestRenderPass");
+        render_graph.addBufferAccess(test_pass, some_buffer, .shader_read);
+        render_graph.addRaster(test_pass, &[_]graph.ImageResourceHandle{some_image}, null);
+        render_graph.addRenderFunction(test_pass, testRenderFunction, null);
         //TEST_CODE_END
 
-        try renderer.render();
+        try renderer.render(render_graph);
 
         prev_time = current_time;
     }
@@ -115,7 +115,7 @@ const TestData = struct {
     some: i32,
 };
 
-fn testRenderFunction(data: *render_graph.RenderPassData) void {
+fn testRenderFunction(data: *graph.RenderFunctionData) void {
     if (data.get(TestData)) |test_data| {
         std.log.info("testRenderFunction data: {}", .{test_data.some});
     } else {

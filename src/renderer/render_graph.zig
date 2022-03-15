@@ -3,25 +3,14 @@ const std = @import("std");
 //TODO: don't rely on vulkan definitons
 const vk = @import("vulkan");
 
+const Buffer = @import("../vulkan/buffer.zig");
+const Image = @import("../vulkan/image.zig");
+
 pub const BufferResourceHandle = u32;
 pub const ImageResourceHandle = u32;
 pub const RenderPassHandle = u32;
 
-pub const MemoryLocation = enum {
-    gpu_only,
-    gpu_to_cpu,
-    cpu_to_gpu,
-    cpu_only,
-};
-
-//TODO: hash this
-pub const BufferDescription = struct {
-    size: usize,
-    usage: vk.BufferUsageFlags,
-    location: MemoryLocation,
-};
-
-const BufferAccess = enum {
+pub const BufferAccess = enum {
     none,
     index_buffer,
     vertex_buffer,
@@ -31,17 +20,15 @@ const BufferAccess = enum {
     shader_write,
 };
 
-const BufferResource = struct {
-    description: BufferDescription,
+pub const BufferResource = struct {
+    description: union(enum) {
+        new: Buffer.Description,
+        imported: struct {
+            last_access: BufferAccess,
+            buffer: Buffer,
+        },
+    },
     access_count: u32 = 0,
-};
-
-//TODO: hash this
-pub const ImageDescription = struct {
-    size: [2]u32,
-    format: vk.Format,
-    usage: vk.ImageUsageFlags,
-    location: MemoryLocation,
 };
 
 pub const ImageAccess = enum {
@@ -57,21 +44,25 @@ pub const ImageAccess = enum {
     shader_storage_write,
 };
 
-const ImageResource = struct {
-    description: ImageDescription,
+pub const ImageResource = struct {
+    description: union(enum) {
+        new: Image.Description,
+        imported: struct {
+            last_access: ImageAccess,
+            image: Image,
+        },
+    },
     access_count: u32 = 0,
 };
 
-pub const RenderPassData = struct {
-    const Self = @This();
+pub const RenderFunctionData = struct {
     pointer: ?*anyopaque,
-
-    pub fn get(self: Self, comptime T: type) ?*T {
+    pub fn get(self: @This(), comptime T: type) ?*T {
         return @ptrCast(?*T, @alignCast(@alignOf(T), self.pointer));
     }
 };
 
-const RenderPassFunction = fn (data: *RenderPassData) void;
+const RenderFunction = fn (data: *RenderFunctionData) void;
 
 const RenderPass = struct {
     const Self = @This();
@@ -86,8 +77,8 @@ const RenderPass = struct {
     },
 
     render_function: ?struct {
-        data: RenderPassData,
-        function: RenderPassFunction,
+        function: RenderFunction,
+        data: RenderFunctionData,
     },
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8) Self {
@@ -116,7 +107,7 @@ const RenderPass = struct {
     }
 };
 
-pub const RenderGraphBuilder = struct {
+pub const RenderGraph = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
@@ -142,22 +133,48 @@ pub const RenderGraphBuilder = struct {
         self.passes.deinit();
     }
 
-    pub fn createBuffer(self: *Self, buffer_description: BufferDescription) BufferResourceHandle {
+    pub fn createBuffer(self: *Self, buffer_description: Buffer.Description) BufferResourceHandle {
         var handle = @intCast(BufferResourceHandle, self.buffers.items.len);
         self.buffers.append(.{
-            .description = buffer_description,
+            .description = .{ .new = buffer_description },
         }) catch {
             std.debug.panic("Failed to append new buffer resource", .{});
         };
         return handle;
     }
 
-    pub fn createImage(self: *Self, image_description: ImageDescription) ImageResourceHandle {
+    pub fn importBuffer(self: *Self, buffer: Buffer, last_access: BufferAccess) BufferResourceHandle {
+        var handle = @intCast(BufferResourceHandle, self.buffers.items.len);
+        self.buffers.append(.{
+            .description = .{ .imported = .{
+                .last_access = last_access,
+                .buffer = buffer,
+            } },
+        }) catch {
+            std.debug.panic("Failed to append imported buffer resource", .{});
+        };
+        return handle;
+    }
+
+    pub fn createImage(self: *Self, image_description: Image.Description) ImageResourceHandle {
         var handle = @intCast(ImageResourceHandle, self.images.items.len);
         self.images.append(.{
-            .description = image_description,
+            .description = .{ .new = image_description },
         }) catch {
             std.debug.panic("Failed to append new image resource", .{});
+        };
+        return handle;
+    }
+
+    pub fn importImage(self: *Self, image: Image, last_access: ImageAccess) ImageResourceHandle {
+        var handle = @intCast(ImageResourceHandle, self.images.items.len);
+        self.images.append(.{
+            .description = .{ .imported = .{
+                .last_access = last_access,
+                .image = image,
+            } },
+        }) catch {
+            std.debug.panic("Failed to append imported image resource", .{});
         };
         return handle;
     }
@@ -230,7 +247,7 @@ pub const RenderGraphBuilder = struct {
         };
     }
 
-    pub fn addRenderFunction(self: *Self, render_pass: RenderPassHandle, data: ?*anyopaque, function: RenderPassFunction) void {
+    pub fn addRenderFunction(self: *Self, render_pass: RenderPassHandle, function: RenderFunction, data: ?*anyopaque) void {
         if (self.passes.items.len <= render_pass) {
             std.debug.panic("Tried to write to invalid RenderPass id: {}", .{render_pass});
         }

@@ -5,6 +5,11 @@ const Device = @import("vulkan/device.zig");
 const RenderDevice = @import("render_device.zig").RenderDevice;
 const Swapchain = @import("vulkan/swapchain.zig").Swapchain;
 
+const Buffer = @import("vulkan/buffer.zig");
+const Image = @import("vulkan/image.zig");
+
+const graph = @import("renderer/render_graph.zig");
+
 const GPU_TIMEOUT: u64 = std.math.maxInt(u64);
 
 pub const Renderer = struct {
@@ -15,6 +20,9 @@ pub const Renderer = struct {
     graphics_command_pool: vk.CommandPool,
     frame: DeviceFrame, //TODO: more than one frame in flight
     swapchain: Swapchain,
+
+    //TEMP
+    render_graph_renderer: RenderGraphRenderer,
 
     pub fn init(allocator: std.mem.Allocator, render_device: *RenderDevice, surface: vk.SurfaceKHR) !Self {
         var graphics_command_pool = try render_device.device.base.createCommandPool(
@@ -36,6 +44,10 @@ pub const Renderer = struct {
             .graphics_command_pool = graphics_command_pool,
             .frame = frame,
             .swapchain = swapchain,
+            .render_graph_renderer = .{
+                .allocator = allocator,
+                .render_device = render_device,
+            },
         };
     }
 
@@ -45,14 +57,13 @@ pub const Renderer = struct {
         self.render_device.device.base.destroyCommandPool(self.render_device.device.handle, self.graphics_command_pool, null);
     }
 
-    pub fn render(self: *Self) !void {
+    pub fn render(self: *Self, render_graph: graph.RenderGraph) !void {
         var current_frame = &self.frame;
 
         var fences = [_]vk.Fence{current_frame.frame_done_fence};
         _ = try self.render_device.device.base.waitForFences(self.render_device.device.handle, fences.len, &fences, 1, GPU_TIMEOUT);
 
         var swapchain_index = self.swapchain.getNextImage(current_frame.image_ready_semaphore) orelse return; //Swapchain invalid don't render this frame
-        _ = swapchain_index;
 
         _ = self.render_device.device.base.resetFences(self.render_device.device.handle, fences.len, &fences) catch {};
 
@@ -61,7 +72,10 @@ pub const Renderer = struct {
             .p_inheritance_info = null,
         });
 
-        var image_barrier = vk.ImageMemoryBarrier{
+        //TODO: this
+        try self.render_graph_renderer.render(render_graph);
+
+        var image_barriers = [_]vk.ImageMemoryBarrier{.{
             .src_access_mask = .{},
             .dst_access_mask = .{},
             .old_layout = .@"undefined",
@@ -76,10 +90,19 @@ pub const Renderer = struct {
                 .base_array_layer = 0,
                 .layer_count = 1,
             },
-        };
-        var empty_memory: [*]const vk.MemoryBarrier = undefined;
-        var empty_buffer: [*]const vk.BufferMemoryBarrier = undefined;
-        self.render_device.device.base.cmdPipelineBarrier(current_frame.graphics_command_buffer, .{ .top_of_pipe_bit = true }, .{ .bottom_of_pipe_bit = true }, .{}, 0, empty_memory, 0, empty_buffer, 1, @ptrCast([*]const vk.ImageMemoryBarrier, &image_barrier));
+        }};
+        self.render_device.device.base.cmdPipelineBarrier(
+            current_frame.graphics_command_buffer,
+            .{ .top_of_pipe_bit = true },
+            .{ .bottom_of_pipe_bit = true },
+            .{},
+            0,
+            undefined,
+            0,
+            undefined,
+            image_barriers.len,
+            &image_barriers,
+        );
 
         try self.render_device.device.base.endCommandBuffer(current_frame.graphics_command_buffer);
 
@@ -216,5 +239,96 @@ const DeviceFrame = struct {
         self.device.base.destroySemaphore(self.device.handle, self.image_ready_semaphore, null);
         self.device.base.destroySemaphore(self.device.handle, self.transfer_done_semaphore, null);
         self.device.base.destroySemaphore(self.device.handle, self.render_done_semaphore, null);
+    }
+};
+
+const BufferResource = struct {
+    buffer: Buffer,
+    last_access: graph.BufferAccess,
+    temporary: bool,
+};
+
+const ImageResource = struct {
+    image: Image,
+    last_access: graph.ImageAccess,
+    temporary: bool,
+};
+
+const RenderGraphRenderer = struct {
+    const Self = @This();
+
+    allocator: std.mem.Allocator,
+    render_device: *RenderDevice,
+
+    // fn init() Self {}
+    // fn deinit(self: Self) void {}
+    fn render(self: *Self, render_graph: graph.RenderGraph) !void {
+        var buffers = try std.ArrayList(?BufferResource).initCapacity(self.allocator, render_graph.buffers.items.len);
+        buffers.clearRetainingCapacity();
+        {
+            for (buffers.items) |*resource, i| {
+                var buffer_info = &render_graph.buffers.items[i];
+                if (buffer_info.access_count != 0) {
+                    switch (buffer_info.description) {
+                        .new => |description| resource.* = .{
+                            .buffer = try self.render_device.createBuffer(description),
+                            .last_access = .none,
+                            .temporary = true,
+                        },
+                        .imported => |imported_buffer| buffers.items[i] = .{
+                            .buffer = imported_buffer.buffer,
+                            .last_access = imported_buffer.last_access,
+                            .temporary = false,
+                        },
+                    }
+                } else {
+                    buffers.items[i] = null;
+                }
+            }
+        }
+        {
+            for (buffers.items) |option| {
+                if (option) |resource| {
+                    if (resource.temporary) {
+                        resource.buffer.deinit();
+                    }
+                }
+            }
+            buffers.deinit();
+        }
+
+        var images = try std.ArrayList(?ImageResource).initCapacity(self.allocator, render_graph.images.items.len);
+        images.clearRetainingCapacity();
+        {
+            for (images.items) |*resource, i| {
+                var image_info = &render_graph.images.items[i];
+                if (image_info.access_count != 0) {
+                    switch (image_info.description) {
+                        .new => |description| resource.* = .{
+                            .image = try self.render_device.createImage(description),
+                            .last_access = .none,
+                            .temporary = true,
+                        },
+                        .imported => |imported_image| images.items[i] = .{
+                            .image = imported_image.image,
+                            .last_access = imported_image.last_access,
+                            .temporary = false,
+                        },
+                    }
+                } else {
+                    images.items[i] = null;
+                }
+            }
+        }
+        {
+            for (images.items) |option| {
+                if (option) |resource| {
+                    if (resource.temporary) {
+                        resource.image.deinit();
+                    }
+                }
+            }
+            images.deinit();
+        }
     }
 };
