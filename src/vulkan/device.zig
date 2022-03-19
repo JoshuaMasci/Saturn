@@ -43,6 +43,11 @@ pub fn init(
     std.log.info("Device: \n\tName: {s}\n\tDriver: {}\n\tType: {}", .{ props.device_name, props.driver_version, props.device_type });
 
     const priority = [_]f32{1};
+
+    var sync2_feature = vk.PhysicalDeviceSynchronization2Features{
+        .synchronization_2 = vk.TRUE,
+    };
+
     const qci = [_]vk.DeviceQueueCreateInfo{
         .{
             .flags = .{},
@@ -53,6 +58,7 @@ pub fn init(
     };
 
     var handle = try instance_dispatch.createDevice(pdevice, &.{
+        .p_next = &sync2_feature,
         .flags = .{},
         .queue_create_info_count = 1,
         .p_queue_create_infos = &qci,

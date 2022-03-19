@@ -12,12 +12,12 @@ pub const RenderPassHandle = u32;
 
 pub const BufferAccess = enum {
     none,
-    index_buffer,
-    vertex_buffer,
     transfer_read,
     transfer_write,
     shader_read,
     shader_write,
+    index_buffer,
+    vertex_buffer,
 };
 
 pub const BufferResource = struct {
@@ -35,13 +35,15 @@ pub const ImageAccess = enum {
     none,
     transfer_read,
     transfer_write,
-    color_attachment_read,
-    color_attachment_write,
-    depth_stencil_attachment_read,
-    depth_stencil_attachment_write,
     shader_sampled_read,
     shader_storage_read,
     shader_storage_write,
+    color_attachment_write,
+    depth_stencil_attachment_write,
+
+    //TODO: figure out attachment read flags
+    //color_attachment_read,
+    //depth_stencil_attachment_read,
 };
 
 pub const ImageResource = struct {

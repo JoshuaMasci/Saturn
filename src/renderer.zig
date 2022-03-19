@@ -44,20 +44,18 @@ pub const Renderer = struct {
             .graphics_command_pool = graphics_command_pool,
             .frame = frame,
             .swapchain = swapchain,
-            .render_graph_renderer = .{
-                .allocator = allocator,
-                .render_device = render_device,
-            },
+            .render_graph_renderer = RenderGraphRenderer.init(allocator, render_device),
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.render_graph_renderer.deinit();
         self.swapchain.deinit();
         self.frame.deinit();
         self.render_device.device.base.destroyCommandPool(self.render_device.device.handle, self.graphics_command_pool, null);
     }
 
-    pub fn render(self: *Self, render_graph: graph.RenderGraph) !void {
+    pub fn render(self: *Self, render_graph: *graph.RenderGraph) !void {
         var current_frame = &self.frame;
 
         var fences = [_]vk.Fence{current_frame.frame_done_fence};
@@ -73,7 +71,7 @@ pub const Renderer = struct {
         });
 
         //TODO: this
-        try self.render_graph_renderer.render(render_graph);
+        try self.render_graph_renderer.render(current_frame.graphics_command_buffer, render_graph);
 
         var image_barriers = [_]vk.ImageMemoryBarrier{.{
             .src_access_mask = .{},
@@ -260,75 +258,208 @@ const RenderGraphRenderer = struct {
     allocator: std.mem.Allocator,
     render_device: *RenderDevice,
 
-    // fn init() Self {}
-    // fn deinit(self: Self) void {}
-    fn render(self: *Self, render_graph: graph.RenderGraph) !void {
-        var buffers = try std.ArrayList(?BufferResource).initCapacity(self.allocator, render_graph.buffers.items.len);
-        buffers.clearRetainingCapacity();
-        {
-            for (buffers.items) |*resource, i| {
-                var buffer_info = &render_graph.buffers.items[i];
-                if (buffer_info.access_count != 0) {
-                    switch (buffer_info.description) {
-                        .new => |description| resource.* = .{
-                            .buffer = try self.render_device.createBuffer(description),
-                            .last_access = .none,
-                            .temporary = true,
-                        },
-                        .imported => |imported_buffer| buffers.items[i] = .{
-                            .buffer = imported_buffer.buffer,
-                            .last_access = imported_buffer.last_access,
-                            .temporary = false,
-                        },
-                    }
-                } else {
-                    buffers.items[i] = null;
+    allocated_buffers: std.ArrayList(?BufferResource),
+    allocated_images: std.ArrayList(?ImageResource),
+
+    fn init(
+        allocator: std.mem.Allocator,
+        render_device: *RenderDevice,
+    ) Self {
+        return Self{
+            .allocator = allocator,
+            .render_device = render_device,
+            .allocated_buffers = std.ArrayList(?BufferResource).init(allocator),
+            .allocated_images = std.ArrayList(?ImageResource).init(allocator),
+        };
+    }
+
+    fn deinit(self: *Self) void {
+        self.clearResources();
+
+        self.allocated_buffers.deinit();
+        self.allocated_images.deinit();
+    }
+
+    fn clearResources(self: *Self) void {
+        for (self.allocated_buffers.items) |option| {
+            if (option) |resource| {
+                if (resource.temporary) {
+                    resource.buffer.deinit();
                 }
             }
-        }
-        {
-            for (buffers.items) |option| {
-                if (option) |resource| {
-                    if (resource.temporary) {
-                        resource.buffer.deinit();
-                    }
-                }
-            }
-            buffers.deinit();
         }
 
-        var images = try std.ArrayList(?ImageResource).initCapacity(self.allocator, render_graph.images.items.len);
-        images.clearRetainingCapacity();
-        {
-            for (images.items) |*resource, i| {
-                var image_info = &render_graph.images.items[i];
-                if (image_info.access_count != 0) {
-                    switch (image_info.description) {
-                        .new => |description| resource.* = .{
-                            .image = try self.render_device.createImage(description),
-                            .last_access = .none,
-                            .temporary = true,
-                        },
-                        .imported => |imported_image| images.items[i] = .{
-                            .image = imported_image.image,
-                            .last_access = imported_image.last_access,
-                            .temporary = false,
-                        },
-                    }
-                } else {
-                    images.items[i] = null;
+        for (self.allocated_images.items) |option| {
+            if (option) |resource| {
+                if (resource.temporary) {
+                    resource.image.deinit();
                 }
             }
         }
-        {
-            for (images.items) |option| {
-                if (option) |resource| {
-                    if (resource.temporary) {
-                        resource.image.deinit();
-                    }
-                }
-            }
-            images.deinit();
+
+        self.allocated_buffers.clearRetainingCapacity();
+        self.allocated_images.clearRetainingCapacity();
+    }
+
+    fn initResources(self: *Self, render_graph: *graph.RenderGraph) !void {
+        self.clearResources();
+
+        try self.allocated_buffers.resize(render_graph.buffers.items.len);
+        for (render_graph.buffers.items) |buffer_info, i| {
+            self.allocated_buffers.items[i] = if (buffer_info.access_count != 0) switch (buffer_info.description) {
+                .new => |description| BufferResource{
+                    .buffer = try self.render_device.createBuffer(description),
+                    .last_access = .none,
+                    .temporary = true,
+                },
+                .imported => |imported_buffer| BufferResource{
+                    .buffer = imported_buffer.buffer,
+                    .last_access = imported_buffer.last_access,
+                    .temporary = false,
+                },
+            } else null;
+        }
+
+        try self.allocated_images.resize(render_graph.images.items.len);
+        for (render_graph.images.items) |image_info, i| {
+            self.allocated_images.items[i] = if (image_info.access_count != 0) switch (image_info.description) {
+                .new => |description| ImageResource{
+                    .image = try self.render_device.createImage(description),
+                    .last_access = .none,
+                    .temporary = true,
+                },
+                .imported => |imported_image| ImageResource{
+                    .image = imported_image.image,
+                    .last_access = imported_image.last_access,
+                    .temporary = false,
+                },
+            } else null;
+        }
+    }
+
+    fn writeBarriers(
+        self: *Self,
+        command_buffer: vk.CommandBuffer,
+        buffer_accesses: *std.AutoHashMap(graph.BufferResourceHandle, graph.BufferAccess),
+        image_accesses: *std.AutoHashMap(graph.ImageResourceHandle, graph.ImageAccess),
+    ) !void {
+        _ = command_buffer;
+
+        var buffer_barriers = std.ArrayList(vk.BufferMemoryBarrier2).init(self.allocator);
+        defer buffer_barriers.deinit();
+
+        var image_barriers = std.ArrayList(vk.ImageMemoryBarrier2).init(self.allocator);
+        defer image_barriers.deinit();
+
+        var buffer_iterator = buffer_accesses.iterator();
+        while (buffer_iterator.next()) |access| {
+            var buffer_index = access.key_ptr.*;
+            var src_flags = getBufferBarrierFlags(self.allocated_buffers.items[buffer_index].?.last_access);
+            var dst_flags = getBufferBarrierFlags(access.value_ptr.*);
+
+            self.allocated_buffers.items[buffer_index].?.last_access = access.value_ptr.*;
+
+            try buffer_barriers.append(vk.BufferMemoryBarrier2{
+                .buffer = self.allocated_buffers.items[buffer_index].?.buffer.handle,
+                .offset = 0,
+                .size = vk.WHOLE_SIZE,
+
+                .src_stage_mask = src_flags.stage,
+                .src_access_mask = src_flags.access,
+                .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+
+                .dst_stage_mask = dst_flags.stage,
+                .dst_access_mask = dst_flags.access,
+                .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            });
+        }
+
+        const image_subresource_range = vk.ImageSubresourceRange{
+            .aspect_mask = .{ .color_bit = true },
+            .base_mip_level = 0,
+            .level_count = 1,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        };
+
+        var image_iterator = image_accesses.iterator();
+        while (image_iterator.next()) |access| {
+            var image_index = access.key_ptr.*;
+            var src_flags = getImageBarrierFlags(self.allocated_images.items[image_index].?.last_access);
+            var dst_flags = getImageBarrierFlags(access.value_ptr.*);
+
+            self.allocated_images.items[image_index].?.last_access = access.value_ptr.*;
+
+            try image_barriers.append(vk.ImageMemoryBarrier2{
+                .image = self.allocated_images.items[image_index].?.image.handle,
+                .subresource_range = image_subresource_range,
+
+                .src_stage_mask = src_flags.stage,
+                .src_access_mask = src_flags.access,
+                .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .old_layout = src_flags.layout,
+
+                .dst_stage_mask = dst_flags.stage,
+                .dst_access_mask = dst_flags.access,
+                .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .new_layout = dst_flags.layout,
+            });
+        }
+
+        self.render_device.device.sync2.cmdPipelineBarrier2(
+            command_buffer,
+            &vk.DependencyInfo{
+                .dependency_flags = .{},
+                .memory_barrier_count = 0,
+                .p_memory_barriers = undefined,
+                .buffer_memory_barrier_count = @intCast(u32, buffer_barriers.items.len),
+                .p_buffer_memory_barriers = buffer_barriers.items.ptr,
+                .image_memory_barrier_count = @intCast(u32, image_barriers.items.len),
+                .p_image_memory_barriers = image_barriers.items.ptr,
+            },
+        );
+    }
+
+    fn render(self: *Self, command_buffer: vk.CommandBuffer, render_graph: *graph.RenderGraph) !void {
+        try self.initResources(render_graph);
+        for (render_graph.passes.items) |*pass| {
+            try self.writeBarriers(command_buffer, &pass.buffer_accesses, &pass.image_accesses);
         }
     }
 };
+
+const BufferBarrierflags = struct {
+    stage: vk.PipelineStageFlags2,
+    access: vk.AccessFlags2,
+};
+
+fn getBufferBarrierFlags(access_type: graph.BufferAccess) BufferBarrierflags {
+    return switch (access_type) {
+        .none => .{ .stage = .{}, .access = .{} },
+        .transfer_read => .{ .stage = .{ .all_transfer_bit = true }, .access = .{ .transfer_read_bit = true } },
+        .transfer_write => .{ .stage = .{ .all_transfer_bit = true }, .access = .{ .transfer_write_bit = true } },
+        .shader_read => .{ .stage = .{ .all_commands_bit = true }, .access = .{ .shader_storage_read_bit = true } },
+        .shader_write => .{ .stage = .{ .all_commands_bit = true }, .access = .{ .shader_storage_write_bit = true } },
+        .index_buffer => .{ .stage = .{ .index_input_bit = true }, .access = .{ .index_read_bit = true } },
+        .vertex_buffer => .{ .stage = .{ .vertex_input_bit = true }, .access = .{ .vertex_attribute_read_bit = true } },
+    };
+}
+
+const ImageBarrierFlags = struct {
+    stage: vk.PipelineStageFlags2,
+    access: vk.AccessFlags2,
+    layout: vk.ImageLayout,
+};
+
+fn getImageBarrierFlags(access_type: graph.ImageAccess) ImageBarrierFlags {
+    return switch (access_type) {
+        .none => .{ .stage = .{}, .access = .{}, .layout = .@"undefined" },
+        .transfer_read => .{ .stage = .{ .all_transfer_bit = true }, .access = .{ .transfer_read_bit = true }, .layout = .transfer_src_optimal },
+        .transfer_write => .{ .stage = .{ .all_transfer_bit = true }, .access = .{ .transfer_write_bit = true }, .layout = .transfer_dst_optimal },
+        .color_attachment_write => .{ .stage = .{ .color_attachment_output_bit = true }, .access = .{ .color_attachment_write_bit = true }, .layout = .color_attachment_optimal },
+        .depth_stencil_attachment_write => .{ .stage = .{ .early_fragment_tests_bit = true, .late_fragment_tests_bit = true }, .access = .{ .depth_stencil_attachment_write_bit = true }, .layout = .depth_stencil_attachment_optimal },
+        .shader_sampled_read => .{ .stage = .{ .all_commands_bit = true }, .access = .{ .shader_sampled_read_bit = true }, .layout = .shader_read_only_optimal },
+        .shader_storage_read => .{ .stage = .{ .all_commands_bit = true }, .access = .{ .shader_storage_read_bit = true }, .layout = .general },
+        .shader_storage_write => .{ .stage = .{ .all_commands_bit = true }, .access = .{ .shader_storage_write_bit = true }, .layout = .general },
+    };
+}

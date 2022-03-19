@@ -95,7 +95,10 @@ pub fn main() !void {
         var some_image = render_graph.createImage(.{
             .size = .{ 16, 16 },
             .format = .r8g8b8a8_unorm,
-            .usage = .{ .storage_bit = true },
+            .usage = .{
+                .storage_bit = true,
+                .color_attachment_bit = true,
+            },
             .memory_usage = .gpu_only,
         });
 
@@ -105,10 +108,12 @@ pub fn main() !void {
         render_graph.addRenderFunction(test_pass, testRenderFunction, null);
         //TEST_CODE_END
 
-        try renderer.render(render_graph);
+        try renderer.render(&render_graph);
 
         prev_time = current_time;
     }
+
+    device.waitIdle();
 }
 
 const TestData = struct {
