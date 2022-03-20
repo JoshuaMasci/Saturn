@@ -28,10 +28,6 @@ pub fn init(
     defer device_extensions.deinit();
     try device_extensions.append(vk.extension_info.khr_swapchain.name);
 
-    //TODO: use the feature version now that both are core?
-    try device_extensions.append(vk.extension_info.khr_synchronization_2.name);
-    try device_extensions.append(vk.extension_info.khr_dynamic_rendering.name);
-
     // const should_raytrace: bool = false;
     // if (should_raytrace) {
     //     try device_extensions.append(vk.extension_info.khr_acceleration_structure.name);
@@ -43,11 +39,6 @@ pub fn init(
     std.log.info("Device: \n\tName: {s}\n\tDriver: {}\n\tType: {}", .{ props.device_name, props.driver_version, props.device_type });
 
     const priority = [_]f32{1};
-
-    var sync2_feature = vk.PhysicalDeviceSynchronization2Features{
-        .synchronization_2 = vk.TRUE,
-    };
-
     const qci = [_]vk.DeviceQueueCreateInfo{
         .{
             .flags = .{},
@@ -57,8 +48,17 @@ pub fn init(
         },
     };
 
-    var handle = try instance_dispatch.createDevice(pdevice, &.{
+    //Features
+    var sync2_feature = vk.PhysicalDeviceSynchronization2Features{
+        .synchronization_2 = vk.TRUE,
+    };
+    var dynamic_rendering_feature = vk.PhysicalDeviceDynamicRenderingFeatures{
         .p_next = &sync2_feature,
+        .dynamic_rendering = vk.TRUE,
+    };
+
+    var handle = try instance_dispatch.createDevice(pdevice, &.{
+        .p_next = &dynamic_rendering_feature,
         .flags = .{},
         .queue_create_info_count = 1,
         .p_queue_create_infos = &qci,

@@ -74,12 +74,13 @@ const RenderPass = struct {
     image_accesses: std.AutoHashMap(ImageResourceHandle, ImageAccess),
 
     raster_info: ?struct {
+        size: [2]u32,
         color_attachments: std.ArrayList(ImageResourceHandle),
         depth_stencil_attachment: ?ImageResourceHandle,
     },
 
     render_function: ?struct {
-        function: RenderFunction,
+        ptr: RenderFunction,
         data: RenderFunctionData,
     },
 
@@ -228,12 +229,20 @@ pub const RenderGraph = struct {
             std.debug.panic("RenderPass id: {} already has a RasterInfo", .{render_pass});
         }
 
-        for (color_attachments) |color_attachment| {
-            self.addImageAccess(render_pass, color_attachment, .color_attachment_write);
+        var framebuffer_size: ?[2]u32 = null;
+
+        for (color_attachments) |attachment, i| {
+            self.addImageAccess(render_pass, attachment, .color_attachment_write);
+            framebuffer_size = validateAttachmentSize(framebuffer_size, getImageSize(&self.images.items[attachment])) catch {
+                std.debug.panic("Framebuffer color attachment {} in pass {} doesn't match others", .{ i, render_pass });
+            };
         }
 
         if (depth_stencil_attachment) |attachment| {
             self.addImageAccess(render_pass, attachment, .depth_stencil_attachment_write);
+            framebuffer_size = validateAttachmentSize(framebuffer_size, getImageSize(&self.images.items[attachment])) catch {
+                std.debug.panic("Framebuffer depth stencil attachment in pass {} doesn't match others", .{render_pass});
+            };
         }
 
         var color_attachments_list = std.ArrayList(ImageResourceHandle).initCapacity(self.allocator, color_attachments.len) catch {
@@ -244,6 +253,7 @@ pub const RenderGraph = struct {
         };
 
         self.passes.items[render_pass].raster_info = .{
+            .size = framebuffer_size.?,
             .color_attachments = color_attachments_list,
             .depth_stencil_attachment = depth_stencil_attachment,
         };
@@ -259,8 +269,27 @@ pub const RenderGraph = struct {
         }
 
         self.passes.items[render_pass].render_function = .{
+            .ptr = function,
             .data = .{ .pointer = data },
-            .function = function,
         };
     }
 };
+
+fn getImageSize(image_description: *ImageResource) [2]u32 {
+    return switch (image_description.description) {
+        .new => |description| description.size,
+        .imported => |imported_image| imported_image.image.description.size,
+    };
+}
+
+fn validateAttachmentSize(current_size: ?[2]u32, attachment_size: [2]u32) !?[2]u32 {
+    if (current_size) |size| {
+        if (size[0] != attachment_size[0] or size[1] != attachment_size[1]) {
+            return error.NonMatchingAttachmentSize;
+        } else {
+            return current_size;
+        }
+    } else {
+        return attachment_size;
+    }
+}

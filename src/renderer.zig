@@ -424,6 +424,78 @@ const RenderGraphRenderer = struct {
         try self.initResources(render_graph);
         for (render_graph.passes.items) |*pass| {
             try self.writeBarriers(command_buffer, &pass.buffer_accesses, &pass.image_accesses);
+
+            if (pass.raster_info) |raster_info| {
+                var color_attachments = std.ArrayList(vk.RenderingAttachmentInfo).init(self.allocator);
+                defer color_attachments.deinit();
+                try color_attachments.resize(raster_info.color_attachments.items.len);
+
+                var temp_clear_color = [_]f32{ 1.0, 0.0, 1.0, 0.0 };
+
+                for (raster_info.color_attachments.items) |attachment_handle, i| {
+                    var image = self.allocated_images.items[attachment_handle].?.image;
+
+                    //TODO: Determine load and store ops from graph
+                    //TODO: clear color
+                    color_attachments.items[i] = .{
+                        .image_view = image.view,
+                        .image_layout = .color_attachment_optimal,
+                        .resolve_mode = .{},
+                        .resolve_image_view = .null_handle,
+                        .resolve_image_layout = .@"undefined",
+                        .load_op = .clear,
+                        .store_op = .store,
+                        .clear_value = .{ .color = .{ .float_32 = temp_clear_color } },
+                    };
+                }
+
+                var depth_stencil_attachment_storage: vk.RenderingAttachmentInfo = undefined;
+                var depth_stencil_attachment: ?*const vk.RenderingAttachmentInfo = null;
+
+                if (raster_info.depth_stencil_attachment) |attachment_handle| {
+                    var image = self.allocated_images.items[attachment_handle].?.image;
+
+                    depth_stencil_attachment_storage = .{
+                        .image_view = image.view,
+                        .image_layout = .depth_stencil_attachment_optimal,
+                        .resolve_mode = .{},
+                        .resolve_image_view = .null_handle,
+                        .resolve_image_layout = .@"undefined",
+                        .load_op = .clear,
+                        .store_op = .store,
+                        .clear_value = .{ .depth_stencil = .{
+                            .depth = 0.0,
+                            .stencil = 0,
+                        } },
+                    };
+                    depth_stencil_attachment = &depth_stencil_attachment_storage;
+                }
+
+                var rendering_info = vk.RenderingInfo{
+                    .flags = .{},
+                    .render_area = .{ .offset = .{ .x = 0, .y = 0 }, .extent = .{
+                        .width = raster_info.size[0],
+                        .height = raster_info.size[1],
+                    } },
+                    .layer_count = 1,
+                    .view_mask = 0,
+                    .color_attachment_count = @intCast(u32, color_attachments.items.len),
+                    .p_color_attachments = color_attachments.items.ptr,
+                    .p_depth_attachment = depth_stencil_attachment,
+                    .p_stencil_attachment = depth_stencil_attachment,
+                };
+
+                self.render_device.device.dynamic_rendering.cmdBeginRendering(command_buffer, &rendering_info);
+            }
+
+            if (pass.render_function) |*render_function| {
+                //std.log.info("Calling RenderFunction!", .{});
+                render_function.ptr(&render_function.data);
+            }
+
+            if (pass.raster_info) |_| {
+                self.render_device.device.dynamic_rendering.cmdEndRendering(command_buffer);
+            }
         }
     }
 };
