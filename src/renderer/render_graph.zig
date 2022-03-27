@@ -40,6 +40,7 @@ pub const ImageAccess = enum {
     shader_storage_write,
     color_attachment_write,
     depth_stencil_attachment_write,
+    present,
 
     //TODO: figure out attachment read flags
     //color_attachment_read,
@@ -117,6 +118,7 @@ pub const RenderGraph = struct {
     buffers: std.ArrayList(BufferResource),
     images: std.ArrayList(ImageResource),
     passes: std.ArrayList(RenderPass),
+    swapchain_image: ?ImageResourceHandle = null,
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
@@ -182,6 +184,25 @@ pub const RenderGraph = struct {
         return handle;
     }
 
+    pub fn getImageDescription(self: *Self, image: ImageResourceHandle) Image.Description {
+        if (self.images.items.len <= image) {
+            std.debug.panic("Tried to use an invalid ImageResource id: {}", .{image});
+        }
+        return self.images.items[image].description;
+    }
+
+    pub fn setSwapchainImage(self: *Self, image: Image) void {
+        if (self.swapchain_image) |_| {
+            std.debug.panic("RenderGraph already has a swapchain image", .{});
+        } else {
+            self.swapchain_image = self.importImage(image, .none);
+        }
+    }
+
+    pub fn getSwapchainImage(self: Self) ImageResourceHandle {
+        return self.swapchain_image.?;
+    }
+
     pub fn createRenderPass(self: *Self, name: []const u8) RenderPassHandle {
         var handle = @intCast(RenderPassHandle, self.passes.items.len);
         self.passes.append(RenderPass.init(self.allocator, name)) catch {
@@ -195,7 +216,7 @@ pub const RenderGraph = struct {
             std.debug.panic("Tried to write to invalid RenderPass id: {}", .{render_pass});
         }
 
-        if (self.passes.items.len <= buffer) {
+        if (self.buffers.items.len <= buffer) {
             std.debug.panic("Tried to use an invalid BufferResource id: {}", .{buffer});
         }
 
@@ -210,7 +231,7 @@ pub const RenderGraph = struct {
             std.debug.panic("Tried to write to invalid RenderPass id: {}", .{render_pass});
         }
 
-        if (self.passes.items.len <= image) {
+        if (self.images.items.len <= image) {
             std.debug.panic("Tried to use an invalid ImageResource id: {}", .{image});
         }
 

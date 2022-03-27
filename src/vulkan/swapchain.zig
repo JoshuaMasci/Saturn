@@ -4,6 +4,7 @@ const panic = std.debug.panic;
 
 const vk = @import("vulkan");
 const Device = @import("device.zig");
+const Image = @import("image.zig");
 
 pub const SwapchainInfo = struct {
     image_count: u32,
@@ -11,6 +12,11 @@ pub const SwapchainInfo = struct {
     extent: vk.Extent2D,
     usage: vk.ImageUsageFlags,
     mode: vk.PresentModeKHR,
+};
+
+pub const SwapchainImageInfo = struct {
+    image_index: u32,
+    image: Image,
 };
 
 pub const Swapchain = struct {
@@ -21,12 +27,9 @@ pub const Swapchain = struct {
     surface: vk.SurfaceKHR,
 
     invalid: bool,
-    extent: vk.Extent2D,
     handle: vk.SwapchainKHR,
-    images: std.ArrayList(vk.Image),
-    image_views: std.ArrayList(vk.ImageView),
-    render_pass: vk.RenderPass,
-    framebuffers: std.ArrayList(vk.Framebuffer),
+
+    images: std.ArrayList(Image),
 
     pub fn init(allocator: std.mem.Allocator, device: *Device, surface: vk.SurfaceKHR) !Self {
         var self = Self{
@@ -34,12 +37,8 @@ pub const Swapchain = struct {
             .device = device,
             .surface = surface,
             .invalid = false,
-            .extent = vk.Extent2D{ .width = 0, .height = 0 },
             .handle = .null_handle,
-            .images = std.ArrayList(vk.Image).init(allocator),
-            .image_views = std.ArrayList(vk.ImageView).init(allocator),
-            .render_pass = .null_handle,
-            .framebuffers = std.ArrayList(vk.Framebuffer).init(allocator),
+            .images = std.ArrayList(Image).init(allocator),
         };
         try self.rebuild();
         return self;
@@ -49,20 +48,12 @@ pub const Swapchain = struct {
         //Wait for all frames to finish before deinitializing swapchain
         self.device.base.deviceWaitIdle(self.device.handle) catch {};
 
-        self.device.base.destroySwapchainKHR(self.device.handle, self.handle, null);
+        for (self.images.items) |image| {
+            image.deinit();
+        }
         self.images.deinit();
 
-        for (self.image_views.items) |view| {
-            self.device.base.destroyImageView(self.device.handle, view, null);
-        }
-        self.image_views.deinit();
-
-        for (self.framebuffers.items) |framebuffer| {
-            self.device.base.destroyFramebuffer(self.device.handle, framebuffer, null);
-        }
-        self.framebuffers.deinit();
-
-        self.device.base.destroyRenderPass(self.device.handle, self.render_pass, null);
+        self.device.base.destroySwapchainKHR(self.device.handle, self.handle, null);
     }
 
     pub fn getNextImage(self: *Self, image_ready: vk.Semaphore) ?u32 {
@@ -84,6 +75,10 @@ pub const Swapchain = struct {
         );
 
         if (result_error) |result| {
+            // var image = Image{
+            //     .device = null,
+            // };
+
             return result.image_index;
         } else |err| switch (err) {
             error.OutOfDateKHR => {
@@ -105,8 +100,8 @@ pub const Swapchain = struct {
 
         //Hardcoded Temp, TODO fix
         const queue_family_index = [_]u32{0};
-        const image_useage = vk.ImageUsageFlags{ .color_attachment_bit = true, .transfer_dst_bit = true };
 
+        const image_usage = vk.ImageUsageFlags{ .color_attachment_bit = true, .transfer_dst_bit = true };
         const image_count = std.math.min(caps.min_image_count + 1, caps.max_image_count);
         const image_extent = getImageExtent(caps.current_extent, caps.min_image_extent, caps.max_image_extent);
         const surface_format = try getSurfaceFormat(self.allocator, self.device, self.surface);
@@ -119,7 +114,7 @@ pub const Swapchain = struct {
             .image_color_space = surface_format.color_space,
             .image_extent = image_extent,
             .image_array_layers = 1,
-            .image_usage = image_useage,
+            .image_usage = image_usage,
             .image_sharing_mode = .exclusive,
             .queue_family_index_count = queue_family_index.len,
             .p_queue_family_indices = &queue_family_index,
@@ -134,28 +129,33 @@ pub const Swapchain = struct {
 
         var count: u32 = undefined;
         _ = try self.device.base.getSwapchainImagesKHR(self.device.handle, swapchain, &count, null);
-        var images = try std.ArrayList(vk.Image).initCapacity(self.allocator, count);
-        var i: usize = 0;
-        while (i < count) : (i += 1) {
-            try images.append(.null_handle);
-        }
-        _ = try self.device.base.getSwapchainImagesKHR(self.device.handle, swapchain, &count, @ptrCast([*]vk.Image, images.items));
+        var swapchain_images = try self.allocator.alloc(vk.Image, count);
+        defer self.allocator.free(swapchain_images);
+        _ = try self.device.base.getSwapchainImagesKHR(self.device.handle, swapchain, &count, swapchain_images.ptr);
 
-        var image_views = try createImageViews(self.allocator, self.device, surface_format.format, &images);
-        var render_pass = try createRenderPass(self.device, surface_format.format);
-        var framebuffers = try createFramebuffers(self.allocator, self.device, render_pass, image_extent, &image_views);
+        var swapchain_description = Image.Description{
+            .size = .{ image_extent.width, image_extent.height },
+            .format = surface_format.format,
+            .usage = image_usage,
+            .memory_usage = .gpu_only,
+        };
+
+        var images = try std.ArrayList(Image).initCapacity(self.allocator, swapchain_images.len);
+        for (swapchain_images) |swapchain_image| {
+            try images.append(try Image.initSwapchainImage(
+                self.device,
+                swapchain_image,
+                swapchain_description,
+            ));
+        }
 
         //Destroy old
         self.deinit();
 
         //Update Object
         self.invalid = false;
-        self.extent = image_extent;
         self.handle = swapchain;
         self.images = images;
-        self.image_views = image_views;
-        self.render_pass = render_pass;
-        self.framebuffers = framebuffers;
     }
 
     fn getSurfaceFormat(allocator: std.mem.Allocator, device: *Device, surface: vk.SurfaceKHR) !vk.SurfaceFormatKHR {
@@ -211,84 +211,5 @@ pub const Swapchain = struct {
             .width = std.math.clamp(current.width, min.width, max.width),
             .height = std.math.clamp(current.height, min.height, max.height),
         };
-    }
-
-    fn createImageViews(allocator: std.mem.Allocator, device: *Device, format: vk.Format, images: *std.ArrayList(vk.Image)) !std.ArrayList(vk.ImageView) {
-        var image_views = try std.ArrayList(vk.ImageView).initCapacity(allocator, images.items.len);
-        for (images.items) |image| {
-            try image_views.append(try device.base.createImageView(device.handle, &.{
-                .flags = .{},
-                .image = image,
-                .view_type = .@"2d",
-                .format = format,
-                .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
-                .subresource_range = .{
-                    .aspect_mask = .{ .color_bit = true },
-                    .base_mip_level = 0,
-                    .level_count = 1,
-                    .base_array_layer = 0,
-                    .layer_count = 1,
-                },
-            }, null));
-        }
-        return image_views;
-    }
-
-    fn createRenderPass(device: *Device, format: vk.Format) !vk.RenderPass {
-        const color_attachment = vk.AttachmentDescription{
-            .flags = .{},
-            .format = format,
-            .samples = .{ .@"1_bit" = true },
-            .load_op = .clear,
-            .store_op = .store,
-            .stencil_load_op = .dont_care,
-            .stencil_store_op = .dont_care,
-            .initial_layout = .@"undefined",
-            .final_layout = .present_src_khr,
-        };
-
-        const color_attachment_ref = vk.AttachmentReference{
-            .attachment = 0,
-            .layout = .color_attachment_optimal,
-        };
-
-        const subpass = vk.SubpassDescription{
-            .flags = .{},
-            .pipeline_bind_point = .graphics,
-            .input_attachment_count = 0,
-            .p_input_attachments = undefined,
-            .color_attachment_count = 1,
-            .p_color_attachments = @ptrCast([*]const vk.AttachmentReference, &color_attachment_ref),
-            .p_resolve_attachments = null,
-            .p_depth_stencil_attachment = null,
-            .preserve_attachment_count = 0,
-            .p_preserve_attachments = undefined,
-        };
-
-        return try device.base.createRenderPass(device.handle, &.{
-            .flags = .{},
-            .attachment_count = 1,
-            .p_attachments = @ptrCast([*]const vk.AttachmentDescription, &color_attachment),
-            .subpass_count = 1,
-            .p_subpasses = @ptrCast([*]const vk.SubpassDescription, &subpass),
-            .dependency_count = 0,
-            .p_dependencies = undefined,
-        }, null);
-    }
-
-    fn createFramebuffers(allocator: std.mem.Allocator, device: *Device, render_pass: vk.RenderPass, extent: vk.Extent2D, image_views: *std.ArrayList(vk.ImageView)) !std.ArrayList(vk.Framebuffer) {
-        var framebuffers = try std.ArrayList(vk.Framebuffer).initCapacity(allocator, image_views.items.len);
-        for (image_views.items) |image_view| {
-            try framebuffers.append(try device.base.createFramebuffer(device.handle, &.{
-                .flags = .{},
-                .render_pass = render_pass,
-                .attachment_count = 1,
-                .p_attachments = @ptrCast([*]const vk.ImageView, &image_view),
-                .width = extent.width,
-                .height = extent.height,
-                .layers = 1,
-            }, null));
-        }
-        return framebuffers;
     }
 };

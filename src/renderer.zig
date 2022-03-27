@@ -22,6 +22,7 @@ pub const Renderer = struct {
     swapchain: Swapchain,
 
     //TEMP
+    swapchain_index: u32 = 0,
     render_graph_renderer: RenderGraphRenderer,
 
     pub fn init(allocator: std.mem.Allocator, render_device: *RenderDevice, surface: vk.SurfaceKHR) !Self {
@@ -55,52 +56,31 @@ pub const Renderer = struct {
         self.render_device.device.base.destroyCommandPool(self.render_device.device.handle, self.graphics_command_pool, null);
     }
 
-    pub fn render(self: *Self, render_graph: *graph.RenderGraph) !void {
+    pub fn createRenderGraph(self: *Self) !?graph.RenderGraph {
         var current_frame = &self.frame;
-
         var fences = [_]vk.Fence{current_frame.frame_done_fence};
         _ = try self.render_device.device.base.waitForFences(self.render_device.device.handle, fences.len, &fences, 1, GPU_TIMEOUT);
-
-        var swapchain_index = self.swapchain.getNextImage(current_frame.image_ready_semaphore) orelse return; //Swapchain invalid don't render this frame
-
+        self.swapchain_index = self.swapchain.getNextImage(current_frame.image_ready_semaphore) orelse return null; //Swapchain invalid don't render this frame
         _ = self.render_device.device.base.resetFences(self.render_device.device.handle, fences.len, &fences) catch {};
+
+        var render_graph = graph.RenderGraph.init(self.allocator);
+        render_graph.setSwapchainImage(self.swapchain.images.items[self.swapchain_index]);
+        return render_graph;
+    }
+
+    pub fn sumbitRenderGraph(self: *Self, render_graph: *graph.RenderGraph) !void {
+        var current_frame = &self.frame;
+
+        //Add final present barrier
+        var final_pass = render_graph.createRenderPass("PresentRenderPass");
+        render_graph.addImageAccess(final_pass, render_graph.getSwapchainImage(), .present);
 
         try self.render_device.device.base.beginCommandBuffer(current_frame.graphics_command_buffer, &.{
             .flags = .{},
             .p_inheritance_info = null,
         });
 
-        //TODO: this
         try self.render_graph_renderer.render(current_frame.graphics_command_buffer, render_graph);
-
-        var image_barriers = [_]vk.ImageMemoryBarrier{.{
-            .src_access_mask = .{},
-            .dst_access_mask = .{},
-            .old_layout = .@"undefined",
-            .new_layout = .present_src_khr,
-            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .image = self.swapchain.images.items[swapchain_index],
-            .subresource_range = .{
-                .aspect_mask = .{ .color_bit = true },
-                .base_mip_level = 0,
-                .level_count = 1,
-                .base_array_layer = 0,
-                .layer_count = 1,
-            },
-        }};
-        self.render_device.device.base.cmdPipelineBarrier(
-            current_frame.graphics_command_buffer,
-            .{ .top_of_pipe_bit = true },
-            .{ .bottom_of_pipe_bit = true },
-            .{},
-            0,
-            undefined,
-            0,
-            undefined,
-            image_barriers.len,
-            &image_barriers,
-        );
 
         try self.render_device.device.base.endCommandBuffer(current_frame.graphics_command_buffer);
 
@@ -125,7 +105,7 @@ pub const Renderer = struct {
         {
             var wait_semaphores = [_]vk.Semaphore{current_frame.render_done_semaphore};
             var swapchains = [_]vk.SwapchainKHR{self.swapchain.handle};
-            var image_indices = [_]u32{swapchain_index};
+            var image_indices = [_]u32{self.swapchain_index};
 
             _ = self.render_device.device.base.queuePresentKHR(self.render_device.device.graphics_queue, &.{
                 .wait_semaphore_count = wait_semaphores.len,
@@ -426,18 +406,17 @@ const RenderGraphRenderer = struct {
             try self.writeBarriers(command_buffer, &pass.buffer_accesses, &pass.image_accesses);
 
             if (pass.raster_info) |raster_info| {
-                var color_attachments = std.ArrayList(vk.RenderingAttachmentInfo).init(self.allocator);
-                defer color_attachments.deinit();
-                try color_attachments.resize(raster_info.color_attachments.items.len);
+                var color_attachments = try self.allocator.alloc(vk.RenderingAttachmentInfo, raster_info.color_attachments.items.len);
+                defer self.allocator.free(color_attachments);
 
-                var temp_clear_color = [_]f32{ 1.0, 0.0, 1.0, 0.0 };
+                var temp_clear_color = [_]f32{ 0.0, 0.0, 0.0, 0.0 };
 
                 for (raster_info.color_attachments.items) |attachment_handle, i| {
                     var image = self.allocated_images.items[attachment_handle].?.image;
 
                     //TODO: Determine load and store ops from graph
                     //TODO: clear color
-                    color_attachments.items[i] = .{
+                    color_attachments[i] = .{
                         .image_view = image.view,
                         .image_layout = .color_attachment_optimal,
                         .resolve_mode = .{},
@@ -479,8 +458,8 @@ const RenderGraphRenderer = struct {
                     } },
                     .layer_count = 1,
                     .view_mask = 0,
-                    .color_attachment_count = @intCast(u32, color_attachments.items.len),
-                    .p_color_attachments = color_attachments.items.ptr,
+                    .color_attachment_count = @intCast(u32, color_attachments.len),
+                    .p_color_attachments = color_attachments.ptr,
                     .p_depth_attachment = depth_stencil_attachment,
                     .p_stencil_attachment = depth_stencil_attachment,
                 };
@@ -489,7 +468,6 @@ const RenderGraphRenderer = struct {
             }
 
             if (pass.render_function) |*render_function| {
-                //std.log.info("Calling RenderFunction!", .{});
                 render_function.ptr(&render_function.data);
             }
 
@@ -533,5 +511,6 @@ fn getImageBarrierFlags(access_type: graph.ImageAccess) ImageBarrierFlags {
         .shader_sampled_read => .{ .stage = .{ .all_commands_bit = true }, .access = .{ .shader_sampled_read_bit = true }, .layout = .shader_read_only_optimal },
         .shader_storage_read => .{ .stage = .{ .all_commands_bit = true }, .access = .{ .shader_storage_read_bit = true }, .layout = .general },
         .shader_storage_write => .{ .stage = .{ .all_commands_bit = true }, .access = .{ .shader_storage_write_bit = true }, .layout = .general },
+        .present => .{ .stage = .{ .all_commands_bit = true }, .access = .{}, .layout = .present_src_khr },
     };
 }

@@ -84,31 +84,34 @@ pub fn main() !void {
         try glfw.pollEvents();
 
         //TEST_CODE_START
-        var render_graph = graph.RenderGraph.init(allocator); //TODO: get render_graph from renderer so it has the swapchain image as a resource
-        defer render_graph.deinit();
+        if (try renderer.createRenderGraph()) |*render_graph| {
+            defer render_graph.deinit();
 
-        var some_buffer = render_graph.createBuffer(.{
-            .size = 16,
-            .usage = .{ .storage_buffer_bit = true },
-            .memory_usage = .gpu_only,
-        });
-        var some_image = render_graph.createImage(.{
-            .size = .{ 16, 16 },
-            .format = .r8g8b8a8_unorm,
-            .usage = .{
-                .storage_bit = true,
-                .color_attachment_bit = true,
-            },
-            .memory_usage = .gpu_only,
-        });
+            var some_buffer = render_graph.createBuffer(.{
+                .size = 16,
+                .usage = .{ .storage_buffer_bit = true },
+                .memory_usage = .gpu_only,
+            });
+            var some_image = render_graph.createImage(.{
+                .size = .{ 16, 16 },
+                .format = .r8g8b8a8_unorm,
+                .usage = .{
+                    .storage_bit = true,
+                    .color_attachment_bit = true,
+                },
+                .memory_usage = .gpu_only,
+            });
 
-        var test_pass = render_graph.createRenderPass("TestRenderPass");
-        render_graph.addBufferAccess(test_pass, some_buffer, .shader_read);
-        render_graph.addRaster(test_pass, &[_]graph.ImageResourceHandle{some_image}, null);
-        render_graph.addRenderFunction(test_pass, testRenderFunction, null);
-        //TEST_CODE_END
+            var test_pass = render_graph.createRenderPass("TestRenderPass");
+            render_graph.addBufferAccess(test_pass, some_buffer, .shader_read);
+            render_graph.addImageAccess(test_pass, some_image, .shader_storage_read);
+            render_graph.addRaster(test_pass, &[_]graph.ImageResourceHandle{render_graph.getSwapchainImage()}, null);
+            //render_graph.addRenderFunction(test_pass, testRenderFunction, null);
 
-        try renderer.render(&render_graph);
+            try renderer.sumbitRenderGraph(render_graph);
+        } else {
+            //Skiping frame for some reason
+        }
 
         prev_time = current_time;
     }

@@ -14,7 +14,7 @@ pub const Description = struct {
 const Self = @This();
 
 device: *Device,
-allocator: *DeviceAllocator,
+allocator: ?*DeviceAllocator,
 description: Description,
 handle: vk.Image,
 allocation: DeviceAllocator.Allocation,
@@ -55,6 +55,7 @@ pub fn init(
     var allocation = try allocator.allocate(memory_requirements, description.memory_usage);
     try device.base.bindImageMemory(device.handle, image, allocation.memory, allocation.offset);
 
+    //TODO: for depth stencil images
     var view = try device.base.createImageView(
         device.handle,
         &.{
@@ -84,8 +85,51 @@ pub fn init(
     };
 }
 
+pub fn initSwapchainImage(
+    device: *Device,
+    swapchain_image: vk.Image,
+    description: Description,
+) !Self {
+    var view = try device.base.createImageView(
+        device.handle,
+        &.{
+            .flags = .{},
+            .image = swapchain_image,
+            .view_type = .@"2d",
+            .format = description.format,
+            .components = .{ .r = .r, .g = .g, .b = .b, .a = .a },
+            .subresource_range = .{
+                .aspect_mask = .{ .color_bit = true },
+                .base_mip_level = 0,
+                .level_count = 1,
+                .base_array_layer = 0,
+                .layer_count = 1,
+            },
+        },
+        null,
+    );
+
+    return Self{
+        .device = device,
+        .allocator = null,
+        .description = description,
+        .handle = swapchain_image,
+        .allocation = .{
+            .memory = .null_handle,
+            .offset = 0,
+            .size = 0,
+            .mapped_ptr = null,
+        },
+        .view = view,
+    };
+}
+
 pub fn deinit(self: Self) void {
     self.device.base.destroyImageView(self.device.handle, self.view, null);
-    self.device.base.destroyImage(self.device.handle, self.handle, null);
-    self.allocator.free(self.allocation);
+
+    if (self.allocator) |allocator| {
+        //Only destroy image if this struct allocated it
+        self.device.base.destroyImage(self.device.handle, self.handle, null);
+        allocator.free(self.allocation);
+    }
 }
