@@ -5,11 +5,132 @@ const c = @cImport({
     @cInclude("SDL.h");
 });
 
+pub const StringHash = struct {
+    const Self = @This();
+    pub const HashType = u32;
+
+    hash: HashType,
+    string: []const u8,
+
+    fn new(comptime string: []const u8) Self {
+        return .{
+            .hash = std.hash.Fnv1a_32.hash(string),
+            .string = string,
+        };
+    }
+};
+const InputContextString = struct {
+    name: StringHash,
+    buttons: []const StringHash,
+    axes: []const StringHash,
+};
+
+pub const InputButtonCallback = *const fn (ptr: *anyopaque, button: StringHash, state: ButtonState) void;
+pub const InputAxisCallback = *const fn (ptr: *anyopaque, axis: StringHash, value: f32) void;
+const InputContextCallback = struct {
+    const Self = @This();
+
+    ptr: *anyopaque,
+    button_callback: ?InputButtonCallback,
+    axis_callback: ?InputAxisCallback,
+
+    pub fn trigger_button(self: *Self, button: StringHash, state: ButtonState) void {
+        if (self.button_callback) |callback_fn| {
+            callback_fn(self.ptr, button, state);
+        }
+    }
+    pub fn trigger_axis(self: *Self, axis: StringHash, value: f32) void {
+        if (self.axis_callback) |callback| {
+            callback(self.ptr, axis, value);
+        }
+    }
+};
+const TestInputSystem = struct {
+    const Self = @This();
+
+    const InnerContext = struct {
+        enabled: bool,
+        context: InputContextString,
+        callbacks: std.ArrayList(InputContextCallback),
+    };
+    context_map: std.AutoHashMap(StringHash.HashType, InnerContext),
+
+    fn init(allocator: std.mem.Allocator, contexts: []const InputContextString) !Self {
+        var context_map = std.AutoHashMap(StringHash.HashType, InnerContext).init(allocator);
+
+        for (contexts) |context| {
+            var callbacks = std.ArrayList(InputContextCallback).init(allocator);
+            try context_map.put(context.name.hash, .{
+                .enabled = false,
+                .context = context,
+                .callbacks = callbacks,
+            });
+        }
+
+        return Self{
+            .context_map = context_map,
+        };
+    }
+    fn deinit(self: *Self) void {
+        var iterator = self.context_map.iterator();
+        while (iterator.next()) |entry| {
+            entry.value_ptr.callbacks.deinit();
+        }
+        self.context_map.deinit();
+    }
+
+    fn add_callback(self: *Self, context_name: StringHash, callback: InputContextCallback) !void {
+        if (self.context_map.getPtr(context_name.hash)) |inner_context| {
+            try inner_context.callbacks.append(callback);
+        }
+    }
+};
+
+const TestInputStruct = struct {
+    const Self = @This();
+
+    some_int: usize,
+
+    fn callback(self: *Self) InputContextCallback {
+        return .{
+            .ptr = self,
+            .button_callback = trigger_button,
+            .axis_callback = trigger_axis,
+        };
+    }
+
+    fn trigger_button(self: *anyopaque, button: StringHash, state: ButtonState) void {
+        _ = self;
+        log.info("Button Triggered {s} -> {}", .{ button.string, state });
+    }
+
+    fn trigger_axis(self: *anyopaque, axis: StringHash, value: f32) void {
+        _ = self;
+        log.info("Axis Triggered {s} -> {d:.2}", .{ axis.string, value });
+    }
+};
+fn use_test_input_system(allocator: std.mem.Allocator) !void {
+    const name: StringHash = StringHash.new("TestInputContext");
+    const button1: StringHash = StringHash.new("button1");
+    const button2: StringHash = StringHash.new("button2");
+
+    const context: InputContextString = InputContextString{
+        .name = name,
+        .buttons = &[_]StringHash{ button1, button2 },
+        .axes = &[_]StringHash{},
+    };
+
+    var input_system = try TestInputSystem.init(allocator, &[_]InputContextString{context});
+    defer input_system.deinit();
+
+    var input_struct = TestInputStruct{ .some_int = 0 };
+    try input_system.add_callback(context.name, input_struct.callback());
+}
+
 pub const InputContext = enum {
     Menu,
     Game,
 };
-
 pub const InputButton = enum {
     Test,
 };
@@ -48,6 +169,20 @@ pub const ControllerAxisBinding = struct {
     invert: bool,
     deadzone: f32,
     sensitivity: f32,
+
+    pub fn calc_value(self: @This(), value: f32) f32 {
+        var value_abs = std.math.clamp(@fabs(value), 0.0, 1.0);
+        var value_sign = std.math.sign(value);
+        var invert: f32 = switch (self.invert) {
+            true => -1.0,
+            false => 1.0,
+        };
+        var value_remap: f32 = switch (value_abs >= self.deadzone) {
+            true => (value_abs - self.deadzone) / (1.0 - self.deadzone),
+            false => 0.0,
+        };
+        return value_remap * value_sign * invert * self.sensitivity;
+    }
 };
 pub const ControllerContext = struct {
     const Self = @This();
@@ -186,19 +321,8 @@ pub const SdlInputSystem = struct {
                     //log.info("Controller Event: {s}({}) axis event: {}->{}", .{ controller.name, sdl_event.caxis.which, sdl_event.caxis.axis, sdl_event.caxis.value });
                     if (controller.get_axis_binding(self.input_context, sdl_event.caxis.axis)) |binding| {
                         if (self.get_callback().*) |*callback| {
-                            var value = @intToFloat(f32, sdl_event.caxis.value) / @intToFloat(f32, std.math.maxInt(i16));
-                            var value_abs = std.math.clamp(@fabs(value), 0.0, 1.0);
-                            var value_sign = std.math.sign(value);
-                            var invert: f32 = switch (binding.invert) {
-                                true => -1.0,
-                                false => 1.0,
-                            };
-                            var value_remap: f32 = switch (value_abs >= binding.deadzone) {
-                                true => (value_abs - binding.deadzone) / (1.0 - binding.deadzone),
-                                false => 0.0,
-                            } * binding.sensitivity;
-
-                            callback.trigger_axis(binding.target, std.math.clamp(value_remap * value_sign * invert, -1.0, 1.0));
+                            var value = @intToFloat(f32, sdl_event.caxis.value) / @intToFloat(f32, c.SDL_JOYSTICK_AXIS_MAX);
+                            callback.trigger_axis(binding.target, std.math.clamp(binding.calc_value(value), -1.0, 1.0));
                         }
                     }
                 }
@@ -208,7 +332,7 @@ pub const SdlInputSystem = struct {
     }
 };
 
-const InputStrut = struct {
+const InputStruct = struct {
     const Self = @This();
 
     some_int: usize,
@@ -238,6 +362,14 @@ pub fn main() !void {
     log.err("Error Logging", .{});
     log.debug("Debug Logging", .{});
 
+    var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (general_purpose_allocator.deinit() == true) {
+        log.err("GeneralPurposeAllocator has a memory leak!", .{});
+    };
+    var allocator = general_purpose_allocator.allocator();
+
+    try use_test_input_system(allocator);
+
     log.info("Starting SDL2", .{});
     if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_JOYSTICK | c.SDL_INIT_GAMECONTROLLER | c.SDL_INIT_HAPTIC) != 0) {
         log.err("{s}", .{c.SDL_GetError()});
@@ -248,17 +380,12 @@ pub fn main() !void {
         c.SDL_Quit();
     }
 
-    var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = general_purpose_allocator.deinit();
-    var allocator = general_purpose_allocator.allocator();
-
     var sdl_input_system = SdlInputSystem.new(allocator);
     defer sdl_input_system.deinit();
 
-    var input_struct = InputStrut{
+    var input_struct = InputStruct{
         .some_int = 0,
     };
-
     sdl_input_system.menu_callback = input_struct.callback();
 
     var window = c.SDL_CreateWindow("Saturn", 0, 0, 1920, 1080, c.SDL_WINDOW_MAXIMIZED | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_ALLOW_HIGHDPI);
