@@ -19,7 +19,7 @@ pub const StringHash = struct {
         };
     }
 };
-const InputContextString = struct {
+const InputContext = struct {
     name: StringHash,
     buttons: []const StringHash,
     axes: []const StringHash,
@@ -34,34 +34,33 @@ const InputContextCallback = struct {
     button_callback: ?InputButtonCallback,
     axis_callback: ?InputAxisCallback,
 
-    pub fn trigger_button(self: *Self, button: StringHash, state: ButtonState) void {
+    pub fn trigger_button(self: Self, button: StringHash, state: ButtonState) void {
         if (self.button_callback) |callback_fn| {
             callback_fn(self.ptr, button, state);
         }
     }
-    pub fn trigger_axis(self: *Self, axis: StringHash, value: f32) void {
+    pub fn trigger_axis(self: Self, axis: StringHash, value: f32) void {
         if (self.axis_callback) |callback| {
             callback(self.ptr, axis, value);
         }
     }
 };
-const TestInputSystem = struct {
+const InputSystem = struct {
     const Self = @This();
 
     const InnerContext = struct {
-        enabled: bool,
-        context: InputContextString,
+        context: InputContext,
         callbacks: std.ArrayList(InputContextCallback),
     };
     context_map: std.AutoHashMap(StringHash.HashType, InnerContext),
+    active_context: StringHash,
 
-    fn init(allocator: std.mem.Allocator, contexts: []const InputContextString) !Self {
+    fn init(allocator: std.mem.Allocator, contexts: []const InputContext) !Self {
         var context_map = std.AutoHashMap(StringHash.HashType, InnerContext).init(allocator);
 
         for (contexts) |context| {
             var callbacks = std.ArrayList(InputContextCallback).init(allocator);
             try context_map.put(context.name.hash, .{
-                .enabled = false,
                 .context = context,
                 .callbacks = callbacks,
             });
@@ -69,8 +68,10 @@ const TestInputSystem = struct {
 
         return Self{
             .context_map = context_map,
+            .active_context = contexts[0].name,
         };
     }
+
     fn deinit(self: *Self) void {
         var iterator = self.context_map.iterator();
         while (iterator.next()) |entry| {
@@ -84,9 +85,213 @@ const TestInputSystem = struct {
             try inner_context.callbacks.append(callback);
         }
     }
+
+    fn set_active_context(self: *Self, context_name: StringHash) void {
+        if (self.context_map.contains(context_name.hash)) {
+            self.active_context = context_name;
+        } else {
+            unreachable;
+        }
+    }
+
+    fn trigger_button(self: *Self, button: StringHash, state: ButtonState) void {
+        if (self.context_map.getPtr(self.active_context.hash)) |context| {
+            for (context.callbacks.items) |callback| {
+                //TODO: verify that button is part of context
+                callback.trigger_button(button, state);
+            }
+        } else {
+            unreachable;
+        }
+    }
+
+    fn trigger_axis(self: *Self, axis: StringHash, value: f32) void {
+        if (self.context_map.getPtr(self.active_context.hash)) |context| {
+            for (context.callbacks.items) |callback| {
+                //TODO: verify that axis is part of context
+                callback.trigger_axis(axis, value);
+            }
+        } else {
+            unreachable;
+        }
+    }
 };
 
-const TestInputStruct = struct {
+pub const ButtonState = enum {
+    Pressed,
+    Released,
+};
+
+pub const SdlControllerButtonBinding = struct {
+    target: StringHash,
+};
+pub const SdlControllerAxisBinding = struct {
+    target: StringHash,
+    invert: bool,
+    deadzone: f32,
+    sensitivity: f32,
+
+    pub fn calc_value(self: @This(), value: f32) f32 {
+        var value_abs = std.math.clamp(@fabs(value), 0.0, 1.0);
+        var value_sign = std.math.sign(value);
+        var invert: f32 = switch (self.invert) {
+            true => -1.0,
+            false => 1.0,
+        };
+        var value_remap: f32 = switch (value_abs >= self.deadzone) {
+            true => (value_abs - self.deadzone) / (1.0 - self.deadzone),
+            false => 0.0,
+        };
+        return value_remap * value_sign * invert * self.sensitivity;
+    }
+};
+pub const SdlControllerContext = struct {
+    const Self = @This();
+
+    button_bindings: [c.SDL_CONTROLLER_BUTTON_MAX]?SdlControllerButtonBinding,
+    axis_bindings: [c.SDL_CONTROLLER_AXIS_MAX]?SdlControllerAxisBinding,
+    pub fn default() @This() {
+        return .{
+            .button_bindings = [_]?SdlControllerButtonBinding{null} ** c.SDL_CONTROLLER_BUTTON_MAX,
+            .axis_bindings = [_]?SdlControllerAxisBinding{null} ** c.SDL_CONTROLLER_AXIS_MAX,
+        };
+    }
+
+    pub fn get_button_binding(self: Self, index: usize) ?SdlControllerButtonBinding {
+        return self.button_bindings[index];
+    }
+
+    pub fn get_axis_binding(self: Self, index: usize) ?SdlControllerAxisBinding {
+        return self.axis_bindings[index];
+    }
+};
+
+pub const SdlController = struct {
+    const Self = @This();
+
+    name: [*c]const u8,
+    handle: *c.SDL_GameController,
+    haptic: ?*c.SDL_Haptic,
+
+    context_bindings: std.AutoHashMap(StringHash.HashType, SdlControllerContext),
+
+    pub fn deinit(self: *Self) void {
+        if (self.haptic) |haptic| {
+            c.SDL_HapticClose(haptic);
+        }
+        c.SDL_GameControllerClose(self.handle);
+        self.context_bindings.deinit();
+    }
+
+    pub fn get_button_binding(self: Self, context_hash: StringHash.HashType, index: usize) ?SdlControllerButtonBinding {
+        if (self.context_bindings.getPtr(context_hash)) |context| {
+            return context.get_button_binding(index);
+        }
+        return null;
+    }
+
+    pub fn get_axis_binding(self: Self, context_hash: StringHash.HashType, index: usize) ?SdlControllerAxisBinding {
+        if (self.context_bindings.getPtr(context_hash)) |context| {
+            return context.get_axis_binding(index);
+        }
+        return null;
+    }
+};
+
+pub const SdlInputSystem = struct {
+    const Self = @This();
+
+    allocator: std.mem.Allocator,
+    controllers: std.AutoHashMap(c.SDL_JoystickID, SdlController),
+
+    input_system: *InputSystem,
+
+    pub fn new(
+        allocator: std.mem.Allocator,
+        input_system: *InputSystem,
+    ) Self {
+        return .{
+            .allocator = allocator,
+            .controllers = std.AutoHashMap(c.SDL_JoystickID, SdlController).init(allocator),
+            .input_system = input_system,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        var iterator = self.controllers.iterator();
+        while (iterator.next()) |controller| {
+            controller.value_ptr.deinit();
+        }
+        self.controllers.deinit();
+    }
+
+    pub fn proccess_event(self: *Self, sdl_event: *c.SDL_Event) !void {
+        switch (sdl_event.type) {
+            c.SDL_CONTROLLERDEVICEADDED => {
+                var controller_result: ?*c.SDL_GameController = c.SDL_GameControllerOpen(sdl_event.cdevice.which);
+                if (controller_result) |controller_handle| {
+                    var controller_name = c.SDL_GameControllerName(controller_handle);
+                    log.info("Controller Added Event: {}->{s}", .{ sdl_event.cdevice.which, controller_name });
+
+                    //TODO: load or generate bindings
+                    var game_context = SdlControllerContext.default();
+                    var button_binding = SdlControllerButtonBinding{
+                        .target = StringHash.new("Button1"),
+                    };
+                    game_context.button_bindings[0] = button_binding;
+                    var axis_binding = SdlControllerAxisBinding{
+                        .target = StringHash.new("Axis1"),
+                        .invert = false,
+                        .deadzone = 0.2,
+                        .sensitivity = 1.0,
+                    };
+                    game_context.axis_bindings[1] = axis_binding;
+
+                    var context_bindings = std.AutoHashMap(StringHash.HashType, SdlControllerContext).init(self.allocator);
+                    try context_bindings.put(GameInputContext.name.hash, game_context);
+
+                    try self.controllers.put(sdl_event.cdevice.which, .{
+                        .name = controller_name,
+                        .handle = controller_handle,
+                        .haptic = c.SDL_HapticOpen(sdl_event.cdevice.which),
+                        .context_bindings = context_bindings,
+                    });
+                }
+            },
+            c.SDL_CONTROLLERDEVICEREMOVED => {
+                if (self.controllers.fetchRemove(sdl_event.cdevice.which)) |*key_value| {
+                    var controller = key_value.value;
+                    log.info("Controller Removed Event: {}->{s}", .{ key_value.key, controller.name });
+                    controller.deinit();
+                }
+            },
+            c.SDL_CONTROLLERBUTTONDOWN, c.SDL_CONTROLLERBUTTONUP => {
+                if (self.controllers.get(sdl_event.cbutton.which)) |controller| {
+                    //log.info("Controller Event: {s}({}) button event: {}->{}", .{ controller.name, sdl_event.cbutton.which, sdl_event.cbutton.button, sdl_event.cbutton.state });
+                    if (controller.get_button_binding(self.input_system.active_context.hash, sdl_event.cbutton.button)) |binding| {
+                        self.input_system.trigger_button(binding.target, switch (sdl_event.cbutton.state) {
+                            c.SDL_PRESSED => .Pressed,
+                            c.SDL_RELEASED => .Released,
+                            else => unreachable,
+                        });
+                    }
+                }
+            },
+            c.SDL_CONTROLLERAXISMOTION => {
+                if (self.controllers.get(sdl_event.caxis.which)) |controller| {
+                    //log.info("Controller Event: {s}({}) axis event: {}->{}", .{ controller.name, sdl_event.caxis.which, sdl_event.caxis.axis, sdl_event.caxis.value });
+                    if (controller.get_axis_binding(self.input_system.active_context.hash, sdl_event.caxis.axis)) |binding| {
+                        var value = @intToFloat(f32, sdl_event.caxis.value) / @intToFloat(f32, c.SDL_JOYSTICK_AXIS_MAX);
+                        self.input_system.trigger_axis(binding.target, std.math.clamp(binding.calc_value(value), -1.0, 1.0));
+                    }
+                }
+            },
+            else => {},
+        }
+    }
+};
+
+const InputStruct = struct {
     const Self = @This();
 
     some_int: usize,
@@ -109,251 +314,11 @@ const TestInputStruct = struct {
         log.info("Axis Triggered {s} -> {d:.2}", .{ axis.string, value });
     }
 };
-fn use_test_input_system(allocator: std.mem.Allocator) !void {
-    const name: StringHash = StringHash.new("TestInputContext");
-    const button1: StringHash = StringHash.new("button1");
-    const button2: StringHash = StringHash.new("button2");
 
-    const context: InputContextString = InputContextString{
-        .name = name,
-        .buttons = &[_]StringHash{ button1, button2 },
-        .axes = &[_]StringHash{},
-    };
-
-    var input_system = try TestInputSystem.init(allocator, &[_]InputContextString{context});
-    defer input_system.deinit();
-
-    var input_struct = TestInputStruct{ .some_int = 0 };
-    try input_system.add_callback(context.name, input_struct.callback());
-}
-
-pub const InputContext = enum {
-    Menu,
-    Game,
-};
-pub const InputButton = enum {
-    Test,
-};
-pub const InputAxis = enum {
-    Test,
-};
-pub const ButtonState = enum {
-    Pressed,
-    Released,
-};
-pub const ButtonCallback = *const fn (ptr: *anyopaque, button: InputButton, state: ButtonState) void;
-pub const AxisCallback = *const fn (ptr: *anyopaque, axis: InputAxis, value: f32) void;
-pub const InputCallback = struct {
-    const Self = @This();
-
-    ptr: *anyopaque,
-    button_callback: ?ButtonCallback,
-    axis_callback: ?AxisCallback,
-
-    pub fn trigger_button(self: *Self, button: InputButton, state: ButtonState) void {
-        if (self.button_callback) |callback_fn| {
-            callback_fn(self.ptr, button, state);
-        }
-    }
-    pub fn trigger_axis(self: *Self, axis: InputAxis, value: f32) void {
-        if (self.axis_callback) |callback| {
-            callback(self.ptr, axis, value);
-        }
-    }
-};
-pub const ControllerButtonBinding = struct {
-    target: InputButton,
-};
-pub const ControllerAxisBinding = struct {
-    target: InputAxis,
-    invert: bool,
-    deadzone: f32,
-    sensitivity: f32,
-
-    pub fn calc_value(self: @This(), value: f32) f32 {
-        var value_abs = std.math.clamp(@fabs(value), 0.0, 1.0);
-        var value_sign = std.math.sign(value);
-        var invert: f32 = switch (self.invert) {
-            true => -1.0,
-            false => 1.0,
-        };
-        var value_remap: f32 = switch (value_abs >= self.deadzone) {
-            true => (value_abs - self.deadzone) / (1.0 - self.deadzone),
-            false => 0.0,
-        };
-        return value_remap * value_sign * invert * self.sensitivity;
-    }
-};
-pub const ControllerContext = struct {
-    const Self = @This();
-
-    button_bindings: [c.SDL_CONTROLLER_BUTTON_MAX]?ControllerButtonBinding,
-    axis_bindings: [c.SDL_CONTROLLER_AXIS_MAX]?ControllerAxisBinding,
-    pub fn default() @This() {
-        return .{
-            .button_bindings = [_]?ControllerButtonBinding{null} ** c.SDL_CONTROLLER_BUTTON_MAX,
-            .axis_bindings = [_]?ControllerAxisBinding{null} ** c.SDL_CONTROLLER_AXIS_MAX,
-        };
-    }
-
-    pub fn get_button_binding(self: Self, index: usize) ?ControllerButtonBinding {
-        return self.button_bindings[index];
-    }
-
-    pub fn get_axis_binding(self: Self, index: usize) ?ControllerAxisBinding {
-        return self.axis_bindings[index];
-    }
-};
-
-pub const SdlController = struct {
-    const Self = @This();
-
-    name: [*c]const u8,
-    handle: *c.SDL_GameController,
-    haptic: ?*c.SDL_Haptic,
-
-    menu_context: ControllerContext,
-    game_context: ControllerContext,
-
-    pub fn get_button_binding(self: Self, context: InputContext, index: usize) ?ControllerButtonBinding {
-        return switch (context) {
-            .Menu => self.menu_context,
-            .Game => self.game_context,
-        }.get_button_binding(index);
-    }
-
-    pub fn get_axis_binding(self: Self, context: InputContext, index: usize) ?ControllerAxisBinding {
-        return switch (context) {
-            .Menu => self.menu_context,
-            .Game => self.game_context,
-        }.get_axis_binding(index);
-    }
-};
-
-pub const SdlInputSystem = struct {
-    const Self = @This();
-
-    allocator: std.mem.Allocator,
-    controllers: std.AutoHashMap(c.SDL_JoystickID, SdlController),
-
-    input_context: InputContext,
-    menu_callback: ?InputCallback,
-    game_callback: ?InputCallback,
-
-    pub fn new(
-        allocator: std.mem.Allocator,
-    ) Self {
-        return .{
-            .allocator = allocator,
-            .controllers = std.AutoHashMap(c.SDL_JoystickID, SdlController).init(allocator),
-            .input_context = .Menu,
-            .menu_callback = null,
-            .game_callback = null,
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.controllers.deinit();
-    }
-
-    fn get_callback(self: *Self) *?InputCallback {
-        return switch (self.input_context) {
-            .Menu => &self.menu_callback,
-            .Game => &self.game_callback,
-        };
-    }
-
-    pub fn proccess_event(self: *Self, sdl_event: *c.SDL_Event) !void {
-        switch (sdl_event.type) {
-            c.SDL_CONTROLLERDEVICEADDED => {
-                var controller_result: ?*c.SDL_GameController = c.SDL_GameControllerOpen(sdl_event.cdevice.which);
-                if (controller_result) |controller_handle| {
-                    var controller_name = c.SDL_GameControllerName(controller_handle);
-                    log.info("Controller Added Event: {}->{s}", .{ sdl_event.cdevice.which, controller_name });
-
-                    var menu_context = ControllerContext.default();
-
-                    var button_binding = ControllerButtonBinding{ .target = .Test };
-                    menu_context.button_bindings[0] = button_binding;
-
-                    var axis_binding = ControllerAxisBinding{
-                        .target = .Test,
-                        .invert = false,
-                        .deadzone = 0.2,
-                        .sensitivity = 1.0,
-                    };
-                    menu_context.axis_bindings[1] = axis_binding;
-
-                    try self.controllers.put(sdl_event.cdevice.which, .{
-                        .name = controller_name,
-                        .handle = controller_handle,
-                        .haptic = c.SDL_HapticOpen(sdl_event.cdevice.which),
-                        .menu_context = menu_context,
-                        .game_context = ControllerContext.default(),
-                    });
-                }
-            },
-            c.SDL_CONTROLLERDEVICEREMOVED => {
-                if (self.controllers.fetchRemove(sdl_event.cdevice.which)) |key_value| {
-                    log.info("Controller Removed Event: {}->{s}", .{ key_value.key, key_value.value.name });
-                    if (key_value.value.haptic) |haptic| {
-                        c.SDL_HapticClose(haptic);
-                    }
-                    c.SDL_GameControllerClose(key_value.value.handle);
-                }
-            },
-            c.SDL_CONTROLLERBUTTONDOWN, c.SDL_CONTROLLERBUTTONUP => {
-                if (self.controllers.get(sdl_event.cbutton.which)) |controller| {
-                    //log.info("Controller Event: {s}({}) button event: {}->{}", .{ controller.name, sdl_event.cbutton.which, sdl_event.cbutton.button, sdl_event.cbutton.state });
-                    if (controller.get_button_binding(self.input_context, sdl_event.cbutton.button)) |binding| {
-                        if (self.get_callback().*) |*callback| {
-                            callback.trigger_button(binding.target, switch (sdl_event.cbutton.state) {
-                                c.SDL_PRESSED => .Pressed,
-                                c.SDL_RELEASED => .Released,
-                                else => unreachable,
-                            });
-                        }
-                    }
-                }
-            },
-            c.SDL_CONTROLLERAXISMOTION => {
-                if (self.controllers.get(sdl_event.caxis.which)) |controller| {
-                    //log.info("Controller Event: {s}({}) axis event: {}->{}", .{ controller.name, sdl_event.caxis.which, sdl_event.caxis.axis, sdl_event.caxis.value });
-                    if (controller.get_axis_binding(self.input_context, sdl_event.caxis.axis)) |binding| {
-                        if (self.get_callback().*) |*callback| {
-                            var value = @intToFloat(f32, sdl_event.caxis.value) / @intToFloat(f32, c.SDL_JOYSTICK_AXIS_MAX);
-                            callback.trigger_axis(binding.target, std.math.clamp(binding.calc_value(value), -1.0, 1.0));
-                        }
-                    }
-                }
-            },
-            else => {},
-        }
-    }
-};
-
-const InputStruct = struct {
-    const Self = @This();
-
-    some_int: usize,
-
-    fn callback(self: *Self) InputCallback {
-        return .{
-            .ptr = self,
-            .button_callback = trigger_button,
-            .axis_callback = trigger_axis,
-        };
-    }
-
-    fn trigger_button(self: *anyopaque, button: InputButton, state: ButtonState) void {
-        _ = self;
-        log.info("Button Triggered {} -> {}", .{ button, state });
-    }
-
-    fn trigger_axis(self: *anyopaque, axis: InputAxis, value: f32) void {
-        _ = self;
-        log.info("Axis Triggered {} -> {d:.2}", .{ axis, value });
-    }
+const GameInputContext = InputContext{
+    .name = StringHash.new("Game"),
+    .buttons = &[_]StringHash{StringHash.new("Button1")},
+    .axes = &[_]StringHash{StringHash.new("Axis1")},
 };
 
 pub fn main() !void {
@@ -368,8 +333,6 @@ pub fn main() !void {
     };
     var allocator = general_purpose_allocator.allocator();
 
-    try use_test_input_system(allocator);
-
     log.info("Starting SDL2", .{});
     if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_JOYSTICK | c.SDL_INIT_GAMECONTROLLER | c.SDL_INIT_HAPTIC) != 0) {
         log.err("{s}", .{c.SDL_GetError()});
@@ -380,13 +343,19 @@ pub fn main() !void {
         c.SDL_Quit();
     }
 
-    var sdl_input_system = SdlInputSystem.new(allocator);
+    var input_system = try InputSystem.init(
+        allocator,
+        &[_]InputContext{GameInputContext},
+    );
+    defer input_system.deinit();
+
+    var sdl_input_system = SdlInputSystem.new(allocator, &input_system);
     defer sdl_input_system.deinit();
 
     var input_struct = InputStruct{
         .some_int = 0,
     };
-    sdl_input_system.menu_callback = input_struct.callback();
+    try input_system.add_callback(GameInputContext.name, input_struct.callback());
 
     var window = c.SDL_CreateWindow("Saturn", 0, 0, 1920, 1080, c.SDL_WINDOW_MAXIMIZED | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_ALLOW_HIGHDPI);
     defer c.SDL_DestroyWindow(window);
