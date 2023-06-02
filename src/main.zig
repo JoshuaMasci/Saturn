@@ -123,7 +123,7 @@ pub const ButtonState = enum {
     Released,
 };
 
-pub const SdlControllerButtonBinding = struct {
+pub const SdlButtonBinding = struct {
     target: StringHash,
 };
 pub const SdlControllerAxisBinding = struct {
@@ -170,8 +170,7 @@ pub fn DeviceContextBinding(comptime ButtonBinding: type, comptime ButtonCount: 
     };
 }
 
-pub const SdlControllerContextBinding = DeviceContextBinding(SdlControllerButtonBinding, c.SDL_CONTROLLER_BUTTON_MAX, SdlControllerAxisBinding, c.SDL_CONTROLLER_AXIS_MAX);
-
+pub const SdlControllerContextBinding = DeviceContextBinding(SdlButtonBinding, c.SDL_CONTROLLER_BUTTON_MAX, SdlControllerAxisBinding, c.SDL_CONTROLLER_AXIS_MAX);
 pub const SdlController = struct {
     const Self = @This();
 
@@ -189,7 +188,7 @@ pub const SdlController = struct {
         self.context_bindings.deinit();
     }
 
-    pub fn get_button_binding(self: Self, context_hash: StringHash.HashType, index: usize) ?SdlControllerButtonBinding {
+    pub fn get_button_binding(self: Self, context_hash: StringHash.HashType, index: usize) ?SdlButtonBinding {
         if (self.context_bindings.getPtr(context_hash)) |context| {
             return context.get_button_binding(index);
         }
@@ -204,7 +203,29 @@ pub const SdlController = struct {
     }
 };
 
-pub const SdlKeyboardContextBinding = DeviceContextBinding(SdlControllerButtonBinding, c.SDL_NUM_SCANCODES, void, 0);
+pub const SdlKeyboardContextBinding = DeviceContextBinding(SdlButtonBinding, c.SDL_NUM_SCANCODES, void, 0);
+pub const SdlKeyboard = struct {
+    const Self = @This();
+
+    context_bindings: std.AutoHashMap(StringHash.HashType, SdlKeyboardContextBinding),
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return .{
+            .context_bindings = std.AutoHashMap(StringHash.HashType, SdlKeyboardContextBinding).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.context_bindings.deinit();
+    }
+
+    pub fn get_button_binding(self: Self, context_hash: StringHash.HashType, index: usize) ?SdlButtonBinding {
+        if (self.context_bindings.getPtr(context_hash)) |context| {
+            return context.get_button_binding(index);
+        }
+        return null;
+    }
+};
 
 pub const SdlInputSystem = struct {
     const Self = @This();
@@ -212,7 +233,7 @@ pub const SdlInputSystem = struct {
     allocator: std.mem.Allocator,
     input_system: *InputSystem,
 
-    keyboard: std.AutoHashMap(StringHash.HashType, SdlKeyboardContextBinding),
+    keyboard: ?SdlKeyboard,
     mouse: struct {},
     controllers: std.AutoHashMap(c.SDL_JoystickID, SdlController),
 
@@ -220,10 +241,19 @@ pub const SdlInputSystem = struct {
         allocator: std.mem.Allocator,
         input_system: *InputSystem,
     ) Self {
+        var game_context = SdlKeyboardContextBinding.default();
+        var button_binding = SdlButtonBinding{
+            .target = StringHash.new("Button1"),
+        };
+        game_context.button_bindings[c.SDL_SCANCODE_SPACE] = button_binding;
+
+        var keyboard = SdlKeyboard.init(allocator);
+        keyboard.context_bindings.put(GameInputContext.name.hash, game_context) catch std.debug.panic("Hashmap put failed", .{});
+
         return .{
             .allocator = allocator,
             .input_system = input_system,
-            .keyboard = std.AutoHashMap(StringHash.HashType, SdlKeyboardContextBinding).init(allocator),
+            .keyboard = keyboard,
             .mouse = .{},
             .controllers = std.AutoHashMap(c.SDL_JoystickID, SdlController).init(allocator),
         };
@@ -235,7 +265,10 @@ pub const SdlInputSystem = struct {
             controller.value_ptr.deinit();
         }
         self.controllers.deinit();
-        self.keyboard.deinit();
+
+        if (self.keyboard) |*keyboard| {
+            keyboard.deinit();
+        }
     }
 
     pub fn proccess_event(self: *Self, sdl_event: *c.SDL_Event) !void {
@@ -248,7 +281,7 @@ pub const SdlInputSystem = struct {
 
                     //TODO: load or generate bindings
                     var game_context = SdlControllerContextBinding.default();
-                    var button_binding = SdlControllerButtonBinding{
+                    var button_binding = SdlButtonBinding{
                         .target = StringHash.new("Button1"),
                     };
                     game_context.button_bindings[0] = button_binding;
@@ -302,7 +335,16 @@ pub const SdlInputSystem = struct {
             c.SDL_KEYDOWN, c.SDL_KEYUP => {
                 //No repeat events for keyboard buttons, text input should have repeat events tho
                 if (sdl_event.key.repeat == 0) {
-                    log.info("Keyboard Event {}->{}", .{ sdl_event.key.keysym.scancode, sdl_event.key.state });
+                    //log.info("Keyboard Event {}->{}", .{ sdl_event.key.keysym.scancode, sdl_event.key.state });
+                    if (self.keyboard) |keyboard| {
+                        if (keyboard.get_button_binding(self.input_system.active_context.hash, sdl_event.key.keysym.scancode)) |binding| {
+                            self.input_system.trigger_button(binding.target, switch (sdl_event.key.state) {
+                                c.SDL_PRESSED => .Pressed,
+                                c.SDL_RELEASED => .Released,
+                                else => unreachable,
+                            });
+                        }
+                    }
                 }
             },
             else => {},
