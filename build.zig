@@ -5,14 +5,18 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
-        .name = "tmp",
+        .name = "Saturn",
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
 
     exe.linkSystemLibrary("sdl2");
+    exe.linkSystemLibrary("gl");
     exe.linkLibC();
+
+    exe.addIncludePath("glad/include");
+    exe.addCSourceFile("glad/src/glad.c", &[_][]const u8{"-std=c99"});
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);

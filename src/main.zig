@@ -3,6 +3,7 @@ const log = std.log;
 
 const c = @cImport({
     @cInclude("SDL.h");
+    @cInclude("glad/glad.h");
 });
 
 pub const StringHash = struct {
@@ -202,9 +203,11 @@ pub const SdlInputSystem = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    controllers: std.AutoHashMap(c.SDL_JoystickID, SdlController),
-
     input_system: *InputSystem,
+
+    keyboard: struct {},
+    mouse: struct {},
+    controllers: std.AutoHashMap(c.SDL_JoystickID, SdlController),
 
     pub fn new(
         allocator: std.mem.Allocator,
@@ -212,8 +215,10 @@ pub const SdlInputSystem = struct {
     ) Self {
         return .{
             .allocator = allocator,
-            .controllers = std.AutoHashMap(c.SDL_JoystickID, SdlController).init(allocator),
             .input_system = input_system,
+            .keyboard = .{},
+            .mouse = .{},
+            .controllers = std.AutoHashMap(c.SDL_JoystickID, SdlController).init(allocator),
         };
     }
 
@@ -328,7 +333,7 @@ pub fn main() !void {
     log.debug("Debug Logging", .{});
 
     var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
-    defer if (general_purpose_allocator.deinit() == true) {
+    defer if (general_purpose_allocator.deinit() == .leak) {
         log.err("GeneralPurposeAllocator has a memory leak!", .{});
     };
     var allocator = general_purpose_allocator.allocator();
@@ -357,8 +362,26 @@ pub fn main() !void {
     };
     try input_system.add_callback(GameInputContext.name, input_struct.callback());
 
-    var window = c.SDL_CreateWindow("Saturn", 0, 0, 1920, 1080, c.SDL_WINDOW_MAXIMIZED | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_ALLOW_HIGHDPI);
+    var window = c.SDL_CreateWindow("Saturn Engine", 0, 0, 1920, 1080, c.SDL_WINDOW_OPENGL | c.SDL_WINDOW_MAXIMIZED | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_ALLOW_HIGHDPI);
     defer c.SDL_DestroyWindow(window);
+
+    _ = c.SDL_GL_SetAttribute(c.SDL_GL_DOUBLEBUFFER, 1);
+    _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MINOR_VERSION, 6);
+    _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_PROFILE_MASK, c.SDL_GL_CONTEXT_PROFILE_CORE);
+
+    var gl_context = c.SDL_GL_CreateContext(window);
+    defer c.SDL_GL_DeleteContext(gl_context);
+    _ = c.gladLoadGLLoader(c.SDL_GL_GetProcAddress);
+
+    log.info("Opengl Context:\n\tVender: {s}\n\tRenderer: {s}\n\tVersion: {s}\n\tGLSL: {s}", .{
+        c.glGetString(c.GL_VENDOR),
+        c.glGetString(c.GL_RENDERER),
+        c.glGetString(c.GL_VERSION),
+        c.glGetString(c.GL_SHADING_LANGUAGE_VERSION),
+    });
+
+    _ = c.SDL_GL_SetSwapInterval(1);
 
     mainloop: while (true) {
         var sdl_event: c.SDL_Event = undefined;
@@ -369,6 +392,14 @@ pub fn main() !void {
                 else => {},
             }
         }
+
+        var w: i32 = 0;
+        var h: i32 = 0;
+        _ = c.SDL_GetWindowSize(window, &w, &h);
+        c.glViewport(0, 0, w, h);
+        c.glClearColor(1.0, 0.412, 0.38, 0.0);
+        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
+        c.SDL_GL_SwapWindow(window);
     }
 }
 
