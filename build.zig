@@ -12,11 +12,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.linkSystemLibrary("sdl2");
-    exe.linkSystemLibrary("gl");
     exe.linkLibC();
-
-    exe.addIncludePath("glad/include");
-    exe.addCSourceFile("glad/src/glad.c", &[_][]const u8{"-std=c99"});
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
