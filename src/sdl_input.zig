@@ -5,9 +5,6 @@ const input = @import("input.zig");
 
 const c = @import("c.zig");
 
-//Temp Hack
-const GameInputContext = @import("main.zig").GameInputContext;
-
 pub const SdlButtonBinding = struct {
     target: StringHash,
 };
@@ -170,8 +167,11 @@ pub const SdlInputSystem = struct {
                         .sensitivity = 1.0,
                     };
                     game_context.axis_bindings[1] = axis_binding;
-                    try context_bindings.put(GameInputContext.name.hash, game_context);
 
+                    //Temp Hack
+                    const GameInputContext = @import("app.zig").GameInputContext;
+
+                    try context_bindings.put(GameInputContext.name.hash, game_context);
                     try self.controllers.put(sdl_event.cdevice.which, .{
                         .name = controller_name,
                         .handle = controller_handle,
@@ -203,7 +203,7 @@ pub const SdlInputSystem = struct {
                 if (self.controllers.get(sdl_event.caxis.which)) |controller| {
                     //log.info("Controller Event: {s}({}) axis event: {}->{}", .{ controller.name, sdl_event.caxis.which, sdl_event.caxis.axis, sdl_event.caxis.value });
                     if (controller.get_axis_binding(self.input_system.active_context.hash, sdl_event.caxis.axis)) |binding| {
-                        var value = @intToFloat(f32, sdl_event.caxis.value) / @intToFloat(f32, c.SDL_JOYSTICK_AXIS_MAX);
+                        var value = @as(f32, @floatFromInt(sdl_event.caxis.value)) / @as(f32, @floatFromInt(c.SDL_JOYSTICK_AXIS_MAX));
                         self.input_system.trigger_axis(binding.target, std.math.clamp(binding.calc_value(value), -1.0, 1.0));
                     }
                 }
