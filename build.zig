@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const zmath = @import("libs/zmath/build.zig");
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -17,6 +19,11 @@ pub fn build(b: *std.Build) void {
 
     exe.addIncludePath(std.build.LazyPath.relative("glad/include"));
     exe.addCSourceFile(.{ .file = std.build.LazyPath.relative("glad/src/glad.c"), .flags = &[_][]const u8{"-std=c99"} });
+
+    var zmath_pkg = zmath.package(b, target, optimize, .{
+        .options = .{ .enable_cross_platform_determinism = true },
+    });
+    zmath_pkg.link(exe);
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);

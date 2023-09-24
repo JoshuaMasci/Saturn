@@ -41,7 +41,7 @@ pub const App = struct {
 
         _ = c.SDL_GL_SetAttribute(c.SDL_GL_DOUBLEBUFFER, 1);
         _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-        _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MINOR_VERSION, 1);
+        _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MINOR_VERSION, 6);
         _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_PROFILE_MASK, c.SDL_GL_CONTEXT_PROFILE_CORE);
 
         var gl_context = c.SDL_GL_CreateContext(window);
