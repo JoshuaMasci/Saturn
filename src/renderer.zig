@@ -1,4 +1,5 @@
-pub const Transform = struct {};
+const std = @import("std");
+const Transform = @import("transform.zig");
 
 pub const MeshHandle = u32;
 pub const MaterialHandle = u32;
@@ -6,8 +7,12 @@ pub const MaterialHandle = u32;
 pub const Renderer = struct {
     const Self = @This();
 
-    pub fn init() !Self {
-        return Self{};
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) !Self {
+        return .{
+            .allocator = allocator,
+        };
     }
 
     pub fn deinit(self: *Self) void {
@@ -34,19 +39,28 @@ pub const Renderer = struct {
         _ = material_handle;
     }
 
-    pub fn render_scene(self: Self, scene: *SceneData, camera_tranform: *const Transform) void {
+    pub fn create_scene(self: *Self) !Scene {
+        return Scene.init(self.allocator);
+    }
+
+    pub fn render_scene(self: Self, scene: *Scene, camera: *const Camera) void {
         _ = self;
         _ = scene;
-        _ = camera_tranform;
+        _ = camera;
     }
 };
 
 pub const SceneInstanceHandle = u32;
-pub const SceneData = struct {
+pub const Scene = struct {
     const Self = @This();
 
-    pub fn init() !Self {
-        return Self{};
+    allocator: std.mem.Allocator,
+    //objects: std.AutoHashMap(MaterialHandle, std.AutoHashMap(MeshHandle, Transform)),
+
+    pub fn init(allocator: std.mem.Allocator) !Self {
+        return Self{
+            .allocator = allocator,
+        };
     }
 
     pub fn deinit(self: *Self) void {
@@ -71,4 +85,25 @@ pub const SceneData = struct {
         _ = self;
         _ = instance;
     }
+};
+
+pub const FovAxis = enum {
+    x,
+    y,
+};
+
+pub const PerspectiveCamera = struct {
+    const Self = @This();
+
+    fov_axis: FovAxis,
+    fov: f32,
+    near: f32,
+    far: f32,
+
+    pub const Default: Self = .{ .fov_axis = .x, .fov = 75.0, .near = 0.1, .far = 1000.0 };
+};
+
+pub const Camera = struct {
+    data: PerspectiveCamera,
+    transform: Transform,
 };

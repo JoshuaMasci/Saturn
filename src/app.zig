@@ -16,6 +16,8 @@ pub const GameInputContext = input.InputContext{
 
 const world = @import("world.zig");
 
+const Transform = @import("transform.zig");
+
 pub const App = struct {
     const Self = @This();
 
@@ -29,7 +31,7 @@ pub const App = struct {
     sdl_input_system: *sdl_input.SdlInputSystem,
 
     game_renderer: renderer.Renderer,
-    game_scene: renderer.SceneData,
+    game_scene: renderer.Scene,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         log.info("Starting SDL2", .{});
@@ -74,13 +76,14 @@ pub const App = struct {
             keyboard.context_bindings.put(GameInputContext.name.hash, game_context) catch std.debug.panic("Hashmap put failed", .{});
         }
 
-        var game_renderer = try renderer.Renderer.init();
+        var game_renderer = try renderer.Renderer.init(allocator);
+        var game_scene = try game_renderer.create_scene();
 
         var cube_mesh = try game_renderer.load_mesh("some/resource/path/cube.mesh");
         var cube_material = try game_renderer.load_material("some/resource/path/cube.material");
-        var cube_tranform = renderer.Transform{};
+        var cube_tranform = Transform.Identity;
 
-        var game_scene = try renderer.SceneData.init();
+        std.log.info("Quat: {}", .{cube_tranform.rotation});
 
         _ = game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
 
@@ -131,7 +134,12 @@ pub const App = struct {
             }
         }
 
-        self.game_renderer.render_scene(&self.game_scene, &renderer.Transform{});
+        var camera = renderer.Camera{
+            .data = renderer.PerspectiveCamera.Default,
+            .transform = Transform.Identity,
+        };
+
+        self.game_renderer.render_scene(&self.game_scene, &camera);
 
         c.glClearColor(0.0, 0.0, 0.0, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
