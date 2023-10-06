@@ -1,5 +1,5 @@
 const std = @import("std");
-const log = std.log;
+const sdl = @import("zsdl");
 const c = @import("c.zig");
 
 const StringHash = @import("string_hash.zig");
@@ -24,8 +24,8 @@ pub const App = struct {
     should_quit: bool,
     allocator: std.mem.Allocator,
 
-    window: ?*c.SDL_Window,
-    gl_context: c.SDL_GLContext,
+    window: *sdl.Window,
+    gl_context: sdl.gl.Context,
 
     input_system: *input.InputSystem,
     sdl_input_system: *sdl_input.SdlInputSystem,
@@ -33,30 +33,40 @@ pub const App = struct {
     game_renderer: renderer.Renderer,
     game_scene: renderer.Scene,
 
+    //Used cause I have no idea how to use the pub zig version for glam
+    extern fn SDL_GL_GetProcAddress(proc: ?[*:0]const u8) ?*anyopaque;
+
     pub fn init(allocator: std.mem.Allocator) !Self {
-        log.info("Starting SDL2", .{});
-        if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_JOYSTICK | c.SDL_INIT_GAMECONTROLLER | c.SDL_INIT_HAPTIC) != 0) {
-            std.debug.panic("SDL ERROR {s}", .{c.SDL_GetError()});
-        }
+        std.log.info("Starting SDL2", .{});
 
-        var window = c.SDL_CreateWindow("Saturn Engine", 0, 0, 1920, 1080, c.SDL_WINDOW_MAXIMIZED | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_ALLOW_HIGHDPI | c.SDL_WINDOW_OPENGL);
+        try sdl.init(.{ .video = true, .joystick = true, .gamecontroller = true, .haptic = true });
 
-        _ = c.SDL_GL_SetAttribute(c.SDL_GL_DOUBLEBUFFER, 1);
-        _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-        _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MINOR_VERSION, 6);
-        _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_PROFILE_MASK, c.SDL_GL_CONTEXT_PROFILE_CORE);
+        var window = try sdl.Window.create(
+            "Saturn Engine",
+            sdl.Window.pos_undefined,
+            sdl.Window.pos_undefined,
+            1920,
+            1080,
+            .{ .maximized = true, .resizable = true, .allow_highdpi = true, .opengl = true },
+        );
 
-        var gl_context = c.SDL_GL_CreateContext(window);
-        _ = c.gladLoadGLLoader(c.SDL_GL_GetProcAddress);
+        try sdl.gl.setAttribute(sdl.gl.Attr.doublebuffer, 1);
+        try sdl.gl.setAttribute(sdl.gl.Attr.context_major_version, 4);
+        try sdl.gl.setAttribute(sdl.gl.Attr.context_minor_version, 6);
+        try sdl.gl.setAttribute(sdl.gl.Attr.context_profile_mask, @intFromEnum(sdl.gl.Profile.core));
 
-        log.info("Opengl Context:\n\tVender: {s}\n\tRenderer: {s}\n\tVersion: {s}\n\tGLSL: {s}", .{
+        var gl_context = try sdl.gl.createContext(window);
+
+        _ = c.gladLoadGLLoader(&SDL_GL_GetProcAddress);
+
+        std.log.info("Opengl Context:\n\tVender: {s}\n\tRenderer: {s}\n\tVersion: {s}\n\tGLSL: {s}", .{
             c.glGetString(c.GL_VENDOR),
             c.glGetString(c.GL_RENDERER),
             c.glGetString(c.GL_VERSION),
             c.glGetString(c.GL_SHADING_LANGUAGE_VERSION),
         });
 
-        _ = c.SDL_GL_SetSwapInterval(1);
+        try sdl.gl.setSwapInterval(1);
 
         var input_system = try allocator.create(input.InputSystem);
         input_system.* = try input.InputSystem.init(
@@ -72,7 +82,7 @@ pub const App = struct {
             var button_binding = sdl_input.SdlButtonBinding{
                 .target = StringHash.new("Button1"),
             };
-            game_context.button_bindings[c.SDL_SCANCODE_SPACE] = button_binding;
+            game_context.button_bindings[@intFromEnum(sdl.Scancode.space)] = button_binding;
             keyboard.context_bindings.put(GameInputContext.name.hash, game_context) catch std.debug.panic("Hashmap put failed", .{});
         }
 
@@ -112,12 +122,11 @@ pub const App = struct {
         self.input_system.deinit();
         self.allocator.destroy(self.input_system);
 
-        c.SDL_GL_DeleteContext(self.gl_context);
+        sdl.gl.deleteContext(self.gl_context);
+        sdl.Window.destroy(self.window);
 
-        c.SDL_DestroyWindow(self.window);
-
-        log.info("Shutting Down SDL2", .{});
-        c.SDL_Quit();
+        std.log.info("Shutting Down SDL2", .{});
+        sdl.quit();
     }
 
     pub fn is_running(self: Self) bool {
@@ -125,11 +134,10 @@ pub const App = struct {
     }
 
     pub fn update(self: *Self) !void {
-        var sdl_event: c.SDL_Event = undefined;
-        while (c.SDL_PollEvent(&sdl_event) != 0) {
-            try self.sdl_input_system.proccess_event(&sdl_event);
-            switch (sdl_event.type) {
-                c.SDL_QUIT => self.should_quit = true,
+        var event: sdl.Event = undefined;
+        while (sdl.pollEvent(&event)) {
+            switch (event.type) {
+                .quit => self.should_quit = true,
                 else => {},
             }
         }
@@ -144,6 +152,6 @@ pub const App = struct {
         c.glClearColor(0.0, 0.0, 0.0, 1.0);
         c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
 
-        c.SDL_GL_SwapWindow(self.window);
+        sdl.gl.swapWindow(self.window);
     }
 };

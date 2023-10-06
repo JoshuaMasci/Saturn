@@ -1,9 +1,7 @@
 const std = @import("std");
-const log = std.log;
 const StringHash = @import("string_hash.zig");
 const input = @import("input.zig");
-
-const c = @import("c.zig");
+const sdl = @import("zsdl");
 
 pub const SdlButtonBinding = struct {
     target: StringHash,
@@ -52,21 +50,24 @@ pub fn DeviceContextBinding(comptime ButtonBinding: type, comptime ButtonCount: 
     };
 }
 
-pub const SdlControllerContextBinding = DeviceContextBinding(SdlButtonBinding, c.SDL_CONTROLLER_BUTTON_MAX, SdlControllerAxisBinding, c.SDL_CONTROLLER_AXIS_MAX);
+pub const SdlControllerMaxButtons: u32 = @intFromEnum(sdl.GameController.Button.touchpad);
+pub const SdlControllerMaxAxis: u32 = @intFromEnum(sdl.GameController.Axis.triggerright);
+
+pub const SdlControllerContextBinding = DeviceContextBinding(SdlButtonBinding, SdlControllerMaxButtons, SdlControllerAxisBinding, SdlControllerMaxAxis);
 pub const SdlController = struct {
     const Self = @This();
 
     name: [*c]const u8,
-    handle: *c.SDL_GameController,
-    haptic: ?*c.SDL_Haptic,
+    handle: *sdl.GameController,
+    //haptic: ?*sdl.Haptic,
 
     context_bindings: std.AutoHashMap(StringHash.HashType, SdlControllerContextBinding),
 
     pub fn deinit(self: *Self) void {
-        if (self.haptic) |haptic| {
-            c.SDL_HapticClose(haptic);
-        }
-        c.SDL_GameControllerClose(self.handle);
+        // if (self.haptic) |haptic| {
+        //     c.SDL_HapticClose(haptic);
+        // }
+        self.handle.close();
         self.context_bindings.deinit();
     }
 
@@ -85,7 +86,9 @@ pub const SdlController = struct {
     }
 };
 
-pub const SdlKeyboardContextBinding = DeviceContextBinding(SdlButtonBinding, c.SDL_NUM_SCANCODES, void, 0);
+pub const MaxScancodes: u32 = @intFromEnum(sdl.Scancode.endcall);
+
+pub const SdlKeyboardContextBinding = DeviceContextBinding(SdlButtonBinding, MaxScancodes, void, 0);
 pub const SdlKeyboard = struct {
     const Self = @This();
 
@@ -117,7 +120,7 @@ pub const SdlInputSystem = struct {
 
     keyboard: ?SdlKeyboard,
     mouse: struct {},
-    controllers: std.AutoHashMap(c.SDL_JoystickID, SdlController),
+    controllers: std.AutoHashMap(sdl.JoystickId, SdlController),
 
     pub fn new(
         allocator: std.mem.Allocator,
@@ -128,7 +131,7 @@ pub const SdlInputSystem = struct {
             .input_system = input_system,
             .keyboard = SdlKeyboard.init(allocator),
             .mouse = .{},
-            .controllers = std.AutoHashMap(c.SDL_JoystickID, SdlController).init(allocator),
+            .controllers = std.AutoHashMap(sdl.JoystickId, SdlController).init(allocator),
         };
     }
 
@@ -144,86 +147,88 @@ pub const SdlInputSystem = struct {
         }
     }
 
-    pub fn proccess_event(self: *Self, sdl_event: *c.SDL_Event) !void {
-        switch (sdl_event.type) {
-            c.SDL_CONTROLLERDEVICEADDED => {
-                var controller_result: ?*c.SDL_GameController = c.SDL_GameControllerOpen(sdl_event.cdevice.which);
-                if (controller_result) |controller_handle| {
-                    var controller_name = c.SDL_GameControllerName(controller_handle);
-                    log.info("Controller Added Event: {}->{s}", .{ sdl_event.cdevice.which, controller_name });
+    pub fn proccess_event(self: *Self, sdl_event: *sdl.Event) !void {
+        _ = self;
+        _ = sdl_event;
+        // switch (sdl_event.type) {
+        //     c.SDL_CONTROLLERDEVICEADDED => {
+        //         var controller_result: ?*c.SDL_GameController = c.SDL_GameControllerOpen(sdl_event.cdevice.which);
+        //         if (controller_result) |controller_handle| {
+        //             var controller_name = c.SDL_GameControllerName(controller_handle);
+        //             log.info("Controller Added Event: {}->{s}", .{ sdl_event.cdevice.which, controller_name });
 
-                    var context_bindings = std.AutoHashMap(StringHash.HashType, SdlControllerContextBinding).init(self.allocator);
+        //             var context_bindings = std.AutoHashMap(StringHash.HashType, SdlControllerContextBinding).init(self.allocator);
 
-                    //TODO: load or generate bindings
-                    var game_context = SdlControllerContextBinding.default();
-                    var button_binding = SdlButtonBinding{
-                        .target = StringHash.new("Button1"),
-                    };
-                    game_context.button_bindings[0] = button_binding;
-                    var axis_binding = SdlControllerAxisBinding{
-                        .target = StringHash.new("Axis1"),
-                        .invert = false,
-                        .deadzone = 0.2,
-                        .sensitivity = 1.0,
-                    };
-                    game_context.axis_bindings[1] = axis_binding;
+        //             //TODO: load or generate bindings
+        //             var game_context = SdlControllerContextBinding.default();
+        //             var button_binding = SdlButtonBinding{
+        //                 .target = StringHash.new("Button1"),
+        //             };
+        //             game_context.button_bindings[0] = button_binding;
+        //             var axis_binding = SdlControllerAxisBinding{
+        //                 .target = StringHash.new("Axis1"),
+        //                 .invert = false,
+        //                 .deadzone = 0.2,
+        //                 .sensitivity = 1.0,
+        //             };
+        //             game_context.axis_bindings[1] = axis_binding;
 
-                    //Temp Hack
-                    const GameInputContext = @import("app.zig").GameInputContext;
+        //             //Temp Hack
+        //             const GameInputContext = @import("app.zig").GameInputContext;
 
-                    try context_bindings.put(GameInputContext.name.hash, game_context);
-                    try self.controllers.put(sdl_event.cdevice.which, .{
-                        .name = controller_name,
-                        .handle = controller_handle,
-                        .haptic = c.SDL_HapticOpen(sdl_event.cdevice.which),
-                        .context_bindings = context_bindings,
-                    });
-                }
-            },
-            c.SDL_CONTROLLERDEVICEREMOVED => {
-                if (self.controllers.fetchRemove(sdl_event.cdevice.which)) |*key_value| {
-                    var controller = key_value.value;
-                    log.info("Controller Removed Event: {}->{s}", .{ key_value.key, controller.name });
-                    controller.deinit();
-                }
-            },
-            c.SDL_CONTROLLERBUTTONDOWN, c.SDL_CONTROLLERBUTTONUP => {
-                if (self.controllers.get(sdl_event.cbutton.which)) |controller| {
-                    //log.info("Controller Event: {s}({}) button event: {}->{}", .{ controller.name, sdl_event.cbutton.which, sdl_event.cbutton.button, sdl_event.cbutton.state });
-                    if (controller.get_button_binding(self.input_system.active_context.hash, sdl_event.cbutton.button)) |binding| {
-                        self.input_system.trigger_button(binding.target, switch (sdl_event.cbutton.state) {
-                            c.SDL_PRESSED => .Pressed,
-                            c.SDL_RELEASED => .Released,
-                            else => unreachable,
-                        });
-                    }
-                }
-            },
-            c.SDL_CONTROLLERAXISMOTION => {
-                if (self.controllers.get(sdl_event.caxis.which)) |controller| {
-                    //log.info("Controller Event: {s}({}) axis event: {}->{}", .{ controller.name, sdl_event.caxis.which, sdl_event.caxis.axis, sdl_event.caxis.value });
-                    if (controller.get_axis_binding(self.input_system.active_context.hash, sdl_event.caxis.axis)) |binding| {
-                        var value = @as(f32, @floatFromInt(sdl_event.caxis.value)) / @as(f32, @floatFromInt(c.SDL_JOYSTICK_AXIS_MAX));
-                        self.input_system.trigger_axis(binding.target, std.math.clamp(binding.calc_value(value), -1.0, 1.0));
-                    }
-                }
-            },
-            c.SDL_KEYDOWN, c.SDL_KEYUP => {
-                //No repeat events for keyboard buttons, text input should have repeat events tho
-                if (sdl_event.key.repeat == 0) {
-                    //log.info("Keyboard Event {}->{}", .{ sdl_event.key.keysym.scancode, sdl_event.key.state });
-                    if (self.keyboard) |keyboard| {
-                        if (keyboard.get_button_binding(self.input_system.active_context.hash, sdl_event.key.keysym.scancode)) |binding| {
-                            self.input_system.trigger_button(binding.target, switch (sdl_event.key.state) {
-                                c.SDL_PRESSED => .Pressed,
-                                c.SDL_RELEASED => .Released,
-                                else => unreachable,
-                            });
-                        }
-                    }
-                }
-            },
-            else => {},
-        }
+        //             try context_bindings.put(GameInputContext.name.hash, game_context);
+        //             try self.controllers.put(sdl_event.cdevice.which, .{
+        //                 .name = controller_name,
+        //                 .handle = controller_handle,
+        //                 .haptic = c.SDL_HapticOpen(sdl_event.cdevice.which),
+        //                 .context_bindings = context_bindings,
+        //             });
+        //         }
+        //     },
+        //     c.SDL_CONTROLLERDEVICEREMOVED => {
+        //         if (self.controllers.fetchRemove(sdl_event.cdevice.which)) |*key_value| {
+        //             var controller = key_value.value;
+        //             log.info("Controller Removed Event: {}->{s}", .{ key_value.key, controller.name });
+        //             controller.deinit();
+        //         }
+        //     },
+        //     c.SDL_CONTROLLERBUTTONDOWN, c.SDL_CONTROLLERBUTTONUP => {
+        //         if (self.controllers.get(sdl_event.cbutton.which)) |controller| {
+        //             //log.info("Controller Event: {s}({}) button event: {}->{}", .{ controller.name, sdl_event.cbutton.which, sdl_event.cbutton.button, sdl_event.cbutton.state });
+        //             if (controller.get_button_binding(self.input_system.active_context.hash, sdl_event.cbutton.button)) |binding| {
+        //                 self.input_system.trigger_button(binding.target, switch (sdl_event.cbutton.state) {
+        //                     c.SDL_PRESSED => .Pressed,
+        //                     c.SDL_RELEASED => .Released,
+        //                     else => unreachable,
+        //                 });
+        //             }
+        //         }
+        //     },
+        //     c.SDL_CONTROLLERAXISMOTION => {
+        //         if (self.controllers.get(sdl_event.caxis.which)) |controller| {
+        //             //log.info("Controller Event: {s}({}) axis event: {}->{}", .{ controller.name, sdl_event.caxis.which, sdl_event.caxis.axis, sdl_event.caxis.value });
+        //             if (controller.get_axis_binding(self.input_system.active_context.hash, sdl_event.caxis.axis)) |binding| {
+        //                 var value = @as(f32, @floatFromInt(sdl_event.caxis.value)) / @as(f32, @floatFromInt(c.SDL_JOYSTICK_AXIS_MAX));
+        //                 self.input_system.trigger_axis(binding.target, std.math.clamp(binding.calc_value(value), -1.0, 1.0));
+        //             }
+        //         }
+        //     },
+        //     c.SDL_KEYDOWN, c.SDL_KEYUP => {
+        //         //No repeat events for keyboard buttons, text input should have repeat events tho
+        //         if (sdl_event.key.repeat == 0) {
+        //             //log.info("Keyboard Event {}->{}", .{ sdl_event.key.keysym.scancode, sdl_event.key.state });
+        //             if (self.keyboard) |keyboard| {
+        //                 if (keyboard.get_button_binding(self.input_system.active_context.hash, sdl_event.key.keysym.scancode)) |binding| {
+        //                     self.input_system.trigger_button(binding.target, switch (sdl_event.key.state) {
+        //                         c.SDL_PRESSED => .Pressed,
+        //                         c.SDL_RELEASED => .Released,
+        //                         else => unreachable,
+        //                     });
+        //                 }
+        //             }
+        //         }
+        //     },
+        //     else => {},
+        // }
     }
 };

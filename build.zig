@@ -1,5 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
+const zsdl = @import("libs/zsdl/build.zig");
 const zmath = @import("libs/zmath/build.zig");
 
 pub fn build(b: *std.Build) void {
@@ -13,17 +15,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    exe.linkSystemLibrary("sdl2");
-    exe.linkSystemLibrary("gl");
     exe.linkLibC();
 
     exe.addIncludePath(std.build.LazyPath.relative("glad/include"));
     exe.addCSourceFile(.{ .file = std.build.LazyPath.relative("glad/src/glad.c"), .flags = &[_][]const u8{"-std=c99"} });
 
-    var zmath_pkg = zmath.package(b, target, optimize, .{
+    const zmath_pkg = zmath.package(b, target, optimize, .{
         .options = .{ .enable_cross_platform_determinism = true },
     });
+    const zsdl_pkg = zsdl.package(b, target, optimize, .{});
+
     zmath_pkg.link(exe);
+    zsdl_pkg.link(exe);
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
