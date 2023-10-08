@@ -147,9 +147,55 @@ pub const SdlInputSystem = struct {
         }
     }
 
-    pub fn proccess_event(self: *Self, sdl_event: *sdl.Event) !void {
-        _ = self;
-        _ = sdl_event;
+    //TODO: switch to zsdl when it adds this function
+    extern fn SDL_GameControllerName(controller: *sdl.GameController) [*c]const u8;
+
+    pub fn proccess_event(self: *Self, event: sdl.Event) !void {
+        switch (event.type) {
+            .controllerdeviceadded => {
+                var controller_index = event.controllerdevice.which;
+                if (sdl.GameController.open(controller_index)) |controller_handle| {
+                    var controller_name = SDL_GameControllerName(controller_handle);
+                    std.log.info("Controller Added Event: {}->{s}", .{ controller_index, controller_name });
+
+                    var context_bindings = std.AutoHashMap(StringHash.HashType, SdlControllerContextBinding).init(self.allocator);
+
+                    //TODO: load or generate bindings
+                    var game_context = SdlControllerContextBinding.default();
+                    var button_binding = SdlButtonBinding{
+                        .target = StringHash.new("Button1"),
+                    };
+                    game_context.button_bindings[0] = button_binding;
+                    var axis_binding = SdlControllerAxisBinding{
+                        .target = StringHash.new("Axis1"),
+                        .invert = false,
+                        .deadzone = 0.2,
+                        .sensitivity = 1.0,
+                    };
+                    game_context.axis_bindings[1] = axis_binding;
+
+                    //Temp Hack
+                    const GameInputContext = @import("app.zig").GameInputContext;
+
+                    try context_bindings.put(GameInputContext.name.hash, game_context);
+                    try self.controllers.put(controller_index, .{
+                        .name = controller_name,
+                        .handle = controller_handle,
+                        .context_bindings = context_bindings,
+                    });
+                }
+            },
+            .controllerdeviceremoved => {
+                var controller_index = event.controllerdevice.which;
+                if (self.controllers.fetchRemove(controller_index)) |*key_value| {
+                    var controller = key_value.value;
+                    std.log.info("Controller Removed Event: {}->{s}", .{ key_value.key, controller.name });
+                    controller.deinit();
+                }
+            },
+            else => {},
+        }
+
         // switch (sdl_event.type) {
         //     c.SDL_CONTROLLERDEVICEADDED => {
         //         var controller_result: ?*c.SDL_GameController = c.SDL_GameControllerOpen(sdl_event.cdevice.which);

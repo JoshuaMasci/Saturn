@@ -136,6 +136,7 @@ pub const App = struct {
     pub fn update(self: *Self) !void {
         var event: sdl.Event = undefined;
         while (sdl.pollEvent(&event)) {
+            try self.sdl_input_system.proccess_event(event);
             switch (event.type) {
                 .quit => self.should_quit = true,
                 else => {},
