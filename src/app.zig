@@ -2,6 +2,8 @@ const std = @import("std");
 const sdl = @import("zsdl");
 const c = @import("c.zig");
 
+const zm = @import("zmath");
+
 const StringHash = @import("string_hash.zig");
 const input = @import("input.zig");
 const sdl_input = @import("sdl_input.zig");
@@ -83,19 +85,18 @@ pub const App = struct {
                 .target = StringHash.new("Button1"),
             };
             game_context.button_bindings[@intFromEnum(sdl.Scancode.space)] = button_binding;
-            keyboard.context_bindings.put(GameInputContext.name.hash, game_context) catch std.debug.panic("Hashmap put failed", .{});
+            try keyboard.context_bindings.put(GameInputContext.name.hash, game_context);
         }
 
         var game_renderer = try renderer.Renderer.init(allocator);
-        var game_scene = try game_renderer.create_scene();
+        var game_scene = game_renderer.create_scene();
 
         var cube_mesh = try game_renderer.load_mesh("some/resource/path/cube.mesh");
         var cube_material = try game_renderer.load_material("some/resource/path/cube.material");
         var cube_tranform = Transform.Identity;
+        cube_tranform.position = zm.f32x4(0.0, 0.0, 5.0, 0.0);
 
-        std.log.info("Quat: {}", .{cube_tranform.rotation});
-
-        _ = game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
+        _ = try game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
 
         return .{
             .should_quit = false,
@@ -143,15 +144,15 @@ pub const App = struct {
             }
         }
 
+        c.glClearColor(0.0, 0.0, 0.0, 1.0);
+        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
+
         var camera = renderer.Camera{
             .data = renderer.PerspectiveCamera.Default,
             .transform = Transform.Identity,
         };
 
         self.game_renderer.render_scene(&self.game_scene, &camera);
-
-        c.glClearColor(0.0, 0.0, 0.0, 1.0);
-        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
 
         sdl.gl.swapWindow(self.window);
     }

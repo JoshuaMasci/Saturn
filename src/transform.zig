@@ -17,7 +17,7 @@ pub const Identity = Self{
 
 pub fn model_matrix(self: Self) zm.Mat {
     var translation = zm.translationV(self.position);
-    var rotation = zm.matToQuat(self.rotation);
+    var rotation = zm.quatToMat(self.rotation);
     var scale = zm.scalingV(self.scale);
     return zm.mul(zm.mul(translation, rotation), scale);
 }

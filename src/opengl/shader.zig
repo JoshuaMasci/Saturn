@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @import("../c.zig");
+const zm = @import("zmath");
 
 const Self = @This();
 
@@ -43,4 +44,13 @@ fn init_shader_module(shader_code: []const u8, stage: c.GLuint) c.GLuint {
     c.glShaderSource(shader, 1, &shader_code.ptr, &@as(c.GLint, @intCast(shader_code.len)));
     c.glCompileShader(shader);
     return shader;
+}
+
+pub fn bind(self: Self) void {
+    c.glUseProgram(self.shader_program);
+}
+
+pub fn set_uniform_mat4(self: Self, name: []const u8, mat: *const zm.Mat) void {
+    var uniform_index = c.glGetUniformLocation(self.shader_program, name.ptr);
+    c.glUniformMatrix4fv(uniform_index, 1, c.GL_FALSE, &zm.matToArr(mat.*));
 }
