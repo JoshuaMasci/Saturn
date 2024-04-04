@@ -45,8 +45,9 @@ pub fn main() !void {
     };
 
     var app = try App.init(general_purpose_allocator.allocator());
+    defer app.deinit();
+
     while (app.is_running()) {
         try app.update();
     }
-    app.deinit();
 }

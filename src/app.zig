@@ -41,9 +41,10 @@ pub const App = struct {
     pub fn init(allocator: std.mem.Allocator) !Self {
         const node: world.Node = undefined;
         var node_pool = world.NodePool.init(allocator);
+        defer node_pool.deinit();
+
         const node_handle = try node_pool.insert(node);
-        _ = node_pool.remove(node_handle);
-        node_pool.deinit();
+        defer _ = node_pool.remove(node_handle);
 
         std.log.info("Starting SDL2", .{});
 
