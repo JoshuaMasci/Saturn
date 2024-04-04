@@ -1,5 +1,5 @@
 const std = @import("std");
-const sdl = @import("zsdl");
+const sdl = @import("zsdl2");
 const c = @import("c.zig");
 
 const zm = @import("zmath");
@@ -39,17 +39,17 @@ pub const App = struct {
     extern fn SDL_GL_GetProcAddress(proc: ?[*:0]const u8) ?*anyopaque;
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        var node: world.Node = undefined;
+        const node: world.Node = undefined;
         var node_pool = world.NodePool.init(allocator);
-        var node_handle = try node_pool.insert(node);
-        defer _ = node_pool.remove(node_handle);
-        defer node_pool.deinit();
+        const node_handle = try node_pool.insert(node);
+        _ = node_pool.remove(node_handle);
+        node_pool.deinit();
 
         std.log.info("Starting SDL2", .{});
 
         try sdl.init(.{ .video = true, .joystick = true, .gamecontroller = true, .haptic = true });
 
-        var window = try sdl.Window.create(
+        const window = try sdl.Window.create(
             "Saturn Engine",
             sdl.Window.pos_undefined,
             sdl.Window.pos_undefined,
@@ -63,7 +63,7 @@ pub const App = struct {
         try sdl.gl.setAttribute(sdl.gl.Attr.context_minor_version, 6);
         try sdl.gl.setAttribute(sdl.gl.Attr.context_profile_mask, @intFromEnum(sdl.gl.Profile.core));
 
-        var gl_context = try sdl.gl.createContext(window);
+        const gl_context = try sdl.gl.createContext(window);
 
         _ = c.gladLoadGLLoader(&SDL_GL_GetProcAddress);
 
@@ -76,7 +76,7 @@ pub const App = struct {
 
         try sdl.gl.setSwapInterval(1);
 
-        var input_system = try allocator.create(input.InputSystem);
+        const input_system = try allocator.create(input.InputSystem);
         input_system.* = try input.InputSystem.init(
             allocator,
             &[_]input.InputContext{GameInputContext},
@@ -87,7 +87,7 @@ pub const App = struct {
 
         if (sdl_input_system.keyboard) |*keyboard| {
             var game_context = sdl_input.SdlKeyboardContextBinding.default();
-            var button_binding = sdl_input.SdlButtonBinding{
+            const button_binding = sdl_input.SdlButtonBinding{
                 .target = StringHash.new("Button1"),
             };
             game_context.button_bindings[@intFromEnum(sdl.Scancode.space)] = button_binding;
@@ -97,8 +97,8 @@ pub const App = struct {
         var game_renderer = try renderer.Renderer.init(allocator);
         var game_scene = game_renderer.create_scene();
 
-        var cube_mesh = try game_renderer.load_mesh("some/resource/path/cube.mesh");
-        var cube_material = try game_renderer.load_material("some/resource/path/cube.material");
+        const cube_mesh = try game_renderer.load_mesh("some/resource/path/cube.mesh");
+        const cube_material = try game_renderer.load_material("some/resource/path/cube.material");
         var cube_tranform = Transform.Identity;
         cube_tranform.position = zm.f32x4(0.0, 0.0, 5.0, 0.0);
 

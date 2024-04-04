@@ -1,7 +1,7 @@
 const std = @import("std");
 const StringHash = @import("string_hash.zig");
 const input = @import("input.zig");
-const sdl = @import("zsdl");
+const sdl = @import("zsdl2");
 
 pub const SdlButtonBinding = struct {
     target: StringHash,
@@ -13,13 +13,13 @@ pub const SdlControllerAxisBinding = struct {
     sensitivity: f32,
 
     pub fn calc_value(self: @This(), value: f32) f32 {
-        var value_abs = std.math.clamp(@fabs(value), 0.0, 1.0);
-        var value_sign = std.math.sign(value);
-        var invert: f32 = switch (self.invert) {
+        const value_abs = std.math.clamp(@abs(value), 0.0, 1.0);
+        const value_sign = std.math.sign(value);
+        const invert: f32 = switch (self.invert) {
             true => -1.0,
             false => 1.0,
         };
-        var value_remap: f32 = switch (value_abs >= self.deadzone) {
+        const value_remap: f32 = switch (value_abs >= self.deadzone) {
             true => (value_abs - self.deadzone) / (1.0 - self.deadzone),
             false => 0.0,
         };
@@ -153,20 +153,20 @@ pub const SdlInputSystem = struct {
     pub fn proccess_event(self: *Self, event: sdl.Event) !void {
         switch (event.type) {
             .controllerdeviceadded => {
-                var controller_index = event.controllerdevice.which;
+                const controller_index = event.controllerdevice.which;
                 if (sdl.GameController.open(controller_index)) |controller_handle| {
-                    var controller_name = SDL_GameControllerName(controller_handle);
+                    const controller_name = SDL_GameControllerName(controller_handle);
                     std.log.info("Controller Added Event: {}->{s}", .{ controller_index, controller_name });
 
                     var context_bindings = std.AutoHashMap(StringHash.HashType, SdlControllerContextBinding).init(self.allocator);
 
                     //TODO: load or generate bindings
                     var game_context = SdlControllerContextBinding.default();
-                    var button_binding = SdlButtonBinding{
+                    const button_binding = SdlButtonBinding{
                         .target = StringHash.new("Button1"),
                     };
                     game_context.button_bindings[0] = button_binding;
-                    var axis_binding = SdlControllerAxisBinding{
+                    const axis_binding = SdlControllerAxisBinding{
                         .target = StringHash.new("Axis1"),
                         .invert = false,
                         .deadzone = 0.2,
@@ -186,7 +186,7 @@ pub const SdlInputSystem = struct {
                 }
             },
             .controllerdeviceremoved => {
-                var controller_index = event.controllerdevice.which;
+                const controller_index = event.controllerdevice.which;
                 if (self.controllers.fetchRemove(controller_index)) |*key_value| {
                     var controller = key_value.value;
                     std.log.info("Controller Removed Event: {}->{s}", .{ key_value.key, controller.name });

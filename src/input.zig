@@ -48,7 +48,7 @@ pub const InputSystem = struct {
         var context_map = std.AutoHashMap(StringHash.HashType, InnerContext).init(allocator);
 
         for (contexts) |context| {
-            var callbacks = std.ArrayList(InputContextCallback).init(allocator);
+            const callbacks = std.ArrayList(InputContextCallback).init(allocator);
             try context_map.put(context.name.hash, .{
                 .context = context,
                 .callbacks = callbacks,

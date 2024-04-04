@@ -87,8 +87,8 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
                     .revision = entry.revision,
                 };
             } else {
-                var index: IndexType = @intCast(self.list.items.len);
-                var revision: IndexType = 0;
+                const index: IndexType = @intCast(self.list.items.len);
+                const revision: IndexType = 0;
                 try self.list.append(.{
                     .revision = revision,
                     .value = value,
@@ -99,9 +99,8 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
         }
 
         pub fn remove(self: *Self, handle: Handle) ?T {
-            var index_usize: usize = @intCast(handle.index);
-            if (self.list.items.len > index_usize) {
-                var entry = &self.list.items[index_usize];
+            if (self.list.items.len > handle.index) {
+                var entry = &self.list.items[handle.index];
 
                 if (entry.revision == handle.revision) {
                     if (entry.value) |value| {

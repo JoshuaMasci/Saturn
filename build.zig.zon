@@ -1,0 +1,15 @@
+.{
+    .name = "Saturn",
+    .version = "0.0.1",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "libs",
+        "src",
+        "README.md",
+    },
+    .dependencies = .{
+        .zmath = .{ .path = "libs/zig-gamedev/libs/zmath" },
+        .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
+    },
+}

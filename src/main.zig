@@ -43,9 +43,8 @@ pub fn main() !void {
     defer if (general_purpose_allocator.deinit() == .leak) {
         log.err("GeneralPurposeAllocator has a memory leak!", .{});
     };
-    var allocator = general_purpose_allocator.allocator();
 
-    var app = try App.init(allocator);
+    var app = try App.init(general_purpose_allocator.allocator());
     while (app.is_running()) {
         try app.update();
     }

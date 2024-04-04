@@ -9,12 +9,12 @@ shader_program: c.GLuint,
 pub fn init(vertex_shader: []const u8, fragment_shader: []const u8) Self {
     const stdout = std.io.getStdOut().writer();
 
-    var program = c.glCreateProgram();
+    const program = c.glCreateProgram();
 
-    var vertex_module = Self.init_shader_module(vertex_shader, c.GL_VERTEX_SHADER);
+    const vertex_module = Self.init_shader_module(vertex_shader, c.GL_VERTEX_SHADER);
     c.glAttachShader(program, vertex_module);
 
-    var fragment_module = Self.init_shader_module(fragment_shader, c.GL_FRAGMENT_SHADER);
+    const fragment_module = Self.init_shader_module(fragment_shader, c.GL_FRAGMENT_SHADER);
     c.glAttachShader(program, fragment_module);
 
     c.glLinkProgram(program);
@@ -40,7 +40,7 @@ pub fn deinit(self: *Self) void {
 }
 
 fn init_shader_module(shader_code: []const u8, stage: c.GLuint) c.GLuint {
-    var shader = c.glCreateShader(stage);
+    const shader = c.glCreateShader(stage);
     c.glShaderSource(shader, 1, &shader_code.ptr, &@as(c.GLint, @intCast(shader_code.len)));
     c.glCompileShader(shader);
     return shader;
@@ -51,6 +51,6 @@ pub fn bind(self: Self) void {
 }
 
 pub fn set_uniform_mat4(self: Self, name: []const u8, mat: *const zm.Mat) void {
-    var uniform_index = c.glGetUniformLocation(self.shader_program, name.ptr);
+    const uniform_index = c.glGetUniformLocation(self.shader_program, name.ptr);
     c.glUniformMatrix4fv(uniform_index, 1, c.GL_FALSE, &zm.matToArr(mat.*));
 }

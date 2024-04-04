@@ -31,10 +31,10 @@ pub const Renderer = struct {
     materials: std.AutoHashMap(MaterialHandle, void),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        var vertex_code = try read_file_to_string(allocator, "res/shaders/colored.vert");
+        const vertex_code = try read_file_to_string(allocator, "res/shaders/colored.vert");
         defer allocator.free(vertex_code);
 
-        var fragment_code = try read_file_to_string(allocator, "res/shaders/colored.frag");
+        const fragment_code = try read_file_to_string(allocator, "res/shaders/colored.frag");
         defer allocator.free(fragment_code);
 
         return .{
@@ -64,10 +64,10 @@ pub const Renderer = struct {
     pub fn load_mesh(self: *Self, file_path: []const u8) !MeshHandle {
         _ = file_path;
 
-        var mesh_handle = self.next_mesh_handle;
+        const mesh_handle = self.next_mesh_handle;
         self.next_mesh_handle += 1;
 
-        var mesh = genBoxMesh([3]f32{ 1.0, 1.0, 1.0 }, [3]f32{ 1.0, 1.0, 1.0 });
+        const mesh = genBoxMesh([3]f32{ 1.0, 1.0, 1.0 }, [3]f32{ 1.0, 1.0, 1.0 });
         try self.meshes.put(mesh_handle, mesh);
 
         return mesh_handle;
@@ -95,14 +95,14 @@ pub const Renderer = struct {
     }
 
     pub fn render_scene(self: Self, scene: *Scene, camera: *const Camera) void {
-        var width: u32 = 2560;
-        var height: u32 = 1372;
-        var width_float: f32 = @floatFromInt(width);
-        var height_float: f32 = @floatFromInt(height);
-        var aspect_ratio: f32 = width_float / height_float;
+        const width: u32 = 2560;
+        const height: u32 = 1372;
+        const width_float: f32 = @floatFromInt(width);
+        const height_float: f32 = @floatFromInt(height);
+        const aspect_ratio: f32 = width_float / height_float;
 
-        var view_matrix = camera.transform.view_matrix();
-        var projection_matrix = camera.data.perspective(aspect_ratio);
+        const view_matrix = camera.transform.view_matrix();
+        const projection_matrix = camera.data.perspective(aspect_ratio);
         //var view_projection_matrix = zm.mul(projection_matrix, view_matrix);
         var view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
@@ -145,7 +145,7 @@ pub const Scene = struct {
     }
 
     pub fn add_instace(self: *Self, mesh: MeshHandle, material: MaterialHandle, transform: *const Transform) !SceneInstanceHandle {
-        var handle = self.next_handle;
+        const handle = self.next_handle;
         self.next_handle += 1;
 
         try self.instances.put(handle, .{
@@ -188,7 +188,7 @@ pub const PerspectiveCamera = struct {
     pub const Default: Self = .{ .fov_axis = .x, .fov = 75.0, .near = 0.1, .far = 1000.0 };
 
     pub fn perspective(self: Self, aspect_ratio: f32) zm.Mat {
-        var fov = switch (self.fov_axis) {
+        const fov = switch (self.fov_axis) {
             .x => std.math.atan(std.math.tan(self.fov / 2.0) * aspect_ratio) * 2.0,
             .y => self.fov,
         };
@@ -204,7 +204,7 @@ pub const Camera = struct {
 };
 
 fn genBoxMesh(size: [3]f32, color: [3]f32) Mesh {
-    var half_size = [3]f32{ size[0] * 0.5, size[1] * 0.5, size[2] * 0.5 };
+    const half_size = [3]f32{ size[0] * 0.5, size[1] * 0.5, size[2] * 0.5 };
 
     var vertices = [_]ColoredVertex{
         ColoredVertex.new([_]f32{ half_size[0], half_size[1], half_size[2] }, color),

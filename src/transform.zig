@@ -16,14 +16,14 @@ pub const Identity = Self{
 };
 
 pub fn model_matrix(self: Self) zm.Mat {
-    var translation = zm.translationV(self.position);
-    var rotation = zm.quatToMat(self.rotation);
-    var scale = zm.scalingV(self.scale);
+    const translation = zm.translationV(self.position);
+    const rotation = zm.quatToMat(self.rotation);
+    const scale = zm.scalingV(self.scale);
     return zm.mul(zm.mul(translation, rotation), scale);
 }
 
 pub fn view_matrix(self: Self) zm.Mat {
-    var forward = zm.rotate(self.rotation, Forward);
-    var up = zm.rotate(self.rotation, Up);
+    const forward = zm.rotate(self.rotation, Forward);
+    const up = zm.rotate(self.rotation, Up);
     return zm.lookToRh(self.position, forward, up);
 }

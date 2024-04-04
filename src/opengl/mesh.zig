@@ -2,7 +2,6 @@ const std = @import("std");
 const c = @import("../c.zig");
 
 const panic = std.debug.panic;
-const trait = std.meta.trait;
 
 const Self = @This();
 
@@ -13,7 +12,7 @@ index_count: c.GLint,
 index_type: c.GLenum,
 
 fn isVertexTypeValid(comptime VertexType: type) void {
-    if (!comptime trait.hasFn("genVao")(VertexType)) {
+    if (!comptime std.meta.hasFn(VertexType, "genVao")) {
         @compileError("VertexType doesn't have genVao Function");
     }
 }

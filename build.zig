@@ -1,10 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const zsdl = @import("libs/zsdl/build.zig");
-const zmath = @import("libs/zmath/build.zig");
-
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -17,16 +14,19 @@ pub fn build(b: *std.Build) void {
 
     exe.linkLibC();
 
-    exe.addIncludePath(std.build.LazyPath.relative("glad/include"));
-    exe.addCSourceFile(.{ .file = std.build.LazyPath.relative("glad/src/glad.c"), .flags = &[_][]const u8{"-std=c99"} });
+    exe.addIncludePath(std.Build.LazyPath.relative("glad/include"));
+    exe.addCSourceFile(.{ .file = std.Build.LazyPath.relative("glad/src/glad.c"), .flags = &[_][]const u8{"-std=c99"} });
 
-    const zmath_pkg = zmath.package(b, target, optimize, .{
-        .options = .{ .enable_cross_platform_determinism = true },
-    });
-    const zsdl_pkg = zsdl.package(b, target, optimize, .{});
+    const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
+    exe.root_module.addImport("zmath", zmath.module("root"));
 
-    zmath_pkg.link(exe);
-    zsdl_pkg.link(exe);
+    const zsdl = b.dependency("zsdl", .{});
+    exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
+
+    const zsdl_path = zsdl.path("").getPath(b);
+    try @import("zsdl").addLibraryPathsTo(exe, zsdl_path);
+    @import("zsdl").link_SDL2(exe);
+    try @import("zsdl").install_sdl2(&exe.step, target.result, .bin, zsdl_path);
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
