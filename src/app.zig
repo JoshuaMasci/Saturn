@@ -39,6 +39,12 @@ pub const App = struct {
     extern fn SDL_GL_GetProcAddress(proc: ?[*:0]const u8) ?*anyopaque;
 
     pub fn init(allocator: std.mem.Allocator) !Self {
+        var node: world.Node = undefined;
+        var node_pool = world.NodePool.init(allocator);
+        var node_handle = try node_pool.insert(node);
+        defer _ = node_pool.remove(node_handle);
+        defer node_pool.deinit();
+
         std.log.info("Starting SDL2", .{});
 
         try sdl.init(.{ .video = true, .joystick = true, .gamecontroller = true, .haptic = true });
