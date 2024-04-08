@@ -94,16 +94,13 @@ pub const Renderer = struct {
         return Scene.init(self.allocator);
     }
 
-    pub fn render_scene(self: Self, scene: *Scene, camera: *const Camera) void {
-        const width: u32 = 2560;
-        const height: u32 = 1372;
-        const width_float: f32 = @floatFromInt(width);
-        const height_float: f32 = @floatFromInt(height);
+    pub fn render_scene(self: Self, window_size: [2]i32, scene: *Scene, camera: *const Camera) void {
+        const width_float: f32 = @floatFromInt(window_size[0]);
+        const height_float: f32 = @floatFromInt(window_size[1]);
         const aspect_ratio: f32 = width_float / height_float;
 
         const view_matrix = camera.transform.view_matrix();
         const projection_matrix = camera.data.perspective(aspect_ratio);
-        //var view_projection_matrix = zm.mul(projection_matrix, view_matrix);
         var view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
         self.colored_mesh_shader.bind();
@@ -172,25 +169,24 @@ pub const Scene = struct {
     }
 };
 
-pub const FovAxis = enum {
-    x,
-    y,
+pub const Fov = union(enum) {
+    x: f32,
+    y: f32,
 };
 
 pub const PerspectiveCamera = struct {
     const Self = @This();
 
-    fov_axis: FovAxis,
-    fov: f32,
+    fov: Fov,
     near: f32,
     far: f32,
 
-    pub const Default: Self = .{ .fov_axis = .x, .fov = 75.0, .near = 0.1, .far = 1000.0 };
+    pub const Default: Self = .{ .fov = .{ .x = 75.0 }, .near = 0.1, .far = 1000.0 };
 
     pub fn perspective(self: Self, aspect_ratio: f32) zm.Mat {
-        const fov = switch (self.fov_axis) {
-            .x => std.math.atan(std.math.tan(self.fov / 2.0) * aspect_ratio) * 2.0,
-            .y => self.fov,
+        const fov = switch (self.fov) {
+            .x => |fov_x| std.math.atan(std.math.tan(std.math.degreesToRadians(fov_x) / 2.0) * aspect_ratio) * 2.0,
+            .y => |fov_y| std.math.degreesToRadians(fov_y),
         };
         return zm.perspectiveFovRhGl(fov, aspect_ratio, self.near, self.far);
     }

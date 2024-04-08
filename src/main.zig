@@ -1,42 +1,18 @@
+// Library Plans
+// 1. Windowing/Input/Networking/FileSys/FileDiag: SDL3 (zig wrapper or stright c?)
+// 2. Other Inputs: DuelSenseLib + steam-input (Both much later down the line)
+// 3. Rendering: Vulkan (zig wrapper or stright c?)
+// 4. Audio: steam-audio (use c api)
+// 5. Physics: Jolt (needs a c wrapper)
+// 6. UI: cImgui
+// 7: Mesh Loading: cgltf
+// 8. Texture Loading: stb_image
+// 9. Linear Math: zmath or zalgabra?
+
 const std = @import("std");
 const log = std.log;
 
-const c = @import("c.zig");
-
-const StringHash = @import("string_hash.zig");
-const input = @import("input.zig");
-const sdl_input = @import("sdl_input.zig");
 const App = @import("app.zig").App;
-
-const InputStruct = struct {
-    const Self = @This();
-
-    some_int: usize,
-
-    fn callback(self: *Self) input.InputContextCallback {
-        return .{
-            .ptr = self,
-            .button_callback = trigger_button,
-            .axis_callback = trigger_axis,
-        };
-    }
-
-    fn trigger_button(self: *anyopaque, button: StringHash, state: input.ButtonState) void {
-        _ = self;
-        log.info("Button Triggered {s} -> {}", .{ button.string, state });
-    }
-
-    fn trigger_axis(self: *anyopaque, axis: StringHash, value: f32) void {
-        _ = self;
-        log.info("Axis Triggered {s} -> {d:.2}", .{ axis.string, value });
-    }
-};
-
-pub const GameInputContext = input.InputContext{
-    .name = StringHash.new("Game"),
-    .buttons = &[_]StringHash{StringHash.new("Button1")},
-    .axes = &[_]StringHash{StringHash.new("Axis1")},
-};
 
 pub fn main() !void {
     var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};

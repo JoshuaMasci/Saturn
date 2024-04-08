@@ -159,7 +159,13 @@ pub const App = struct {
             .transform = Transform.Identity,
         };
 
-        self.game_renderer.render_scene(&self.game_scene, &camera);
+        var width: i32 = 0;
+        var height: i32 = 0;
+        try sdl.Window.getSize(self.window, &width, &height);
+
+        c.glViewport(0, 0, width, height);
+
+        self.game_renderer.render_scene(.{ width, height }, &self.game_scene, &camera);
 
         sdl.gl.swapWindow(self.window);
     }
