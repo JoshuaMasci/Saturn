@@ -15,9 +15,5 @@
             .url = "https://github.com/Snektron/vulkan-zig/archive/e608695.tar.gz",
             .hash = "122061f0a16599a1c296a1847d6e34652e9b20ce3aff919d75562383ef0ba873df77",
         },
-        .zig_gamedev = .{
-            .url = "https://github.com/zig-gamedev/zig-gamedev/archive/3c76bcad535c3798e0fdf984f5ccbe08838b8fbe.tar.gz",
-            .hash = "1220da90b8cff543dfa29da48c701e105124b7c0f7bf064f183db9d3f44f8bfedcbd",
-        },
     },
 }

@@ -14,8 +14,9 @@ pub fn build(b: *std.Build) !void {
 
     exe.linkLibC();
 
-    exe.addIncludePath(std.Build.LazyPath.relative("glad/include"));
-    exe.addCSourceFile(.{ .file = std.Build.LazyPath.relative("glad/src/glad.c"), .flags = &[_][]const u8{"-std=c99"} });
+    // Opengl
+    exe.addIncludePath(std.Build.LazyPath.relative("libs/glad/include"));
+    exe.addCSourceFile(.{ .file = std.Build.LazyPath.relative("libs/glad/src/glad.c"), .flags = &[_][]const u8{"-std=c99"} });
 
     const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
     exe.root_module.addImport("zmath", zmath.module("root"));

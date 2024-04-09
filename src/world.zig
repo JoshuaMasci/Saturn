@@ -1,9 +1,8 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-
+const object_pool = @import("object_pool.zig");
 const Transform = @import("transform.zig");
 
-pub const NodePool = ObjectPool(u16, Node);
+pub const NodePool = object_pool.ObjectPool(u16, Node);
 pub const NodeHandle = NodePool.Handle;
 
 pub const NodeComponents = struct {
@@ -46,71 +45,3 @@ pub const World = struct {
     data: WorldData,
     entity_pool: std.ArrayList(?Entity),
 };
-
-pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
-    return struct {
-        const Self = @This();
-
-        const Entry = struct {
-            revision: IndexType,
-            value: ?T,
-        };
-
-        pub const Handle = struct {
-            index: IndexType,
-            revision: IndexType,
-        };
-
-        list: std.ArrayList(Entry),
-        freed_indexes: std.ArrayList(IndexType),
-
-        pub fn init(allocator: Allocator) Self {
-            return .{
-                .list = std.ArrayList(Entry).init(allocator),
-                .freed_indexes = std.ArrayList(IndexType).init(allocator),
-            };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.list.deinit();
-            self.freed_indexes.deinit();
-        }
-
-        pub fn insert(self: *Self, value: T) !Handle {
-            var handle: Handle = undefined;
-            if (self.freed_indexes.popOrNull()) |index| {
-                var entry = &self.list.items[index];
-
-                entry.value = value;
-                handle = .{
-                    .index = index,
-                    .revision = entry.revision,
-                };
-            } else {
-                const index: IndexType = @intCast(self.list.items.len);
-                const revision: IndexType = 0;
-                try self.list.append(.{
-                    .revision = revision,
-                    .value = value,
-                });
-                handle = .{ .index = index, .revision = revision };
-            }
-            return handle;
-        }
-
-        pub fn remove(self: *Self, handle: Handle) ?T {
-            if (self.list.items.len > handle.index) {
-                var entry = &self.list.items[handle.index];
-
-                if (entry.revision == handle.revision) {
-                    if (entry.value) |value| {
-                        entry.revision += 1;
-                        entry.value = null;
-                        return value;
-                    }
-                }
-            }
-            return null;
-        }
-    };
-}

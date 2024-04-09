@@ -2,13 +2,14 @@ const std = @import("std");
 const sdl = @import("zsdl2");
 const c = @import("c.zig");
 
+const sdl_platform = @import("platform/sdl2.zig");
 const zm = @import("zmath");
 
 const StringHash = @import("string_hash.zig");
 const input = @import("input.zig");
 const sdl_input = @import("sdl_input.zig");
 
-const renderer = @import("renderer.zig");
+const renderer = @import("renderer/renderer.zig");
 
 pub const GameInputContext = input.InputContext{
     .name = StringHash.new("Game"),
@@ -26,17 +27,14 @@ pub const App = struct {
     should_quit: bool,
     allocator: std.mem.Allocator,
 
-    window: *sdl.Window,
-    gl_context: sdl.gl.Context,
+    platform: sdl_platform.Platform,
 
     input_system: *input.InputSystem,
     sdl_input_system: *sdl_input.SdlInputSystem,
 
     game_renderer: renderer.Renderer,
     game_scene: renderer.Scene,
-
-    //Used cause I have no idea how to use the pub zig version for glam
-    extern fn SDL_GL_GetProcAddress(proc: ?[*:0]const u8) ?*anyopaque;
+    game_cube: renderer.SceneInstanceHandle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const node: world.Node = undefined;
@@ -44,38 +42,10 @@ pub const App = struct {
         defer node_pool.deinit();
 
         const node_handle = try node_pool.insert(node);
-        defer _ = node_pool.remove(node_handle);
+        _ = try node_pool.remove(node_handle);
 
         std.log.info("Starting SDL2", .{});
-
-        try sdl.init(.{ .video = true, .joystick = true, .gamecontroller = true, .haptic = true });
-
-        const window = try sdl.Window.create(
-            "Saturn Engine",
-            sdl.Window.pos_undefined,
-            sdl.Window.pos_undefined,
-            1920,
-            1080,
-            .{ .maximized = true, .resizable = true, .allow_highdpi = true, .opengl = true },
-        );
-
-        try sdl.gl.setAttribute(sdl.gl.Attr.doublebuffer, 1);
-        try sdl.gl.setAttribute(sdl.gl.Attr.context_major_version, 4);
-        try sdl.gl.setAttribute(sdl.gl.Attr.context_minor_version, 6);
-        try sdl.gl.setAttribute(sdl.gl.Attr.context_profile_mask, @intFromEnum(sdl.gl.Profile.core));
-
-        const gl_context = try sdl.gl.createContext(window);
-
-        _ = c.gladLoadGLLoader(&SDL_GL_GetProcAddress);
-
-        std.log.info("Opengl Context:\n\tVender: {s}\n\tRenderer: {s}\n\tVersion: {s}\n\tGLSL: {s}", .{
-            c.glGetString(c.GL_VENDOR),
-            c.glGetString(c.GL_RENDERER),
-            c.glGetString(c.GL_VERSION),
-            c.glGetString(c.GL_SHADING_LANGUAGE_VERSION),
-        });
-
-        try sdl.gl.setSwapInterval(1);
+        const platform = try sdl_platform.Platform.init_window("Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
         const input_system = try allocator.create(input.InputSystem);
         input_system.* = try input.InputSystem.init(
@@ -98,29 +68,32 @@ pub const App = struct {
         var game_renderer = try renderer.Renderer.init(allocator);
         var game_scene = game_renderer.create_scene();
 
-        const cube_mesh = try game_renderer.load_mesh("some/resource/path/cube.mesh");
+        const cube_mesh = try game_renderer.load_static_mesh("some/resource/path/cube.mesh");
         const cube_material = try game_renderer.load_material("some/resource/path/cube.material");
         var cube_tranform = Transform.Identity;
         cube_tranform.position = zm.f32x4(0.0, 0.0, 5.0, 0.0);
 
-        _ = try game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
+        const game_cube = try game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
+        game_scene.update_instance(game_cube, &cube_tranform);
 
         return .{
             .should_quit = false,
             .allocator = allocator,
 
-            .window = window,
-            .gl_context = gl_context,
+            .platform = platform,
 
             .input_system = input_system,
             .sdl_input_system = sdl_input_system,
 
             .game_renderer = game_renderer,
             .game_scene = game_scene,
+            .game_cube = game_cube,
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.game_scene.remove_instance(self.game_cube) catch {}; //Do Nothing since we will be destroying it anyways
+
         self.game_scene.deinit();
         self.game_renderer.deinit();
 
@@ -130,11 +103,8 @@ pub const App = struct {
         self.input_system.deinit();
         self.allocator.destroy(self.input_system);
 
-        sdl.gl.deleteContext(self.gl_context);
-        sdl.Window.destroy(self.window);
-
         std.log.info("Shutting Down SDL2", .{});
-        sdl.quit();
+        self.platform.deinit();
     }
 
     pub fn is_running(self: Self) bool {
@@ -159,14 +129,10 @@ pub const App = struct {
             .transform = Transform.Identity,
         };
 
-        var width: i32 = 0;
-        var height: i32 = 0;
-        try sdl.Window.getSize(self.window, &width, &height);
+        const window_size = try self.platform.get_window_size();
+        c.glViewport(0, 0, window_size[0], window_size[1]);
+        self.game_renderer.render_scene(window_size, &self.game_scene, &camera);
 
-        c.glViewport(0, 0, width, height);
-
-        self.game_renderer.render_scene(.{ width, height }, &self.game_scene, &camera);
-
-        sdl.gl.swapWindow(self.window);
+        self.platform.gl_swap_window();
     }
 };

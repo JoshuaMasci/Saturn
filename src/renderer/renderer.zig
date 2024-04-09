@@ -1,15 +1,19 @@
 const std = @import("std");
+
+const object_pool = @import("../object_pool.zig");
 const zm = @import("zmath");
 
-const Transform = @import("transform.zig");
+const Transform = @import("../transform.zig");
 const ColoredVertex = @import("opengl/vertex.zig").ColoredVertex;
 const Mesh = @import("opengl/mesh.zig");
 const Shader = @import("opengl/shader.zig");
 
-pub const MeshHandle = u32;
-pub const MaterialHandle = u32;
+const StaticMeshPool = object_pool.ObjectPool(u16, Mesh);
+pub const StaticMeshHandle = StaticMeshPool.Handle;
 
 pub const Material = struct {};
+const MaterialPool = object_pool.ObjectPool(u16, Material);
+pub const MaterialHandle = u32;
 
 fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u8 {
     var file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
@@ -24,11 +28,8 @@ pub const Renderer = struct {
 
     colored_mesh_shader: Shader,
 
-    next_mesh_handle: MeshHandle,
-    meshes: std.AutoHashMap(MeshHandle, Mesh),
-
-    next_material_handle: MaterialHandle,
-    materials: std.AutoHashMap(MaterialHandle, void),
+    static_meshes: StaticMeshPool,
+    materials: MaterialPool,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const vertex_code = try read_file_to_string(allocator, "res/shaders/colored.vert");
@@ -42,37 +43,29 @@ pub const Renderer = struct {
 
             .colored_mesh_shader = Shader.init(vertex_code, fragment_code),
 
-            .next_mesh_handle = 1,
-            .meshes = std.AutoHashMap(MeshHandle, Mesh).init(allocator),
-
-            .next_material_handle = 1,
-            .materials = std.AutoHashMap(MaterialHandle, void).init(allocator),
+            .static_meshes = StaticMeshPool.init(allocator),
+            .materials = MaterialPool.init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.colored_mesh_shader.deinit();
 
-        var mesh_iterator = self.meshes.iterator();
+        var mesh_iterator = self.static_meshes.iterator();
         while (mesh_iterator.next()) |entry| {
             entry.value_ptr.deinit();
         }
-        self.meshes.deinit();
+        self.static_meshes.deinit();
         self.materials.deinit();
     }
 
-    pub fn load_mesh(self: *Self, file_path: []const u8) !MeshHandle {
+    pub fn load_static_mesh(self: *Self, file_path: []const u8) !StaticMeshHandle {
         _ = file_path;
 
-        const mesh_handle = self.next_mesh_handle;
-        self.next_mesh_handle += 1;
-
         const mesh = genBoxMesh([3]f32{ 1.0, 1.0, 1.0 }, [3]f32{ 1.0, 1.0, 1.0 });
-        try self.meshes.put(mesh_handle, mesh);
-
-        return mesh_handle;
+        return try self.static_meshes.insert(mesh);
     }
-    pub fn unload_mesh(self: *Self, mesh_handle: MeshHandle) void {
+    pub fn unload_static_mesh(self: *Self, mesh_handle: StaticMeshHandle) void {
         if (self.meshes.remove(mesh_handle)) |mesh| {
             mesh.deinit();
         }
@@ -108,32 +101,30 @@ pub const Renderer = struct {
 
         var instance_iterator = scene.instances.iterator();
         while (instance_iterator.next()) |instance| {
-            if (self.meshes.get(instance.value_ptr.mesh)) |mesh| {
+            if (self.static_meshes.get(instance.value_ptr.mesh)) |mesh| {
                 self.colored_mesh_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.model_matrix());
                 mesh.draw();
             } else {
-                std.log.warn("Instance {} contains an invalid Mesh {}", .{ instance.key_ptr, instance.value_ptr.mesh });
+                std.log.warn("Instance {} contains an invalid Mesh {}", .{ instance.handle, instance.value_ptr.mesh });
             }
         }
     }
 };
 
-pub const SceneInstanceHandle = u32;
+const SceneInstanceMap = object_pool.ObjectPool(u16, struct { mesh: StaticMeshHandle, material: MaterialHandle, transform: Transform });
+pub const SceneInstanceHandle = SceneInstanceMap.Handle;
+
 pub const Scene = struct {
     const Self = @This();
-    const InstanceMap = std.AutoHashMap(SceneInstanceHandle, struct { mesh: MeshHandle, material: MaterialHandle, transform: Transform });
 
     allocator: std.mem.Allocator,
 
-    next_handle: SceneInstanceHandle,
-    instances: InstanceMap,
+    instances: SceneInstanceMap,
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .allocator = allocator,
-
-            .next_handle = 0,
-            .instances = InstanceMap.init(allocator),
+            .instances = SceneInstanceMap.init(allocator),
         };
     }
 
@@ -141,17 +132,12 @@ pub const Scene = struct {
         self.instances.deinit();
     }
 
-    pub fn add_instace(self: *Self, mesh: MeshHandle, material: MaterialHandle, transform: *const Transform) !SceneInstanceHandle {
-        const handle = self.next_handle;
-        self.next_handle += 1;
-
-        try self.instances.put(handle, .{
+    pub fn add_instace(self: *Self, mesh: StaticMeshHandle, material: MaterialHandle, transform: *const Transform) !SceneInstanceHandle {
+        return try self.instances.insert(.{
             .mesh = mesh,
             .material = material,
             .transform = transform.*,
         });
-
-        return handle;
     }
 
     pub fn update_instance(self: *Self, instance: SceneInstanceHandle, transform: *const Transform) void {
@@ -162,8 +148,8 @@ pub const Scene = struct {
         }
     }
 
-    pub fn remove_instance(self: Self, instance: SceneInstanceHandle) void {
-        if (!self.instances.remove(instance)) {
+    pub fn remove_instance(self: *Self, instance: SceneInstanceHandle) !void {
+        if (try self.instances.remove(instance) == null) {
             std.log.err("Scene doesn't contain SceneInstanceHandle({})", .{instance});
         }
     }

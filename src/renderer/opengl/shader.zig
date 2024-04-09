@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("../c.zig");
+const c = @import("../../c.zig");
 const zm = @import("zmath");
 
 const Self = @This();
