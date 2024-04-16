@@ -10,10 +10,5 @@
     },
     .dependencies = .{
         .zmath = .{ .path = "libs/zig-gamedev/libs/zmath" },
-        .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
-        .vulkan_zig = .{
-            .url = "https://github.com/Snektron/vulkan-zig/archive/e608695.tar.gz",
-            .hash = "122061f0a16599a1c296a1847d6e34652e9b20ce3aff919d75562383ef0ba873df77",
-        },
     },
 }

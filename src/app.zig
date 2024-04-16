@@ -1,25 +1,14 @@
 const std = @import("std");
-const sdl = @import("zsdl2");
-const c = @import("c.zig");
-
-const sdl_platform = @import("platform/sdl2.zig");
 const zm = @import("zmath");
 
-const StringHash = @import("string_hash.zig");
 const input = @import("input.zig");
-const sdl_input = @import("sdl_input.zig");
-
-const renderer = @import("renderer/renderer.zig");
-
-pub const GameInputContext = input.InputContext{
-    .name = StringHash.new("Game"),
-    .buttons = &[_]StringHash{StringHash.new("Button1")},
-    .axes = &[_]StringHash{StringHash.new("Axis1")},
-};
-
 const world = @import("world.zig");
-
 const Transform = @import("transform.zig");
+const camera = @import("camera.zig");
+const debug_camera = @import("debug_camera.zig");
+
+const sdl_platform = @import("platform/sdl3.zig");
+const renderer = @import("renderer/renderer.zig");
 
 pub const App = struct {
     const Self = @This();
@@ -29,12 +18,10 @@ pub const App = struct {
 
     platform: sdl_platform.Platform,
 
-    input_system: *input.InputSystem,
-    sdl_input_system: *sdl_input.SdlInputSystem,
-
     game_renderer: renderer.Renderer,
     game_scene: renderer.Scene,
     game_cube: renderer.SceneInstanceHandle,
+    game_camera: debug_camera.DebugCamera,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const node: world.Node = undefined;
@@ -45,25 +32,7 @@ pub const App = struct {
         _ = try node_pool.remove(node_handle);
 
         std.log.info("Starting SDL2", .{});
-        const platform = try sdl_platform.Platform.init_window("Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
-
-        const input_system = try allocator.create(input.InputSystem);
-        input_system.* = try input.InputSystem.init(
-            allocator,
-            &[_]input.InputContext{GameInputContext},
-        );
-
-        var sdl_input_system = try allocator.create(sdl_input.SdlInputSystem);
-        sdl_input_system.* = sdl_input.SdlInputSystem.new(allocator, input_system);
-
-        if (sdl_input_system.keyboard) |*keyboard| {
-            var game_context = sdl_input.SdlKeyboardContextBinding.default();
-            const button_binding = sdl_input.SdlButtonBinding{
-                .target = StringHash.new("Button1"),
-            };
-            game_context.button_bindings[@intFromEnum(sdl.Scancode.space)] = button_binding;
-            try keyboard.context_bindings.put(GameInputContext.name.hash, game_context);
-        }
+        const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
         var game_renderer = try renderer.Renderer.init(allocator);
         var game_scene = game_renderer.create_scene();
@@ -76,18 +45,18 @@ pub const App = struct {
         const game_cube = try game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
         game_scene.update_instance(game_cube, &cube_tranform);
 
+        const game_camera = debug_camera.DebugCamera.Default;
+
         return .{
             .should_quit = false,
             .allocator = allocator,
 
             .platform = platform,
 
-            .input_system = input_system,
-            .sdl_input_system = sdl_input_system,
-
             .game_renderer = game_renderer,
             .game_scene = game_scene,
             .game_cube = game_cube,
+            .game_camera = game_camera,
         };
     }
 
@@ -97,42 +66,39 @@ pub const App = struct {
         self.game_scene.deinit();
         self.game_renderer.deinit();
 
-        self.sdl_input_system.deinit();
-        self.allocator.destroy(self.sdl_input_system);
-
-        self.input_system.deinit();
-        self.allocator.destroy(self.input_system);
-
         std.log.info("Shutting Down SDL2", .{});
         self.platform.deinit();
     }
 
     pub fn is_running(self: Self) bool {
-        return !self.should_quit;
+        return !(self.should_quit or self.platform.should_quit);
     }
 
     pub fn update(self: *Self) !void {
-        var event: sdl.Event = undefined;
-        while (sdl.pollEvent(&event)) {
-            try self.sdl_input_system.proccess_event(event);
-            switch (event.type) {
-                .quit => self.should_quit = true,
-                else => {},
-            }
-        }
+        self.platform.proccess_events(self);
 
-        c.glClearColor(0.0, 0.0, 0.0, 1.0);
-        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
+        self.game_camera.update(1.0 / 60.0);
 
-        var camera = renderer.Camera{
-            .data = renderer.PerspectiveCamera.Default,
-            .transform = Transform.Identity,
+        self.game_renderer.clear_framebuffer();
+
+        var scene_camera = camera.Camera{
+            .data = self.game_camera.camera,
+            .transform = self.game_camera.transform,
         };
 
         const window_size = try self.platform.get_window_size();
-        c.glViewport(0, 0, window_size[0], window_size[1]);
-        self.game_renderer.render_scene(window_size, &self.game_scene, &camera);
+        self.game_renderer.render_scene(window_size, &self.game_scene, &scene_camera);
 
         self.platform.gl_swap_window();
+    }
+
+    pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
+        //std.log.info("Button {} -> {}", .{ event.button, event.state });
+        self.game_camera.on_button_event(event);
+    }
+
+    pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
+        //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
+        self.game_camera.on_axis_event(event);
     }
 };

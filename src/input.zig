@@ -1,107 +1,88 @@
 const std = @import("std");
 const StringHash = @import("string_hash.zig");
 
+pub const Button = enum {
+    debug_camera_interact,
+};
+
+pub const Axis = enum {
+    debug_camera_forward_backward,
+    debug_camera_left_right,
+    debug_camera_up_down,
+
+    debug_camera_pitch,
+    debug_camera_yaw,
+    debug_camera_roll,
+};
+
 pub const ButtonState = enum {
-    Pressed,
-    Released,
+    pressed,
+    released,
 };
 
-pub const InputContext = struct {
-    name: StringHash,
-    buttons: []const StringHash,
-    axes: []const StringHash,
+pub const AxisDirection = enum {
+    positve,
+    negitive,
 };
 
-pub const InputButtonCallback = *const fn (ptr: *anyopaque, button: StringHash, state: ButtonState) void;
-pub const InputAxisCallback = *const fn (ptr: *anyopaque, axis: StringHash, value: f32) void;
+pub const ButtonAxisState = struct {
+    positve: ButtonState,
+    negitive: ButtonState,
 
-pub const InputContextCallback = struct {
-    const Self = @This();
+    pub const Default: @This() = .{ .positve = .released, .negitive = .released };
 
-    ptr: *anyopaque,
-    button_callback: ?InputButtonCallback,
-    axis_callback: ?InputAxisCallback,
-
-    pub fn trigger_button(self: Self, button: StringHash, state: ButtonState) void {
-        if (self.button_callback) |callback_fn| {
-            callback_fn(self.ptr, button, state);
+    pub fn update(self: *@This(), dir: AxisDirection, state: ButtonState) void {
+        switch (dir) {
+            .positve => self.positve = state,
+            .negitive => self.negitive = state,
         }
     }
-    pub fn trigger_axis(self: Self, axis: StringHash, value: f32) void {
-        if (self.axis_callback) |callback| {
-            callback(self.ptr, axis, value);
+
+    pub fn get_value(self: @This()) f32 {
+        var value: f32 = 0.0;
+        if (self.positve == .pressed) {
+            value += 1.0;
         }
+        if (self.negitive == .pressed) {
+            value -= 1.0;
+        }
+        return value;
     }
 };
 
-pub const InputSystem = struct {
-    const Self = @This();
+pub const ButtonEvent = struct {
+    button: Button,
+    state: ButtonState,
+};
 
-    const InnerContext = struct {
-        context: InputContext,
-        callbacks: std.ArrayList(InputContextCallback),
-    };
-    context_map: std.AutoHashMap(StringHash.HashType, InnerContext),
-    active_context: StringHash,
+pub const AxisEvent = struct {
+    axis: Axis,
+    value: f32,
 
-    pub fn init(allocator: std.mem.Allocator, contexts: []const InputContext) !Self {
-        var context_map = std.AutoHashMap(StringHash.HashType, InnerContext).init(allocator);
-
-        for (contexts) |context| {
-            const callbacks = std.ArrayList(InputContextCallback).init(allocator);
-            try context_map.put(context.name.hash, .{
-                .context = context,
-                .callbacks = callbacks,
-            });
-        }
-
-        return Self{
-            .context_map = context_map,
-            .active_context = contexts[0].name,
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        var iterator = self.context_map.iterator();
-        while (iterator.next()) |entry| {
-            entry.value_ptr.callbacks.deinit();
-        }
-        self.context_map.deinit();
-    }
-
-    pub fn add_callback(self: *Self, context_name: StringHash, callback: InputContextCallback) !void {
-        if (self.context_map.getPtr(context_name.hash)) |inner_context| {
-            try inner_context.callbacks.append(callback);
-        }
-    }
-
-    pub fn set_active_context(self: *Self, context_name: StringHash) void {
-        if (self.context_map.contains(context_name.hash)) {
-            self.active_context = context_name;
+    pub fn get_value(self: @This(), clamp: bool) f32 {
+        if (clamp) {
+            return std.math.clamp(self.value, -1.0, 1.0);
         } else {
-            unreachable;
-        }
-    }
-
-    pub fn trigger_button(self: *Self, button: StringHash, state: ButtonState) void {
-        if (self.context_map.getPtr(self.active_context.hash)) |context| {
-            for (context.callbacks.items) |callback| {
-                //TODO: verify that button is part of context
-                callback.trigger_button(button, state);
-            }
-        } else {
-            unreachable;
-        }
-    }
-
-    pub fn trigger_axis(self: *Self, axis: StringHash, value: f32) void {
-        if (self.context_map.getPtr(self.active_context.hash)) |context| {
-            for (context.callbacks.items) |callback| {
-                //TODO: verify that axis is part of context
-                callback.trigger_axis(axis, value);
-            }
-        } else {
-            unreachable;
+            return self.value;
         }
     }
 };
+
+pub const ButtonBinding = union(enum) {
+    button: Button,
+    axis: struct {
+        axis: Axis,
+        dir: AxisDirection,
+    },
+};
+
+//TODO: use these
+// pub const ButtonEventString = struct {
+//     name: StringHash,
+//     state: ButtonState,
+// };
+
+// pub const AxisEventString = struct {
+//     name: StringHash,
+//     state: f32,
+// };

@@ -21,13 +21,8 @@ pub fn build(b: *std.Build) !void {
     const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
     exe.root_module.addImport("zmath", zmath.module("root"));
 
-    const zsdl = b.dependency("zsdl", .{});
-    exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
-
-    const zsdl_path = zsdl.path("").getPath(b);
-    try @import("zsdl").addLibraryPathsTo(exe, zsdl_path);
-    @import("zsdl").link_SDL2(exe);
-    try @import("zsdl").install_sdl2(&exe.step, target.result, .bin, zsdl_path);
+    //SDL3
+    exe.linkSystemLibrary("sdl3");
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);

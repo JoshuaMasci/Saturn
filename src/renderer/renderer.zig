@@ -1,9 +1,11 @@
 const std = @import("std");
-
-const object_pool = @import("../object_pool.zig");
 const zm = @import("zmath");
 
+const c = @import("../c.zig");
+const object_pool = @import("../object_pool.zig");
 const Transform = @import("../transform.zig");
+const Camera = @import("../camera.zig").Camera;
+
 const ColoredVertex = @import("opengl/vertex.zig").ColoredVertex;
 const Mesh = @import("opengl/mesh.zig");
 const Shader = @import("opengl/shader.zig");
@@ -87,13 +89,21 @@ pub const Renderer = struct {
         return Scene.init(self.allocator);
     }
 
-    pub fn render_scene(self: Self, window_size: [2]i32, scene: *Scene, camera: *const Camera) void {
+    pub fn clear_framebuffer(self: *Self) void {
+        _ = self;
+        c.glClearColor(0.0, 0.0, 0.0, 1.0);
+        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
+    }
+
+    pub fn render_scene(self: Self, window_size: [2]i32, scene: *Scene, scene_camera: *const Camera) void {
+        c.glViewport(0, 0, window_size[0], window_size[1]);
+
         const width_float: f32 = @floatFromInt(window_size[0]);
         const height_float: f32 = @floatFromInt(window_size[1]);
         const aspect_ratio: f32 = width_float / height_float;
 
-        const view_matrix = camera.transform.view_matrix();
-        const projection_matrix = camera.data.perspective(aspect_ratio);
+        const view_matrix = scene_camera.transform.view_matrix();
+        const projection_matrix = scene_camera.data.perspective_gl(aspect_ratio);
         var view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
         self.colored_mesh_shader.bind();
@@ -153,36 +163,6 @@ pub const Scene = struct {
             std.log.err("Scene doesn't contain SceneInstanceHandle({})", .{instance});
         }
     }
-};
-
-pub const Fov = union(enum) {
-    x: f32,
-    y: f32,
-};
-
-pub const PerspectiveCamera = struct {
-    const Self = @This();
-
-    fov: Fov,
-    near: f32,
-    far: f32,
-
-    pub const Default: Self = .{ .fov = .{ .x = 75.0 }, .near = 0.1, .far = 1000.0 };
-
-    pub fn perspective(self: Self, aspect_ratio: f32) zm.Mat {
-        const fov = switch (self.fov) {
-            .x => |fov_x| std.math.atan(std.math.tan(std.math.degreesToRadians(fov_x) / 2.0) * aspect_ratio) * 2.0,
-            .y => |fov_y| std.math.degreesToRadians(fov_y),
-        };
-        return zm.perspectiveFovRhGl(fov, aspect_ratio, self.near, self.far);
-    }
-};
-
-pub const Camera = struct {
-    const Self = @This();
-
-    data: PerspectiveCamera,
-    transform: Transform,
 };
 
 fn genBoxMesh(size: [3]f32, color: [3]f32) Mesh {
