@@ -49,10 +49,10 @@ pub const Platform = struct {
             std.debug.panic("SDL WINDOW ERROR {s}", .{c.SDL_GetError()});
         }
 
-        // try sdl.gl.setAttribute(sdl.gl.Attr.doublebuffer, 1);
-        // try sdl.gl.setAttribute(sdl.gl.Attr.context_major_version, 4);
-        // try sdl.gl.setAttribute(sdl.gl.Attr.context_minor_version, 6);
-        // try sdl.gl.setAttribute(sdl.gl.Attr.context_profile_mask, @intFromEnum(sdl.gl.Profile.core));
+        _ = c.SDL_GL_SetAttribute(c.SDL_GL_DOUBLEBUFFER, 1);
+        _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_PROFILE_MASK, c.SDL_GL_CONTEXT_PROFILE_CORE);
+        _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+        _ = c.SDL_GL_SetAttribute(c.SDL_GL_CONTEXT_MINOR_VERSION, 6);
 
         const gl_context: c.SDL_GLContext = c.SDL_GL_CreateContext(window);
 
@@ -69,19 +69,24 @@ pub const Platform = struct {
             std.log.err("SDL VSYNC ERROR {s}", .{c.SDL_GetError()});
         }
 
-        var mouse = Mouse.init();
-        var keyboard = Keyboard.init();
-        {
-            mouse.button_bindings.set(MouseButton.left, .{ .button = .debug_camera_interact });
+        var mouse: ?Mouse = null;
+        if (c.SDL_HasMouse() == c.SDL_TRUE) {
+            mouse = Mouse.init();
+            mouse.?.button_bindings.set(MouseButton.left, .{ .button = .debug_camera_interact });
+        }
 
-            keyboard.button_bindings.set(Scancode.a, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .positve } });
-            keyboard.button_bindings.set(Scancode.d, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .negitive } });
+        var keyboard: ?Keyboard = null;
+        if (c.SDL_HasKeyboard() == c.SDL_TRUE) {
+            keyboard = Keyboard.init();
 
-            keyboard.button_bindings.set(Scancode.space, .{ .axis = .{ .axis = .debug_camera_up_down, .dir = .positve } });
-            keyboard.button_bindings.set(Scancode.lshift, .{ .axis = .{ .axis = .debug_camera_up_down, .dir = .negitive } });
+            keyboard.?.button_bindings.set(Scancode.a, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .positve } });
+            keyboard.?.button_bindings.set(Scancode.d, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .negitive } });
 
-            keyboard.button_bindings.set(Scancode.w, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .positve } });
-            keyboard.button_bindings.set(Scancode.s, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .negitive } });
+            keyboard.?.button_bindings.set(Scancode.space, .{ .axis = .{ .axis = .debug_camera_up_down, .dir = .positve } });
+            keyboard.?.button_bindings.set(Scancode.lshift, .{ .axis = .{ .axis = .debug_camera_up_down, .dir = .negitive } });
+
+            keyboard.?.button_bindings.set(Scancode.w, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .positve } });
+            keyboard.?.button_bindings.set(Scancode.s, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .negitive } });
         }
 
         return .{
@@ -145,7 +150,9 @@ pub const Platform = struct {
 
     fn proccess_keyboard_event(self: *Self, app: *App, event: *c.SDL_KeyboardEvent) void {
         if (event.keysym.scancode == c.SDL_SCANCODE_ESCAPE and event.state != 0) {
-            self.should_quit = true;
+            if (self.mouse) |mouse| {
+                mouse.set_captured(false);
+            }
         }
 
         if (self.keyboard) |*keyboard| {
@@ -172,13 +179,11 @@ const Mouse = struct {
     const ButtonBindingArray = std.EnumArray(MouseButton, ?input.ButtonBinding);
     const ButtonAxisStateArray = std.EnumArray(input.Axis, input.ButtonAxisState);
 
-    captured: bool,
     button_bindings: ButtonBindingArray,
     axis_state: ButtonAxisStateArray,
 
     fn init() Self {
         return .{
-            .captured = false,
             .button_bindings = ButtonBindingArray.initFill(null),
             .axis_state = ButtonAxisStateArray.initFill(input.ButtonAxisState.Default),
         };
@@ -186,6 +191,16 @@ const Mouse = struct {
 
     fn deinit(self: *Self) void {
         _ = self;
+    }
+
+    fn set_captured(self: Self, captured: bool) void {
+        _ = self;
+        _ = c.SDL_SetRelativeMouseMode(@intFromBool(captured));
+    }
+
+    fn is_captured(self: Self) bool {
+        _ = self;
+        return c.SDL_GetRelativeMouseMode() == c.SDL_TRUE;
     }
 
     fn on_button_event(self: *Self, app: *App, event: *c.SDL_MouseButtonEvent) void {
