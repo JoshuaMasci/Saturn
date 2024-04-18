@@ -13,6 +13,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     exe.linkLibC();
+    exe.addIncludePath(std.Build.LazyPath.relative("libs"));
 
     // Opengl
     exe.addIncludePath(std.Build.LazyPath.relative("libs/glad/include"));
@@ -23,6 +24,10 @@ pub fn build(b: *std.Build) !void {
 
     //SDL3
     exe.linkSystemLibrary("sdl3");
+
+    //cimgui
+    const cimgui = try build_cimgui(b, target, optimize);
+    exe.linkLibrary(cimgui);
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
@@ -44,4 +49,44 @@ pub fn build(b: *std.Build) !void {
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+}
+
+fn build_cimgui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+    var lib = b.addStaticLibrary(.{
+        .name = "cimgui",
+        .target = target,
+        .optimize = optimize,
+    });
+    b.installArtifact(lib);
+
+    lib.linkLibC();
+    lib.linkLibCpp();
+
+    lib.addIncludePath(.{ .path = "libs" });
+
+    const CIMGUI_PATH = "libs/cimgui/";
+
+    const C_FLAGS = &.{};
+
+    lib.addCSourceFiles(.{
+        .files = &.{
+            CIMGUI_PATH ++ "cimgui.cpp",
+        },
+        .flags = C_FLAGS,
+    });
+
+    const IMGUI_PATH = "libs/cimgui/imgui/";
+
+    lib.addCSourceFiles(.{
+        .files = &.{
+            IMGUI_PATH ++ "imgui.cpp",
+            IMGUI_PATH ++ "imgui_widgets.cpp",
+            IMGUI_PATH ++ "imgui_tables.cpp",
+            IMGUI_PATH ++ "imgui_draw.cpp",
+            IMGUI_PATH ++ "imgui_demo.cpp",
+        },
+        .flags = C_FLAGS,
+    });
+
+    return lib;
 }
