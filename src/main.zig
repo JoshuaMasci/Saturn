@@ -48,17 +48,6 @@ fn human_readable_unit(value: usize) []const u8 {
 }
 
 pub fn main() !void {
-
-    //imgui test
-    {
-        const c = @import("c.zig");
-        _ = c.igCreateContext(null);
-        defer c.igDestroyContext(null);
-        const io_ptr = c.igGetIO();
-        io_ptr.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
-        io_ptr.*.ConfigFlags |= c.ImGuiConfigFlags_ViewportsEnable;
-    }
-
     var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
     defer if (general_purpose_allocator.deinit() == .leak) {
         log.err("GeneralPurposeAllocator has a memory leak!", .{});
@@ -70,6 +59,13 @@ pub fn main() !void {
 
     var app = try App.init(allocator);
     defer app.deinit();
+
+    //imgui test
+    {
+        const zgui = @import("zgui");
+        zgui.init(allocator);
+        zgui.deinit();
+    }
 
     while (app.is_running()) {
         if (frame_count % MemReportFrequency == 0) {

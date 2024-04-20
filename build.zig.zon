@@ -10,5 +10,6 @@
     },
     .dependencies = .{
         .zmath = .{ .path = "libs/zig-gamedev/libs/zmath" },
+        .zgui = .{ .path = "libs/zig-gamedev/libs/zgui" },
     },
 }
