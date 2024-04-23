@@ -1,7 +1,7 @@
 const std = @import("std");
 const zm = @import("zmath");
+const gl = @import("zopengl").bindings;
 
-const c = @import("../c.zig");
 const object_pool = @import("../object_pool.zig");
 const Transform = @import("../transform.zig");
 const Camera = @import("../camera.zig").Camera;
@@ -91,12 +91,12 @@ pub const Renderer = struct {
 
     pub fn clear_framebuffer(self: *Self) void {
         _ = self;
-        c.glClearColor(0.0, 0.0, 0.0, 1.0);
-        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
     pub fn render_scene(self: Self, window_size: [2]i32, scene: *Scene, scene_camera: *const Camera) void {
-        c.glViewport(0, 0, window_size[0], window_size[1]);
+        gl.viewport(0, 0, window_size[0], window_size[1]);
 
         const width_float: f32 = @floatFromInt(window_size[0]);
         const height_float: f32 = @floatFromInt(window_size[1]);

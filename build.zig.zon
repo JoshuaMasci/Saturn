@@ -9,6 +9,9 @@
         "README.md",
     },
     .dependencies = .{
+        .zglfw = .{ .path = "libs/zig-gamedev/libs/zglfw" },
+        .system_sdk = .{ .path = "libs/zig-gamedev/libs/system-sdk" },
+        .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
         .zmath = .{ .path = "libs/zig-gamedev/libs/zmath" },
         .zgui = .{ .path = "libs/zig-gamedev/libs/zgui" },
     },

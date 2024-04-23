@@ -1,4 +1,4 @@
-const c = @import("../../c.zig");
+const gl = @import("zopengl").bindings;
 
 pub const ColoredVertex = struct {
     const Self = @This();
@@ -14,10 +14,10 @@ pub const ColoredVertex = struct {
     }
 
     pub fn genVao() void {
-        c.glEnableVertexAttribArray(0);
-        c.glEnableVertexAttribArray(1);
-        c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Self), null); // Position is at zero
-        c.glVertexAttribPointer(1, 3, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Self), @ptrFromInt(@offsetOf(Self, "color")));
+        gl.enableVertexAttribArray(0);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, @sizeOf(Self), null); // Position is at zero
+        gl.vertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, @sizeOf(Self), @ptrFromInt(@offsetOf(Self, "color")));
     }
 };
 
@@ -35,9 +35,9 @@ pub const TexturedVertex = struct {
     }
 
     pub fn genVao() void {
-        c.glEnableVertexAttribArray(0);
-        c.glEnableVertexAttribArray(1);
-        c.glVertexAttribPointer(0, 3, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Self), null); // Position is at zero
-        c.glVertexAttribPointer(1, 2, c.GL_FLOAT, c.GL_FALSE, @sizeOf(Self), @ptrFromInt(@offsetOf(Self, "uv")));
+        gl.enableVertexAttribArray(0);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, @sizeOf(Self), null); // Position is at zero
+        gl.vertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, @sizeOf(Self), @ptrFromInt(@offsetOf(Self, "uv")));
     }
 };

@@ -7,7 +7,8 @@ const Transform = @import("transform.zig");
 const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
-const sdl_platform = @import("platform/sdl3.zig");
+const gflw_platform = @import("platform/glfw.zig");
+
 const renderer = @import("renderer/renderer.zig");
 
 pub const App = struct {
@@ -16,7 +17,7 @@ pub const App = struct {
     should_quit: bool,
     allocator: std.mem.Allocator,
 
-    platform: sdl_platform.Platform,
+    platform: gflw_platform.Platform,
 
     game_renderer: renderer.Renderer,
     game_scene: renderer.Scene,
@@ -31,8 +32,8 @@ pub const App = struct {
         const node_handle = try node_pool.insert(node);
         _ = try node_pool.remove(node_handle);
 
-        std.log.info("Starting SDL2", .{});
-        const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
+        std.log.info("Starting Glfw", .{});
+        const platform = try gflw_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
         var game_renderer = try renderer.Renderer.init(allocator);
         var game_scene = game_renderer.create_scene();
@@ -66,7 +67,7 @@ pub const App = struct {
         self.game_scene.deinit();
         self.game_renderer.deinit();
 
-        std.log.info("Shutting Down SDL2", .{});
+        std.log.info("Shutting Down Glfw", .{});
         self.platform.deinit();
     }
 

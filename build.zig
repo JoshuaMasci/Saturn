@@ -12,21 +12,21 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    exe.linkLibC();
-    exe.addIncludePath(std.Build.path(b, "libs"));
+    // zglfw
+    const zglfw = b.dependency("zglfw", .{});
+    exe.root_module.addImport("zglfw", zglfw.module("root"));
+    exe.linkLibrary(zglfw.artifact("glfw"));
+    @import("system_sdk").addLibraryPathsTo(exe);
 
-    // Opengl
-    exe.addIncludePath(std.Build.path(b, "libs/glad/include"));
-    exe.addCSourceFile(.{ .file = std.Build.path(b, "libs/glad/src/glad.c"), .flags = &[_][]const u8{"-std=c99"} });
+    // zopengl
+    const zopengl = b.dependency("zopengl", .{});
+    exe.root_module.addImport("zopengl", zopengl.module("root"));
 
-    // SDL3
-    exe.linkSystemLibrary("sdl3");
-
-    // zMath
+    // zmath
     const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
     exe.root_module.addImport("zmath", zmath.module("root"));
 
-    // zImgui
+    // zimgui
     const zgui = b.dependency("zgui", .{
         .shared = false,
         .with_implot = false,
