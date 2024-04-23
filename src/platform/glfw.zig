@@ -1,11 +1,11 @@
 const std = @import("std");
+const glfw = @import("zglfw");
+const zopengl = @import("zopengl");
+const zimgui = @import("zgui");
 
 const input = @import("../input.zig");
 const StringHash = @import("../string_hash.zig");
 const App = @import("../app.zig").App;
-
-const glfw = @import("zglfw");
-const zopengl = @import("zopengl");
 
 pub const WindowSize = union(enum) {
     windowed: [2]i32,
@@ -20,8 +20,6 @@ pub const Platform = struct {
     window: *glfw.Window,
 
     pub fn init_window(allocator: std.mem.Allocator, name: [:0]const u8, size: WindowSize) !Self {
-        _ = allocator;
-
         try glfw.init();
 
         const gl_major = 4;
@@ -47,8 +45,17 @@ pub const Platform = struct {
         const window = try glfw.Window.create(window_width, window_height, name, monitor);
 
         glfw.makeContextCurrent(window);
+        glfw.swapInterval(1);
 
         try zopengl.loadCoreProfile(glfw.getProcAddress, gl_major, gl_minor);
+
+        zimgui.init(allocator);
+        zimgui.backend.init(window);
+        zimgui.io.setConfigFlags(.{
+            .dock_enable = true,
+            .nav_enable_keyboard = true,
+            .nav_enable_gamepad = true,
+        });
 
         return .{
             .should_quit = false,
@@ -57,6 +64,8 @@ pub const Platform = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        zimgui.backend.deinit();
+        zimgui.deinit();
         self.window.destroy();
         glfw.terminate();
     }
@@ -66,6 +75,7 @@ pub const Platform = struct {
     }
 
     pub fn gl_swap_window(self: Self) void {
+        zimgui.backend.draw();
         self.window.swapBuffers();
     }
 
@@ -77,5 +87,8 @@ pub const Platform = struct {
         if (self.window.shouldClose()) {
             self.should_quit = true;
         }
+
+        const fb_size = self.window.getFramebufferSize();
+        zimgui.backend.newFrame(@intCast(fb_size[0]), @intCast(fb_size[1]));
     }
 };

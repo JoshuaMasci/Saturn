@@ -60,13 +60,6 @@ pub fn main() !void {
     var app = try App.init(allocator);
     defer app.deinit();
 
-    //imgui test
-    {
-        const zgui = @import("zgui");
-        zgui.init(allocator);
-        zgui.deinit();
-    }
-
     while (app.is_running()) {
         if (frame_count % MemReportFrequency == 0) {
             log.info("GeneralPurposeAllocator Memory Usage: {} {s}", .{ human_readable_bytes(general_purpose_allocator.total_requested_bytes), human_readable_unit(general_purpose_allocator.total_requested_bytes) });

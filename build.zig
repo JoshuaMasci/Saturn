@@ -28,8 +28,7 @@ pub fn build(b: *std.Build) !void {
 
     // zimgui
     const zgui = b.dependency("zgui", .{
-        .shared = false,
-        .with_implot = false,
+        .backend = .glfw_opengl3,
     });
     exe.root_module.addImport("zgui", zgui.module("root"));
     exe.linkLibrary(zgui.artifact("imgui"));

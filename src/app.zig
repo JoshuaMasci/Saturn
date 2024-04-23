@@ -1,5 +1,6 @@
 const std = @import("std");
 const zm = @import("zmath");
+const zimgui = @import("zgui");
 
 const input = @import("input.zig");
 const world = @import("world.zig");
@@ -77,6 +78,8 @@ pub const App = struct {
 
     pub fn update(self: *Self) !void {
         self.platform.proccess_events(self);
+
+        zimgui.showDemoWindow(null);
 
         self.game_camera.update(1.0 / 60.0);
 
