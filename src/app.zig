@@ -8,7 +8,7 @@ const Transform = @import("transform.zig");
 const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
-const gflw_platform = @import("platform/glfw.zig");
+const sdl_platform = @import("platform/sdl2.zig");
 
 const renderer = @import("renderer/renderer.zig");
 
@@ -18,7 +18,7 @@ pub const App = struct {
     should_quit: bool,
     allocator: std.mem.Allocator,
 
-    platform: gflw_platform.Platform,
+    platform: sdl_platform.Platform,
 
     game_renderer: renderer.Renderer,
     game_scene: renderer.Scene,
@@ -33,8 +33,7 @@ pub const App = struct {
         const node_handle = try node_pool.insert(node);
         _ = try node_pool.remove(node_handle);
 
-        std.log.info("Starting Glfw", .{});
-        const platform = try gflw_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
+        const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
         var game_renderer = try renderer.Renderer.init(allocator);
         var game_scene = game_renderer.create_scene();
@@ -68,7 +67,6 @@ pub const App = struct {
         self.game_scene.deinit();
         self.game_renderer.deinit();
 
-        std.log.info("Shutting Down Glfw", .{});
         self.platform.deinit();
     }
 
@@ -78,8 +76,6 @@ pub const App = struct {
 
     pub fn update(self: *Self) !void {
         self.platform.proccess_events(self);
-
-        zimgui.showDemoWindow(null);
 
         self.game_camera.update(1.0 / 60.0);
 
@@ -93,6 +89,11 @@ pub const App = struct {
         const window_size = try self.platform.get_window_size();
         self.game_renderer.render_scene(window_size, &self.game_scene, &scene_camera);
 
+        {
+            zimgui.backend.newFrame(try self.platform.get_window_size());
+            zimgui.showDemoWindow(null);
+            zimgui.backend.draw();
+        }
         self.platform.gl_swap_window();
     }
 

@@ -95,8 +95,8 @@ pub const Renderer = struct {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
-    pub fn render_scene(self: Self, window_size: [2]i32, scene: *Scene, scene_camera: *const Camera) void {
-        gl.viewport(0, 0, window_size[0], window_size[1]);
+    pub fn render_scene(self: Self, window_size: [2]u32, scene: *Scene, scene_camera: *const Camera) void {
+        gl.viewport(0, 0, @intCast(window_size[0]), @intCast(window_size[1]));
 
         const width_float: f32 = @floatFromInt(window_size[0]);
         const height_float: f32 = @floatFromInt(window_size[1]);

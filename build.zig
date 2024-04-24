@@ -12,26 +12,25 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    // zglfw
-    const zglfw = b.dependency("zglfw", .{});
-    exe.root_module.addImport("zglfw", zglfw.module("root"));
-    exe.linkLibrary(zglfw.artifact("glfw"));
-    @import("system_sdk").addLibraryPathsTo(exe);
+    // zsdl
+    const zsdl = b.dependency("zsdl", .{});
+    exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
+    @import("zsdl").link_SDL2(exe);
 
     // zopengl
     const zopengl = b.dependency("zopengl", .{});
     exe.root_module.addImport("zopengl", zopengl.module("root"));
 
-    // zmath
-    const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
-    exe.root_module.addImport("zmath", zmath.module("root"));
-
     // zimgui
     const zgui = b.dependency("zgui", .{
-        .backend = .glfw_opengl3,
+        .backend = .sdl2_opengl3,
     });
     exe.root_module.addImport("zgui", zgui.module("root"));
     exe.linkLibrary(zgui.artifact("imgui"));
+
+    // zmath
+    const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
+    exe.root_module.addImport("zmath", zmath.module("root"));
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
