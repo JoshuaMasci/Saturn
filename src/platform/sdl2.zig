@@ -1,8 +1,8 @@
 const std = @import("std");
 const sdl = @import("zsdl2");
-const zimgui = @import("zgui");
-const zopengl = @import("zopengl");
-const gl = zopengl.bindings;
+const imgui = @import("zimgui");
+const opengl = @import("zopengl");
+const gl = opengl.bindings;
 
 const App = @import("../app.zig").App;
 
@@ -55,7 +55,7 @@ pub const Platform = struct {
         try sdl.gl.setAttribute(sdl.gl.Attr.doublebuffer, 1);
 
         const gl_context = try sdl.gl.createContext(window);
-        try zopengl.loadCoreProfile(&sdl.gl.getProcAddress, GL_VERSION[0], GL_VERSION[1]);
+        try opengl.loadCoreProfile(&sdl.gl.getProcAddress, GL_VERSION[0], GL_VERSION[1]);
 
         std.log.info("Opengl Context:\n\tVender: {s}\n\tRenderer: {s}\n\tVersion: {s}\n\tGLSL: {s}", .{
             gl.getString(gl.VENDOR),
@@ -66,13 +66,13 @@ pub const Platform = struct {
 
         try sdl.gl.setSwapInterval(1);
 
-        zimgui.init(allocator);
-        zimgui.io.setConfigFlags(.{
+        imgui.init(allocator);
+        imgui.io.setConfigFlags(.{
             .dock_enable = true,
             .nav_enable_keyboard = true,
             .nav_enable_gamepad = true,
         });
-        zimgui.backend.init(window, gl_context);
+        imgui.backend.init(window, gl_context);
 
         return .{
             .should_quit = false,
@@ -84,8 +84,8 @@ pub const Platform = struct {
     pub fn deinit(self: *Self) void {
         std.log.info("Shutting down sdl", .{});
 
-        zimgui.backend.deinit();
-        zimgui.deinit();
+        imgui.backend.deinit();
+        imgui.deinit();
 
         if (self.gl_context) |gl_context| {
             sdl.gl.deleteContext(gl_context);
@@ -108,7 +108,7 @@ pub const Platform = struct {
     pub fn proccess_events(self: *Self, app: *App) void {
         var event: sdl.Event = undefined;
         while (sdl.pollEvent(&event)) {
-            _ = zimgui.backend.processEvent(&event);
+            _ = imgui.backend.processEvent(&event);
 
             switch (event.type) {
                 .quit => self.should_quit = true,

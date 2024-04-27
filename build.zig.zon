@@ -9,11 +9,14 @@
         "README.md",
     },
     .dependencies = .{
-        .zglfw = .{ .path = "libs/zig-gamedev/libs/zglfw" },
-        .system_sdk = .{ .path = "libs/zig-gamedev/libs/system-sdk" },
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
         .zmath = .{ .path = "libs/zig-gamedev/libs/zmath" },
-        .zgui = .{ .path = "libs/zig-gamedev/libs/zgui" },
+        .zimgui = .{ .path = "libs/zig-gamedev/libs/zimgui" },
+        .zjolt = .{ .path = "libs/zig-gamedev/libs/zjolt" },
+
+        //Might use these at some point
+        .zpool = .{ .path = "libs/zig-gamedev/libs/zpool" },
+        .zmesh = .{ .path = "libs/zig-gamedev/libs/zmesh" },
     },
 }

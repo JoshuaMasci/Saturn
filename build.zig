@@ -22,11 +22,11 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zopengl", zopengl.module("root"));
 
     // zimgui
-    const zgui = b.dependency("zgui", .{
+    const zimgui = b.dependency("zimgui", .{
         .backend = .sdl2_opengl3,
     });
-    exe.root_module.addImport("zgui", zgui.module("root"));
-    exe.linkLibrary(zgui.artifact("imgui"));
+    exe.root_module.addImport("zimgui", zimgui.module("root"));
+    exe.linkLibrary(zimgui.artifact("imgui"));
 
     // zmath
     const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });

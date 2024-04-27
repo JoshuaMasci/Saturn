@@ -1,6 +1,6 @@
 const std = @import("std");
 const zm = @import("zmath");
-const zimgui = @import("zgui");
+const imgui = @import("zimgui");
 
 const input = @import("input.zig");
 const world = @import("world.zig");
@@ -90,9 +90,9 @@ pub const App = struct {
         self.game_renderer.render_scene(window_size, &self.game_scene, &scene_camera);
 
         {
-            zimgui.backend.newFrame(try self.platform.get_window_size());
-            zimgui.showDemoWindow(null);
-            zimgui.backend.draw();
+            imgui.backend.newFrame(try self.platform.get_window_size());
+            imgui.showDemoWindow(null);
+            imgui.backend.draw();
         }
         self.platform.gl_swap_window();
     }
