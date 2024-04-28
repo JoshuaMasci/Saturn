@@ -14,8 +14,8 @@ pub fn build(b: *std.Build) !void {
 
     // zsdl
     const zsdl = b.dependency("zsdl", .{});
-    exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
-    @import("zsdl").link_SDL2(exe);
+    exe.root_module.addImport("zsdl3", zsdl.module("zsdl3"));
+    @import("zsdl").link_SDL3(exe);
 
     // zopengl
     const zopengl = b.dependency("zopengl", .{});
@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) !void {
 
     // zimgui
     const zimgui = b.dependency("zimgui", .{
-        .backend = .sdl2_opengl3,
+        .backend = .sdl3_opengl3,
     });
     exe.root_module.addImport("zimgui", zimgui.module("root"));
     exe.linkLibrary(zimgui.artifact("imgui"));
@@ -31,6 +31,11 @@ pub fn build(b: *std.Build) !void {
     // zmath
     const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
     exe.root_module.addImport("zmath", zmath.module("root"));
+
+    // zmesh
+    const zmesh = b.dependency("zmesh", .{});
+    exe.root_module.addImport("zmesh", zmesh.module("root"));
+    exe.linkLibrary(zmesh.artifact("zmesh"));
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);

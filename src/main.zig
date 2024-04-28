@@ -54,17 +54,50 @@ pub fn main() !void {
     };
     const allocator = general_purpose_allocator.allocator();
 
-    var frame_count: usize = 0;
-    const MemReportFrequency = 500;
-
     var app = try App.init(allocator);
     defer app.deinit();
 
-    while (app.is_running()) {
-        if (frame_count % MemReportFrequency == 0) {
-            log.info("GeneralPurposeAllocator Memory Usage: {} {s}", .{ human_readable_bytes(general_purpose_allocator.total_requested_bytes), human_readable_unit(general_purpose_allocator.total_requested_bytes) });
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+    if (args.len > 1) {
+        const file_path = args[1];
+        std.log.info("Loading File: {s}", .{file_path});
+        const Mesh = @import("mesh.zig");
+
+        if (Mesh.load_gltf_mesh(allocator, file_path, &app.game_renderer)) |mesh| {
+            app.loaded_mesh = mesh;
+        } else |err| {
+            log.err("Loading {s} failed with {}", .{ file_path, err });
         }
+    }
+
+    var last_frame_time_ns = std.time.nanoTimestamp();
+    var frames_since_last: usize = 0;
+
+    while (app.is_running()) {
+        const LOG_FREQENCY_SECONDS = 1;
+
+        const current_time_ns = std.time.nanoTimestamp();
+        const time_since_last_frame_ns = current_time_ns - last_frame_time_ns;
+        if (time_since_last_frame_ns > (std.time.ns_per_s * LOG_FREQENCY_SECONDS)) {
+            const time_since_last_frame_ms = @as(f32, @floatFromInt(time_since_last_frame_ns)) / std.time.ns_per_ms;
+            const average_frame_time = time_since_last_frame_ms / @as(f32, @floatFromInt(frames_since_last));
+
+            const memory_usage = human_readable_bytes(general_purpose_allocator.total_requested_bytes);
+            const memory_usage_unit = human_readable_unit(general_purpose_allocator.total_requested_bytes);
+
+            log.info("Perf\n\tFPS: {}\n\tFrame Time: {d:.3}ms\n\tMemory Usage: {} {s}", .{
+                frames_since_last,
+                average_frame_time,
+                memory_usage,
+                memory_usage_unit,
+            });
+
+            last_frame_time_ns = current_time_ns;
+            frames_since_last = 0;
+        }
+
         try app.update();
-        frame_count += 1;
+        frames_since_last += 1;
     }
 }

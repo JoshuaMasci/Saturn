@@ -8,7 +8,12 @@ const Transform = @import("transform.zig");
 const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
-const sdl_platform = @import("platform/sdl2.zig");
+const SDL_VERSION = 3;
+const sdl_platform = switch (SDL_VERSION) {
+    2 => @import("platform/sdl2.zig"),
+    3 => @import("platform/sdl3.zig"),
+    else => unreachable,
+};
 
 const renderer = @import("renderer/renderer.zig");
 
@@ -24,6 +29,8 @@ pub const App = struct {
     game_scene: renderer.Scene,
     game_cube: renderer.SceneInstanceHandle,
     game_camera: debug_camera.DebugCamera,
+
+    loaded_mesh: ?renderer.StaticMeshHandle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const node: world.Node = undefined;
@@ -58,6 +65,8 @@ pub const App = struct {
             .game_scene = game_scene,
             .game_cube = game_cube,
             .game_camera = game_camera,
+
+            .loaded_mesh = null,
         };
     }
 
