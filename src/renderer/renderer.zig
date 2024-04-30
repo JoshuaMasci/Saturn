@@ -29,21 +29,37 @@ pub const Renderer = struct {
     allocator: std.mem.Allocator,
 
     colored_mesh_shader: Shader,
+    textured_mesh_shader: Shader,
 
     static_meshes: StaticMeshPool,
     materials: MaterialPool,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const vertex_code = try read_file_to_string(allocator, "res/shaders/colored.vert");
-        defer allocator.free(vertex_code);
+        var colored_mesh_shader: Shader = undefined;
+        {
+            const colored_vertex_code = try read_file_to_string(allocator, "res/shaders/colored.vert");
+            defer allocator.free(colored_vertex_code);
 
-        const fragment_code = try read_file_to_string(allocator, "res/shaders/colored.frag");
-        defer allocator.free(fragment_code);
+            const colored_fragment_code = try read_file_to_string(allocator, "res/shaders/colored.frag");
+            defer allocator.free(colored_fragment_code);
+            colored_mesh_shader = Shader.init(colored_vertex_code, colored_fragment_code);
+        }
+
+        var textured_mesh_shader: Shader = undefined;
+        {
+            const textured_vertex_code = try read_file_to_string(allocator, "res/shaders/textured.vert");
+            defer allocator.free(textured_vertex_code);
+
+            const textured_fragment_code = try read_file_to_string(allocator, "res/shaders/textured.frag");
+            defer allocator.free(textured_fragment_code);
+            textured_mesh_shader = Shader.init(textured_vertex_code, textured_fragment_code);
+        }
 
         return .{
             .allocator = allocator,
 
-            .colored_mesh_shader = Shader.init(vertex_code, fragment_code),
+            .colored_mesh_shader = colored_mesh_shader,
+            .textured_mesh_shader = textured_mesh_shader,
 
             .static_meshes = StaticMeshPool.init(allocator),
             .materials = MaterialPool.init(allocator),
@@ -52,6 +68,7 @@ pub const Renderer = struct {
 
     pub fn deinit(self: *Self) void {
         self.colored_mesh_shader.deinit();
+        self.textured_mesh_shader.deinit();
 
         var mesh_iterator = self.static_meshes.iterator();
         while (mesh_iterator.next()) |entry| {
@@ -73,12 +90,23 @@ pub const Renderer = struct {
         }
     }
 
+    pub fn create_colored_material(self: *Self) !MaterialHandle {
+        _ = self;
+        return 0;
+    }
+
+    pub fn create_textured_material(self: *Self) !MaterialHandle {
+        _ = self;
+        return 1;
+    }
+
     pub fn load_material(self: *Self, file_path: []const u8) !MaterialHandle {
         _ = self;
         _ = file_path;
 
         return 0;
     }
+
     pub fn unload_material(self: *Self, material_handle: MaterialHandle) void {
         if (self.materials.remove(material_handle)) |material| {
             material.deinit();
@@ -96,6 +124,12 @@ pub const Renderer = struct {
     }
 
     pub fn render_scene(self: Self, window_size: [2]u32, scene: *Scene, scene_camera: *const Camera) void {
+        var err: gl.Enum = gl.getError();
+        while (err != gl.NO_ERROR) {
+            std.log.err("GL Error: {}", .{err});
+            err = gl.getError();
+        }
+
         gl.viewport(0, 0, @intCast(window_size[0]), @intCast(window_size[1]));
 
         const width_float: f32 = @floatFromInt(window_size[0]);
@@ -106,13 +140,19 @@ pub const Renderer = struct {
         const projection_matrix = scene_camera.data.perspective_gl(aspect_ratio);
         var view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
-        self.colored_mesh_shader.bind();
-        self.colored_mesh_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
-
         var instance_iterator = scene.instances.iterator();
         while (instance_iterator.next()) |instance| {
-            if (self.static_meshes.get(instance.value_ptr.mesh)) |mesh| {
+            if (instance.value_ptr.material == 0) {
+                self.colored_mesh_shader.bind();
+                self.colored_mesh_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
                 self.colored_mesh_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.model_matrix());
+            } else {
+                self.textured_mesh_shader.bind();
+                self.textured_mesh_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
+                self.textured_mesh_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.model_matrix());
+            }
+
+            if (self.static_meshes.get(instance.value_ptr.mesh)) |mesh| {
                 mesh.draw();
             } else {
                 std.log.warn("Instance {} contains an invalid Mesh {}", .{ instance.handle, instance.value_ptr.mesh });

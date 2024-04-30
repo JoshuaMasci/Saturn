@@ -66,6 +66,8 @@ pub fn main() !void {
 
         if (Mesh.load_gltf_mesh(allocator, file_path, &app.game_renderer)) |mesh| {
             app.loaded_mesh = mesh;
+            const material = try app.game_renderer.create_textured_material();
+            _ = try app.game_scene.add_instace(mesh, material, &@import("transform.zig").Identity);
         } else |err| {
             log.err("Loading {s} failed with {}", .{ file_path, err });
         }

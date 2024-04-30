@@ -46,14 +46,15 @@ pub const App = struct {
         var game_scene = game_renderer.create_scene();
 
         const cube_mesh = try game_renderer.load_static_mesh("some/resource/path/cube.mesh");
-        const cube_material = try game_renderer.load_material("some/resource/path/cube.material");
+        const cube_material = try game_renderer.create_colored_material();
         var cube_tranform = Transform.Identity;
-        cube_tranform.position = zm.f32x4(0.0, 0.0, 5.0, 0.0);
+        cube_tranform.position = zm.f32x4(0.0, 1.0, 0.0, 0.0);
 
         const game_cube = try game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
         game_scene.update_instance(game_cube, &cube_tranform);
 
-        const game_camera = debug_camera.DebugCamera.Default;
+        var game_camera = debug_camera.DebugCamera.Default;
+        game_camera.transform.position = zm.f32x4(0.0, 0.0, -1.0, 0.0);
 
         return .{
             .should_quit = false,

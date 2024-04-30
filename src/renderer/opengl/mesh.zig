@@ -71,7 +71,6 @@ pub fn draw(self: *const Self) void {
     //Setup
     gl.bindVertexArray(self.vao);
     defer gl.bindVertexArray(0);
-    defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, self.index_buffer);
     defer gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, 0);
