@@ -27,7 +27,7 @@ pub const App = struct {
 
     game_renderer: renderer.Renderer,
     game_scene: renderer.Scene,
-    game_cube: renderer.SceneInstanceHandle,
+    game_cube: ?renderer.SceneInstanceHandle,
     game_camera: debug_camera.DebugCamera,
 
     loaded_mesh: ?renderer.StaticMeshHandle,
@@ -43,15 +43,15 @@ pub const App = struct {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
         var game_renderer = try renderer.Renderer.init(allocator);
-        var game_scene = game_renderer.create_scene();
+        const game_scene = game_renderer.create_scene();
 
-        const cube_mesh = try game_renderer.load_static_mesh("some/resource/path/cube.mesh");
-        const cube_material = try game_renderer.create_colored_material();
-        var cube_tranform = Transform.Identity;
-        cube_tranform.position = zm.f32x4(0.0, 1.0, 0.0, 0.0);
+        // const cube_mesh = try game_renderer.load_static_mesh("some/resource/path/cube.mesh");
+        // const cube_material = try game_renderer.create_colored_material();
+        // var cube_tranform = Transform.Identity;
+        // cube_tranform.position = zm.f32x4(0.0, 1.0, 0.0, 0.0);
 
-        const game_cube = try game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
-        game_scene.update_instance(game_cube, &cube_tranform);
+        // const game_cube = try game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
+        // game_scene.update_instance(game_cube, &cube_tranform);
 
         var game_camera = debug_camera.DebugCamera.Default;
         game_camera.transform.position = zm.f32x4(0.0, 0.0, -1.0, 0.0);
@@ -64,7 +64,7 @@ pub const App = struct {
 
             .game_renderer = game_renderer,
             .game_scene = game_scene,
-            .game_cube = game_cube,
+            .game_cube = null,
             .game_camera = game_camera,
 
             .loaded_mesh = null,
@@ -72,7 +72,10 @@ pub const App = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.game_scene.remove_instance(self.game_cube) catch {}; //Do Nothing since we will be destroying it anyways
+        if (self.game_cube) |instance| {
+            self.game_scene.remove_instance(instance) catch {}; //Do Nothing since we will be destroying it anyways
+
+        }
 
         self.game_scene.deinit();
         self.game_renderer.deinit();

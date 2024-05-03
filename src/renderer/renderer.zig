@@ -7,15 +7,32 @@ const Transform = @import("../transform.zig");
 const Camera = @import("../camera.zig").Camera;
 
 const ColoredVertex = @import("opengl/vertex.zig").ColoredVertex;
+const TexturedVertex = @import("opengl/vertex.zig").TexturedVertex;
 const Mesh = @import("opengl/mesh.zig");
 const Shader = @import("opengl/shader.zig");
 
 const StaticMeshPool = object_pool.ObjectPool(u16, Mesh);
 pub const StaticMeshHandle = StaticMeshPool.Handle;
 
-pub const Material = struct {};
+const Texture = struct {};
+const TexturePool = object_pool.ObjectPool(u16, Texture);
+pub const TextureHandle = TexturePool.Handle;
+
+pub const Material = struct {
+    base_color_texture: ?TextureHandle = null,
+    base_color_factor: [4]f32 = [_]f32{1.0} ** 4,
+
+    metallic_roughness_texture: ?TextureHandle = null,
+    metallic_roughness_factor: [2]f32 = .{ 0.0, 1.0 },
+
+    emissive_texture: ?TextureHandle = null,
+    emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
+
+    occlusion_texture: ?TextureHandle = null,
+    normal_texture: ?TextureHandle = null,
+};
 const MaterialPool = object_pool.ObjectPool(u16, Material);
-pub const MaterialHandle = u32;
+pub const MaterialHandle = MaterialPool.Handle;
 
 fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u8 {
     var file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
@@ -28,8 +45,7 @@ pub const Renderer = struct {
 
     allocator: std.mem.Allocator,
 
-    colored_mesh_shader: Shader,
-    textured_mesh_shader: Shader,
+    pbr_material_shader: Shader,
 
     static_meshes: StaticMeshPool,
     materials: MaterialPool,
@@ -45,30 +61,26 @@ pub const Renderer = struct {
             colored_mesh_shader = Shader.init(colored_vertex_code, colored_fragment_code);
         }
 
-        var textured_mesh_shader: Shader = undefined;
+        var pbr_material_shader: Shader = undefined;
         {
-            const textured_vertex_code = try read_file_to_string(allocator, "res/shaders/textured.vert");
+            const textured_vertex_code = try read_file_to_string(allocator, "res/shaders/pbr_material.vert");
             defer allocator.free(textured_vertex_code);
 
-            const textured_fragment_code = try read_file_to_string(allocator, "res/shaders/textured.frag");
+            const textured_fragment_code = try read_file_to_string(allocator, "res/shaders/pbr_material.frag");
             defer allocator.free(textured_fragment_code);
-            textured_mesh_shader = Shader.init(textured_vertex_code, textured_fragment_code);
+            pbr_material_shader = Shader.init(textured_vertex_code, textured_fragment_code);
         }
 
         return .{
             .allocator = allocator,
-
-            .colored_mesh_shader = colored_mesh_shader,
-            .textured_mesh_shader = textured_mesh_shader,
-
+            .pbr_material_shader = pbr_material_shader,
             .static_meshes = StaticMeshPool.init(allocator),
             .materials = MaterialPool.init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.colored_mesh_shader.deinit();
-        self.textured_mesh_shader.deinit();
+        self.pbr_material_shader.deinit();
 
         var mesh_iterator = self.static_meshes.iterator();
         while (mesh_iterator.next()) |entry| {
@@ -78,10 +90,7 @@ pub const Renderer = struct {
         self.materials.deinit();
     }
 
-    pub fn load_static_mesh(self: *Self, file_path: []const u8) !StaticMeshHandle {
-        _ = file_path;
-
-        const mesh = genBoxMesh([3]f32{ 1.0, 1.0, 1.0 }, [3]f32{ 1.0, 1.0, 1.0 });
+    pub fn load_static_mesh(self: *Self, mesh: Mesh) !StaticMeshHandle {
         return try self.static_meshes.insert(mesh);
     }
     pub fn unload_static_mesh(self: *Self, mesh_handle: StaticMeshHandle) void {
@@ -90,21 +99,8 @@ pub const Renderer = struct {
         }
     }
 
-    pub fn create_colored_material(self: *Self) !MaterialHandle {
-        _ = self;
-        return 0;
-    }
-
-    pub fn create_textured_material(self: *Self) !MaterialHandle {
-        _ = self;
-        return 1;
-    }
-
-    pub fn load_material(self: *Self, file_path: []const u8) !MaterialHandle {
-        _ = self;
-        _ = file_path;
-
-        return 0;
+    pub fn load_material(self: *Self, material: Material) !MaterialHandle {
+        return try self.materials.insert(material);
     }
 
     pub fn unload_material(self: *Self, material_handle: MaterialHandle) void {
@@ -136,26 +132,26 @@ pub const Renderer = struct {
         const height_float: f32 = @floatFromInt(window_size[1]);
         const aspect_ratio: f32 = width_float / height_float;
 
-        const view_matrix = scene_camera.transform.view_matrix();
+        const view_matrix = scene_camera.transform.get_view_matrix();
         const projection_matrix = scene_camera.data.perspective_gl(aspect_ratio);
         var view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
+        self.pbr_material_shader.bind();
+        self.pbr_material_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
+
         var instance_iterator = scene.instances.iterator();
         while (instance_iterator.next()) |instance| {
-            if (instance.value_ptr.material == 0) {
-                self.colored_mesh_shader.bind();
-                self.colored_mesh_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
-                self.colored_mesh_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.model_matrix());
-            } else {
-                self.textured_mesh_shader.bind();
-                self.textured_mesh_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
-                self.textured_mesh_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.model_matrix());
-            }
+            self.pbr_material_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.get_model_matrix());
 
-            if (self.static_meshes.get(instance.value_ptr.mesh)) |mesh| {
-                mesh.draw();
+            if (self.materials.get(instance.value_ptr.material)) |material| {
+                self.pbr_material_shader.set_uniform_vec4("base_color_factor", zm.loadArr4(material.base_color_factor));
+                if (self.static_meshes.get(instance.value_ptr.mesh)) |mesh| {
+                    mesh.draw();
+                } else {
+                    std.log.warn("Instance {} contains an invalid Mesh {}", .{ instance.handle, instance.value_ptr.mesh });
+                }
             } else {
-                std.log.warn("Instance {} contains an invalid Mesh {}", .{ instance.handle, instance.value_ptr.mesh });
+                std.log.warn("Instance {} contains an invalid Material {}", .{ instance.handle, instance.value_ptr.material });
             }
         }
     }
@@ -207,6 +203,37 @@ pub const Scene = struct {
 
 fn genBoxMesh(size: [3]f32, color: [3]f32) Mesh {
     const half_size = [3]f32{ size[0] * 0.5, size[1] * 0.5, size[2] * 0.5 };
+
+    const vertex_positions = [_][3]f32{
+        .{ half_size[0], half_size[1], half_size[2] },
+        .{ half_size[0], half_size[1], -half_size[2] },
+        .{ half_size[0], -half_size[1], half_size[2] },
+        .{ half_size[0], -half_size[1], -half_size[2] },
+        .{ -half_size[0], half_size[1], half_size[2] },
+        .{ -half_size[0], half_size[1], -half_size[2] },
+        .{ -half_size[0], -half_size[1], half_size[2] },
+        .{ -half_size[0], -half_size[1], -half_size[2] },
+    };
+
+    const vertex_normals = [_][3]f32{
+        .{ 1.0, 0.0, 0.0 },
+        .{ -1.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0 },
+        .{ 0.0, -1.0, 0.0 },
+        .{ 0.0, 0.0, 1.0 },
+        .{ 0.0, 0.0, -1.0 },
+    };
+
+    const vertex_uvs = [_][2]f32{
+        .{ 0.0, 0.0 },
+        .{ 0.0, 1.0 },
+        .{ 1.0, 0.0 },
+        .{ 1.0, 1.0 },
+    };
+
+    _ = vertex_positions;
+    _ = vertex_normals;
+    _ = vertex_uvs;
 
     var vertices = [_]ColoredVertex{
         ColoredVertex.new([_]f32{ half_size[0], half_size[1], half_size[2] }, color),

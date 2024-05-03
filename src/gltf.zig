@@ -37,8 +37,8 @@ pub fn load_gltf_mesh(allocator: std.mem.Allocator, file_path: [:0]const u8, ren
 
     try zmesh.io.appendMeshPrimitive(
         data,
-        0, // mesh index
-        0, // gltf primitive index (submesh index)
+        0,
+        0,
         &mesh_indices,
         &mesh_positions,
         &mesh_normals,
@@ -61,4 +61,58 @@ pub fn load_gltf_mesh(allocator: std.mem.Allocator, file_path: [:0]const u8, ren
     std.log.info("{} Vertices {} Indices", .{ mesh_positions.items.len, mesh_indices.items.len });
     const mesh = Mesh.init(TexturedVertex, u32, mesh_vertices.items, mesh_indices.items);
     return try renderer_ref.static_meshes.insert(mesh);
+}
+
+pub fn load(allocator: std.mem.Allocator, renderer_ref: *renderer.Renderer, file_path: [:0]const u8) !void {
+    const start = std.time.Instant.now() catch unreachable;
+    defer {
+        const end = std.time.Instant.now() catch unreachable;
+        const time_ns: f32 = @floatFromInt(end.since(start));
+        std.log.info("{s} loading took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
+    }
+
+    zmesh.init(allocator);
+    defer zmesh.deinit();
+
+    const data = try zmesh.io.parseAndLoadFile(file_path);
+    defer zmesh.io.freeData(data);
+
+    if (data.images) |images| {
+        var i: usize = 0;
+        while (i < data.images_count) : (i += 1) {
+            const image = &images[i];
+            _ = try load_image(allocator, renderer_ref, image);
+        }
+    }
+}
+
+pub const ImageLoadError = error{
+    UnknownImageSource,
+};
+
+const zstbi = @import("zstbi");
+fn load_image(allocator: std.mem.Allocator, renderer_ref: *renderer.Renderer, gltf_image: *zmesh.io.zcgltf.Image) ImageLoadError!void {
+    _ = allocator;
+    _ = renderer_ref;
+
+    var image_opt: ?zstbi.Image = null;
+
+    if (gltf_image.buffer_view) |buffer_view| {
+        const bytes_ptr: [*]u8 = @ptrCast(buffer_view.buffer.data.?);
+        const bytes: []u8 = bytes_ptr[buffer_view.offset..(buffer_view.offset + buffer_view.size)];
+        image_opt = zstbi.Image.loadFromMemory(bytes, 0) catch std.debug.panic("", .{});
+    }
+
+    if (gltf_image.uri) |uri| {
+        std.debug.panic("TODO: load image from uri: {s}", .{uri});
+    }
+
+    if (image_opt == null) {
+        return error.UnknownImageSource;
+    }
+
+    var image = image_opt.?;
+    defer image.deinit();
+
+    std.log.info("Image: {}x{} Components: {} HDR: {}", .{ image.width, image.height, image.num_components, image.is_hdr });
 }

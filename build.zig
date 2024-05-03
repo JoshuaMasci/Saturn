@@ -37,6 +37,11 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zmesh", zmesh.module("root"));
     exe.linkLibrary(zmesh.artifact("zmesh"));
 
+    // zstbi
+    const zstbi = b.dependency("zstbi", .{});
+    exe.root_module.addImport("zstbi", zstbi.module("root"));
+    exe.linkLibrary(zstbi.artifact("zstbi"));
+
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

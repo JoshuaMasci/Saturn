@@ -54,6 +54,10 @@ pub fn main() !void {
     };
     const allocator = general_purpose_allocator.allocator();
 
+    const zstbi = @import("zstbi");
+    zstbi.init(allocator);
+    defer zstbi.deinit();
+
     var app = try App.init(allocator);
     defer app.deinit();
 
@@ -62,11 +66,15 @@ pub fn main() !void {
     if (args.len > 1) {
         const file_path = args[1];
         std.log.info("Loading File: {s}", .{file_path});
-        const Mesh = @import("mesh.zig");
+        const gltf = @import("gltf.zig");
 
-        if (Mesh.load_gltf_mesh(allocator, file_path, &app.game_renderer)) |mesh| {
+        try gltf.load(allocator, &app.game_renderer, file_path);
+
+        if (gltf.load_gltf_mesh(allocator, file_path, &app.game_renderer)) |mesh| {
             app.loaded_mesh = mesh;
-            const material = try app.game_renderer.create_textured_material();
+            const material = try app.game_renderer.load_material(.{
+                .base_color_factor = .{ 0.0, 1.0, 1.0, 1.0 },
+            });
             _ = try app.game_scene.add_instace(mesh, material, &@import("transform.zig").Identity);
         } else |err| {
             log.err("Loading {s} failed with {}", .{ file_path, err });
