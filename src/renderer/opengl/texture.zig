@@ -71,9 +71,25 @@ pub const MipFiltering = enum {
     }
 };
 
+pub const AddressMode = enum {
+    Clamp_To_Edge,
+    Mirrored_Repeat,
+    Repeat,
+
+    fn to_gl(self: @This()) gl.Int {
+        return switch (self) {
+            .Clamp_To_Edge => gl.CLAMP_TO_EDGE,
+            .Mirrored_Repeat => gl.MIRRORED_REPEAT,
+            .Repeat => gl.REPEAT,
+        };
+    }
+};
+
 pub const Sampler = struct {
     min: MipFiltering = .Linear,
     mag: Filtering = .Linear,
+    address_mode_u: AddressMode = .Repeat,
+    address_mode_v: AddressMode = .Repeat,
 };
 
 pub fn init(
@@ -87,6 +103,8 @@ pub fn init(
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, sampler.min.to_gl());
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, sampler.mag.to_gl());
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, sampler.address_mode_u.to_gl());
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, sampler.address_mode_v.to_gl());
 
     gl.texImage2D(gl.TEXTURE_2D, 0, format.load.to_gl(), @intCast(size[0]), @intCast(size[1]), 0, format.store.to_gl(), format.layout.to_gl(), data.ptr);
 

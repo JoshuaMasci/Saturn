@@ -97,8 +97,38 @@ fn load_gltf_texture(renderer: *backend.Renderer, images: *ImageMap, gltf_textur
     std.debug.assert(image.bytes_per_component == 1);
     const pixel_type: Texture.PixelType = .u8;
 
-    //TODO: support texture sampler
-    const sampler = Texture.Sampler{};
+    var sampler = Texture.Sampler{};
+    if (gltf_texture.sampler) |gltf_sampler| {
+        sampler.min = switch (gltf_sampler.min_filter) {
+            9728 => .Nearest,
+            9729 => .Linear,
+            9984 => .Nearest_Mip_Nearest,
+            9985 => .Linear_Mip_Nearest,
+            9986 => .Nearest_Mip_Linear,
+            9987 => .Linear_Mip_Linear,
+            else => unreachable,
+        };
+
+        sampler.mag = switch (gltf_sampler.mag_filter) {
+            9728 => .Nearest,
+            9729 => .Linear,
+            else => unreachable,
+        };
+
+        sampler.address_mode_u = switch (gltf_sampler.wrap_s) {
+            33071 => .Clamp_To_Edge,
+            33648 => .Mirrored_Repeat,
+            10497 => .Repeat,
+            else => unreachable,
+        };
+
+        sampler.address_mode_v = switch (gltf_sampler.wrap_t) {
+            33071 => .Clamp_To_Edge,
+            33648 => .Mirrored_Repeat,
+            10497 => .Repeat,
+            else => unreachable,
+        };
+    }
 
     const texture = Texture.init(
         size,
