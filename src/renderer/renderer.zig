@@ -9,12 +9,12 @@ const Camera = @import("../camera.zig").Camera;
 const ColoredVertex = @import("opengl/vertex.zig").ColoredVertex;
 const TexturedVertex = @import("opengl/vertex.zig").TexturedVertex;
 const Mesh = @import("opengl/mesh.zig");
+const Texture = @import("opengl/texture.zig");
 const Shader = @import("opengl/shader.zig");
 
 const StaticMeshPool = object_pool.ObjectPool(u16, Mesh);
 pub const StaticMeshHandle = StaticMeshPool.Handle;
 
-const Texture = struct {};
 const TexturePool = object_pool.ObjectPool(u16, Texture);
 pub const TextureHandle = TexturePool.Handle;
 
@@ -48,6 +48,7 @@ pub const Renderer = struct {
     pbr_material_shader: Shader,
 
     static_meshes: StaticMeshPool,
+    textures: TexturePool,
     materials: MaterialPool,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -75,6 +76,7 @@ pub const Renderer = struct {
             .allocator = allocator,
             .pbr_material_shader = pbr_material_shader,
             .static_meshes = StaticMeshPool.init(allocator),
+            .textures = TexturePool.init(allocator),
             .materials = MaterialPool.init(allocator),
         };
     }
@@ -82,11 +84,22 @@ pub const Renderer = struct {
     pub fn deinit(self: *Self) void {
         self.pbr_material_shader.deinit();
 
-        var mesh_iterator = self.static_meshes.iterator();
-        while (mesh_iterator.next()) |entry| {
-            entry.value_ptr.deinit();
+        {
+            var mesh_iterator = self.static_meshes.iterator();
+            while (mesh_iterator.next()) |entry| {
+                entry.value_ptr.deinit();
+            }
+            self.static_meshes.deinit();
         }
-        self.static_meshes.deinit();
+
+        {
+            var texture_iterator = self.textures.iterator();
+            while (texture_iterator.next()) |entry| {
+                entry.value_ptr.deinit();
+            }
+            self.textures.deinit();
+        }
+
         self.materials.deinit();
     }
 
@@ -96,6 +109,15 @@ pub const Renderer = struct {
     pub fn unload_static_mesh(self: *Self, mesh_handle: StaticMeshHandle) void {
         if (self.meshes.remove(mesh_handle)) |mesh| {
             mesh.deinit();
+        }
+    }
+
+    pub fn load_texture(self: *Self, texture: Texture) !TextureHandle {
+        return try self.textures.insert(texture);
+    }
+    pub fn unload_texture(self: *Self, texture_handle: TextureHandle) void {
+        if (self.textures.remove(texture_handle)) |texture| {
+            texture.deinit();
         }
     }
 

@@ -1,8 +1,6 @@
 const std = @import("std");
 const gl = @import("zopengl").bindings;
 
-const panic = std.debug.panic;
-
 const Self = @This();
 
 vao: gl.Uint,

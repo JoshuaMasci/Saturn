@@ -1,12 +1,126 @@
 const std = @import("std");
 const zmesh = @import("zmesh");
+const zstbi = @import("zstbi");
 
-const renderer = @import("renderer/renderer.zig");
+const backend = @import("renderer/renderer.zig");
 
 const TexturedVertex = @import("renderer/opengl/vertex.zig").TexturedVertex;
+const Texture = @import("renderer/opengl/texture.zig");
 const Mesh = @import("renderer/opengl/mesh.zig");
 
-pub fn load_gltf_mesh(allocator: std.mem.Allocator, file_path: [:0]const u8, renderer_ref: *renderer.Renderer) !renderer.StaticMeshHandle {
+const ImageMap = std.AutoHashMap(*zmesh.io.zcgltf.Image, zstbi.Image);
+
+pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path: [:0]const u8) !void {
+    const start = std.time.Instant.now() catch unreachable;
+    defer {
+        const end = std.time.Instant.now() catch unreachable;
+        const time_ns: f32 = @floatFromInt(end.since(start));
+        std.log.info("loading file {s} took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
+    }
+
+    zmesh.init(allocator);
+    defer zmesh.deinit();
+
+    const data = try zmesh.io.parseAndLoadFile(file_path);
+    defer zmesh.io.freeData(data);
+
+    var images = ImageMap.init(allocator);
+    defer {
+        var iter = images.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.deinit();
+        }
+        images.deinit();
+    }
+
+    if (data.images) |gltf_images| {
+        for (gltf_images[0..data.images_count], 0..) |*glft_image, i| {
+            if (load_gltf_image(glft_image)) |image_opt| {
+                if (image_opt) |image| {
+                    try images.put(glft_image, image);
+                }
+            } else |err| {
+                std.log.err("Failed to load {s} image {}: {}", .{ file_path, i, err });
+            }
+        }
+    }
+
+    var textures = try std.ArrayList(?backend.TextureHandle).initCapacity(allocator, data.textures_count);
+    defer textures.deinit();
+
+    if (data.textures) |gltf_textures| {
+        for (gltf_textures[0..data.textures_count], 0..) |gltf_texture, i| {
+            if (load_gltf_texture(renderer, &images, &gltf_texture)) |loaded_image| {
+                textures.appendAssumeCapacity(loaded_image);
+            } else |err| {
+                std.log.err("Failed to load {s} texture {}: {}", .{ file_path, i, err });
+                textures.appendAssumeCapacity(null);
+            }
+        }
+    }
+}
+
+fn load_gltf_image(gltf_image: *const zmesh.io.zcgltf.Image) !?zstbi.Image {
+    var image_opt: ?zstbi.Image = null;
+
+    if (gltf_image.buffer_view) |buffer_view| {
+        const bytes_ptr: [*]u8 = @ptrCast(buffer_view.buffer.data.?);
+        const bytes: []u8 = bytes_ptr[buffer_view.offset..(buffer_view.offset + buffer_view.size)];
+        image_opt = zstbi.Image.loadFromMemory(bytes, 0) catch std.debug.panic("", .{});
+    }
+
+    if (gltf_image.uri) |uri| {
+        std.log.info("TODO: load image from uri: {s}", .{uri});
+    }
+
+    if (image_opt == null) {
+        std.log.err("gltf image doesn't contain a source (either buffer view or uri)", .{});
+    }
+
+    return image_opt;
+}
+
+fn load_gltf_texture(renderer: *backend.Renderer, images: *ImageMap, gltf_texture: *const zmesh.io.zcgltf.Texture) !backend.TextureHandle {
+    const image = &images.get(gltf_texture.image.?).?;
+
+    const size: [2]u32 = .{ image.width, image.height };
+
+    const pixel_format: Texture.PixelFormat = switch (image.num_components) {
+        1 => .R,
+        2 => .RG,
+        3 => .RGB,
+        4 => .RGBA,
+        else => unreachable,
+    };
+
+    //Don't support higher bit componets
+    std.debug.assert(image.bytes_per_component == 1);
+    const pixel_type: Texture.PixelType = .u8;
+
+    //TODO: support texture sampler
+    const sampler = Texture.Sampler{};
+
+    const texture = Texture.init(
+        size,
+        image.data,
+        .{
+            .load = pixel_format,
+            .store = pixel_format,
+            .layout = pixel_type,
+            .mips = true,
+        },
+        sampler,
+    );
+
+    return try renderer.load_texture(texture);
+}
+
+fn load_gltf_material(renderer: *backend.Renderer, gltf_material: *const zmesh.io.zcgltf.Material) !backend.MaterialHandle {
+    _ = renderer;
+    _ = gltf_material;
+}
+
+pub fn load_gltf_mesh(allocator: std.mem.Allocator, file_path: [:0]const u8, renderer: *backend.Renderer) !backend.StaticMeshHandle {
     const start = std.time.Instant.now() catch unreachable;
     defer {
         const end = std.time.Instant.now() catch unreachable;
@@ -60,59 +174,5 @@ pub fn load_gltf_mesh(allocator: std.mem.Allocator, file_path: [:0]const u8, ren
 
     std.log.info("{} Vertices {} Indices", .{ mesh_positions.items.len, mesh_indices.items.len });
     const mesh = Mesh.init(TexturedVertex, u32, mesh_vertices.items, mesh_indices.items);
-    return try renderer_ref.static_meshes.insert(mesh);
-}
-
-pub fn load(allocator: std.mem.Allocator, renderer_ref: *renderer.Renderer, file_path: [:0]const u8) !void {
-    const start = std.time.Instant.now() catch unreachable;
-    defer {
-        const end = std.time.Instant.now() catch unreachable;
-        const time_ns: f32 = @floatFromInt(end.since(start));
-        std.log.info("{s} loading took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
-    }
-
-    zmesh.init(allocator);
-    defer zmesh.deinit();
-
-    const data = try zmesh.io.parseAndLoadFile(file_path);
-    defer zmesh.io.freeData(data);
-
-    if (data.images) |images| {
-        var i: usize = 0;
-        while (i < data.images_count) : (i += 1) {
-            const image = &images[i];
-            _ = try load_image(allocator, renderer_ref, image);
-        }
-    }
-}
-
-pub const ImageLoadError = error{
-    UnknownImageSource,
-};
-
-const zstbi = @import("zstbi");
-fn load_image(allocator: std.mem.Allocator, renderer_ref: *renderer.Renderer, gltf_image: *zmesh.io.zcgltf.Image) ImageLoadError!void {
-    _ = allocator;
-    _ = renderer_ref;
-
-    var image_opt: ?zstbi.Image = null;
-
-    if (gltf_image.buffer_view) |buffer_view| {
-        const bytes_ptr: [*]u8 = @ptrCast(buffer_view.buffer.data.?);
-        const bytes: []u8 = bytes_ptr[buffer_view.offset..(buffer_view.offset + buffer_view.size)];
-        image_opt = zstbi.Image.loadFromMemory(bytes, 0) catch std.debug.panic("", .{});
-    }
-
-    if (gltf_image.uri) |uri| {
-        std.debug.panic("TODO: load image from uri: {s}", .{uri});
-    }
-
-    if (image_opt == null) {
-        return error.UnknownImageSource;
-    }
-
-    var image = image_opt.?;
-    defer image.deinit();
-
-    std.log.info("Image: {}x{} Components: {} HDR: {}", .{ image.width, image.height, image.num_components, image.is_hdr });
+    return try renderer.static_meshes.insert(mesh);
 }
