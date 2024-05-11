@@ -65,17 +65,12 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
     if (args.len > 1) {
         const file_path = args[1];
-        std.log.info("Loading File: {s}", .{file_path});
         const gltf = @import("gltf.zig");
-
-        try gltf.load(allocator, &app.game_renderer, file_path);
-
-        if (gltf.load_gltf_mesh(allocator, file_path, &app.game_renderer)) |mesh| {
-            app.loaded_mesh = mesh;
-            const material = try app.game_renderer.load_material(.{
-                .base_color_factor = .{ 0.0, 1.0, 1.0, 1.0 },
-            });
+        if (gltf.load(allocator, &app.game_renderer, file_path)) |resources| {
+            const mesh = resources.meshes.items[0].?;
+            const material = resources.materials.items[0].?;
             _ = try app.game_scene.add_instace(mesh, material, &@import("transform.zig").Identity);
+            resources.deinit();
         } else |err| {
             log.err("Loading {s} failed with {}", .{ file_path, err });
         }
