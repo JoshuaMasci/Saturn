@@ -148,6 +148,10 @@ pub const Renderer = struct {
             err = gl.getError();
         }
 
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.frontFace(gl.CCW);
+        gl.cullFace(gl.BACK);
         gl.viewport(0, 0, @intCast(window_size[0]), @intCast(window_size[1]));
 
         const width_float: f32 = @floatFromInt(window_size[0]);

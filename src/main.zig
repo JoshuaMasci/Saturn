@@ -61,48 +61,17 @@ pub fn main() !void {
     var app = try App.init(allocator);
     defer app.deinit();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-    if (args.len > 1) {
-        const file_path = args[1];
-        const gltf = @import("gltf.zig");
-        if (gltf.load(allocator, &app.game_renderer, file_path)) |resources| {
-            const mesh = resources.meshes.items[0].?;
-            const material = resources.materials.items[0].?;
-            _ = try app.game_scene.add_instace(mesh, material, &@import("transform.zig").Identity);
-            resources.deinit();
-        } else |err| {
-            log.err("Loading {s} failed with {}", .{ file_path, err });
-        }
-    }
-
     var last_frame_time_ns = std.time.nanoTimestamp();
-    var frames_since_last: usize = 0;
 
     while (app.is_running()) {
-        const LOG_FREQENCY_SECONDS = 1;
-
         const current_time_ns = std.time.nanoTimestamp();
-        const time_since_last_frame_ns = current_time_ns - last_frame_time_ns;
-        if (time_since_last_frame_ns > (std.time.ns_per_s * LOG_FREQENCY_SECONDS)) {
-            const time_since_last_frame_ms = @as(f32, @floatFromInt(time_since_last_frame_ns)) / std.time.ns_per_ms;
-            const average_frame_time = time_since_last_frame_ms / @as(f32, @floatFromInt(frames_since_last));
+        const delta_time_ns = current_time_ns - last_frame_time_ns;
+        const delta_time_s = @as(f32, @floatFromInt(delta_time_ns)) / std.time.ns_per_s;
+        last_frame_time_ns = current_time_ns;
 
-            const memory_usage = human_readable_bytes(general_purpose_allocator.total_requested_bytes);
-            const memory_usage_unit = human_readable_unit(general_purpose_allocator.total_requested_bytes);
+        const memory_usage = human_readable_bytes(general_purpose_allocator.total_requested_bytes);
+        const memory_usage_unit = human_readable_unit(general_purpose_allocator.total_requested_bytes);
 
-            log.info("Perf\n\tFPS: {}\n\tFrame Time: {d:.3}ms\n\tMemory Usage: {} {s}", .{
-                frames_since_last,
-                average_frame_time,
-                memory_usage,
-                memory_usage_unit,
-            });
-
-            last_frame_time_ns = current_time_ns;
-            frames_since_last = 0;
-        }
-
-        try app.update();
-        frames_since_last += 1;
+        try app.update(delta_time_s, .{ .value = memory_usage, .unit_str = memory_usage_unit });
     }
 }

@@ -43,18 +43,26 @@ pub const App = struct {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
         var game_renderer = try renderer.Renderer.init(allocator);
-        const game_scene = game_renderer.create_scene();
-
-        // const cube_mesh = try game_renderer.load_static_mesh("some/resource/path/cube.mesh");
-        // const cube_material = try game_renderer.create_colored_material();
-        // var cube_tranform = Transform.Identity;
-        // cube_tranform.position = zm.f32x4(0.0, 1.0, 0.0, 0.0);
-
-        // const game_cube = try game_scene.add_instace(cube_mesh, cube_material, &cube_tranform);
-        // game_scene.update_instance(game_cube, &cube_tranform);
+        var game_scene = game_renderer.create_scene();
 
         var game_camera = debug_camera.DebugCamera.Default;
-        game_camera.transform.position = zm.f32x4(0.0, 0.0, -1.0, 0.0);
+        game_camera.transform.position = zm.f32x4(0.0, 0.0, -0.5, 0.0);
+
+        // Load resources from gltf file
+        const args = try std.process.argsAlloc(allocator);
+        defer std.process.argsFree(allocator, args);
+        if (args.len > 1) {
+            const file_path = args[1];
+            const gltf = @import("gltf.zig");
+            if (gltf.load(allocator, &game_renderer, file_path)) |resources| {
+                const mesh = resources.meshes.items[0].?;
+                const material = resources.materials.items[0].?;
+                _ = try game_scene.add_instace(mesh, material, &@import("transform.zig").Identity);
+                resources.deinit();
+            } else |err| {
+                std.log.err("Loading {s} failed with {}", .{ file_path, err });
+            }
+        }
 
         return .{
             .should_quit = false,
@@ -87,10 +95,10 @@ pub const App = struct {
         return !(self.should_quit or self.platform.should_quit);
     }
 
-    pub fn update(self: *Self) !void {
+    pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?struct { value: usize, unit_str: []const u8 }) !void {
         self.platform.proccess_events(self);
 
-        self.game_camera.update(1.0 / 60.0);
+        self.game_camera.update(delta_time);
 
         self.game_renderer.clear_framebuffer();
 
@@ -104,7 +112,16 @@ pub const App = struct {
 
         {
             imgui.backend.newFrame(try self.platform.get_window_size());
-            imgui.showDemoWindow(null);
+
+            if (imgui.begin("Performance", .{})) {
+                imgui.text("Delta Time {d:.3}", .{delta_time * 1000});
+                imgui.text("FPS {d:.3}", .{1.0 / delta_time});
+                if (mem_usage_opt) |mem_usage| {
+                    imgui.text("Memory Usage {} {s}", .{ mem_usage.value, mem_usage.unit_str });
+                }
+            }
+            imgui.end();
+
             imgui.backend.draw();
         }
         self.platform.gl_swap_window();
