@@ -121,3 +121,8 @@ pub fn init(
 pub fn deinit(self: Self) void {
     gl.deleteTextures(1, &self.texture);
 }
+
+pub fn bind(self: Self, slot: u32) void {
+    gl.activeTexture(gl.TEXTURE0 + slot);
+    gl.bindTexture(gl.TEXTURE_2D, self.texture);
+}

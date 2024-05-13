@@ -50,6 +50,12 @@ pub fn bind(self: Self) void {
     gl.useProgram(self.shader_program);
 }
 
+pub fn set_uniform_int(self: Self, name: []const u8, value: i32) void {
+    const uniform_index = gl.getUniformLocation(self.shader_program, name.ptr);
+    std.debug.assert(uniform_index != gl.INVALID_VALUE);
+    gl.uniform1i(uniform_index, value);
+}
+
 pub fn set_uniform_vec4(self: Self, name: []const u8, vec: zm.Vec) void {
     const uniform_index = gl.getUniformLocation(self.shader_program, name.ptr);
     std.debug.assert(uniform_index != gl.INVALID_VALUE);

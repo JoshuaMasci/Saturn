@@ -164,9 +164,19 @@ pub const Renderer = struct {
         var instance_iterator = scene.instances.iterator();
         while (instance_iterator.next()) |instance| {
             self.pbr_material_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.get_model_matrix());
-
             if (self.materials.get(instance.value_ptr.material)) |material| {
                 self.pbr_material_shader.set_uniform_vec4("base_color_factor", zm.loadArr4(material.base_color_factor));
+                self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
+
+                if (material.base_color_texture) |texture_handle| {
+                    if (self.textures.get(texture_handle)) |texture| {
+                        const slot = 0;
+                        texture.bind(slot);
+                        self.pbr_material_shader.set_uniform_int("base_color_texture", slot);
+                        self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 1);
+                    }
+                }
+
                 if (self.static_meshes.get(instance.value_ptr.mesh)) |mesh| {
                     mesh.draw();
                 } else {
