@@ -40,7 +40,7 @@ pub const DebugCamera = struct {
             .debug_camera_up_down => self.linear_input[1] = event.get_value(true),
             .debug_camera_forward_backward => self.linear_input[2] = event.get_value(true),
 
-            //.debug_camera_yaw => self.angular_input[1] = event.get_value(false),
+            .debug_camera_yaw => self.angular_input[1] = event.get_value(false),
             .debug_camera_pitch => self.angular_input[0] = event.get_value(false),
             else => {},
         }
@@ -54,6 +54,10 @@ pub const DebugCamera = struct {
 
         const angular_rotation = (self.angular_input * self.angular_speed) * delta_time_vec;
 
+        //TODO: Implment normal fps camera rotation locks
         self.transform.rotation = zm.normalize4(zm.qmul(zm.quatFromRollPitchYaw(angular_rotation[0], angular_rotation[1], angular_rotation[2]), self.transform.rotation));
+
+        // Axis events should fire each frame they are active, so the input is reset each update
+        self.angular_input = zm.splat(zm.Vec, 0.0);
     }
 };

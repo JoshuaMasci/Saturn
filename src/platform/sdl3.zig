@@ -150,10 +150,6 @@ pub const Platform = struct {
     }
 
     pub fn proccess_events(self: *Self, app: *App) void {
-        if (self.mouse) |*mouse| {
-            mouse.clear_move(app);
-        }
-
         var event: sdl.Event = undefined;
         while (sdl.pollEvent(&event)) {
             _ = imgui.backend.processEvent(&event);
@@ -212,7 +208,6 @@ const Mouse = struct {
     axis_state: ButtonAxisStateArray,
 
     axis_bindings: [2]?ButtonAxisBinding = .{ null, null },
-    mouse_axis_moved: bool = false,
 
     fn init() Self {
         return .{
@@ -271,28 +266,8 @@ const Mouse = struct {
         }
     }
 
-    // Clears mouse axes if they updated last frame.
-    fn clear_move(
-        self: *Self,
-        app: *App,
-    ) void {
-        if (self.mouse_axis_moved) {
-            self.mouse_axis_moved = false;
-
-            if (self.axis_bindings[0]) |*axis_binding| {
-                app.on_axis_event(.{ .axis = axis_binding.axis, .value = 0.0 });
-            }
-
-            if (self.axis_bindings[1]) |*axis_binding| {
-                app.on_axis_event(.{ .axis = axis_binding.axis, .value = 0.0 });
-            }
-        }
-    }
-
-    fn on_move(self: *Self, app: *App, event: *sdl.MouseMotionEvent) void {
+    fn on_move(self: Self, app: *App, event: *sdl.MouseMotionEvent) void {
         if (self.is_captured()) {
-            self.mouse_axis_moved = true;
-
             if (self.axis_bindings[0]) |*axis_binding| {
                 app.on_axis_event(.{ .axis = axis_binding.axis, .value = axis_binding.calc_value(event.xrel) });
             }
