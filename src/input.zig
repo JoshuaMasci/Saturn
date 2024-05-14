@@ -75,14 +75,3 @@ pub const ButtonBinding = union(enum) {
         dir: AxisDirection,
     },
 };
-
-//TODO: use these
-// pub const ButtonEventString = struct {
-//     name: StringHash,
-//     state: ButtonState,
-// };
-
-// pub const AxisEventString = struct {
-//     name: StringHash,
-//     state: f32,
-// };
