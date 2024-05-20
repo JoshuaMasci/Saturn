@@ -53,17 +53,9 @@ pub const App = struct {
         defer std.process.argsFree(allocator, args);
         if (args.len > 1) {
             const file_path = args[1];
-            const gltf = @import("gltf.zig");
-            if (gltf.load(allocator, &game_renderer, file_path)) |resources_result| {
-                var resources = resources_result;
-
-                const mesh = resources.meshes.items[0].?;
-                const material = resources.materials.items[0].?;
-                _ = try game_scene.add_instace(mesh, material, &@import("transform.zig").Identity);
-                resources.deinit();
-            } else |err| {
+            load_gltf_scene(allocator, &game_renderer, &game_scene, file_path) catch |err| {
                 std.log.err("Loading {s} failed with {}", .{ file_path, err });
-            }
+            };
         }
 
         return .{
@@ -139,3 +131,34 @@ pub const App = struct {
         self.game_camera.on_axis_event(event);
     }
 };
+
+const gltf = @import("gltf.zig");
+
+fn load_gltf_scene(allocator: std.mem.Allocator, backend: *renderer.Renderer, game_scene: *renderer.Scene, file_path: [:0]const u8) !void {
+    var resources = try gltf.load(allocator, backend, file_path);
+    defer resources.deinit();
+
+    if (resources.default_scene) |default_scene_index| {
+        if (resources.scenes.items[default_scene_index]) |*default_scene| {
+            for (default_scene.root_nodes.items) |root_node| {
+                load_gltf_node(game_scene, &resources, default_scene, root_node);
+            }
+        }
+    }
+}
+
+fn load_gltf_node(game_scene: *renderer.Scene, resources: *gltf.Resources, scene: *const gltf.Scene, node_handle: gltf.NodeHandle) void {
+    if (scene.pool.getPtr(node_handle)) |node| {
+        if (node.model) |model| {
+            const mesh = resources.meshes.items[model.mesh].?;
+            const material = resources.materials.items[model.materials.items[0]].?;
+            _ = game_scene.add_instace(mesh, material, &node.transform) catch |err| {
+                std.log.err("failed to add scene instance {}", .{err});
+            };
+        }
+
+        for (node.children.items) |child| {
+            load_gltf_node(game_scene, resources, scene, child);
+        }
+    }
+}

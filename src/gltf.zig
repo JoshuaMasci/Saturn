@@ -42,7 +42,9 @@ pub const Model = struct {
     materials: std.ArrayList(usize),
 };
 
-const NodeHandleArrayList = std.ArrayList(Scene.NodeHandle);
+const NodePool = object_pool.ObjectPool(u16, Node);
+pub const NodeHandle = NodePool.Handle;
+const NodeHandleArrayList = std.ArrayList(NodeHandle);
 
 pub const Node = struct {
     transform: Transform = .{},
@@ -63,9 +65,6 @@ pub const Node = struct {
 
 pub const Scene = struct {
     const Self = @This();
-
-    const NodePool = object_pool.ObjectPool(u16, Node);
-    const NodeHandle = NodePool.Handle;
 
     pool: NodePool,
     root_nodes: NodeHandleArrayList,
@@ -145,7 +144,7 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
 
     var meshes = try std.ArrayList(?backend.StaticMeshHandle).initCapacity(allocator, data.meshes_count);
     if (data.meshes) |gltf_meshes| {
-        for (gltf_meshes[0..1], 0..) |*glft_mesh, i| {
+        for (gltf_meshes[0..data.meshes_count], 0..) |*glft_mesh, i| {
             if (load_gltf_mesh(allocator, renderer, glft_mesh)) |mesh_opt| {
                 meshes.appendAssumeCapacity(mesh_opt);
             } else |err| {
@@ -366,7 +365,7 @@ pub fn load_gltf_scene(allocator: std.mem.Allocator, data: *gltf.Data, gltf_scen
     return scene;
 }
 
-fn add_gltf_node(scene: *Scene, allocator: std.mem.Allocator, data: *gltf.Data, gltf_node: *const gltf.Node) !Scene.NodeHandle {
+fn add_gltf_node(scene: *Scene, allocator: std.mem.Allocator, data: *gltf.Data, gltf_node: *const gltf.Node) !NodeHandle {
     var node: Node = .{
         .children = try NodeHandleArrayList.initCapacity(allocator, gltf_node.children_count),
     };
