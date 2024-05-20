@@ -41,6 +41,18 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
             self.freed_indexes.deinit();
         }
 
+        pub fn deinit_with_entries(self: *Self) void {
+            if (comptime std.meta.hasFn(T, "deinit")) {
+                for (self.list.items) |*entry| {
+                    if (entry.value) |*value| {
+                        value.deinit();
+                    }
+                }
+            }
+
+            self.deinit();
+        }
+
         pub fn insert(self: *Self, value: T) !Handle {
             var handle: Handle = undefined;
             if (self.freed_indexes.popOrNull()) |index| {

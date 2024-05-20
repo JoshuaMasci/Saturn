@@ -1,4 +1,5 @@
 const std = @import("std");
+const zm = @import("zmath");
 const zmesh = @import("zmesh");
 const gltf = zmesh.io.zcgltf;
 
@@ -10,21 +11,79 @@ const TexturedVertex = @import("renderer/opengl/vertex.zig").TexturedVertex;
 const Texture = @import("renderer/opengl/texture.zig");
 const Mesh = @import("renderer/opengl/mesh.zig");
 
-const ImageMap = std.AutoHashMap(*gltf.Image, zstbi.Image);
+const Transform = @import("transform.zig");
+const object_pool = @import("object_pool.zig");
 
-pub const GltfResources = struct {
+pub const Resources = struct {
     textures: std.ArrayList(?backend.TextureHandle),
     materials: std.ArrayList(?backend.MaterialHandle),
     meshes: std.ArrayList(?backend.StaticMeshHandle),
+    scenes: std.ArrayList(?Scene),
 
-    pub fn deinit(self: @This()) void {
+    default_scene: ?usize,
+
+    pub fn deinit(self: *@This()) void {
         self.textures.deinit();
         self.materials.deinit();
         self.meshes.deinit();
+
+        for (self.scenes.items) |*scene_opt| {
+            if (scene_opt.*) |*scene| {
+                scene.deinit();
+            }
+        }
+
+        self.scenes.deinit();
     }
 };
 
-pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path: [:0]const u8) !GltfResources {
+pub const Model = struct {
+    mesh: usize,
+    materials: std.ArrayList(usize),
+};
+
+const NodeHandleArrayList = std.ArrayList(Scene.NodeHandle);
+
+pub const Node = struct {
+    transform: Transform = .{},
+    model: ?Model = null,
+    camera: ?void = null,
+    light: ?void = null,
+
+    children: NodeHandleArrayList,
+
+    pub fn deinit(self: *@This()) void {
+        if (self.model) |model| {
+            model.materials.deinit();
+        }
+
+        self.children.deinit();
+    }
+};
+
+pub const Scene = struct {
+    const Self = @This();
+
+    const NodePool = object_pool.ObjectPool(u16, Node);
+    const NodeHandle = NodePool.Handle;
+
+    pool: NodePool,
+    root_nodes: NodeHandleArrayList,
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return .{
+            .pool = NodePool.init(allocator),
+            .root_nodes = NodeHandleArrayList.init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.pool.deinit_with_entries();
+        self.root_nodes.deinit();
+    }
+};
+
+pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path: [:0]const u8) !Resources {
     const start = std.time.Instant.now() catch unreachable;
     defer {
         const end = std.time.Instant.now() catch unreachable;
@@ -96,10 +155,24 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
         }
     }
 
+    var scenes = try std.ArrayList(?Scene).initCapacity(allocator, data.scenes_count);
+    if (data.scenes) |gltf_scenes| {
+        for (gltf_scenes[0..data.scenes_count], 0..) |gltf_scene, i| {
+            if (load_gltf_scene(allocator, data, &gltf_scene)) |scene| {
+                scenes.appendAssumeCapacity(scene);
+            } else |err| {
+                std.log.err("Failed to load {s} scene {}: {}", .{ file_path, i, err });
+                scenes.appendAssumeCapacity(null);
+            }
+        }
+    }
+
     return .{
         .textures = textures,
         .materials = materials,
         .meshes = meshes,
+        .scenes = scenes,
+        .default_scene = data.scene_index(data.scene),
     };
 }
 
@@ -279,6 +352,57 @@ pub fn load_gltf_mesh(allocator: std.mem.Allocator, renderer: *backend.Renderer,
 
     const mesh = Mesh.init(TexturedVertex, u32, mesh_vertices.items, mesh_indices.items);
     return try renderer.static_meshes.insert(mesh);
+}
+
+pub fn load_gltf_scene(allocator: std.mem.Allocator, data: *gltf.Data, gltf_scene: *const gltf.Scene) !Scene {
+    var scene = Scene.init(allocator);
+
+    if (gltf_scene.nodes) |nodes| {
+        for (nodes[0..gltf_scene.nodes_count]) |child_node| {
+            try scene.root_nodes.append(try add_gltf_node(&scene, allocator, data, child_node));
+        }
+    }
+
+    return scene;
+}
+
+fn add_gltf_node(scene: *Scene, allocator: std.mem.Allocator, data: *gltf.Data, gltf_node: *const gltf.Node) !Scene.NodeHandle {
+    var node: Node = .{
+        .children = try NodeHandleArrayList.initCapacity(allocator, gltf_node.children_count),
+    };
+
+    //TODO: if has_matrix decompose mat4 to transform
+
+    if (gltf_node.has_translation != 0) {
+        node.transform.position = zm.loadArr3(gltf_node.translation);
+    }
+
+    if (gltf_node.has_rotation != 0) {
+        node.transform.rotation = zm.loadArr4(gltf_node.rotation);
+    }
+
+    if (gltf_node.has_scale != 0) {
+        node.transform.scale = zm.loadArr3(gltf_node.scale);
+    }
+
+    if (gltf_node.mesh) |gltf_mesh| {
+        if (data.mesh_index(gltf_mesh)) |mesh_index| {
+            var materials = try std.ArrayList(usize).initCapacity(allocator, gltf_mesh.primitives_count);
+            for (gltf_mesh.primitives[0..gltf_mesh.primitives_count]) |primitive| {
+                materials.appendAssumeCapacity(data.material_index(primitive.material).?);
+            }
+
+            node.model = .{ .mesh = mesh_index, .materials = materials };
+        }
+    }
+
+    if (gltf_node.children) |children| {
+        for (children[0..gltf_node.children_count]) |child_node| {
+            node.children.appendAssumeCapacity(try add_gltf_node(scene, allocator, data, child_node));
+        }
+    }
+
+    return try scene.pool.insert(node);
 }
 
 pub fn appendMeshPrimitive(

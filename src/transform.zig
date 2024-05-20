@@ -5,15 +5,11 @@ pub const Up = zm.f32x4(0.0, 1.0, 0.0, 0.0);
 pub const Forward = zm.f32x4(0.0, 0.0, 1.0, 0.0);
 
 const Self = @This();
-position: zm.Vec,
-rotation: zm.Quat,
-scale: zm.Vec,
+position: zm.Vec = zm.f32x4s(0.0),
+rotation: zm.Quat = zm.qidentity(),
+scale: zm.Vec = zm.f32x4s(1.0),
 
-pub const Identity = Self{
-    .position = zm.f32x4s(0.0),
-    .rotation = zm.qidentity(),
-    .scale = zm.f32x4s(1.0),
-};
+pub const Identity: Self = .{};
 
 pub fn get_model_matrix(self: Self) zm.Mat {
     const translation = zm.translationV(self.position);

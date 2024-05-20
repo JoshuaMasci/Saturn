@@ -54,7 +54,9 @@ pub const App = struct {
         if (args.len > 1) {
             const file_path = args[1];
             const gltf = @import("gltf.zig");
-            if (gltf.load(allocator, &game_renderer, file_path)) |resources| {
+            if (gltf.load(allocator, &game_renderer, file_path)) |resources_result| {
+                var resources = resources_result;
+
                 const mesh = resources.meshes.items[0].?;
                 const material = resources.materials.items[0].?;
                 _ = try game_scene.add_instace(mesh, material, &@import("transform.zig").Identity);

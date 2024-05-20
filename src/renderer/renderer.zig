@@ -84,21 +84,8 @@ pub const Renderer = struct {
     pub fn deinit(self: *Self) void {
         self.pbr_material_shader.deinit();
 
-        {
-            var mesh_iterator = self.static_meshes.iterator();
-            while (mesh_iterator.next()) |entry| {
-                entry.value_ptr.deinit();
-            }
-            self.static_meshes.deinit();
-        }
-
-        {
-            var texture_iterator = self.textures.iterator();
-            while (texture_iterator.next()) |entry| {
-                entry.value_ptr.deinit();
-            }
-            self.textures.deinit();
-        }
+        self.static_meshes.deinit_with_entries();
+        self.textures.deinit_with_entries();
 
         self.materials.deinit();
     }
