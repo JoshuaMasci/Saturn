@@ -32,8 +32,6 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
         std.log.info("loading file {s} took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
     }
 
-    const parent_path = std.fs.path.dirname(file_path) orelse ".";
-
     zmesh.init(allocator);
     defer zmesh.deinit();
 
@@ -51,6 +49,7 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
     }
 
     if (data.images) |gltf_images| {
+        const parent_path = std.fs.path.dirname(file_path) orelse ".";
         for (gltf_images[0..data.images_count], 0..) |*glft_image, i| {
             if (load_gltf_image(allocator, parent_path, glft_image)) |image_opt| {
                 images.appendAssumeCapacity(image_opt);
@@ -87,7 +86,7 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
 
     var meshes = try std.ArrayList(?backend.StaticMeshHandle).initCapacity(allocator, data.meshes_count);
     if (data.meshes) |gltf_meshes| {
-        for (gltf_meshes[0..data.meshes_count], 0..) |*glft_mesh, i| {
+        for (gltf_meshes[0..1], 0..) |*glft_mesh, i| {
             if (load_gltf_mesh(allocator, renderer, glft_mesh)) |mesh_opt| {
                 meshes.appendAssumeCapacity(mesh_opt);
             } else |err| {
@@ -135,6 +134,11 @@ fn load_gltf_image(allocator: std.mem.Allocator, parent_path: []const u8, gltf_i
 
 fn load_gltf_texture(renderer: *backend.Renderer, data: *gltf.Data, images: []?zstbi.Image, gltf_texture: *const gltf.Texture) !backend.TextureHandle {
     const image_index = data.image_index(gltf_texture.image) orelse return error.NoImageForTexture;
+
+    if (image_index >= images.len) {
+        return error.ImageNotLoaded;
+    }
+
     const image = images[image_index] orelse return error.ImageNotLoaded;
 
     const size: [2]u32 = .{ image.width, image.height };
@@ -304,26 +308,28 @@ pub fn appendMeshPrimitive(
         const data_addr = @as([*]const u8, @ptrCast(buffer_view.buffer.data)) +
             accessor.offset + buffer_view.offset;
 
+        const indices_offset: u32 = @intCast(positions.items.len);
+
         if (accessor.stride == 1) {
             std.debug.assert(accessor.component_type == .r_8u);
             const src = @as([*]const u8, @ptrCast(data_addr));
             var i: u32 = 0;
             while (i < num_indices) : (i += 1) {
-                indices.appendAssumeCapacity(src[i]);
+                indices.appendAssumeCapacity(src[i] + indices_offset);
             }
         } else if (accessor.stride == 2) {
             std.debug.assert(accessor.component_type == .r_16u);
             const src = @as([*]const u16, @ptrCast(@alignCast(data_addr)));
             var i: u32 = 0;
             while (i < num_indices) : (i += 1) {
-                indices.appendAssumeCapacity(src[i]);
+                indices.appendAssumeCapacity(src[i] + indices_offset);
             }
         } else if (accessor.stride == 4) {
             std.debug.assert(accessor.component_type == .r_32u);
             const src = @as([*]const u32, @ptrCast(@alignCast(data_addr)));
             var i: u32 = 0;
             while (i < num_indices) : (i += 1) {
-                indices.appendAssumeCapacity(src[i]);
+                indices.appendAssumeCapacity(src[i] + indices_offset);
             }
         } else {
             unreachable;
