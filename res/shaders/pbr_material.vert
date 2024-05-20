@@ -5,7 +5,6 @@ layout(location = 1) in vec3 in_normal;
 layout(location = 2) in vec4 in_tangent;
 layout(location = 3) in vec2 in_uv0;
 
-
 uniform mat4 view_projection_matrix;
 uniform mat4 model_matrix;
 

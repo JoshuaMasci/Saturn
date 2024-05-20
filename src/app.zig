@@ -46,7 +46,7 @@ pub const App = struct {
         var game_scene = game_renderer.create_scene();
 
         var game_camera = debug_camera.DebugCamera.Default;
-        game_camera.transform.position = zm.f32x4(0.0, 0.0, -0.5, 0.0);
+        game_camera.transform.position = zm.f32x4(0.0, 0.0, -5.0, 0.0);
 
         // Load resources from gltf file
         const args = try std.process.argsAlloc(allocator);

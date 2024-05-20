@@ -32,6 +32,8 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
         std.log.info("loading file {s} took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
     }
 
+    const parent_path = std.fs.path.dirname(file_path) orelse ".";
+
     zmesh.init(allocator);
     defer zmesh.deinit();
 
@@ -50,7 +52,7 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
 
     if (data.images) |gltf_images| {
         for (gltf_images[0..data.images_count], 0..) |*glft_image, i| {
-            if (load_gltf_image(glft_image)) |image_opt| {
+            if (load_gltf_image(allocator, parent_path, glft_image)) |image_opt| {
                 images.appendAssumeCapacity(image_opt);
             } else |err| {
                 std.log.err("Failed to load {s} image {}: {}", .{ file_path, i, err });
@@ -102,7 +104,7 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
     };
 }
 
-fn load_gltf_image(gltf_image: *const gltf.Image) !?zstbi.Image {
+fn load_gltf_image(allocator: std.mem.Allocator, parent_path: []const u8, gltf_image: *const gltf.Image) !?zstbi.Image {
     var image_opt: ?zstbi.Image = null;
 
     if (gltf_image.buffer_view) |buffer_view| {
@@ -112,7 +114,16 @@ fn load_gltf_image(gltf_image: *const gltf.Image) !?zstbi.Image {
     }
 
     if (gltf_image.uri) |uri| {
-        std.log.info("TODO: load image from uri: {s}", .{uri});
+        const uri_len = std.mem.len(uri);
+        const uri_slice = uri[0..uri_len];
+
+        var full_path = std.ArrayList(u8).init(allocator);
+        defer full_path.deinit();
+        try full_path.appendSlice(parent_path);
+        try full_path.append('/');
+        try full_path.appendSlice(uri_slice);
+        try full_path.append(0);
+        image_opt = try zstbi.Image.loadFromFile(full_path.items[0..(full_path.items.len - 1) :0], 4);
     }
 
     if (image_opt == null) {
@@ -149,27 +160,27 @@ fn load_gltf_texture(renderer: *backend.Renderer, data: *gltf.Data, images: []?z
             9985 => .Linear_Mip_Nearest,
             9986 => .Nearest_Mip_Linear,
             9987 => .Linear_Mip_Linear,
-            else => unreachable,
+            else => .Linear,
         };
 
         sampler.mag = switch (gltf_sampler.mag_filter) {
             9728 => .Nearest,
             9729 => .Linear,
-            else => unreachable,
+            else => .Linear,
         };
 
         sampler.address_mode_u = switch (gltf_sampler.wrap_s) {
             33071 => .Clamp_To_Edge,
             33648 => .Mirrored_Repeat,
             10497 => .Repeat,
-            else => unreachable,
+            else => .Repeat,
         };
 
         sampler.address_mode_v = switch (gltf_sampler.wrap_t) {
             33071 => .Clamp_To_Edge,
             33648 => .Mirrored_Repeat,
             10497 => .Repeat,
-            else => unreachable,
+            else => .Repeat,
         };
     }
 
@@ -247,6 +258,12 @@ pub fn load_gltf_mesh(allocator: std.mem.Allocator, renderer: *backend.Renderer,
     var mesh_vertices = try std.ArrayList(TexturedVertex).initCapacity(allocator, mesh_positions.items.len);
     defer mesh_vertices.deinit();
 
+    // create fake tangents if none are provided
+    //TODO: calc tangents if not provided
+    if (mesh_tangents.items.len == 0) {
+        try mesh_tangents.appendNTimes(.{ 0.0, 0.0, 0.0, 0.0 }, mesh_positions.items.len);
+    }
+
     for (mesh_positions.items, mesh_normals.items, mesh_tangents.items, mesh_uv0s.items) |position, normal, tangent, uv0| {
         mesh_vertices.appendAssumeCapacity(.{
             .position = position,
@@ -281,7 +298,7 @@ pub fn appendMeshPrimitive(
         const buffer_view = accessor.buffer_view.?;
 
         std.debug.assert(accessor.stride == buffer_view.stride or buffer_view.stride == 0);
-        std.debug.assert(accessor.stride * accessor.count == buffer_view.size);
+        std.debug.assert(accessor.stride * accessor.count <= buffer_view.size);
         std.debug.assert(buffer_view.buffer.data != null);
 
         const data_addr = @as([*]const u8, @ptrCast(buffer_view.buffer.data)) +
@@ -324,7 +341,7 @@ pub fn appendMeshPrimitive(
             std.debug.assert(buffer_view.buffer.data != null);
 
             std.debug.assert(accessor.stride == buffer_view.stride or buffer_view.stride == 0);
-            std.debug.assert(accessor.stride * accessor.count == buffer_view.size);
+            std.debug.assert(accessor.stride * accessor.count <= buffer_view.size);
 
             const data_addr = @as([*]const u8, @ptrCast(buffer_view.buffer.data)) +
                 accessor.offset + buffer_view.offset;
@@ -339,7 +356,7 @@ pub fn appendMeshPrimitive(
                     const slice = @as([*]const [3]f32, @ptrCast(@alignCast(data_addr)))[0..num_vertices];
                     try n.appendSlice(slice);
                 }
-            } else if (attrib.type == .texcoord) {
+            } else if (attrib.type == .texcoord and attrib.index == 0) {
                 if (texcoords0) |tc| {
                     std.debug.assert(accessor.type == .vec2);
                     const slice = @as([*]const [2]f32, @ptrCast(@alignCast(data_addr)))[0..num_vertices];
