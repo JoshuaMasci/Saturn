@@ -42,6 +42,14 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zstbi", zstbi.module("root"));
     exe.linkLibrary(zstbi.artifact("zstbi"));
 
+    // zjolt
+    const zjolt = b.dependency("zjolt", .{
+        .use_double_precision = false,
+        .enable_cross_platform_determinism = true,
+    });
+    exe.root_module.addImport("zjolt", zjolt.module("root"));
+    exe.linkLibrary(zjolt.artifact("joltc"));
+
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

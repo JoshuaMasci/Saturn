@@ -57,12 +57,11 @@ pub const DebugCamera = struct {
         self.pitch_yaw += angular_rotation;
 
         const pi_half = std.math.pi / 2.0;
-        const pi_2 = std.math.pi * 2.0;
         // Clamp pitch
         self.pitch_yaw[0] = std.math.clamp(self.pitch_yaw[0], -pi_half, pi_half);
 
         // Return rotation to
-        self.pitch_yaw[1] = @rem(self.pitch_yaw[1], pi_2);
+        self.pitch_yaw[1] = zm.modAngle(self.pitch_yaw[1]);
 
         const pitch_quat = zm.quatFromAxisAngle(zm.loadArr3(.{ 1.0, 0.0, 0.0 }), self.pitch_yaw[0]);
         const yaw_quat = zm.quatFromAxisAngle(zm.loadArr3(.{ 0.0, 1.0, 0.0 }), self.pitch_yaw[1]);

@@ -5,19 +5,19 @@ const gltf = zmesh.io.zcgltf;
 
 const zstbi = @import("zstbi");
 
-const backend = @import("renderer/renderer.zig");
+const rendering_system = @import("rendering.zig");
 
-const TexturedVertex = @import("renderer/opengl/vertex.zig").TexturedVertex;
-const Texture = @import("renderer/opengl/texture.zig");
-const Mesh = @import("renderer/opengl/mesh.zig");
+const TexturedVertex = @import("platform/opengl/vertex.zig").TexturedVertex;
+const Texture = @import("platform/opengl/texture.zig");
+const Mesh = @import("platform/opengl/mesh.zig");
 
 const Transform = @import("transform.zig");
 const object_pool = @import("object_pool.zig");
 
 pub const Resources = struct {
-    textures: std.ArrayList(?backend.TextureHandle),
-    materials: std.ArrayList(?backend.MaterialHandle),
-    meshes: std.ArrayList(?backend.StaticMeshHandle),
+    textures: std.ArrayList(?rendering_system.TextureHandle),
+    materials: std.ArrayList(?rendering_system.MaterialHandle),
+    meshes: std.ArrayList(?rendering_system.StaticMeshHandle),
     scenes: std.ArrayList(?Scene),
 
     default_scene: ?usize,
@@ -82,7 +82,7 @@ pub const Scene = struct {
     }
 };
 
-pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path: [:0]const u8) !Resources {
+pub fn load(allocator: std.mem.Allocator, renderer: *rendering_system.Renderer, file_path: [:0]const u8) !Resources {
     const start = std.time.Instant.now() catch unreachable;
     defer {
         const end = std.time.Instant.now() catch unreachable;
@@ -118,7 +118,7 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
         }
     }
 
-    var textures = try std.ArrayList(?backend.TextureHandle).initCapacity(allocator, data.textures_count);
+    var textures = try std.ArrayList(?rendering_system.TextureHandle).initCapacity(allocator, data.textures_count);
     if (data.textures) |gltf_textures| {
         for (gltf_textures[0..data.textures_count], 0..) |gltf_texture, i| {
             if (load_gltf_texture(renderer, data, images.items, &gltf_texture)) |texture| {
@@ -130,7 +130,7 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
         }
     }
 
-    var materials = try std.ArrayList(?backend.MaterialHandle).initCapacity(allocator, data.materials_count);
+    var materials = try std.ArrayList(?rendering_system.MaterialHandle).initCapacity(allocator, data.materials_count);
     if (data.materials) |gltf_materials| {
         for (gltf_materials[0..data.materials_count], 0..) |gltf_material, i| {
             if (load_gltf_material(renderer, data, textures.items, &gltf_material)) |material| {
@@ -142,7 +142,7 @@ pub fn load(allocator: std.mem.Allocator, renderer: *backend.Renderer, file_path
         }
     }
 
-    var meshes = try std.ArrayList(?backend.StaticMeshHandle).initCapacity(allocator, data.meshes_count);
+    var meshes = try std.ArrayList(?rendering_system.StaticMeshHandle).initCapacity(allocator, data.meshes_count);
     if (data.meshes) |gltf_meshes| {
         for (gltf_meshes[0..data.meshes_count], 0..) |*glft_mesh, i| {
             if (load_gltf_mesh(allocator, renderer, glft_mesh)) |mesh_opt| {
@@ -204,7 +204,7 @@ fn load_gltf_image(allocator: std.mem.Allocator, parent_path: []const u8, gltf_i
     return image_opt;
 }
 
-fn load_gltf_texture(renderer: *backend.Renderer, data: *gltf.Data, images: []?zstbi.Image, gltf_texture: *const gltf.Texture) !backend.TextureHandle {
+fn load_gltf_texture(renderer: *rendering_system.Renderer, data: *gltf.Data, images: []?zstbi.Image, gltf_texture: *const gltf.Texture) !rendering_system.TextureHandle {
     const image_index = data.image_index(gltf_texture.image) orelse return error.NoImageForTexture;
 
     if (image_index >= images.len) {
@@ -275,13 +275,13 @@ fn load_gltf_texture(renderer: *backend.Renderer, data: *gltf.Data, images: []?z
     return try renderer.load_texture(texture);
 }
 
-fn get_material_texture(data: *gltf.Data, textures: []?backend.TextureHandle, view: *const gltf.TextureView) ?backend.TextureHandle {
+fn get_material_texture(data: *gltf.Data, textures: []?rendering_system.TextureHandle, view: *const gltf.TextureView) ?rendering_system.TextureHandle {
     const index = data.texture_index(view.texture) orelse return null;
     return textures[index];
 }
 
-fn load_gltf_material(renderer: *backend.Renderer, data: *gltf.Data, textures: []?backend.TextureHandle, gltf_material: *const gltf.Material) !backend.MaterialHandle {
-    var material: backend.Material = .{};
+fn load_gltf_material(renderer: *rendering_system.Renderer, data: *gltf.Data, textures: []?rendering_system.TextureHandle, gltf_material: *const gltf.Material) !rendering_system.MaterialHandle {
+    var material: rendering_system.Material = .{};
 
     if (gltf_material.has_pbr_metallic_roughness != 0) {
         material.base_color_factor = gltf_material.pbr_metallic_roughness.base_color_factor;
@@ -304,7 +304,8 @@ fn load_gltf_material(renderer: *backend.Renderer, data: *gltf.Data, textures: [
     return try renderer.load_material(material);
 }
 
-pub fn load_gltf_mesh(allocator: std.mem.Allocator, renderer: *backend.Renderer, gltf_mesh: *const gltf.Mesh) !backend.StaticMeshHandle {
+//TODO: load mesh as indvidial primitives
+pub fn load_gltf_mesh(allocator: std.mem.Allocator, renderer: *rendering_system.Renderer, gltf_mesh: *const gltf.Mesh) !rendering_system.StaticMeshHandle {
     var mesh_indices = std.ArrayList(u32).init(allocator);
     defer mesh_indices.deinit();
 
@@ -371,6 +372,7 @@ fn add_gltf_node(scene: *Scene, allocator: std.mem.Allocator, data: *gltf.Data, 
     };
 
     //TODO: if has_matrix decompose mat4 to transform
+    std.debug.assert(gltf_node.has_matrix == 0);
 
     if (gltf_node.has_translation != 0) {
         node.transform.position = zm.loadArr3(gltf_node.translation);
@@ -385,13 +387,15 @@ fn add_gltf_node(scene: *Scene, allocator: std.mem.Allocator, data: *gltf.Data, 
     }
 
     if (gltf_node.mesh) |gltf_mesh| {
-        if (data.mesh_index(gltf_mesh)) |mesh_index| {
-            var materials = try std.ArrayList(usize).initCapacity(allocator, gltf_mesh.primitives_count);
-            for (gltf_mesh.primitives[0..gltf_mesh.primitives_count]) |primitive| {
-                materials.appendAssumeCapacity(data.material_index(primitive.material).?);
-            }
+        if (gltf_mesh.primitives[0].material.?.alpha_mode == .@"opaque") {
+            if (data.mesh_index(gltf_mesh)) |mesh_index| {
+                var materials = try std.ArrayList(usize).initCapacity(allocator, gltf_mesh.primitives_count);
+                for (gltf_mesh.primitives[0..gltf_mesh.primitives_count]) |primitive| {
+                    materials.appendAssumeCapacity(data.material_index(primitive.material).?);
+                }
 
-            node.model = .{ .mesh = mesh_index, .materials = materials };
+                node.model = .{ .mesh = mesh_index, .materials = materials };
+            }
         }
     }
 
@@ -431,6 +435,7 @@ pub fn appendMeshPrimitive(
         const data_addr = @as([*]const u8, @ptrCast(buffer_view.buffer.data)) +
             accessor.offset + buffer_view.offset;
 
+        //TODO: load mesh as indvidial primitives
         const indices_offset: u32 = @intCast(positions.items.len);
 
         if (accessor.stride == 1) {

@@ -2,20 +2,16 @@ const std = @import("std");
 const zm = @import("zmath");
 const imgui = @import("zimgui");
 
+const rendering_system = @import("rendering.zig");
+const physics_system = @import("physics.zig");
+
 const input = @import("input.zig");
 const world = @import("world.zig");
 const Transform = @import("transform.zig");
 const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
-const SDL_VERSION = 3;
-const sdl_platform = switch (SDL_VERSION) {
-    2 => @import("platform/sdl2.zig"),
-    3 => @import("platform/sdl3.zig"),
-    else => unreachable,
-};
-
-const renderer = @import("renderer/renderer.zig");
+const sdl_platform = @import("platform/sdl3.zig");
 
 pub const App = struct {
     const Self = @This();
@@ -25,12 +21,12 @@ pub const App = struct {
 
     platform: sdl_platform.Platform,
 
-    game_renderer: renderer.Renderer,
-    game_scene: renderer.Scene,
-    game_cube: ?renderer.SceneInstanceHandle,
+    game_renderer: rendering_system.Renderer,
+    game_scene: rendering_system.Scene,
+    game_cube: ?rendering_system.SceneInstanceHandle,
     game_camera: debug_camera.DebugCamera,
 
-    loaded_mesh: ?renderer.StaticMeshHandle,
+    game_physics: physics_system.World,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const node: world.Node = undefined;
@@ -42,7 +38,7 @@ pub const App = struct {
 
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
-        var game_renderer = try renderer.Renderer.init(allocator);
+        var game_renderer = try rendering_system.Renderer.init(allocator);
         var game_scene = game_renderer.create_scene();
 
         var game_camera = debug_camera.DebugCamera.Default;
@@ -58,6 +54,29 @@ pub const App = struct {
             };
         }
 
+        try physics_system.init(allocator);
+        var game_physics = try physics_system.World.init(
+            allocator,
+            .{
+                .max_bodies = 1024,
+                .num_body_mutexes = 0,
+                .max_body_pairs = 1024,
+                .max_contact_constraints = 1024,
+            },
+        );
+
+        const floor_shape_settings = try physics_system.create_box(zm.loadArr3(.{ 100.0, 1.0, 100.0 }));
+        defer floor_shape_settings.release();
+
+        const floor_shape = try floor_shape_settings.createShape();
+        defer floor_shape.release();
+
+        _ = try game_physics.create_body(
+            .{ .position = zm.loadArr3(.{ 0.0, -5.0, 0.0 }) },
+            floor_shape,
+            .static,
+        );
+
         return .{
             .should_quit = false,
             .allocator = allocator,
@@ -69,11 +88,14 @@ pub const App = struct {
             .game_cube = null,
             .game_camera = game_camera,
 
-            .loaded_mesh = null,
+            .game_physics = game_physics,
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.game_physics.deinit();
+        physics_system.deinit();
+
         if (self.game_cube) |instance| {
             self.game_scene.remove_instance(instance) catch {}; //Do Nothing since we will be destroying it anyways
 
@@ -93,6 +115,8 @@ pub const App = struct {
         self.platform.proccess_events(self);
 
         self.game_camera.update(delta_time);
+
+        try self.game_physics.update(delta_time);
 
         self.game_renderer.clear_framebuffer();
 
@@ -134,7 +158,7 @@ pub const App = struct {
 
 const gltf = @import("gltf.zig");
 
-fn load_gltf_scene(allocator: std.mem.Allocator, backend: *renderer.Renderer, game_scene: *renderer.Scene, file_path: [:0]const u8) !void {
+fn load_gltf_scene(allocator: std.mem.Allocator, backend: *rendering_system.Renderer, game_scene: *rendering_system.Scene, file_path: [:0]const u8) !void {
     var resources = try gltf.load(allocator, backend, file_path);
     defer resources.deinit();
 
@@ -147,7 +171,7 @@ fn load_gltf_scene(allocator: std.mem.Allocator, backend: *renderer.Renderer, ga
     }
 }
 
-fn load_gltf_node(game_scene: *renderer.Scene, resources: *gltf.Resources, scene: *const gltf.Scene, node_handle: gltf.NodeHandle) void {
+fn load_gltf_node(game_scene: *rendering_system.Scene, resources: *gltf.Resources, scene: *const gltf.Scene, node_handle: gltf.NodeHandle) void {
     if (scene.pool.getPtr(node_handle)) |node| {
         if (node.model) |model| {
             const mesh = resources.meshes.items[model.mesh].?;
