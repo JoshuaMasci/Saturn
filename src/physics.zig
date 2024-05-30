@@ -109,6 +109,90 @@ pub const World = struct {
         const body_interface = self.physics_system.getBodyInterfaceMut();
         body_interface.removeAndDestroyBody(handle);
     }
+
+    pub fn get_body(self: *Self, handle: BodyHandle) BodyInterface {
+        return .{
+            .id = handle,
+            .interface = self.physics_system.getBodyInterfaceMut(),
+        };
+    }
+};
+
+pub const BodyInterface = struct {
+    const Self = @This();
+
+    id: jolt.BodyId,
+    interface: *jolt.BodyInterface,
+
+    pub fn setActive(self: Self, active: bool) void {
+        if (active) {
+            self.interface.activate(self.id);
+        } else {
+            self.interface.deactivate(self.id);
+        }
+    }
+
+    pub fn isActive(self: Self) bool {
+        return self.interface.isActive(self.id);
+    }
+
+    pub fn setLinearVelocity(self: Self, velocity: zm.Vec) void {
+        self.interface.setLinearVelocity(self.id, zm.vecToArr3(velocity));
+    }
+    pub fn getLinearVelocity(self: Self) zm.Vec {
+        return zm.loadArr3w(self.interface.getLinearVelocity(self.id), 0.0);
+    }
+    pub fn addLinearVelocity(self: Self, velocity: zm.Vec) void {
+        self.interface.addLinearVelocity(self.id, zm.vecToArr3(velocity));
+    }
+
+    pub fn setAngularVelocity(self: Self, velocity: zm.Vec) void {
+        self.interface.setAngularVelocity(self.id, zm.vecToArr3(velocity));
+    }
+    pub fn getAngularVelocity(self: Self) zm.Vec {
+        return zm.loadArr3w(self.interface.getAngularVelocity(self.id), 0.0);
+    }
+
+    pub fn getPointVelocity(self: Self, point: zm.Vec) zm.Vec {
+        return zm.loadArr3w(self.interface.getPointVelocity(self.id, point), 0.0);
+    }
+
+    pub fn setPosition(self: Self, position: zm.Vec) void {
+        self.interface.setPosition(self.id, zm.vecToArr3(position), .activate);
+    }
+    pub fn getPosition(self: Self) zm.Vec {
+        return zm.loadArr3w(self.interface.getPosition(self.id), 0.0);
+    }
+    pub fn getCenterOfMassPosition(self: Self) zm.Vec {
+        return zm.loadArr3w(self.interface.getCenterOfMassPosition(self.id), 0.0);
+    }
+
+    pub fn setRotation(self: Self, rotation: zm.Quat) void {
+        self.interface.setRotation(self.id, rotation, .activate);
+    }
+    pub fn getRotation(self: Self) zm.Quat {
+        return zm.loadArr4(self.interface.getRotation(self.id));
+    }
+
+    pub fn addForce(self: Self, force: zm.Vec) void {
+        self.interface.addForce(self.id, zm.vecToArr3(force));
+    }
+    pub fn addForceAtPosition(self: Self, force: zm.Vec, position: zm.Vec) void {
+        self.interface.addForceAtPosition(self.id, zm.vecToArr3(force), zm.vecToArr3(position));
+    }
+    pub fn addTorque(self: Self, torque: zm.Vec) void {
+        self.interface.addTorque(self.id, zm.vecToArr3(torque));
+    }
+
+    pub fn addImpulse(self: Self, impulse: zm.Vec) void {
+        self.interface.addImpulse(self.id, zm.vecToArr3(impulse));
+    }
+    pub fn addImpulseAtPosition(self: Self, impulse: zm.Vec, position: zm.Vec) void {
+        self.interface.addImpulseAtPosition(self.id, zm.vecToArr3(impulse), zm.vecToArr3(position));
+    }
+    pub fn addAngularImpulse(self: Self, impulse: zm.Vec) void {
+        self.interface.addAngularImpulse(self.id, zm.vecToArr3(impulse));
+    }
 };
 
 const object_layers = struct {
