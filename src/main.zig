@@ -1,132 +1,77 @@
-pub const std = @import("std");
-const panic = std.debug.panic;
+// Library Plans
+// 1. Windowing/Input/Networking/FileSys/FileDiag: SDL3 (zig wrapper or stright c?)
+// 2. Other Inputs: DuelSenseLib + steam-input (Both much later down the line)
+// 3. Rendering: Vulkan (zig wrapper or stright c?) / Opengl (using glad)
+// 4. Audio: steam-audio (use c api)
+// 5. Physics: Jolt (needs a c wrapper)
+// 6. UI: cImgui
+// 7: Mesh Loading: cgltf
+// 8. Texture Loading: stb_image
+// 9. Linear Math: zmath or zalgabra?
 
-pub const GeneralPurposeAllocator: type = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
+const std = @import("std");
+const log = std.log;
 
-const glfw = @import("glfw");
-const vk = @import("vulkan");
+const App = @import("app.zig").App;
 
-const Input = @import("input.zig").Input;
+const TEREBYTE = std.math.pow(usize, 1000, 4);
+const GIGABYTE = std.math.pow(usize, 1000, 3);
+const MEGABYTE = std.math.pow(usize, 1000, 2);
+const KILOBYTE = std.math.pow(usize, 1000, 1);
 
-const Instance = @import("vulkan/instance.zig");
-const Device = @import("vulkan/device.zig");
-const RenderDevice = @import("render_device.zig").RenderDevice;
-const Renderer = @import("renderer.zig").Renderer;
-
-const graph = @import("renderer/render_graph.zig");
-const pipeline = @import("renderer/pipeline.zig");
-
-pub fn main() !void {
-    var global_allocator: GeneralPurposeAllocator = GeneralPurposeAllocator{};
-    defer {
-        const leaked = global_allocator.deinit();
-        if (leaked) panic("Error: memory leaked", .{});
+fn human_readable_bytes(value: usize) usize {
+    if (value > TEREBYTE) {
+        return value / TEREBYTE;
+    } else if (value > GIGABYTE) {
+        return value / GIGABYTE;
+    } else if (value > MEGABYTE) {
+        return value / MEGABYTE;
+    } else if (value > KILOBYTE) {
+        return value / KILOBYTE;
+    } else {
+        return value;
     }
-
-    var allocator = global_allocator.allocator();
-
-    try glfw.init(.{});
-    defer glfw.terminate();
-
-    const window = try glfw.Window.create(1600, 900, "Saturn V0.0", null, null, .{
-        .client_api = .no_api,
-    });
-    defer window.destroy();
-    try window.maximize();
-
-    var input = try Input.init(window, allocator);
-    defer input.deinit();
-
-    var instance = try Instance.init(allocator, "Saturn RenderGraph Test", Instance.AppVersion(0, 0, 1, 0));
-    defer instance.deinit();
-
-    var surface = try instance.createSurface(window);
-    defer instance.destroySurface(surface);
-
-    //TODO: select_device correctly
-    var selected_device = instance.pdevices[0];
-    var selected_queue_index: u32 = 0;
-
-    //TODO: worry about pointer referencing if moved out of main!
-    var device = try Device.init(allocator, instance.dispatch, selected_device, selected_queue_index);
-    defer device.deinit();
-
-    var render_device = try RenderDevice.init(allocator, &device);
-    defer render_device.deinit();
-
-    var renderer = try Renderer.init(allocator, &render_device, surface);
-    defer renderer.deinit();
-
-    //TEST_CODE_START
-    var permanent_buffer = try render_device.createBuffer(.{
-        .size = 16,
-        .usage = .{ .storage_buffer_bit = true },
-        .memory_usage = .cpu_to_gpu,
-    });
-    defer render_device.destroyBuffer(permanent_buffer);
-    var some_data = [_]u8{ 0, 1, 2, 3, 4, 5, 6, 7, 8 };
-    try render_device.fillBuffer(permanent_buffer, u8, &some_data);
-
-    var permanent_image = try render_device.createImage(.{
-        .size = .{ 16, 16 },
-        .format = .r8g8b8a8_unorm,
-        .usage = .{ .storage_bit = true },
-        .memory_usage = .gpu_only,
-    });
-    defer render_device.destroyImage(permanent_image);
-    //TEST_CODE_END
-
-    var prev_time: f64 = 0.0;
-    while (!window.shouldClose()) {
-        var current_time = glfw.getTime();
-
-        input.update();
-        try glfw.pollEvents();
-
-        //TEST_CODE_START
-        if (try renderer.createRenderGraph()) |*render_graph| {
-            defer render_graph.deinit();
-
-            var some_buffer = render_graph.createBuffer(.{
-                .size = 16,
-                .usage = .{ .storage_buffer_bit = true },
-                .memory_usage = .gpu_only,
-            });
-            var some_image = render_graph.createImage(.{
-                .size = .{ 16, 16 },
-                .format = .r8g8b8a8_unorm,
-                .usage = .{
-                    .storage_bit = true,
-                    .color_attachment_bit = true,
-                },
-                .memory_usage = .gpu_only,
-            });
-
-            var test_pass = render_graph.createRenderPass("TestRenderPass");
-            render_graph.addBufferAccess(test_pass, some_buffer, .shader_read);
-            render_graph.addImageAccess(test_pass, some_image, .shader_storage_read);
-            render_graph.addRaster(test_pass, &[_]graph.ImageResourceHandle{render_graph.getSwapchainImage()}, null);
-            //render_graph.addRenderFunction(test_pass, testRenderFunction, null);
-
-            try renderer.sumbitRenderGraph(render_graph);
-        } else {
-            //Skiping frame for some reason
-        }
-
-        prev_time = current_time;
-    }
-
-    device.waitIdle();
 }
 
-const TestData = struct {
-    some: i32,
-};
-
-fn testRenderFunction(data: *graph.RenderFunctionData) void {
-    if (data.get(TestData)) |test_data| {
-        std.log.info("testRenderFunction data: {}", .{test_data.some});
+fn human_readable_unit(value: usize) []const u8 {
+    if (value > TEREBYTE) {
+        return "TB";
+    } else if (value > GIGABYTE) {
+        return "GB";
+    } else if (value > MEGABYTE) {
+        return "MB";
+    } else if (value > KILOBYTE) {
+        return "KB";
     } else {
-        std.log.info("testRenderFunction data: null", .{});
+        return "B";
+    }
+}
+
+pub fn main() !void {
+    var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+    defer if (general_purpose_allocator.deinit() == .leak) {
+        log.err("GeneralPurposeAllocator has a memory leak!", .{});
+    };
+    const allocator = general_purpose_allocator.allocator();
+
+    const zstbi = @import("zstbi");
+    zstbi.init(allocator);
+    defer zstbi.deinit();
+
+    var app = try App.init(allocator);
+    defer app.deinit();
+
+    var last_frame_time_ns = std.time.nanoTimestamp();
+
+    while (app.is_running()) {
+        const current_time_ns = std.time.nanoTimestamp();
+        const delta_time_ns = current_time_ns - last_frame_time_ns;
+        const delta_time_s = @as(f32, @floatFromInt(delta_time_ns)) / std.time.ns_per_s;
+        last_frame_time_ns = current_time_ns;
+
+        const memory_usage = human_readable_bytes(general_purpose_allocator.total_requested_bytes);
+        const memory_usage_unit = human_readable_unit(general_purpose_allocator.total_requested_bytes);
+
+        try app.update(delta_time_s, .{ .value = memory_usage, .unit_str = memory_usage_unit });
     }
 }

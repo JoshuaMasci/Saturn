@@ -1,0 +1,21 @@
+.{
+    .name = "Saturn",
+    .version = "0.0.1",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "libs",
+        "src",
+        "README.md",
+    },
+    .dependencies = .{
+        .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
+        .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
+        .zmath = .{ .path = "libs/zig-gamedev/libs/zmath" },
+        .zimgui = .{ .path = "libs/zig-gamedev/libs/zimgui" },
+        .zjolt = .{ .path = "libs/zig-gamedev/libs/zjolt" },
+        .zpool = .{ .path = "libs/zig-gamedev/libs/zpool" },
+        .zmesh = .{ .path = "libs/zig-gamedev/libs/zmesh" },
+        .zstbi = .{ .path = "libs/zig-gamedev/libs/zstbi" },
+    },
+}

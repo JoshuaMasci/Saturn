@@ -1,15 +1,45 @@
-usingnamespace @import("linear_math.zig");
+const zm = @import("zmath");
+const physics = @import("physics.zig");
 
-pub const Transform = struct {
-    const Self = @This();
+pub const Right = zm.f32x4(1.0, 0.0, 0.0, 0.0);
+pub const Up = zm.f32x4(0.0, 1.0, 0.0, 0.0);
+pub const Forward = zm.f32x4(0.0, 0.0, 1.0, 0.0);
 
-    position: linear_math.Vector3,
-    orientation: linear_math.Quaternion,
-    scale: linear_math.Vector3,
+const Self = @This();
+position: zm.Vec = zm.f32x4s(0.0),
+rotation: zm.Quat = zm.qidentity(),
+scale: zm.Vec = zm.f32x4s(1.0),
 
-    pub const identity = Self{
-        .position = Vector3.zero,
-        .orientation = Quaternion.identity,
-        .scale = Vector3.one,
+pub const Identity: Self = .{};
+
+pub fn get_model_matrix(self: Self) zm.Mat {
+    const translation = zm.translationV(self.position);
+    const rotation = zm.quatToMat(self.rotation);
+    const scale = zm.scalingV(self.scale);
+    return zm.mul(zm.mul(translation, rotation), scale);
+}
+
+pub fn get_view_matrix(self: Self) zm.Mat {
+    const forward = self.get_forward();
+    const up = self.get_up();
+    return zm.lookToRh(self.position, forward, up);
+}
+
+pub fn get_right(self: Self) zm.Vec {
+    return zm.normalize3(zm.rotate(self.rotation, Right));
+}
+
+pub fn get_forward(self: Self) zm.Vec {
+    return zm.normalize3(zm.rotate(self.rotation, Forward));
+}
+
+pub fn get_up(self: Self) zm.Vec {
+    return zm.normalize3(zm.rotate(self.rotation, Up));
+}
+
+pub fn get_physics_transform(self: Self) physics.Transform {
+    return .{
+        .position = self.position,
+        .rotation = self.rotation,
     };
-};
+}

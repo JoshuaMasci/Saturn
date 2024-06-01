@@ -1,155 +1,77 @@
-pub const std = @import("std");
-const panic = std.debug.panic;
+const std = @import("std");
+const StringHash = @import("string_hash.zig");
 
-const glfw = @import("glfw");
-
-const MouseButtonCount: usize = @enumToInt(glfw.mouse_button.last);
-const KeyboardButtonCount: usize = @enumToInt(glfw.Key.last());
-pub const TextInput = std.ArrayList(u16);
-
-const ButtonInput = struct {
-    current_state: bool = false,
-    prev_state: bool = false,
+pub const Button = enum {
+    debug_camera_interact,
 };
 
-fn key_callback(window: glfw.Window, key: glfw.Key, scancode: i32, action: glfw.Action, mods: glfw.Mods) void {
-    _ = scancode;
-    _ = mods;
-    var internal_result = window.getUserPointer(InputData);
-    if (internal_result) |internal| {
-        if (key != glfw.Key.unknown) {
-            var key_int = @intCast(usize, @enumToInt(key));
-            if (action == glfw.Action.press) {
-                internal.keyboard_buttons[key_int].current_state = true;
-            } else if (action == glfw.Action.release) {
-                internal.keyboard_buttons[key_int].current_state = false;
-            }
-        }
-    }
-}
+pub const Axis = enum {
+    debug_camera_forward_backward,
+    debug_camera_left_right,
+    debug_camera_up_down,
 
-fn mouse_button_callback(window: glfw.Window, button: glfw.mouse_button.MouseButton, action: glfw.Action, mods: glfw.Mods) void {
-    _ = mods;
-    var internal_result = window.getUserPointer(InputData);
-    if (internal_result) |internal| {
-        var button_int = @intCast(usize, @enumToInt(button));
-        if (action == glfw.Action.press) {
-            internal.mouse_buttons[button_int].current_state = true;
-        } else if (action == glfw.Action.release) {
-            internal.mouse_buttons[button_int].current_state = false;
-        }
-    }
-}
-
-fn mouse_move_button(window: glfw.Window, xpos: f64, ypos: f64) void {
-    var internal_result = window.getUserPointer(InputData);
-    if (internal_result) |internal| {
-        internal.mouse_pos = [2]f32{ @floatCast(f32, xpos), @floatCast(f32, ypos) };
-    }
-}
-
-fn mouse_entered(window: glfw.Window, entered: bool) void {
-    var internal_result = window.getUserPointer(InputData);
-    if (internal_result) |internal| {
-        if (!entered) {
-            internal.mouse_pos = null;
-        }
-    }
-}
-
-fn text_entered(window: glfw.Window, character_u21: u21) void {
-    var internal_result = window.getUserPointer(InputData);
-    if (internal_result) |internal| {
-        var character = @intCast(u16, character_u21);
-        internal.text_input.append(character) catch {
-            panic("Failed to append text_input!", .{});
-        };
-    }
-}
-
-const InputData = struct {
-    mouse_buttons: [MouseButtonCount]ButtonInput = [_]ButtonInput{.{}} ** MouseButtonCount,
-    keyboard_buttons: [KeyboardButtonCount]ButtonInput = [_]ButtonInput{.{}} ** KeyboardButtonCount,
-    mouse_pos: ?[2]f32 = null,
-    text_input: TextInput,
+    debug_camera_pitch,
+    debug_camera_yaw,
+    debug_camera_roll,
 };
 
-pub const Input = struct {
-    const Self = @This();
+pub const ButtonState = enum {
+    pressed,
+    released,
+};
 
-    allocator: std.mem.Allocator,
-    window: glfw.Window,
-    internal: *InputData,
+pub const AxisDirection = enum {
+    positve,
+    negitive,
+};
 
-    pub fn init(window: glfw.Window, allocator: std.mem.Allocator) !Self {
-        var internal = try allocator.create(InputData);
-        internal.text_input = TextInput.init(allocator);
-        window.setUserPointer(internal);
+pub const ButtonAxisState = struct {
+    positve: ButtonState,
+    negitive: ButtonState,
 
-        window.setKeyCallback(key_callback);
-        window.setMouseButtonCallback(mouse_button_callback);
-        window.setCursorPosCallback(mouse_move_button);
-        window.setCursorEnterCallback(mouse_entered);
-        window.setCharCallback(text_entered);
+    pub const Default: @This() = .{ .positve = .released, .negitive = .released };
 
-        return Self{
-            .allocator = allocator,
-            .window = window,
-            .internal = internal,
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.window.setKeyCallback(null);
-        self.window.setMouseButtonCallback(null);
-        self.window.setCursorPosCallback(null);
-        self.window.setCursorEnterCallback(null);
-        self.window.setUserPointer(null);
-
-        //Clear Window User Pointer
-        self.internal.text_input.deinit();
-        self.allocator.destroy(self.internal);
-    }
-
-    pub fn update(self: *Self) void {
-        for (self.internal.mouse_buttons) |*button| {
-            button.prev_state = button.current_state;
-        }
-
-        for (self.internal.keyboard_buttons) |*button| {
-            button.prev_state = button.current_state;
+    pub fn update(self: *@This(), dir: AxisDirection, state: ButtonState) void {
+        switch (dir) {
+            .positve => self.positve = state,
+            .negitive => self.negitive = state,
         }
     }
 
-    pub fn getMouseDown(self: *Self, mouse_button: glfw.mouse_button.MouseButton) bool {
-        var button_int = @intCast(usize, @enumToInt(mouse_button));
-        return self.internal.mouse_buttons[button_int].current_state == true;
+    pub fn get_value(self: @This()) f32 {
+        var value: f32 = 0.0;
+        if (self.positve == .pressed) {
+            value += 1.0;
+        }
+        if (self.negitive == .pressed) {
+            value -= 1.0;
+        }
+        return value;
     }
+};
 
-    pub fn getMousePressed(self: *Self, mouse_button: glfw.mouse_button.MouseButton) bool {
-        var button_int = @intCast(usize, @enumToInt(mouse_button));
-        var button = self.internal.mouse_buttons[button_int];
-        return button.current_state == true and button.prev_state == false;
-    }
+pub const ButtonEvent = struct {
+    button: Button,
+    state: ButtonState,
+};
 
-    pub fn getMousePos(self: *Self) ?[2]f32 {
-        return self.internal.mouse_pos;
-    }
+pub const AxisEvent = struct {
+    axis: Axis,
+    value: f32,
 
-    pub fn getKeyDown(self: *Self, key: glfw.Key) bool {
-        var key_int = @intCast(usize, @enumToInt(key));
-        return self.internal.keyboard_buttons[key_int].current_state == true;
+    pub fn get_value(self: @This(), clamp: bool) f32 {
+        if (clamp) {
+            return std.math.clamp(self.value, -1.0, 1.0);
+        } else {
+            return self.value;
+        }
     }
+};
 
-    pub fn getKeyPressed(self: *Self, key: glfw.Key) bool {
-        var key_int = @intCast(usize, @enumToInt(key));
-        var button = self.internal.keyboard_buttons[key_int];
-        return button.current_state == true and button.prev_state == false;
-    }
-
-    pub fn getAndClearTextInput(self: *Self) TextInput {
-        var temp = self.internal.text_input;
-        self.internal.text_input = TextInput.init(self.allocator);
-        return temp;
-    }
+pub const ButtonBinding = union(enum) {
+    button: Button,
+    axis: struct {
+        axis: Axis,
+        dir: AxisDirection,
+    },
 };
