@@ -40,7 +40,7 @@ fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u
     return try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
 }
 
-pub const Renderer = struct {
+pub const Backend = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,

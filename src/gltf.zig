@@ -82,7 +82,7 @@ pub const Scene = struct {
     }
 };
 
-pub fn load(allocator: std.mem.Allocator, renderer: *rendering_system.Renderer, file_path: [:0]const u8) !Resources {
+pub fn load(allocator: std.mem.Allocator, renderer: *rendering_system.Backend, file_path: [:0]const u8) !Resources {
     const start = std.time.Instant.now() catch unreachable;
     defer {
         const end = std.time.Instant.now() catch unreachable;
@@ -204,7 +204,7 @@ fn load_gltf_image(allocator: std.mem.Allocator, parent_path: []const u8, gltf_i
     return image_opt;
 }
 
-fn load_gltf_texture(renderer: *rendering_system.Renderer, data: *gltf.Data, images: []?zstbi.Image, gltf_texture: *const gltf.Texture) !rendering_system.TextureHandle {
+fn load_gltf_texture(renderer: *rendering_system.Backend, data: *gltf.Data, images: []?zstbi.Image, gltf_texture: *const gltf.Texture) !rendering_system.TextureHandle {
     const image_index = data.image_index(gltf_texture.image) orelse return error.NoImageForTexture;
 
     if (image_index >= images.len) {
@@ -280,7 +280,7 @@ fn get_material_texture(data: *gltf.Data, textures: []?rendering_system.TextureH
     return textures[index];
 }
 
-fn load_gltf_material(renderer: *rendering_system.Renderer, data: *gltf.Data, textures: []?rendering_system.TextureHandle, gltf_material: *const gltf.Material) !rendering_system.MaterialHandle {
+fn load_gltf_material(renderer: *rendering_system.Backend, data: *gltf.Data, textures: []?rendering_system.TextureHandle, gltf_material: *const gltf.Material) !rendering_system.MaterialHandle {
     var material: rendering_system.Material = .{};
 
     if (gltf_material.has_pbr_metallic_roughness != 0) {
@@ -305,7 +305,7 @@ fn load_gltf_material(renderer: *rendering_system.Renderer, data: *gltf.Data, te
 }
 
 //TODO: load mesh as indvidial primitives
-pub fn load_gltf_mesh(allocator: std.mem.Allocator, renderer: *rendering_system.Renderer, gltf_mesh: *const gltf.Mesh) !rendering_system.StaticMeshHandle {
+pub fn load_gltf_mesh(allocator: std.mem.Allocator, renderer: *rendering_system.Backend, gltf_mesh: *const gltf.Mesh) !rendering_system.StaticMeshHandle {
     var mesh_indices = std.ArrayList(u32).init(allocator);
     defer mesh_indices.deinit();
 

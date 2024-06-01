@@ -1,4 +1,5 @@
 const zm = @import("zmath");
+const physics = @import("physics.zig");
 
 pub const Right = zm.f32x4(1.0, 0.0, 0.0, 0.0);
 pub const Up = zm.f32x4(0.0, 1.0, 0.0, 0.0);
@@ -34,4 +35,11 @@ pub fn get_forward(self: Self) zm.Vec {
 
 pub fn get_up(self: Self) zm.Vec {
     return zm.normalize3(zm.rotate(self.rotation, Up));
+}
+
+pub fn get_physics_transform(self: Self) physics.Transform {
+    return .{
+        .position = self.position,
+        .rotation = self.rotation,
+    };
 }

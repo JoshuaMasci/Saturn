@@ -17,7 +17,7 @@ pub fn create_box(half_extent: zm.Vec) !*jolt.BoxShapeSettings {
 pub const BodyHandle = jolt.BodyId;
 
 pub const Transform = struct {
-    position: zm.Vec = zm.splat(zm.Vec, 0.0),
+    position: zm.Vec = zm.f32x4s(0.0),
     rotation: zm.Quat = zm.qidentity(),
 };
 
@@ -136,61 +136,72 @@ pub const BodyInterface = struct {
         return self.interface.isActive(self.id);
     }
 
-    pub fn setLinearVelocity(self: Self, velocity: zm.Vec) void {
+    pub fn set_linear_velocity(self: Self, velocity: zm.Vec) void {
         self.interface.setLinearVelocity(self.id, zm.vecToArr3(velocity));
     }
-    pub fn getLinearVelocity(self: Self) zm.Vec {
+    pub fn get_linear_velocity(self: Self) zm.Vec {
         return zm.loadArr3w(self.interface.getLinearVelocity(self.id), 0.0);
     }
-    pub fn addLinearVelocity(self: Self, velocity: zm.Vec) void {
+    pub fn add_linear_velocity(self: Self, velocity: zm.Vec) void {
         self.interface.addLinearVelocity(self.id, zm.vecToArr3(velocity));
     }
 
-    pub fn setAngularVelocity(self: Self, velocity: zm.Vec) void {
+    pub fn set_angular_velocity(self: Self, velocity: zm.Vec) void {
         self.interface.setAngularVelocity(self.id, zm.vecToArr3(velocity));
     }
-    pub fn getAngularVelocity(self: Self) zm.Vec {
+    pub fn get_angular_velocity(self: Self) zm.Vec {
         return zm.loadArr3w(self.interface.getAngularVelocity(self.id), 0.0);
     }
 
-    pub fn getPointVelocity(self: Self, point: zm.Vec) zm.Vec {
+    pub fn get_point_velocity(self: Self, point: zm.Vec) zm.Vec {
         return zm.loadArr3w(self.interface.getPointVelocity(self.id, point), 0.0);
     }
 
-    pub fn setPosition(self: Self, position: zm.Vec) void {
+    pub fn set_position(self: Self, position: zm.Vec) void {
         self.interface.setPosition(self.id, zm.vecToArr3(position), .activate);
     }
-    pub fn getPosition(self: Self) zm.Vec {
+    pub fn get_position(self: Self) zm.Vec {
         return zm.loadArr3w(self.interface.getPosition(self.id), 0.0);
     }
-    pub fn getCenterOfMassPosition(self: Self) zm.Vec {
+    pub fn get_center_if_mass_position(self: Self) zm.Vec {
         return zm.loadArr3w(self.interface.getCenterOfMassPosition(self.id), 0.0);
     }
 
-    pub fn setRotation(self: Self, rotation: zm.Quat) void {
+    pub fn set_rotation(self: Self, rotation: zm.Quat) void {
         self.interface.setRotation(self.id, rotation, .activate);
     }
-    pub fn getRotation(self: Self) zm.Quat {
+    pub fn get_rotation(self: Self) zm.Quat {
         return zm.loadArr4(self.interface.getRotation(self.id));
     }
 
-    pub fn addForce(self: Self, force: zm.Vec) void {
+    pub fn set_transform(self: Self, transform: Transform) void {
+        self.set_position(transform.position);
+        self.set_rotation(transform.rotation);
+    }
+    pub fn get_transform(self: Self) Transform {
+        return .{
+            .position = self.getPosition(),
+            .rotation = self.getRotation(),
+        };
+    }
+
+    pub fn add_force(self: Self, force: zm.Vec) void {
         self.interface.addForce(self.id, zm.vecToArr3(force));
     }
-    pub fn addForceAtPosition(self: Self, force: zm.Vec, position: zm.Vec) void {
+    pub fn add_force_at_position(self: Self, force: zm.Vec, position: zm.Vec) void {
         self.interface.addForceAtPosition(self.id, zm.vecToArr3(force), zm.vecToArr3(position));
     }
-    pub fn addTorque(self: Self, torque: zm.Vec) void {
+    pub fn add_torque(self: Self, torque: zm.Vec) void {
         self.interface.addTorque(self.id, zm.vecToArr3(torque));
     }
 
-    pub fn addImpulse(self: Self, impulse: zm.Vec) void {
+    pub fn add_tmpulse(self: Self, impulse: zm.Vec) void {
         self.interface.addImpulse(self.id, zm.vecToArr3(impulse));
     }
-    pub fn addImpulseAtPosition(self: Self, impulse: zm.Vec, position: zm.Vec) void {
+    pub fn add_impulse_at_position(self: Self, impulse: zm.Vec, position: zm.Vec) void {
         self.interface.addImpulseAtPosition(self.id, zm.vecToArr3(impulse), zm.vecToArr3(position));
     }
-    pub fn addAngularImpulse(self: Self, impulse: zm.Vec) void {
+    pub fn add_angular_impulse(self: Self, impulse: zm.Vec) void {
         self.interface.addAngularImpulse(self.id, zm.vecToArr3(impulse));
     }
 };
