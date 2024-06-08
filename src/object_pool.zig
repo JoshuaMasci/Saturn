@@ -49,7 +49,6 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
                     }
                 }
             }
-
             self.deinit();
         }
 

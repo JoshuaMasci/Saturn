@@ -2,6 +2,7 @@ const std = @import("std");
 const zm = @import("zmath");
 const imgui = @import("zimgui");
 
+const sdl_platform = @import("platform/sdl3.zig");
 const rendering_system = @import("rendering.zig");
 const physics_system = @import("physics.zig");
 
@@ -11,7 +12,8 @@ const Transform = @import("transform.zig");
 const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
-const sdl_platform = @import("platform/sdl3.zig");
+const gltf = @import("gltf.zig");
+const proc = @import("procedural.zig");
 
 pub const App = struct {
     const Self = @This();
@@ -20,35 +22,48 @@ pub const App = struct {
     allocator: std.mem.Allocator,
 
     platform: sdl_platform.Platform,
-
-    backend: rendering_system.Backend,
+    rendering_backend: rendering_system.Backend,
 
     game_world: world.World,
-
     game_camera: debug_camera.DebugCamera,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
-        var backend = try rendering_system.Backend.init(allocator);
+        var rendering_backend = try rendering_system.Backend.init(allocator);
         try physics_system.init(allocator);
 
-        var game_world = world.World.init(allocator, &backend);
+        var game_world = world.World.init(allocator, &rendering_backend);
+
+        {
+            const CharacterHeight: f32 = 1.8;
+            const CharacterRadius: f32 = 0.3;
+
+            const shape = try physics_system.create_cylinder(CharacterHeight, CharacterRadius);
+            const mesh = try proc.create_cylinder_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
+            const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
+            const character_handle = try game_world.add_character(&.{ .position = zm.f32x4(5.0, 10.0, 0.0, 0.0) }, shape, .{ .mesh = mesh, .material = material });
+            _ = character_handle; // autofix
+        }
+
+        //Floor
+        _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 1.0, 0.412, 0.38, 1.0 }, .{ 160.0, 0.5, 160.0 }, &.{ .position = zm.f32x4(0.0, -5.0, 0.0, 0.0) }, false);
+
+        //Cube
+        _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .rotation = zm.f32x4(0.505526, 0.706494, -0.312048, 0.384623) }, true);
 
         // Load resources from gltf file
         const args = try std.process.argsAlloc(allocator);
         defer std.process.argsFree(allocator, args);
         if (args.len > 1) {
             const file_path = args[1];
-            // var resources = try gltf.load(allocator, &backend, file_path);
-            // defer resources.deinit();
-            load_gltf_scene(allocator, &backend, &game_world, file_path) catch |err| {
+            load_gltf_scene(allocator, &rendering_backend, &game_world, file_path) catch |err| {
                 std.log.err("Loading {s} failed with {}", .{ file_path, err });
             };
         }
 
         var game_camera = debug_camera.DebugCamera.Default;
-        game_camera.transform.position = zm.f32x4(0.0, 0.0, -5.0, 0.0);
+        game_camera.transform.position = zm.f32x4(0.0, 0.0, -10.0, 0.0);
 
         return .{
             .should_quit = false,
@@ -58,7 +73,7 @@ pub const App = struct {
 
             .game_world = game_world,
 
-            .backend = backend,
+            .rendering_backend = rendering_backend,
             .game_camera = game_camera,
         };
     }
@@ -67,7 +82,7 @@ pub const App = struct {
         self.game_world.deinit();
 
         physics_system.deinit();
-        self.backend.deinit();
+        self.rendering_backend.deinit();
         self.platform.deinit();
     }
 
@@ -79,10 +94,9 @@ pub const App = struct {
         self.platform.proccess_events(self);
 
         self.game_camera.update(delta_time);
-
         self.game_world.update(delta_time);
 
-        self.backend.clear_framebuffer();
+        self.rendering_backend.clear_framebuffer();
 
         var scene_camera = camera.Camera{
             .data = self.game_camera.camera,
@@ -90,7 +104,7 @@ pub const App = struct {
         };
 
         const window_size = try self.platform.get_window_size();
-        self.backend.render_scene(window_size, &self.game_world.rendering_world, &scene_camera);
+        self.rendering_backend.render_scene(window_size, &self.game_world.rendering_world, &scene_camera);
 
         {
             imgui.backend.newFrame(try self.platform.get_window_size());
@@ -120,10 +134,8 @@ pub const App = struct {
     }
 };
 
-const gltf = @import("gltf.zig");
-
-fn load_gltf_scene(allocator: std.mem.Allocator, backend: *rendering_system.Backend, game_world: *world.World, file_path: [:0]const u8) !void {
-    var resources = try gltf.load(allocator, backend, file_path);
+fn load_gltf_scene(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, file_path: [:0]const u8) !void {
+    var resources = try gltf.load(allocator, rendering_backend, file_path);
     defer resources.deinit();
 
     if (resources.default_scene) |default_scene_index| {
@@ -156,4 +168,16 @@ fn load_gltf_node(game_world: *world.World, resources: *gltf.Resources, scene: *
             load_gltf_node(game_world, resources, scene, child);
         }
     }
+}
+
+fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color: [4]f32, size: [3]f32, transform: *const Transform, dynamic: bool) !world.EntityHandle {
+    const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
+    const material = try proc.create_color_material(rendering_backend, color);
+    const shape = try physics_system.create_box(zm.loadArr3(size) * zm.f32x4s(0.5));
+    defer shape.release();
+    return game_world.add_entity(
+        transform,
+        .{ .shape = shape, .dynamic = dynamic },
+        .{ .mesh = mesh, .material = material },
+    );
 }

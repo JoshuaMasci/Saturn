@@ -71,7 +71,6 @@ pub fn main() !void {
 
         const memory_usage = human_readable_bytes(general_purpose_allocator.total_requested_bytes);
         const memory_usage_unit = human_readable_unit(general_purpose_allocator.total_requested_bytes);
-
         try app.update(delta_time_s, .{ .value = memory_usage, .unit_str = memory_usage_unit });
     }
 }

@@ -2,6 +2,9 @@ const std = @import("std");
 const zm = @import("zmath");
 const jolt = @import("zjolt");
 
+const UnscaledTransform = @import("unscaled_transform.zig");
+const ObjectPool = @import("object_pool.zig").ObjectPool;
+
 pub fn init(allocator: std.mem.Allocator) !void {
     return jolt.init(allocator, .{});
 }
@@ -10,16 +13,44 @@ pub fn deinit() void {
     jolt.deinit();
 }
 
-pub fn create_box(half_extent: zm.Vec) !*jolt.BoxShapeSettings {
-    return jolt.BoxShapeSettings.create(zm.vecToArr3(half_extent));
+pub fn create_box(half_extent: zm.Vec) !Shape {
+    var settings = try jolt.BoxShapeSettings.create(zm.vecToArr3(half_extent));
+    defer settings.release();
+    return try settings.createShape();
 }
 
-pub const BodyHandle = jolt.BodyId;
+pub fn create_cylinder(
+    half_height: f32,
+    radius: f32,
+) !Shape {
+    var settings = try jolt.CylinderShapeSettings.create(half_height, radius);
+    defer settings.release();
+    return try settings.createShape();
+}
 
-pub const Transform = struct {
-    position: zm.Vec = zm.f32x4s(0.0),
-    rotation: zm.Quat = zm.qidentity(),
+pub fn create_capsule(
+    half_height: f32,
+    radius: f32,
+) !Shape {
+    var settings = try jolt.CapsuleShapeSettings.create(half_height, radius);
+    defer settings.release();
+    return try settings.createShape();
+}
+
+pub const RigidBodyHandle = jolt.BodyId;
+pub const Shape = *jolt.Shape;
+
+pub const RigidBodyMode = jolt.MotionType;
+
+pub const Character = struct {
+    character: *jolt.CharacterVirtual,
+
+    pub fn deinit(self: *@This()) void {
+        self.character.destroy();
+    }
 };
+const CharacterPool = ObjectPool(u8, Character);
+pub const CharacterHandle = CharacterPool.Handle;
 
 pub const World = struct {
     const Self = @This();
@@ -30,6 +61,8 @@ pub const World = struct {
     object_layer_pair_filter: *ObjectLayerPairFilter,
     contact_listener: *ContactListener,
     physics_system: *jolt.PhysicsSystem,
+
+    characters: CharacterPool,
 
     pub fn init(allocator: std.mem.Allocator, args: struct {
         max_bodies: u32 = 1024,
@@ -68,10 +101,12 @@ pub const World = struct {
             .object_layer_pair_filter = object_layer_pair_filter,
             .contact_listener = contact_listener,
             .physics_system = physics_system,
+            .characters = CharacterPool.init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.characters.deinit_with_entries();
         self.physics_system.destroy();
         self.allocator.destroy(self.contact_listener);
         self.allocator.destroy(self.object_vs_broad_phase_layer_filter);
@@ -80,15 +115,29 @@ pub const World = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32) !void {
+        {
+            const gravity = [3]f32{ 0.0, -9.8, 0.0 };
+            var character_iter = self.characters.iterator();
+            while (character_iter.next()) |entry| {
+                var velocity = entry.value_ptr.character.getLinearVelocity();
+                if (entry.value_ptr.character.getGroundState() != .on_ground) {
+                    velocity[1] += -9.8 * delta_time;
+                }
+                entry.value_ptr.character.setLinearVelocity(velocity);
+                entry.value_ptr.character.update(delta_time, gravity, .{});
+                //std.log.info("Character Pos: {d:.2} Grounded: {}", .{ entry.value_ptr.character.getPosition(), entry.value_ptr.character.getGroundState() });
+            }
+        }
+
         try self.physics_system.update(delta_time, .{});
     }
 
-    pub fn create_body(
+    pub fn create_rigid_body(
         self: *Self,
-        tranform: Transform,
-        shape: ?*jolt.Shape,
+        tranform: UnscaledTransform,
+        shape: *jolt.Shape,
         motion_type: jolt.MotionType,
-    ) !BodyHandle {
+    ) !RigidBodyHandle {
         const body_interface = self.physics_system.getBodyInterfaceMut();
 
         const object_layer = switch (motion_type) {
@@ -102,23 +151,80 @@ pub const World = struct {
             .shape = shape,
             .motion_type = motion_type,
             .object_layer = object_layer,
+            .mass_properties_override = .{},
         }, .activate);
     }
 
-    pub fn destory_body(self: *Self, handle: BodyHandle) void {
+    pub fn destory_rigid_body(self: *Self, handle: RigidBodyHandle) void {
         const body_interface = self.physics_system.getBodyInterfaceMut();
         body_interface.removeAndDestroyBody(handle);
     }
 
-    pub fn get_body(self: *Self, handle: BodyHandle) BodyInterface {
+    pub fn get_rigid_body(self: *Self, handle: RigidBodyHandle) RigidBodyInterface {
         return .{
             .id = handle,
             .interface = self.physics_system.getBodyInterfaceMut(),
         };
     }
+
+    pub fn create_character(
+        self: *Self,
+        transform: UnscaledTransform,
+        shape: *jolt.Shape,
+    ) !CharacterHandle {
+        var character_settings = try jolt.CharacterVirtualSettings.create();
+        defer character_settings.release();
+
+        const up = transform.get_up();
+
+        character_settings.base.up = zm.loadArr4(up);
+        character_settings.base.shape = shape;
+
+        // character_settings.* = .{
+        //     .base = .{
+        //         .up = zm.loadArr4(up),
+        //         .max_slope_angle = std.math.degreesToRadians(45.0),
+        //         .supporting_volume = .{0.0} ** 4,
+        //         .shape = shape,
+        //     },
+        //     .mass = 75.0,
+        //     .max_strength = 100.0,
+        //     .shape_offset = .{0.0} ** 4,
+        //     .back_face_mode = .collide_with_back_faces,
+        //     .predictive_contact_distance = 0.1,
+        //     .max_collision_iterations = 5,
+        //     .max_constraint_iterations = 15,
+        //     .min_time_remaining = 1.0e-4,
+        //     .collision_tolerance = 1.0e-3,
+        //     .character_padding = 0.02,
+        //     .max_num_hits = 256,
+        //     .hit_reduction_cos_max_angle = 0.999,
+        //     .penetration_recovery_speed = 1.0,
+        // };
+
+        const character = try jolt.CharacterVirtual.create(character_settings, zm.vecToArr3(transform.position), zm.vecToArr4(transform.rotation), self.physics_system);
+
+        return self.characters.insert(.{
+            .character = character,
+        });
+    }
+
+    pub fn destroy_character(self: *Self, handle: CharacterHandle) !void {
+        if (try self.characters.remove(handle)) |character| {
+            character.deinit();
+        }
+    }
+
+    pub fn get_character(self: *Self, handle: CharacterHandle) ?CharacterInterface {
+        if (self.characters.getPtr(handle)) |ptr| {
+            return .{ .ptr = ptr };
+        } else {
+            return null;
+        }
+    }
 };
 
-pub const BodyInterface = struct {
+pub const RigidBodyInterface = struct {
     const Self = @This();
 
     id: jolt.BodyId,
@@ -174,14 +280,14 @@ pub const BodyInterface = struct {
         return zm.loadArr4(self.interface.getRotation(self.id));
     }
 
-    pub fn set_transform(self: Self, transform: Transform) void {
+    pub fn set_transform(self: Self, transform: UnscaledTransform) void {
         self.set_position(transform.position);
         self.set_rotation(transform.rotation);
     }
-    pub fn get_transform(self: Self) Transform {
+    pub fn get_transform(self: Self) UnscaledTransform {
         return .{
-            .position = self.getPosition(),
-            .rotation = self.getRotation(),
+            .position = self.get_position(),
+            .rotation = self.get_rotation(),
         };
     }
 
@@ -203,6 +309,47 @@ pub const BodyInterface = struct {
     }
     pub fn add_angular_impulse(self: Self, impulse: zm.Vec) void {
         self.interface.addAngularImpulse(self.id, zm.vecToArr3(impulse));
+    }
+};
+
+pub const CharacterInterface = struct {
+    const Self = @This();
+
+    ptr: *Character,
+
+    pub fn set_linear_velocity(self: Self, velocity: zm.Vec) void {
+        self.ptr.character.setLinearVelocity(zm.vecToArr3(velocity));
+    }
+    pub fn get_linear_velocity(self: Self) zm.Vec {
+        return zm.loadArr3w(self.ptr.character.getLinearVelocity(), 0.0);
+    }
+    pub fn add_linear_velocity(self: Self, velocity: zm.Vec) void {
+        self.set_linear_velocity(self.get_linear_velocity() + velocity);
+    }
+
+    pub fn set_position(self: Self, position: zm.Vec) void {
+        self.ptr.character.setPosition(zm.vecToArr3(position));
+    }
+    pub fn get_position(self: Self) zm.Vec {
+        return zm.loadArr3w(self.ptr.character.getPosition(), 0.0);
+    }
+
+    pub fn set_rotation(self: Self, rotation: zm.Quat) void {
+        self.ptr.character.setRotation(rotation);
+    }
+    pub fn get_rotation(self: Self) zm.Quat {
+        return zm.loadArr4(self.ptr.character.getRotation());
+    }
+
+    pub fn set_transform(self: Self, transform: UnscaledTransform) void {
+        self.set_position(transform.position);
+        self.set_rotation(transform.rotation);
+    }
+    pub fn get_transform(self: Self) UnscaledTransform {
+        return .{
+            .position = self.get_position(),
+            .rotation = self.get_rotation(),
+        };
     }
 };
 
@@ -306,5 +453,20 @@ const ContactListener = extern struct {
         _ = base_offset;
         _ = collision_result;
         return .accept_all_contacts;
+    }
+};
+
+const BroadPhaseLayerFilter = extern struct {
+    usingnamespace jolt.BroadPhaseLayerFilter.Methods(@This());
+    __v: *const jolt.BroadPhaseLayerFilter.VTable = &vtable,
+
+    const vtable = jolt.BroadPhaseLayerFilter.VTable{ .shouldCollide = _shouldCollide };
+
+    fn _shouldCollide(
+        _: *const jolt.BroadPhaseLayerFilter,
+        layer: jolt.BroadPhaseLayer,
+    ) callconv(.C) bool {
+        _ = layer; // autofix
+        return true;
     }
 };
