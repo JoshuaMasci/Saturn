@@ -22,8 +22,8 @@ pub fn create_cube_mesh(
     var shape = zmesh.Shape.initCube();
     defer shape.deinit();
 
+    shape.translate(-0.5, -0.5, -0.5);
     shape.scale(scale[0], scale[1], scale[2]);
-    shape.translate(-scale[0] / 2.0, -scale[1] / 2.0, -scale[2] / 2.0);
     shape.unweld();
     shape.computeNormals();
 
@@ -41,13 +41,48 @@ pub fn create_cylinder_mesh(
 
     var shape = zmesh.Shape.initCylinder(32, 16);
     defer shape.deinit();
-
+    shape.translate(0.0, 0.0, -0.5);
     shape.rotate(std.math.degreesToRadians(90.0), 1.0, 0.0, 0.0);
     shape.scale(radius, height, radius);
     shape.unweld();
     shape.computeNormals();
 
     return create_shape_mesh(allocator, rendering_backend, &shape);
+}
+
+pub fn create_capsule_mesh(
+    allocator: std.mem.Allocator,
+    rendering_backend: *rendering_system.Backend,
+    half_height: f32,
+    radius: f32,
+) !rendering_system.StaticMeshHandle {
+    zmesh.init(allocator);
+    defer zmesh.deinit();
+
+    var base_shape = zmesh.Shape.initCylinder(32, 16);
+    defer base_shape.deinit();
+    base_shape.translate(0.0, 0.0, -0.5);
+    base_shape.rotate(std.math.degreesToRadians(90.0), 1.0, 0.0, 0.0);
+    base_shape.scale(radius, half_height * 2, radius);
+
+    var top_sphere = zmesh.Shape.initParametricSphere(32, 32);
+    defer top_sphere.deinit();
+    top_sphere.scale(radius, radius, radius);
+    top_sphere.rotate(std.math.degreesToRadians(90.0), 1.0, 0.0, 0.0);
+    top_sphere.translate(0.0, half_height, 0.0);
+    base_shape.merge(top_sphere);
+
+    var bottom_sphere = zmesh.Shape.initParametricSphere(32, 32);
+    defer bottom_sphere.deinit();
+    bottom_sphere.scale(radius, radius, radius);
+    bottom_sphere.rotate(std.math.degreesToRadians(90.0), 1.0, 0.0, 0.0);
+    bottom_sphere.translate(0.0, -half_height, 0.0);
+    base_shape.merge(bottom_sphere);
+
+    base_shape.unweld();
+    base_shape.computeNormals();
+
+    return create_shape_mesh(allocator, rendering_backend, &base_shape);
 }
 
 fn create_shape_mesh(

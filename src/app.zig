@@ -26,6 +26,7 @@ pub const App = struct {
 
     game_world: world.World,
     game_camera: debug_camera.DebugCamera,
+    game_character: ?world.CharacterHandle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
@@ -35,15 +36,16 @@ pub const App = struct {
 
         var game_world = world.World.init(allocator, &rendering_backend);
 
+        var game_character: ?world.CharacterHandle = null;
         {
-            const CharacterHeight: f32 = 1.8;
-            const CharacterRadius: f32 = 0.3;
+            const CharacterHeight: f32 = 0.9;
+            const CharacterRadius: f32 = 0.45;
 
-            const shape = try physics_system.create_cylinder(CharacterHeight, CharacterRadius);
-            const mesh = try proc.create_cylinder_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
+            const shape = try physics_system.create_capsule(CharacterHeight, CharacterRadius);
+            const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
             const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
             const character_handle = try game_world.add_character(&.{ .position = zm.f32x4(5.0, 10.0, 0.0, 0.0) }, shape, .{ .mesh = mesh, .material = material });
-            _ = character_handle; // autofix
+            game_character = character_handle;
         }
 
         //Floor
@@ -75,6 +77,7 @@ pub const App = struct {
 
             .rendering_backend = rendering_backend,
             .game_camera = game_camera,
+            .game_character = game_character,
         };
     }
 
