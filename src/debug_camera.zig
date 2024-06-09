@@ -1,5 +1,5 @@
 const std = @import("std");
-const zm = @import("zmath");
+const za = @import("zalgebra");
 
 const input = @import("input.zig");
 
@@ -12,19 +12,19 @@ pub const DebugCamera = struct {
     transform: Transform = Transform.Identity,
     camera: PerspectiveCamera = PerspectiveCamera.Default,
 
-    pitch_yaw: zm.Vec = zm.splat(zm.Vec, 0.0),
+    pitch_yaw: za.Vec2 = za.Vec2.ZERO,
 
-    linear_speed: zm.Vec,
-    angular_speed: zm.Vec,
+    linear_speed: za.Vec3,
+    angular_speed: za.Vec3,
 
-    linear_input: zm.Vec,
-    angular_input: zm.Vec,
+    linear_input: za.Vec3,
+    angular_input: za.Vec3,
 
     pub const Default: Self = .{
-        .linear_speed = zm.splat(zm.Vec, 5.0),
-        .angular_speed = zm.splat(zm.Vec, std.math.pi),
-        .linear_input = zm.splat(zm.Vec, 0.0),
-        .angular_input = zm.splat(zm.Vec, 0.0),
+        .linear_speed = za.Vec3.set(5.0),
+        .angular_speed = za.Vec3.set(std.math.pi),
+        .linear_input = za.Vec3.set(0.0),
+        .angular_input = za.Vec3.set(0.0),
     };
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
@@ -40,19 +40,17 @@ pub const DebugCamera = struct {
             .debug_camera_up_down => self.linear_input[1] = event.get_value(true),
             .debug_camera_forward_backward => self.linear_input[2] = event.get_value(true),
 
-            .debug_camera_pitch => self.angular_input[0] = event.get_value(false),
+            .debug_camera_pitch => self.angular_input.data[0] = event.get_value(false),
             .debug_camera_yaw => self.angular_input[1] = event.get_value(false),
             else => {},
         }
     }
 
     pub fn update(self: *Self, delta_time: f32) void {
-        const delta_time_vec = zm.splat(zm.Vec, delta_time);
+        const linear_movement = self.transform.rotation.rotateVec(self.linear_input.mul(self.linear_speed).scale(delta_time));
+        self.transform.position = self.transform.position.add(linear_movement);
 
-        const linear_movement = zm.rotate(self.transform.rotation, (self.linear_input * self.linear_speed) * delta_time_vec);
-        self.transform.position += linear_movement;
-
-        const angular_rotation = (self.angular_input * self.angular_speed) * delta_time_vec;
+        const angular_rotation = self.angular_input.mul(self.angular_speed).scale(delta_time);
 
         self.pitch_yaw += angular_rotation;
 
@@ -68,6 +66,6 @@ pub const DebugCamera = struct {
         self.transform.rotation = zm.normalize4(zm.qmul(pitch_quat, yaw_quat));
 
         // Axis events should fire each frame they are active, so the input is reset each update
-        self.angular_input = zm.splat(zm.Vec, 0.0);
+        self.angular_input = za.Vec3.set(0.0);
     }
 };

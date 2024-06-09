@@ -9,6 +9,8 @@
         "README.md",
     },
     .dependencies = .{
+        .zalgebra = .{ .url = "https://github.com/JoshuaMasci/zalgebra/archive/2f3f2d.tar.gz", .hash = "12203ebda9ac1201e6f24933b80beda926ae23f354cd2dc4e65e0e721190af9728f3" },
+
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
         .zmath = .{ .path = "libs/zig-gamedev/libs/zmath" },

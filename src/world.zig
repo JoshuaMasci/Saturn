@@ -17,6 +17,8 @@ pub const Entity = struct {
 const CharacterPool = ObjectPool(u16, Character);
 pub const CharacterHandle = CharacterPool.Handle;
 pub const Character = struct {
+    linear_input: zm.Vec,
+
     transform: Transform,
     render_object: ?rendering_system.SceneInstanceHandle,
     physics_character: ?physics_system.CharacterHandle,
@@ -177,6 +179,7 @@ pub const World = struct {
         }
 
         return try self.characters.insert(.{
+            .linear_input = zm.f32x4s(0.0),
             .transform = transform.*,
             .render_object = render_object,
             .physics_character = physics_character,

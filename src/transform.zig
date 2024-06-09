@@ -1,40 +1,27 @@
-const zm = @import("zmath");
+const za = @import("zalgebra");
 const UnscaledTransform = @import("unscaled_transform.zig");
 
-pub const Right = zm.f32x4(1.0, 0.0, 0.0, 0.0);
-pub const Up = zm.f32x4(0.0, 1.0, 0.0, 0.0);
-pub const Forward = zm.f32x4(0.0, 0.0, 1.0, 0.0);
+pub const Right = za.Vec3.NEG_X;
+pub const Up = za.Vec3.Y;
+pub const Forward = za.Vec3.Z;
 
 const Self = @This();
-position: zm.Vec = zm.f32x4s(0.0),
-rotation: zm.Quat = zm.qidentity(),
-scale: zm.Vec = zm.f32x4s(1.0),
+position: za.Vec3 = za.Vec3.ZERO,
+rotation: za.Quat = za.Quat.IDENTITY,
+scale: za.Vec3 = za.Vec3.ONE,
 
 pub const Identity: Self = .{};
 
-pub fn get_model_matrix(self: Self) zm.Mat {
-    const translation = zm.translationV(self.position);
-    const rotation = zm.quatToMat(self.rotation);
-    const scale = zm.scalingV(self.scale);
-    return zm.mul(zm.mul(scale, rotation), translation);
+pub fn get_right(self: Self) za.Vec3 {
+    return self.rotation.rotateVec(Self.Right).norm();
 }
 
-pub fn get_view_matrix(self: Self) zm.Mat {
-    const forward = self.get_forward();
-    const up = self.get_up();
-    return zm.lookToRh(self.position, forward, up);
+pub fn get_up(self: Self) za.Vec3 {
+    return self.rotation.rotateVec(Self.Up).norm();
 }
 
-pub fn get_right(self: Self) zm.Vec {
-    return zm.normalize3(zm.rotate(self.rotation, Right));
-}
-
-pub fn get_forward(self: Self) zm.Vec {
-    return zm.normalize3(zm.rotate(self.rotation, Forward));
-}
-
-pub fn get_up(self: Self) zm.Vec {
-    return zm.normalize3(zm.rotate(self.rotation, Up));
+pub fn get_forward(self: Self) za.Vec3 {
+    return self.rotation.rotateVec(Self.Forward).norm();
 }
 
 pub fn get_unscaled(self: Self) UnscaledTransform {
@@ -47,4 +34,14 @@ pub fn get_unscaled(self: Self) UnscaledTransform {
 pub fn apply_unscaled(self: *Self, transform: *const UnscaledTransform) void {
     self.position = transform.position;
     self.rotation = transform.rotation;
+}
+
+pub fn get_model_matrix(self: Self) za.Mat4 {
+    return za.Mat4.recompose(self.position, self.rotation, self.scale);
+}
+
+pub fn get_view_matrix(self: Self) za.Mat4 {
+    const forward = self.get_forward();
+    const up = self.get_up();
+    return za.Mat4.RightHanded.lookAt(self.position, self.position.add(forward), up);
 }

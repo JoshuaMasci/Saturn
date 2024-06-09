@@ -1,5 +1,5 @@
 const std = @import("std");
-const zm = @import("zmath");
+const za = @import("zalgebra");
 const imgui = @import("zimgui");
 
 const sdl_platform = @import("platform/sdl3.zig");
@@ -27,6 +27,8 @@ pub const App = struct {
     game_world: world.World,
     game_camera: debug_camera.DebugCamera,
 
+    game_character: ?world.CharacterHandle,
+
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
 
@@ -35,22 +37,23 @@ pub const App = struct {
 
         var game_world = world.World.init(allocator, &rendering_backend);
 
+        var game_character: ?world.CharacterHandle = null;
         {
-            const CharacterHeight: f32 = 1.8;
-            const CharacterRadius: f32 = 0.3;
+            const CharacterHeight: f32 = 0.9;
+            const CharacterRadius: f32 = 0.5;
 
-            const shape = try physics_system.create_cylinder(CharacterHeight, CharacterRadius);
-            const mesh = try proc.create_cylinder_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
+            const shape = try physics_system.create_capsule(CharacterHeight, CharacterRadius);
+            const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
             const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
-            const character_handle = try game_world.add_character(&.{ .position = zm.f32x4(5.0, 10.0, 0.0, 0.0) }, shape, .{ .mesh = mesh, .material = material });
-            _ = character_handle; // autofix
+            const character_handle = try game_world.add_character(&.{ .position = za.Vec3.new(5.0, 10.0, 0.0) }, shape, .{ .mesh = mesh, .material = material });
+            game_character = character_handle;
         }
 
         //Floor
-        _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 1.0, 0.412, 0.38, 1.0 }, .{ 160.0, 0.5, 160.0 }, &.{ .position = zm.f32x4(0.0, -5.0, 0.0, 0.0) }, false);
+        _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 1.0, 0.412, 0.38, 1.0 }, .{ 160.0, 0.5, 160.0 }, &.{ .position = za.Vec3.new(0.0, -5.0, 0.0) }, false);
 
         //Cube
-        _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .rotation = zm.f32x4(0.505526, 0.706494, -0.312048, 0.384623) }, true);
+        _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
 
         // Load resources from gltf file
         const args = try std.process.argsAlloc(allocator);
@@ -63,7 +66,7 @@ pub const App = struct {
         }
 
         var game_camera = debug_camera.DebugCamera.Default;
-        game_camera.transform.position = zm.f32x4(0.0, 0.0, -10.0, 0.0);
+        game_camera.transform.position = za.Vec3.new(0.0, 0.0, -10.0);
 
         return .{
             .should_quit = false,
@@ -75,6 +78,7 @@ pub const App = struct {
 
             .rendering_backend = rendering_backend,
             .game_camera = game_camera,
+            .game_character = game_character,
         };
     }
 
@@ -131,6 +135,11 @@ pub const App = struct {
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
         //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
         self.game_camera.on_axis_event(event);
+
+        // if (self.game_character) |character_handle| {
+        //     var character = self.game_world.characters.getPtr(character_handle).?;
+        //     _ = character; // autofix
+        // }
     }
 };
 
@@ -173,7 +182,7 @@ fn load_gltf_node(game_world: *world.World, resources: *gltf.Resources, scene: *
 fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color: [4]f32, size: [3]f32, transform: *const Transform, dynamic: bool) !world.EntityHandle {
     const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
     const material = try proc.create_color_material(rendering_backend, color);
-    const shape = try physics_system.create_box(zm.loadArr3(size) * zm.f32x4s(0.5));
+    const shape = try physics_system.create_box(za.Vec3.fromSlice(&size).scale(0.5));
     defer shape.release();
     return game_world.add_entity(
         transform,

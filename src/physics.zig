@@ -1,5 +1,5 @@
 const std = @import("std");
-const zm = @import("zmath");
+const za = @import("zalgebra");
 const jolt = @import("zjolt");
 
 const UnscaledTransform = @import("unscaled_transform.zig");
@@ -13,8 +13,8 @@ pub fn deinit() void {
     jolt.deinit();
 }
 
-pub fn create_box(half_extent: zm.Vec) !Shape {
-    var settings = try jolt.BoxShapeSettings.create(zm.vecToArr3(half_extent));
+pub fn create_box(half_extent: za.Vec3) !Shape {
+    var settings = try jolt.BoxShapeSettings.create(half_extent.toArray());
     defer settings.release();
     return try settings.createShape();
 }
@@ -146,8 +146,8 @@ pub const World = struct {
         };
 
         return try body_interface.createAndAddBody(.{
-            .position = zm.vecToArr4(tranform.position),
-            .rotation = tranform.rotation,
+            .position = tranform.position.toVec4(0.0).toArray(),
+            .rotation = tranform.rotation.toArray(),
             .shape = shape,
             .motion_type = motion_type,
             .object_layer = object_layer,
@@ -177,7 +177,7 @@ pub const World = struct {
 
         const up = transform.get_up();
 
-        character_settings.base.up = zm.loadArr4(up);
+        character_settings.base.up = up.toVec4(0.0).toArray();
         character_settings.base.shape = shape;
 
         // character_settings.* = .{
@@ -202,7 +202,7 @@ pub const World = struct {
         //     .penetration_recovery_speed = 1.0,
         // };
 
-        const character = try jolt.CharacterVirtual.create(character_settings, zm.vecToArr3(transform.position), zm.vecToArr4(transform.rotation), self.physics_system);
+        const character = try jolt.CharacterVirtual.create(character_settings, transform.position.toArray(), .{ transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z }, self.physics_system);
 
         return self.characters.insert(.{
             .character = character,
@@ -242,42 +242,42 @@ pub const RigidBodyInterface = struct {
         return self.interface.isActive(self.id);
     }
 
-    pub fn set_linear_velocity(self: Self, velocity: zm.Vec) void {
-        self.interface.setLinearVelocity(self.id, zm.vecToArr3(velocity));
+    pub fn set_linear_velocity(self: Self, velocity: za.Vec3) void {
+        self.interface.setLinearVelocity(self.id, velocity.toArray());
     }
-    pub fn get_linear_velocity(self: Self) zm.Vec {
-        return zm.loadArr3w(self.interface.getLinearVelocity(self.id), 0.0);
+    pub fn get_linear_velocity(self: Self) za.Vec3 {
+        return za.Vec3.fromArray(self.interface.getLinearVelocity(self.id));
     }
-    pub fn add_linear_velocity(self: Self, velocity: zm.Vec) void {
-        self.interface.addLinearVelocity(self.id, zm.vecToArr3(velocity));
-    }
-
-    pub fn set_angular_velocity(self: Self, velocity: zm.Vec) void {
-        self.interface.setAngularVelocity(self.id, zm.vecToArr3(velocity));
-    }
-    pub fn get_angular_velocity(self: Self) zm.Vec {
-        return zm.loadArr3w(self.interface.getAngularVelocity(self.id), 0.0);
+    pub fn add_linear_velocity(self: Self, velocity: za.Vec3) void {
+        self.interface.addLinearVelocity(self.id, velocity.toArray());
     }
 
-    pub fn get_point_velocity(self: Self, point: zm.Vec) zm.Vec {
-        return zm.loadArr3w(self.interface.getPointVelocity(self.id, point), 0.0);
+    pub fn set_angular_velocity(self: Self, velocity: za.Vec3) void {
+        self.interface.setAngularVelocity(self.id, velocity.toArray());
+    }
+    pub fn get_angular_velocity(self: Self) za.Vec3 {
+        return za.Vec3.fromArray(self.interface.getAngularVelocity(self.id));
     }
 
-    pub fn set_position(self: Self, position: zm.Vec) void {
-        self.interface.setPosition(self.id, zm.vecToArr3(position), .activate);
-    }
-    pub fn get_position(self: Self) zm.Vec {
-        return zm.loadArr3w(self.interface.getPosition(self.id), 0.0);
-    }
-    pub fn get_center_if_mass_position(self: Self) zm.Vec {
-        return zm.loadArr3w(self.interface.getCenterOfMassPosition(self.id), 0.0);
+    pub fn get_point_velocity(self: Self, point: za.Vec3) za.Vec3 {
+        return za.Vec3.fromArray(self.interface.getPointVelocity(self.id, point));
     }
 
-    pub fn set_rotation(self: Self, rotation: zm.Quat) void {
-        self.interface.setRotation(self.id, rotation, .activate);
+    pub fn set_position(self: Self, position: za.Vec3) void {
+        self.interface.setPosition(self.id, position.toArray(), .activate);
     }
-    pub fn get_rotation(self: Self) zm.Quat {
-        return zm.loadArr4(self.interface.getRotation(self.id));
+    pub fn get_position(self: Self) za.Vec3 {
+        return za.Vec3.fromArray(self.interface.getPosition(self.id));
+    }
+    pub fn get_center_if_mass_position(self: Self) za.Vec3 {
+        return za.Vec3.fromArray(self.interface.getCenterOfMassPosition(self.id));
+    }
+
+    pub fn set_rotation(self: Self, rotation: za.Quat) void {
+        self.interface.setRotation(self.id, rotation.toArray(), .activate);
+    }
+    pub fn get_rotation(self: Self) za.Quat {
+        return za.Quat.fromArray(self.interface.getRotation(self.id));
     }
 
     pub fn set_transform(self: Self, transform: UnscaledTransform) void {
@@ -291,24 +291,24 @@ pub const RigidBodyInterface = struct {
         };
     }
 
-    pub fn add_force(self: Self, force: zm.Vec) void {
-        self.interface.addForce(self.id, zm.vecToArr3(force));
+    pub fn add_force(self: Self, force: za.Vec3) void {
+        self.interface.addForce(self.id, force.toArray());
     }
-    pub fn add_force_at_position(self: Self, force: zm.Vec, position: zm.Vec) void {
-        self.interface.addForceAtPosition(self.id, zm.vecToArr3(force), zm.vecToArr3(position));
+    pub fn add_force_at_position(self: Self, force: za.Vec3, position: za.Vec3) void {
+        self.interface.addForceAtPosition(self.id, force.toArray(), position.toArray());
     }
-    pub fn add_torque(self: Self, torque: zm.Vec) void {
-        self.interface.addTorque(self.id, zm.vecToArr3(torque));
+    pub fn add_torque(self: Self, torque: za.Vec3) void {
+        self.interface.addTorque(self.id, torque.toArray());
     }
 
-    pub fn add_tmpulse(self: Self, impulse: zm.Vec) void {
-        self.interface.addImpulse(self.id, zm.vecToArr3(impulse));
+    pub fn add_tmpulse(self: Self, impulse: za.Vec3) void {
+        self.interface.addImpulse(self.id, impulse.toArray());
     }
-    pub fn add_impulse_at_position(self: Self, impulse: zm.Vec, position: zm.Vec) void {
-        self.interface.addImpulseAtPosition(self.id, zm.vecToArr3(impulse), zm.vecToArr3(position));
+    pub fn add_impulse_at_position(self: Self, impulse: za.Vec3, position: za.Vec3) void {
+        self.interface.addImpulseAtPosition(self.id, impulse.toArray(), position.toArray());
     }
-    pub fn add_angular_impulse(self: Self, impulse: zm.Vec) void {
-        self.interface.addAngularImpulse(self.id, zm.vecToArr3(impulse));
+    pub fn add_angular_impulse(self: Self, impulse: za.Vec3) void {
+        self.interface.addAngularImpulse(self.id, impulse.toArray());
     }
 };
 
@@ -317,28 +317,28 @@ pub const CharacterInterface = struct {
 
     ptr: *Character,
 
-    pub fn set_linear_velocity(self: Self, velocity: zm.Vec) void {
-        self.ptr.character.setLinearVelocity(zm.vecToArr3(velocity));
+    pub fn set_linear_velocity(self: Self, velocity: za.Vec3) void {
+        self.ptr.character.setLinearVelocity(velocity.toArray());
     }
-    pub fn get_linear_velocity(self: Self) zm.Vec {
-        return zm.loadArr3w(self.ptr.character.getLinearVelocity(), 0.0);
+    pub fn get_linear_velocity(self: Self) za.Vec3 {
+        return za.Vec3.fromArray(self.ptr.character.getLinearVelocity());
     }
-    pub fn add_linear_velocity(self: Self, velocity: zm.Vec) void {
+    pub fn add_linear_velocity(self: Self, velocity: za.Vec3) void {
         self.set_linear_velocity(self.get_linear_velocity() + velocity);
     }
 
-    pub fn set_position(self: Self, position: zm.Vec) void {
-        self.ptr.character.setPosition(zm.vecToArr3(position));
+    pub fn set_position(self: Self, position: za.Vec3) void {
+        self.ptr.character.setPosition(position.toArray());
     }
-    pub fn get_position(self: Self) zm.Vec {
-        return zm.loadArr3w(self.ptr.character.getPosition(), 0.0);
+    pub fn get_position(self: Self) za.Vec3 {
+        return za.Vec3.fromArray(self.ptr.character.getPosition());
     }
 
-    pub fn set_rotation(self: Self, rotation: zm.Quat) void {
-        self.ptr.character.setRotation(rotation);
+    pub fn set_rotation(self: Self, rotation: za.Quat) void {
+        self.ptr.character.setRotation(rotation.toArray());
     }
-    pub fn get_rotation(self: Self) zm.Quat {
-        return zm.loadArr4(self.ptr.character.getRotation());
+    pub fn get_rotation(self: Self) za.Quat {
+        return za.Quat.fromArray(self.ptr.character.getRotation());
     }
 
     pub fn set_transform(self: Self, transform: UnscaledTransform) void {
