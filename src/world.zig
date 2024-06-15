@@ -1,5 +1,6 @@
 const std = @import("std");
-const zm = @import("zmath");
+const za = @import("zalgebra");
+
 const ObjectPool = @import("object_pool.zig").ObjectPool;
 const Transform = @import("transform.zig");
 
@@ -17,7 +18,7 @@ pub const Entity = struct {
 const CharacterPool = ObjectPool(u16, Character);
 pub const CharacterHandle = CharacterPool.Handle;
 pub const Character = struct {
-    linear_input: zm.Vec,
+    linear_input: za.Vec3 = za.Vec3.ZERO,
 
     transform: Transform,
     render_object: ?rendering_system.SceneInstanceHandle,
@@ -179,7 +180,6 @@ pub const World = struct {
         }
 
         return try self.characters.insert(.{
-            .linear_input = zm.f32x4s(0.0),
             .transform = transform.*,
             .render_object = render_object,
             .physics_character = physics_character,

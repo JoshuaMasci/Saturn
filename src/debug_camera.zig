@@ -36,12 +36,12 @@ pub const DebugCamera = struct {
         //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
 
         switch (event.axis) {
-            .debug_camera_left_right => self.linear_input[0] = event.get_value(true),
-            .debug_camera_up_down => self.linear_input[1] = event.get_value(true),
-            .debug_camera_forward_backward => self.linear_input[2] = event.get_value(true),
+            .debug_camera_left_right => self.linear_input.data[0] = event.get_value(true),
+            .debug_camera_up_down => self.linear_input.data[1] = event.get_value(true),
+            .debug_camera_forward_backward => self.linear_input.data[2] = event.get_value(true),
 
             .debug_camera_pitch => self.angular_input.data[0] = event.get_value(false),
-            .debug_camera_yaw => self.angular_input[1] = event.get_value(false),
+            .debug_camera_yaw => self.angular_input.data[1] = event.get_value(false),
             else => {},
         }
     }
@@ -52,18 +52,16 @@ pub const DebugCamera = struct {
 
         const angular_rotation = self.angular_input.mul(self.angular_speed).scale(delta_time);
 
-        self.pitch_yaw += angular_rotation;
+        self.pitch_yaw = self.pitch_yaw.add(angular_rotation.toVec2());
 
+        // Clamp pitch and keep roation between 0->360 degrees
         const pi_half = std.math.pi / 2.0;
-        // Clamp pitch
-        self.pitch_yaw[0] = std.math.clamp(self.pitch_yaw[0], -pi_half, pi_half);
+        const pi_2 = std.math.pi * 2.0;
+        self.pitch_yaw = za.Vec2.new(std.math.clamp(self.pitch_yaw.x(), -pi_half, pi_half), @mod(self.pitch_yaw.y(), pi_2));
 
-        // Return rotation to
-        self.pitch_yaw[1] = zm.modAngle(self.pitch_yaw[1]);
-
-        const pitch_quat = zm.quatFromAxisAngle(zm.loadArr3(.{ 1.0, 0.0, 0.0 }), self.pitch_yaw[0]);
-        const yaw_quat = zm.quatFromAxisAngle(zm.loadArr3(.{ 0.0, 1.0, 0.0 }), self.pitch_yaw[1]);
-        self.transform.rotation = zm.normalize4(zm.qmul(pitch_quat, yaw_quat));
+        const pitch_quat = za.Quat.fromAxis(self.pitch_yaw.x(), za.Vec3.X);
+        const yaw_quat = za.Quat.fromAxis(self.pitch_yaw.y(), za.Vec3.Y);
+        self.transform.rotation = pitch_quat.mul(yaw_quat).norm();
 
         // Axis events should fire each frame they are active, so the input is reset each update
         self.angular_input = za.Vec3.set(0.0);

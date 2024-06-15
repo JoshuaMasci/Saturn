@@ -32,10 +32,6 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zimgui", zimgui.module("root"));
     exe.linkLibrary(zimgui.artifact("imgui"));
 
-    // zmath
-    const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
-    exe.root_module.addImport("zmath", zmath.module("root"));
-
     // zmesh
     const zmesh = b.dependency("zmesh", .{});
     exe.root_module.addImport("zmesh", zmesh.module("root"));

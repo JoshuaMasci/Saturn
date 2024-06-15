@@ -1,5 +1,6 @@
 const std = @import("std");
-const zm = @import("zmath");
+const za = @import("zalgebra");
+
 const gl = @import("zopengl").bindings;
 
 const object_pool = @import("object_pool.zig");
@@ -147,7 +148,7 @@ pub const Backend = struct {
 
         const view_matrix = scene_camera.transform.get_view_matrix();
         const projection_matrix = scene_camera.data.perspective_gl(aspect_ratio);
-        var view_projection_matrix = zm.mul(view_matrix, projection_matrix);
+        var view_projection_matrix = view_matrix.mul(projection_matrix);
 
         self.pbr_material_shader.bind();
         self.pbr_material_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
@@ -156,7 +157,7 @@ pub const Backend = struct {
         while (instance_iterator.next()) |instance| {
             self.pbr_material_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.get_model_matrix());
             if (self.materials.get(instance.value_ptr.material)) |material| {
-                self.pbr_material_shader.set_uniform_vec4("base_color_factor", zm.loadArr4(material.base_color_factor));
+                self.pbr_material_shader.set_uniform_vec4("base_color_factor", za.Vec4.fromArray(material.base_color_factor));
                 self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
 
                 if (material.base_color_texture) |texture_handle| {
