@@ -37,13 +37,17 @@ pub fn create_capsule(
     return try settings.createShape();
 }
 
-pub const RigidBodyHandle = jolt.BodyId;
+pub const BodyHandle = jolt.BodyId;
 pub const Shape = *jolt.Shape;
 
-pub const RigidBodyMode = jolt.MotionType;
+pub const BodyMotionType = jolt.MotionType;
+pub const BodySettings = struct {
+    motion_type: BodyMotionType = .dynamic,
+    is_sensor: bool = false,
+};
 
 pub const Character = struct {
-    down_vector: [3]f32,
+    gravity_vector: [3]f32 = .{ 0.0, 0.0, 0.0 },
     character: *jolt.CharacterVirtual,
 
     pub fn deinit(self: *@This()) void {
@@ -83,7 +87,7 @@ pub const World = struct {
         const contact_listener = try allocator.create(ContactListener);
         contact_listener.* = .{};
 
-        const physics_system = try jolt.PhysicsSystem.create(
+        var physics_system = try jolt.PhysicsSystem.create(
             @as(*const jolt.BroadPhaseLayerInterface, @ptrCast(broad_phase_layer_interface)),
             @as(*const jolt.ObjectVsBroadPhaseLayerFilter, @ptrCast(object_vs_broad_phase_layer_filter)),
             @as(*const jolt.ObjectLayerPairFilter, @ptrCast(object_layer_pair_filter)),
@@ -94,6 +98,7 @@ pub const World = struct {
                 .max_contact_constraints = args.max_contact_constraints,
             },
         );
+        physics_system.setContactListener(contact_listener);
 
         return .{
             .allocator = allocator,
@@ -119,23 +124,24 @@ pub const World = struct {
         {
             var character_iter = self.characters.iterator();
             while (character_iter.next()) |entry| {
-                entry.value_ptr.character.update(delta_time, entry.value_ptr.down_vector, .{});
-                //std.log.info("Character Pos: {d:.2} Grounded: {} Velocity: {d:.2}", .{ entry.value_ptr.character.getPosition(), entry.value_ptr.character.getGroundState(), entry.value_ptr.character.getLinearVelocity() });
+
+                //TODO: add wrapper for extented_update for stick_to_floor and walk_stair
+                entry.value_ptr.character.update(delta_time, entry.value_ptr.gravity_vector, .{});
             }
         }
 
         try self.physics_system.update(delta_time, .{});
     }
 
-    pub fn create_rigid_body(
+    pub fn create_body(
         self: *Self,
         tranform: UnscaledTransform,
         shape: *jolt.Shape,
-        motion_type: jolt.MotionType,
-    ) !RigidBodyHandle {
+        settings: BodySettings,
+    ) !BodyHandle {
         const body_interface = self.physics_system.getBodyInterfaceMut();
 
-        const object_layer = switch (motion_type) {
+        const object_layer = switch (settings.motion_type) {
             .static => object_layers.non_moving,
             else => object_layers.moving,
         };
@@ -144,18 +150,19 @@ pub const World = struct {
             .position = tranform.position.toVec4(0.0).toArray(),
             .rotation = tranform.rotation.toArray(),
             .shape = shape,
-            .motion_type = motion_type,
+            .motion_type = settings.motion_type,
             .object_layer = object_layer,
             .mass_properties_override = .{},
+            .is_sensor = settings.is_sensor,
         }, .activate);
     }
 
-    pub fn destory_rigid_body(self: *Self, handle: RigidBodyHandle) void {
+    pub fn destory_body(self: *Self, handle: BodyHandle) void {
         const body_interface = self.physics_system.getBodyInterfaceMut();
         body_interface.removeAndDestroyBody(handle);
     }
 
-    pub fn get_rigid_body(self: *Self, handle: RigidBodyHandle) RigidBodyInterface {
+    pub fn get_body(self: *Self, handle: BodyHandle) BodyInterface {
         return .{
             .id = handle,
             .interface = self.physics_system.getBodyInterfaceMut(),
@@ -175,32 +182,9 @@ pub const World = struct {
         character_settings.base.up = up.toVec4(0.0).toArray();
         character_settings.base.shape = shape;
 
-        // character_settings.* = .{
-        //     .base = .{
-        //         .up = zm.loadArr4(up),
-        //         .max_slope_angle = std.math.degreesToRadians(45.0),
-        //         .supporting_volume = .{0.0} ** 4,
-        //         .shape = shape,
-        //     },
-        //     .mass = 75.0,
-        //     .max_strength = 100.0,
-        //     .shape_offset = .{0.0} ** 4,
-        //     .back_face_mode = .collide_with_back_faces,
-        //     .predictive_contact_distance = 0.1,
-        //     .max_collision_iterations = 5,
-        //     .max_constraint_iterations = 15,
-        //     .min_time_remaining = 1.0e-4,
-        //     .collision_tolerance = 1.0e-3,
-        //     .character_padding = 0.02,
-        //     .max_num_hits = 256,
-        //     .hit_reduction_cos_max_angle = 0.999,
-        //     .penetration_recovery_speed = 1.0,
-        // };
-
         const character = try jolt.CharacterVirtual.create(character_settings, transform.position.toArray(), .{ transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z }, self.physics_system);
 
         return self.characters.insert(.{
-            .down_vector = .{ 0.0, -1.0, 0.0 },
             .character = character,
         });
     }
@@ -220,7 +204,7 @@ pub const World = struct {
     }
 };
 
-pub const RigidBodyInterface = struct {
+pub const BodyInterface = struct {
     const Self = @This();
 
     id: jolt.BodyId,
@@ -332,7 +316,6 @@ pub const CharacterInterface = struct {
 
     pub fn set_rotation(self: Self, rotation: za.Quat) void {
         self.ptr.character.setRotation(rotation.toArray());
-        self.ptr.down_vector = rotation.rotateVec(za.Vec3.NEG_Y).toArray();
     }
     pub fn get_rotation(self: Self) za.Quat {
         return za.Quat.fromArray(self.ptr.character.getRotation());
@@ -351,6 +334,11 @@ pub const CharacterInterface = struct {
 
     pub fn get_ground_state(self: Self) jolt.CharacterGroundState {
         return self.ptr.character.getGroundState();
+    }
+
+    /// Sets gravity, only used for collision, doesn't change velocity
+    pub fn set_gravity(self: Self, gravity: za.Vec3) void {
+        self.ptr.gravity_vector = gravity.toArray();
     }
 };
 
@@ -400,7 +388,6 @@ const BroadPhaseLayerInterface = extern struct {
 const ObjectVsBroadPhaseLayerFilter = extern struct {
     usingnamespace jolt.ObjectVsBroadPhaseLayerFilter.Methods(@This());
     __v: *const jolt.ObjectVsBroadPhaseLayerFilter.VTable = &vtable,
-
     const vtable = jolt.ObjectVsBroadPhaseLayerFilter.VTable{ .shouldCollide = _shouldCollide };
 
     fn _shouldCollide(
@@ -419,7 +406,6 @@ const ObjectVsBroadPhaseLayerFilter = extern struct {
 const ObjectLayerPairFilter = extern struct {
     usingnamespace jolt.ObjectLayerPairFilter.Methods(@This());
     __v: *const jolt.ObjectLayerPairFilter.VTable = &vtable,
-
     const vtable = jolt.ObjectLayerPairFilter.VTable{ .shouldCollide = _shouldCollide };
 
     fn _shouldCollide(
@@ -438,7 +424,6 @@ const ObjectLayerPairFilter = extern struct {
 const ContactListener = extern struct {
     usingnamespace jolt.ContactListener.Methods(@This());
     __v: *const jolt.ContactListener.VTable = &vtable,
-
     const vtable = jolt.ContactListener.VTable{ .onContactValidate = _onContactValidate };
 
     fn _onContactValidate(
@@ -449,10 +434,13 @@ const ContactListener = extern struct {
         collision_result: *const jolt.CollideShapeResult,
     ) callconv(.C) jolt.ValidateResult {
         _ = self;
-        _ = body1;
-        _ = body2;
         _ = base_offset;
         _ = collision_result;
+
+        if (body1.isSensor() or body2.isSensor()) {
+            std.log.info("Contact Body1: {} Body2: {}", .{ body1.id, body2.id });
+        }
+
         return .accept_all_contacts;
     }
 };
@@ -460,7 +448,6 @@ const ContactListener = extern struct {
 const BroadPhaseLayerFilter = extern struct {
     usingnamespace jolt.BroadPhaseLayerFilter.Methods(@This());
     __v: *const jolt.BroadPhaseLayerFilter.VTable = &vtable,
-
     const vtable = jolt.BroadPhaseLayerFilter.VTable{ .shouldCollide = _shouldCollide };
 
     fn _shouldCollide(

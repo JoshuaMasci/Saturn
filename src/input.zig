@@ -3,6 +3,7 @@ const StringHash = @import("string_hash.zig");
 
 pub const Button = enum {
     debug_camera_interact,
+    player_move_jump,
 };
 
 pub const Axis = enum {
@@ -21,6 +22,10 @@ pub const Axis = enum {
 pub const ButtonState = enum {
     pressed,
     released,
+
+    pub fn is_down(self: @This()) bool {
+        return self == .pressed;
+    }
 };
 
 pub const AxisDirection = enum {

@@ -13,7 +13,7 @@ const EntityPool = ObjectPool(u16, Entity);
 pub const EntityHandle = EntityPool.Handle;
 pub const Entity = struct {
     transform: Transform,
-    rigid_body: ?physics_system.RigidBodyHandle,
+    body: ?physics_system.BodyHandle,
     instance: ?rendering_system.SceneInstanceHandle,
 };
 
@@ -25,17 +25,25 @@ pub const Character = struct {
     //TODO: 3D movement state
 
     //Ground Movement State
-    linear_input: za.Vec2 = za.Vec2.ZERO,
     linear_speed: za.Vec2 = za.Vec2.set(5.0),
+    jump_velocity: f32 = 10.0,
+    max_jumps: u32 = 1,
+
+    linear_input: za.Vec2 = za.Vec2.ZERO,
+    jump_input: bool = false,
+    jump_count: u32 = 0,
 
     transform: Transform,
     render_object: ?rendering_system.SceneInstanceHandle,
     physics_character: ?physics_system.CharacterHandle,
 
     pub fn on_button_event(self: *Self, event: input_system.ButtonEvent) void {
-        _ = self; // autofix
-        _ = event; // autofix
-
+        switch (event.button) {
+            .player_move_jump => {
+                self.jump_input = event.state.is_down();
+            },
+            else => {},
+        }
     }
 
     pub fn on_axis_event(self: *Self, event: input_system.AxisEvent) void {
@@ -50,14 +58,26 @@ pub const Character = struct {
         if (self.physics_character) |character_handle| {
             var character = world.physics_world.get_character(character_handle).?;
 
+            var gravity_vector = self.transform.rotation.rotateVec(za.Vec3.NEG_Y).scale(9.8);
+
             if (character.get_ground_state() == .on_ground) {
                 var input_velocity = self.linear_input.norm().mul(self.linear_speed);
-                const new_velocity = za.Vec3.new(input_velocity.x(), 0.0, input_velocity.y());
-                character.set_linear_velocity(new_velocity);
+
+                var new_velocity = za.Vec3.new(input_velocity.x(), 0.0, input_velocity.y());
+
+                if (self.jump_input) {
+                    new_velocity = new_velocity.add(za.Vec3.Y.scale(self.jump_velocity));
+                }
+
+                character.set_linear_velocity(self.transform.rotation.rotateVec(new_velocity));
             } else {
-                character.add_linear_velocity(self.transform.get_up().negate().scale(9.8 * delta_time));
+                character.add_linear_velocity(gravity_vector.scale(delta_time));
             }
+
+            character.set_gravity(gravity_vector);
         }
+
+        self.jump_input = false;
     }
 };
 
@@ -101,8 +121,8 @@ pub const World = struct {
         {
             var iter = self.entities.iterator();
             while (iter.next()) |entry| {
-                if (entry.value_ptr.rigid_body) |body_handle| {
-                    var body = self.physics_world.get_rigid_body(body_handle);
+                if (entry.value_ptr.body) |body_handle| {
+                    var body = self.physics_world.get_body(body_handle);
                     body.set_transform(entry.value_ptr.transform.get_unscaled());
                 }
             }
@@ -126,8 +146,8 @@ pub const World = struct {
         {
             var iter = self.entities.iterator();
             while (iter.next()) |entry| {
-                if (entry.value_ptr.rigid_body) |body_handle| {
-                    entry.value_ptr.transform.apply_unscaled(&self.physics_world.get_rigid_body(body_handle).get_transform());
+                if (entry.value_ptr.body) |body_handle| {
+                    entry.value_ptr.transform.apply_unscaled(&self.physics_world.get_body(body_handle).get_transform());
                 }
             }
         }
@@ -164,20 +184,22 @@ pub const World = struct {
     pub fn add_entity(
         self: *Self,
         transform: *const Transform,
-        rigid_body_opt: ?struct {
+        body_opt: ?struct {
             shape: physics_system.Shape,
             dynamic: bool,
         },
         model_opt: ?Model,
     ) !EntityHandle {
-        var rigid_body_handle: ?physics_system.RigidBodyHandle = null;
-        if (rigid_body_opt) |rigid_body| {
-            const motion_type: physics_system.RigidBodyMode = switch (rigid_body.dynamic) {
+        var body_handle: ?physics_system.BodyHandle = null;
+        if (body_opt) |body| {
+            const motion_type: physics_system.BodyMotionType = switch (body.dynamic) {
                 true => .dynamic,
                 false => .static,
             };
 
-            rigid_body_handle = try self.physics_world.create_rigid_body(transform.get_unscaled(), rigid_body.shape, motion_type);
+            body_handle = try self.physics_world.create_body(transform.get_unscaled(), body.shape, .{
+                .motion_type = motion_type,
+            });
         }
 
         var instance_handle: ?rendering_system.SceneInstanceHandle = null;
@@ -187,7 +209,7 @@ pub const World = struct {
 
         return try self.entities.insert(.{
             .transform = transform.*,
-            .rigid_body = rigid_body_handle,
+            .body = body_handle,
             .instance = instance_handle,
         });
     }
@@ -197,8 +219,8 @@ pub const World = struct {
             if (entity.instance) |instance_handle| {
                 try self.rendering_world.remove_instance(instance_handle);
             }
-            if (entity.rigid_body) |rigid_body_handle| {
-                self.physics_world.destory_rigid_body(rigid_body_handle);
+            if (entity.body) |body_handle| {
+                self.physics_world.destory_body(body_handle);
             }
         }
     }
@@ -255,7 +277,7 @@ pub const World = struct {
 
 // pub const EntityComponents = struct {
 //     character: ?void,
-//     rigid_body: ?void,
+//     body: ?void,
 // };
 
 // pub const EntityData = struct {

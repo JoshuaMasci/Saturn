@@ -28,8 +28,9 @@ pub const DebugCamera = struct {
     };
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
+        _ = event; // autofix
         _ = self;
-        std.log.info("Button {} -> {}", .{ event.button, event.state });
+        //std.log.info("Button {} -> {}", .{ event.button, event.state });
     }
 
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {

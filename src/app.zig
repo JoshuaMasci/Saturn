@@ -45,7 +45,11 @@ pub const App = struct {
             const shape = try physics_system.create_capsule(CharacterHeight, CharacterRadius);
             const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
             const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
-            const character_handle = try game_world.add_character(&.{ .position = za.Vec3.new(5.0, 10.0, 0.0) }, shape, .{ .mesh = mesh, .material = material });
+            const character_handle = try game_world.add_character(
+                &.{ .position = za.Vec3.new(5.0, 10.0, 0.0) },
+                shape,
+                .{ .mesh = mesh, .material = material },
+            );
             game_character = character_handle;
         }
 

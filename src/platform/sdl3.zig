@@ -106,6 +106,8 @@ pub const Platform = struct {
 
             try keyboard.?.button_bindings.put(sdl.Scancode.left, .{ .axis = .{ .axis = .player_move_left_right, .dir = .positve } });
             try keyboard.?.button_bindings.put(sdl.Scancode.right, .{ .axis = .{ .axis = .player_move_left_right, .dir = .negitive } });
+
+            try keyboard.?.button_bindings.put(sdl.Scancode.j, .{ .button = .player_move_jump });
         }
 
         imgui.init(allocator);
@@ -244,7 +246,6 @@ const Mouse = struct {
         if (!self.is_captured()) {
             return;
         }
-
         const mouse_button = std.meta.intToEnum(MouseButton, event.button) catch {
             std.log.warn("Unknown Mouse Button: {}", .{event.button});
             return;
@@ -307,6 +308,11 @@ const Keyboard = struct {
     }
 
     fn on_button_event(self: *Self, app: *App, event: *sdl.KeyboardEvent) void {
+        //Don't repeat events
+        if (event.repeat != 0) {
+            return;
+        }
+
         if (self.button_bindings.get(event.keysym.scancode)) |button_binding| {
             const state: input.ButtonState = switch (event.state) {
                 .pressed => .pressed,
