@@ -94,7 +94,7 @@ pub const App = struct {
         return !(self.should_quit or self.platform.should_quit);
     }
 
-    pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?struct { value: usize, unit_str: []const u8 }) !void {
+    pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
         self.platform.proccess_events(self);
 
         self.game_camera.update(delta_time);
@@ -117,7 +117,11 @@ pub const App = struct {
                 imgui.text("Delta Time {d:.3}", .{delta_time * 1000});
                 imgui.text("FPS {d:.3}", .{1.0 / delta_time});
                 if (mem_usage_opt) |mem_usage| {
-                    imgui.text("Memory Usage {} {s}", .{ mem_usage.value, mem_usage.unit_str });
+                    const mem_usage_string_opt: ?[]u8 = @import("utils.zig").format_human_readable_bytes(self.allocator, mem_usage) catch null;
+                    if (mem_usage_string_opt) |mem_usage_string| {
+                        imgui.text("Memory Usage {s}", .{mem_usage_string});
+                        self.allocator.free(mem_usage_string);
+                    }
                 }
             }
             imgui.end();
@@ -130,16 +134,21 @@ pub const App = struct {
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
         //std.log.info("Button {} -> {}", .{ event.button, event.state });
         self.game_camera.on_button_event(event);
+
+        if (self.game_character) |character_handle| {
+            var character = self.game_world.characters.getPtr(character_handle).?;
+            character.on_button_event(event);
+        }
     }
 
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
         //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
         self.game_camera.on_axis_event(event);
 
-        // if (self.game_character) |character_handle| {
-        //     var character = self.game_world.characters.getPtr(character_handle).?;
-        //     _ = character; // autofix
-        // }
+        if (self.game_character) |character_handle| {
+            var character = self.game_world.characters.getPtr(character_handle).?;
+            character.on_axis_event(event);
+        }
     }
 };
 

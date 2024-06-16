@@ -9,7 +9,10 @@
         "README.md",
     },
     .dependencies = .{
-        .zalgebra = .{ .url = "https://github.com/JoshuaMasci/zalgebra/archive/2f3f2d.tar.gz", .hash = "12203ebda9ac1201e6f24933b80beda926ae23f354cd2dc4e65e0e721190af9728f3" },
+        .zalgebra = .{
+            .url = "https://github.com/JoshuaMasci/zalgebra/archive/2ecb52.tar.gz",
+            .hash = "122030e04ec710fc1d3dd98bdd248135b9190495c1e63e361996623a3af31b7a5983",
+        },
 
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },

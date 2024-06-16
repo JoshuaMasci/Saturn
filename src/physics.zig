@@ -43,6 +43,7 @@ pub const Shape = *jolt.Shape;
 pub const RigidBodyMode = jolt.MotionType;
 
 pub const Character = struct {
+    down_vector: [3]f32,
     character: *jolt.CharacterVirtual,
 
     pub fn deinit(self: *@This()) void {
@@ -116,16 +117,10 @@ pub const World = struct {
 
     pub fn update(self: *Self, delta_time: f32) !void {
         {
-            const gravity = [3]f32{ 0.0, -9.8, 0.0 };
             var character_iter = self.characters.iterator();
             while (character_iter.next()) |entry| {
-                var velocity = entry.value_ptr.character.getLinearVelocity();
-                if (entry.value_ptr.character.getGroundState() != .on_ground) {
-                    velocity[1] += -9.8 * delta_time;
-                }
-                entry.value_ptr.character.setLinearVelocity(velocity);
-                entry.value_ptr.character.update(delta_time, gravity, .{});
-                //std.log.info("Character Pos: {d:.2} Grounded: {}", .{ entry.value_ptr.character.getPosition(), entry.value_ptr.character.getGroundState() });
+                entry.value_ptr.character.update(delta_time, entry.value_ptr.down_vector, .{});
+                //std.log.info("Character Pos: {d:.2} Grounded: {} Velocity: {d:.2}", .{ entry.value_ptr.character.getPosition(), entry.value_ptr.character.getGroundState(), entry.value_ptr.character.getLinearVelocity() });
             }
         }
 
@@ -205,6 +200,7 @@ pub const World = struct {
         const character = try jolt.CharacterVirtual.create(character_settings, transform.position.toArray(), .{ transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z }, self.physics_system);
 
         return self.characters.insert(.{
+            .down_vector = .{ 0.0, -1.0, 0.0 },
             .character = character,
         });
     }
@@ -324,7 +320,7 @@ pub const CharacterInterface = struct {
         return za.Vec3.fromArray(self.ptr.character.getLinearVelocity());
     }
     pub fn add_linear_velocity(self: Self, velocity: za.Vec3) void {
-        self.set_linear_velocity(self.get_linear_velocity() + velocity);
+        self.set_linear_velocity(self.get_linear_velocity().add(velocity));
     }
 
     pub fn set_position(self: Self, position: za.Vec3) void {
@@ -336,6 +332,7 @@ pub const CharacterInterface = struct {
 
     pub fn set_rotation(self: Self, rotation: za.Quat) void {
         self.ptr.character.setRotation(rotation.toArray());
+        self.ptr.down_vector = rotation.rotateVec(za.Vec3.NEG_Y).toArray();
     }
     pub fn get_rotation(self: Self) za.Quat {
         return za.Quat.fromArray(self.ptr.character.getRotation());
@@ -350,6 +347,10 @@ pub const CharacterInterface = struct {
             .position = self.get_position(),
             .rotation = self.get_rotation(),
         };
+    }
+
+    pub fn get_ground_state(self: Self) jolt.CharacterGroundState {
+        return self.ptr.character.getGroundState();
     }
 };
 

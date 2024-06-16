@@ -61,7 +61,7 @@ pub const DebugCamera = struct {
 
         const pitch_quat = za.Quat.fromAxis(self.pitch_yaw.x(), za.Vec3.X);
         const yaw_quat = za.Quat.fromAxis(self.pitch_yaw.y(), za.Vec3.Y);
-        self.transform.rotation = pitch_quat.mul(yaw_quat).norm();
+        self.transform.rotation = yaw_quat.mul(pitch_quat).norm();
 
         // Axis events should fire each frame they are active, so the input is reset each update
         self.angular_input = za.Vec3.set(0.0);

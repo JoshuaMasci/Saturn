@@ -90,6 +90,7 @@ pub const Platform = struct {
         if (sdl.hasKeyboard()) {
             keyboard = Keyboard.init(allocator);
 
+            // Debug Camera
             try keyboard.?.button_bindings.put(sdl.Scancode.a, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .positve } });
             try keyboard.?.button_bindings.put(sdl.Scancode.d, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .negitive } });
 
@@ -98,6 +99,13 @@ pub const Platform = struct {
 
             try keyboard.?.button_bindings.put(sdl.Scancode.w, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .positve } });
             try keyboard.?.button_bindings.put(sdl.Scancode.s, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .negitive } });
+
+            // Player Character
+            try keyboard.?.button_bindings.put(sdl.Scancode.up, .{ .axis = .{ .axis = .player_move_forward_backward, .dir = .positve } });
+            try keyboard.?.button_bindings.put(sdl.Scancode.down, .{ .axis = .{ .axis = .player_move_forward_backward, .dir = .negitive } });
+
+            try keyboard.?.button_bindings.put(sdl.Scancode.left, .{ .axis = .{ .axis = .player_move_left_right, .dir = .positve } });
+            try keyboard.?.button_bindings.put(sdl.Scancode.right, .{ .axis = .{ .axis = .player_move_left_right, .dir = .negitive } });
         }
 
         imgui.init(allocator);

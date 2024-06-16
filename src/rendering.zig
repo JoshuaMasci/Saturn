@@ -148,14 +148,15 @@ pub const Backend = struct {
 
         const view_matrix = scene_camera.transform.get_view_matrix();
         const projection_matrix = scene_camera.data.perspective_gl(aspect_ratio);
-        var view_projection_matrix = view_matrix.mul(projection_matrix);
+        var view_projection_matrix = projection_matrix.mul(view_matrix);
 
         self.pbr_material_shader.bind();
         self.pbr_material_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
 
         var instance_iterator = scene.instances.iterator();
         while (instance_iterator.next()) |instance| {
-            self.pbr_material_shader.set_uniform_mat4("model_matrix", &instance.value_ptr.transform.get_model_matrix());
+            const model_matrix = instance.value_ptr.transform.get_model_matrix();
+            self.pbr_material_shader.set_uniform_mat4("model_matrix", &model_matrix);
             if (self.materials.get(instance.value_ptr.material)) |material| {
                 self.pbr_material_shader.set_uniform_vec4("base_color_factor", za.Vec4.fromArray(material.base_color_factor));
                 self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);

@@ -13,6 +13,9 @@ pub const Axis = enum {
     debug_camera_pitch,
     debug_camera_yaw,
     debug_camera_roll,
+
+    player_move_forward_backward,
+    player_move_left_right,
 };
 
 pub const ButtonState = enum {

@@ -37,7 +37,10 @@ pub fn apply_unscaled(self: *Self, transform: *const UnscaledTransform) void {
 }
 
 pub fn get_model_matrix(self: Self) za.Mat4 {
-    return za.Mat4.recompose(self.position, self.rotation, self.scale);
+    const translation = za.Mat4.fromTranslate(self.position);
+    const rotation = self.rotation.toMat4();
+    const scale = za.Mat4.fromScale(self.scale);
+    return scale.mul(translation).mul(rotation);
 }
 
 pub fn get_view_matrix(self: Self) za.Mat4 {

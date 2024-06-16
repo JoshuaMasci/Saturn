@@ -7,6 +7,8 @@ const Transform = @import("transform.zig");
 const physics_system = @import("physics.zig");
 const rendering_system = @import("rendering.zig");
 
+const input_system = @import("input.zig");
+
 const EntityPool = ObjectPool(u16, Entity);
 pub const EntityHandle = EntityPool.Handle;
 pub const Entity = struct {
@@ -18,11 +20,45 @@ pub const Entity = struct {
 const CharacterPool = ObjectPool(u16, Character);
 pub const CharacterHandle = CharacterPool.Handle;
 pub const Character = struct {
-    linear_input: za.Vec3 = za.Vec3.ZERO,
+    const Self = @This();
+
+    //TODO: 3D movement state
+
+    //Ground Movement State
+    linear_input: za.Vec2 = za.Vec2.ZERO,
+    linear_speed: za.Vec2 = za.Vec2.set(5.0),
 
     transform: Transform,
     render_object: ?rendering_system.SceneInstanceHandle,
     physics_character: ?physics_system.CharacterHandle,
+
+    pub fn on_button_event(self: *Self, event: input_system.ButtonEvent) void {
+        _ = self; // autofix
+        _ = event; // autofix
+
+    }
+
+    pub fn on_axis_event(self: *Self, event: input_system.AxisEvent) void {
+        switch (event.axis) {
+            .player_move_left_right => self.linear_input.data[0] = event.get_value(true),
+            .player_move_forward_backward => self.linear_input.data[1] = event.get_value(true),
+            else => {},
+        }
+    }
+
+    pub fn update(self: *Self, world: *World, delta_time: f32) void {
+        if (self.physics_character) |character_handle| {
+            var character = world.physics_world.get_character(character_handle).?;
+
+            if (character.get_ground_state() == .on_ground) {
+                var input_velocity = self.linear_input.norm().mul(self.linear_speed);
+                const new_velocity = za.Vec3.new(input_velocity.x(), 0.0, input_velocity.y());
+                character.set_linear_velocity(new_velocity);
+            } else {
+                character.add_linear_velocity(self.transform.get_up().negate().scale(9.8 * delta_time));
+            }
+        }
+    }
 };
 
 pub const Model = struct { mesh: rendering_system.StaticMeshHandle, material: rendering_system.MaterialHandle };
@@ -79,6 +115,7 @@ pub const World = struct {
                     var character = self.physics_world.get_character(character_handle).?;
                     character.set_transform(entry.value_ptr.transform.get_unscaled());
                 }
+                entry.value_ptr.update(self, delta_time);
             }
         }
 
