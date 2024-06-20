@@ -53,11 +53,16 @@ pub const App = struct {
             game_character = character_handle;
         }
 
-        //Floor
+        // Floor
         _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 1.0, 0.412, 0.38, 1.0 }, .{ 160.0, 0.5, 160.0 }, &.{ .position = za.Vec3.new(0.0, -5.0, 0.0) }, false);
 
-        //Cube
-        _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
+        // Cubes
+        for (0..10) |i| {
+            _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .position = za.Vec3.new(@as(f32, @floatFromInt(i)) * 0.5, @as(f32, @floatFromInt(i)) * 1.2, 0.0), .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
+        }
+
+        // Planet
+        _ = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 100.0, 0.0) }, false);
 
         // Load resources from gltf file
         const args = try std.process.argsAlloc(allocator);
@@ -196,6 +201,18 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
     const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
     const material = try proc.create_color_material(rendering_backend, color);
     const shape = try physics_system.create_box(za.Vec3.fromSlice(&size).scale(0.5));
+    defer shape.release();
+    return game_world.add_entity(
+        transform,
+        .{ .shape = shape, .dynamic = dynamic },
+        .{ .mesh = mesh, .material = material },
+    );
+}
+
+fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color: [4]f32, radius: f32, transform: *const Transform, dynamic: bool) !world.EntityHandle {
+    const mesh = try proc.create_sphere_mesh(allocator, rendering_backend, radius);
+    const material = try proc.create_color_material(rendering_backend, color);
+    const shape = try physics_system.create_sphere(radius);
     defer shape.release();
     return game_world.add_entity(
         transform,

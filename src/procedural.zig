@@ -11,6 +11,24 @@ pub fn create_color_material(rendering_backend: *rendering_system.Backend, color
     return try rendering_backend.materials.insert(.{ .base_color_factor = color });
 }
 
+pub fn create_sphere_mesh(
+    allocator: std.mem.Allocator,
+    rendering_backend: *rendering_system.Backend,
+    radius: f32,
+) !rendering_system.StaticMeshHandle {
+    zmesh.init(allocator);
+    defer zmesh.deinit();
+
+    var shape = zmesh.Shape.initSubdividedSphere(6);
+    defer shape.deinit();
+
+    shape.scale(radius, radius, radius);
+    shape.unweld();
+    shape.computeNormals();
+
+    return create_shape_mesh(allocator, rendering_backend, &shape);
+}
+
 pub fn create_cube_mesh(
     allocator: std.mem.Allocator,
     rendering_backend: *rendering_system.Backend,

@@ -101,6 +101,7 @@ pub const World = struct {
             .characters = CharacterPool.init(allocator),
             .physics_world = physics_system.World.init(allocator, .{
                 .max_bodies = 1024 * 4,
+                .num_body_mutexes = 0,
                 .max_body_pairs = 1024 * 4,
                 .max_contact_constraints = 1024 * 2,
             }) catch |err| {
@@ -122,8 +123,8 @@ pub const World = struct {
             var iter = self.entities.iterator();
             while (iter.next()) |entry| {
                 if (entry.value_ptr.body) |body_handle| {
-                    var body = self.physics_world.get_body(body_handle);
-                    body.set_transform(entry.value_ptr.transform.get_unscaled());
+                    const body = self.physics_world.get_body(body_handle);
+                    body.set_transform_if_changed(entry.value_ptr.transform.get_unscaled());
                 }
             }
         }

@@ -16,3 +16,7 @@ pub fn get_up(self: Self) za.Vec3 {
 pub fn get_forward(self: Self) za.Vec3 {
     return self.rotation.rotateVec(Transform.Forward).norm();
 }
+
+pub fn eql(self: Self, other: Self) bool {
+    return self.position.eql(other.position) and self.rotation.eql(other.rotation);
+}

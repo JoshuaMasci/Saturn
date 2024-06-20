@@ -13,6 +13,12 @@ pub fn deinit() void {
     jolt.deinit();
 }
 
+pub fn create_sphere(radius: f32) !Shape {
+    var settings = try jolt.SphereShapeSettings.create(radius);
+    defer settings.release();
+    return try settings.createShape();
+}
+
 pub fn create_box(half_extent: za.Vec3) !Shape {
     var settings = try jolt.BoxShapeSettings.create(half_extent.toArray());
     defer settings.release();
@@ -37,13 +43,30 @@ pub fn create_capsule(
     return try settings.createShape();
 }
 
+pub const UserDataType = enum(u32) {
+    none = 0,
+    gravity_volume,
+    trigger_volume,
+};
+
+pub const UserDataEnum = union {
+    gravity_volume_handle: GravityVolumeHandle,
+};
+
+pub const UserData = struct {
+    type: UserDataType,
+    data: UserDataEnum,
+};
+comptime {
+    std.debug.assert(@sizeOf(UserData) == @sizeOf(u64));
+}
+
 pub const BodyHandle = jolt.BodyId;
 pub const Shape = *jolt.Shape;
 
 pub const BodyMotionType = jolt.MotionType;
 pub const BodySettings = struct {
     motion_type: BodyMotionType = .dynamic,
-    is_sensor: bool = false,
 };
 
 pub const Character = struct {
@@ -57,6 +80,30 @@ pub const Character = struct {
 const CharacterPool = ObjectPool(u8, Character);
 pub const CharacterHandle = CharacterPool.Handle;
 
+pub const GravityVolume = struct {
+    body_id: jolt.BodyId,
+    bodies_in_volume: std.AutoHashMap(jolt.BodyId, f32),
+    point_gravity_strength: f32,
+
+    pub fn init(allocator: std.mem.Allocator) !@This() {
+        const radius = 50.0;
+        const gravity_at_surface = 9.8;
+        const force = gravity_at_surface * (radius * radius);
+
+        return .{
+            .body_id = 0,
+            .bodies_in_volume = std.AutoHashMap(jolt.BodyId, f32).init(allocator),
+            .point_gravity_strength = force,
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.bodies_in_volume.deinit();
+    }
+};
+const GravityVolumePool = ObjectPool(u16, GravityVolume);
+pub const GravityVolumeHandle = GravityVolumePool.Handle;
+
 pub const World = struct {
     const Self = @This();
 
@@ -68,6 +115,9 @@ pub const World = struct {
     physics_system: *jolt.PhysicsSystem,
 
     characters: CharacterPool,
+
+    gravity_volume: *GravityVolume,
+    gravity_step_listener: *GravityStepListener,
 
     pub fn init(allocator: std.mem.Allocator, args: struct {
         max_bodies: u32 = 1024,
@@ -84,8 +134,11 @@ pub const World = struct {
         const object_layer_pair_filter = try allocator.create(ObjectLayerPairFilter);
         object_layer_pair_filter.* = .{};
 
+        const gravity_volume = try allocator.create(GravityVolume);
+        gravity_volume.* = try GravityVolume.init(allocator);
+
         const contact_listener = try allocator.create(ContactListener);
-        contact_listener.* = .{};
+        contact_listener.* = .{ .gravity_volume = gravity_volume };
 
         var physics_system = try jolt.PhysicsSystem.create(
             @as(*const jolt.BroadPhaseLayerInterface, @ptrCast(broad_phase_layer_interface)),
@@ -100,6 +153,28 @@ pub const World = struct {
         );
         physics_system.setContactListener(contact_listener);
 
+        physics_system.setGravity(.{ 0.0, 0.0, 0.0 });
+
+        {
+            var body_interface = physics_system.getBodyInterfaceMut();
+            var shape = try create_sphere(150.0);
+            defer shape.release();
+
+            gravity_volume.body_id = try body_interface.createAndAddBody(.{
+                .position = .{ 0.0, 100.0, 0.0, 0.0 },
+                .rotation = .{ 1.0, 0.0, 0.0, 0.0 },
+                .shape = shape,
+                .motion_type = .static,
+                .object_layer = object_layers.non_moving,
+                .mass_properties_override = .{},
+                .is_sensor = true,
+            }, .activate);
+        }
+
+        const gravity_step_listener = try allocator.create(GravityStepListener);
+        gravity_step_listener.* = .{ .self_id = gravity_volume.body_id, .gravity_volume = gravity_volume };
+        physics_system.addStepListener(gravity_step_listener);
+
         return .{
             .allocator = allocator,
             .broad_phase_layer_interface = broad_phase_layer_interface,
@@ -108,12 +183,19 @@ pub const World = struct {
             .contact_listener = contact_listener,
             .physics_system = physics_system,
             .characters = CharacterPool.init(allocator),
+            .gravity_volume = gravity_volume,
+            .gravity_step_listener = gravity_step_listener,
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.gravity_volume.deinit();
+        self.allocator.destroy(self.gravity_volume);
+        self.allocator.destroy(self.gravity_step_listener);
+
         self.characters.deinit_with_entries();
         self.physics_system.destroy();
+        self.contact_listener.deinit();
         self.allocator.destroy(self.contact_listener);
         self.allocator.destroy(self.object_vs_broad_phase_layer_filter);
         self.allocator.destroy(self.object_layer_pair_filter);
@@ -152,8 +234,10 @@ pub const World = struct {
             .shape = shape,
             .motion_type = settings.motion_type,
             .object_layer = object_layer,
-            .mass_properties_override = .{},
-            .is_sensor = settings.is_sensor,
+            // .mass_properties_override = .{},
+            .allow_sleeping = true,
+            // .linear_damping = 0.0,
+            // .angular_damping = 0.0,
         }, .activate);
     }
 
@@ -182,7 +266,12 @@ pub const World = struct {
         character_settings.base.up = up.toVec4(0.0).toArray();
         character_settings.base.shape = shape;
 
-        const character = try jolt.CharacterVirtual.create(character_settings, transform.position.toArray(), .{ transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z }, self.physics_system);
+        const character = try jolt.CharacterVirtual.create(
+            character_settings,
+            transform.position.toArray(),
+            .{ transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z },
+            self.physics_system,
+        );
 
         return self.characters.insert(.{
             .character = character,
@@ -244,7 +333,7 @@ pub const BodyInterface = struct {
     }
 
     pub fn set_position(self: Self, position: za.Vec3) void {
-        self.interface.setPosition(self.id, position.toArray(), .activate);
+        self.interface.setPosition(self.id, position.toArray(), .dont_activate);
     }
     pub fn get_position(self: Self) za.Vec3 {
         return za.Vec3.fromArray(self.interface.getPosition(self.id));
@@ -254,7 +343,7 @@ pub const BodyInterface = struct {
     }
 
     pub fn set_rotation(self: Self, rotation: za.Quat) void {
-        self.interface.setRotation(self.id, rotation.toArray(), .activate);
+        self.interface.setRotation(self.id, rotation.toArray(), .dont_activate);
     }
     pub fn get_rotation(self: Self) za.Quat {
         return za.Quat.fromArray(self.interface.getRotation(self.id));
@@ -269,6 +358,12 @@ pub const BodyInterface = struct {
             .position = self.get_position(),
             .rotation = self.get_rotation(),
         };
+    }
+    pub fn set_transform_if_changed(self: Self, transform: UnscaledTransform) void {
+        const current_transform = self.get_transform();
+        if (!current_transform.eql(transform)) {
+            self.set_transform(transform);
+        }
     }
 
     pub fn add_force(self: Self, force: za.Vec3) void {
@@ -354,6 +449,145 @@ const broad_phase_layers = struct {
     const len: u32 = 2;
 };
 
+pub const AreaIdPair = struct {
+    area: struct {
+        body_id: jolt.BodyId,
+        sub_shape_id: jolt.SubShapeId,
+    },
+    body: struct {
+        body_id: jolt.BodyId,
+        sub_shape_id: jolt.SubShapeId,
+    },
+};
+
+const ContactListener = struct {
+    usingnamespace jolt.ContactListener.Methods(@This());
+    __v: *const jolt.ContactListener.VTable = &vtable,
+
+    gravity_volume: *GravityVolume,
+
+    const vtable = jolt.ContactListener.VTable{
+        .onContactAdded = _onContactAdded,
+        .onContactPersisted = _onContactPersisted,
+        .onContactRemoved = _onContactRemoved,
+        .onContactValidate = _onContactValidate,
+    };
+
+    pub fn init(allocator: std.mem.Allocator) @This() {
+        return .{
+            .area_enter_list = std.ArrayList(AreaIdPair).init(allocator),
+            .area_exit_list = std.ArrayList(AreaIdPair).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        _ = self; // autofix
+    }
+
+    pub fn _onContactValidate(
+        self: *jolt.ContactListener,
+        body1: *const jolt.Body,
+        body2: *const jolt.Body,
+        base_offset: *const [3]jolt.Real,
+        collision_result: *const jolt.CollideShapeResult,
+    ) callconv(.C) jolt.ValidateResult {
+        _ = self; // autofix
+        _ = body1; // autofix
+        _ = body2; // autofix
+        _ = base_offset; // autofix
+        _ = collision_result; // autofix
+        return .accept_all_contacts;
+    }
+
+    pub fn _onContactAdded(
+        cl: *jolt.ContactListener,
+        body1: *const jolt.Body,
+        body2: *const jolt.Body,
+        manifold: *const jolt.ContactManifold,
+        settings: *jolt.ContactSettings,
+    ) callconv(.C) void {
+        _ = manifold; // autofix
+        _ = settings; // autofix
+
+        const self = @as(*ContactListener, @ptrCast(cl));
+
+        if (body1.id == self.gravity_volume.body_id) {
+            std.log.info("Adding Body2: {}", .{body2.id});
+            self.gravity_volume.bodies_in_volume.put(body2.id, body2.motion_properties.?.gravity_factor) catch |err| std.debug.panic("Failed to append set: {}", .{err});
+        } else if (body2.id == self.gravity_volume.body_id) {
+            std.log.info("Adding Body1: {}", .{body1.id});
+            self.gravity_volume.bodies_in_volume.put(body1.id, body1.motion_properties.?.gravity_factor) catch |err| std.debug.panic("Failed to append set: {}", .{err});
+        }
+    }
+
+    pub fn _onContactPersisted(
+        self: *jolt.ContactListener,
+        body1: *const jolt.Body,
+        body2: *const jolt.Body,
+        manifold: *const jolt.ContactManifold,
+        settings: *jolt.ContactSettings,
+    ) callconv(.C) void {
+        _ = self; // autofix
+        _ = body1; // autofix
+        _ = body2; // autofix
+        _ = manifold; // autofix
+        _ = settings; // autofix
+    }
+
+    pub fn _onContactRemoved(
+        cl: *jolt.ContactListener,
+        sub_shape_pair: *const jolt.SubShapeIdPair,
+    ) callconv(.C) void {
+        const self = @as(*ContactListener, @ptrCast(cl));
+
+        if (sub_shape_pair.first.body_id == self.gravity_volume.body_id) {
+            std.log.info("Removing Body2: {}", .{sub_shape_pair.second.body_id});
+            _ = self.gravity_volume.bodies_in_volume.remove(sub_shape_pair.second.body_id);
+        } else if (sub_shape_pair.second.body_id == self.gravity_volume.body_id) {
+            std.log.info("Removing Body1: {}", .{sub_shape_pair.first.body_id});
+            _ = self.gravity_volume.bodies_in_volume.remove(sub_shape_pair.first.body_id);
+        }
+    }
+};
+
+const GravityAffectedBody = struct {
+    id: jolt.BodyId,
+    gravity_factor: f32,
+};
+
+const GravityStepListener = extern struct {
+    usingnamespace jolt.PhysicsStepListener.Methods(@This());
+    __v: *const jolt.PhysicsStepListener.VTable = &vtable,
+
+    self_id: jolt.BodyId,
+    gravity_volume: *GravityVolume,
+
+    const vtable = jolt.PhysicsStepListener.VTable{ .onStep = _onStep };
+
+    fn _onStep(psl: *jolt.PhysicsStepListener, delta_time: f32, physics_system: *jolt.PhysicsSystem) callconv(.C) void {
+        const self = @as(*GravityStepListener, @ptrCast(psl));
+        const body_interface = physics_system.getBodyInterfaceMutNoLock();
+
+        const gravity_strength = self.gravity_volume.point_gravity_strength;
+        const center_of_gravity = za.Vec3.fromArray(body_interface.getPosition(self.self_id));
+
+        var iterator = self.gravity_volume.bodies_in_volume.iterator();
+        while (iterator.next()) |affected_body| {
+            const body_id = affected_body.key_ptr.*;
+            const gravity_factor = affected_body.value_ptr.*;
+
+            if (body_interface.isActive(body_id)) {
+                const body_position = za.Vec3.fromArray(body_interface.getPosition(body_id));
+                const distance2 = std.math.pow(f32, center_of_gravity.sub(body_position).length(), 2);
+                const gravity_scale = gravity_strength / (distance2);
+                const gravity_vector = center_of_gravity.sub(body_position).norm().scale(gravity_scale * gravity_factor * delta_time);
+                const velocity = za.Vec3.fromArray(body_interface.getLinearVelocity(body_id));
+                body_interface.setLinearVelocity(body_id, velocity.add(gravity_vector).toArray());
+            }
+        }
+    }
+};
+
 const BroadPhaseLayerInterface = extern struct {
     usingnamespace jolt.BroadPhaseLayerInterface.Methods(@This());
     __v: *const jolt.BroadPhaseLayerInterface.VTable = &vtable,
@@ -418,30 +652,6 @@ const ObjectLayerPairFilter = extern struct {
             object_layers.moving => true,
             else => unreachable,
         };
-    }
-};
-
-const ContactListener = extern struct {
-    usingnamespace jolt.ContactListener.Methods(@This());
-    __v: *const jolt.ContactListener.VTable = &vtable,
-    const vtable = jolt.ContactListener.VTable{ .onContactValidate = _onContactValidate };
-
-    fn _onContactValidate(
-        self: *jolt.ContactListener,
-        body1: *const jolt.Body,
-        body2: *const jolt.Body,
-        base_offset: *const [3]jolt.Real,
-        collision_result: *const jolt.CollideShapeResult,
-    ) callconv(.C) jolt.ValidateResult {
-        _ = self;
-        _ = base_offset;
-        _ = collision_result;
-
-        if (body1.isSensor() or body2.isSensor()) {
-            std.log.info("Contact Body1: {} Body2: {}", .{ body1.id, body2.id });
-        }
-
-        return .accept_all_contacts;
     }
 };
 
