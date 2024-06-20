@@ -256,6 +256,15 @@ pub const World = struct {
             }
         }
     }
+
+    // HORIBLE TEST CODE
+    pub fn try_orbit(self: *Self, entity_handle: EntityHandle) void {
+        if (self.entities.getPtr(entity_handle)) |entity| {
+            if (entity.body) |body_handle| {
+                self.physics_world.try_orbit(body_handle);
+            }
+        }
+    }
 };
 
 //TODO: use this later?

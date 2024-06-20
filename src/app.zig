@@ -58,11 +58,15 @@ pub const App = struct {
 
         // Cubes
         for (0..10) |i| {
-            _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .position = za.Vec3.new(@as(f32, @floatFromInt(i)) * 0.5, @as(f32, @floatFromInt(i)) * 1.2, 0.0), .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
+            _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .position = za.Vec3.new(@as(f32, @floatFromInt(i)) * 0.5, @as(f32, @floatFromInt(i)) * 1.2, 15.0), .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
         }
 
         // Planet
         _ = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 100.0, 0.0) }, false);
+
+        // Moon
+        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, 100.0, 0.0) }, true);
+        game_world.try_orbit(moon_sphere);
 
         // Load resources from gltf file
         const args = try std.process.argsAlloc(allocator);
@@ -75,7 +79,7 @@ pub const App = struct {
         }
 
         var game_camera = debug_camera.DebugCamera.Default;
-        game_camera.transform.position = za.Vec3.new(0.0, 0.0, -10.0);
+        game_camera.transform.position = za.Vec3.new(0.0, 100.0, -250.0);
 
         return .{
             .should_quit = false,

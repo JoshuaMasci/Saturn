@@ -202,6 +202,21 @@ pub const World = struct {
         self.allocator.destroy(self.broad_phase_layer_interface);
     }
 
+    pub fn try_orbit(self: *Self, body_handle: BodyHandle) void {
+        const center_of_gravity = self.get_body(self.gravity_volume.body_id).get_position();
+
+        var body_interface = self.get_body(body_handle);
+        const body_position = body_interface.get_position();
+        const distance = center_of_gravity.sub(body_position).length();
+        const orbital_velocity = @sqrt(self.gravity_volume.point_gravity_strength / distance);
+        body_interface.set_linear_velocity(za.Vec3.NEG_Z.scale(orbital_velocity));
+
+        const orbital_period = 2.0 * std.math.pi * @sqrt(std.math.pow(f32, distance, 3.0) / self.gravity_volume.point_gravity_strength);
+
+        std.log.info("orbital_velocity: {d:.3}", .{orbital_velocity});
+        std.log.info("orbital_period: {d:.3}s", .{orbital_period});
+    }
+
     pub fn update(self: *Self, delta_time: f32) !void {
         {
             var character_iter = self.characters.iterator();
@@ -234,10 +249,8 @@ pub const World = struct {
             .shape = shape,
             .motion_type = settings.motion_type,
             .object_layer = object_layer,
-            // .mass_properties_override = .{},
-            .allow_sleeping = true,
-            // .linear_damping = 0.0,
-            // .angular_damping = 0.0,
+            .linear_damping = 0.0,
+            .angular_damping = 0.0,
         }, .activate);
     }
 
@@ -512,10 +525,10 @@ const ContactListener = struct {
         const self = @as(*ContactListener, @ptrCast(cl));
 
         if (body1.id == self.gravity_volume.body_id) {
-            std.log.info("Adding Body2: {}", .{body2.id});
+            //std.log.info("Adding Body2: {}", .{body2.id});
             self.gravity_volume.bodies_in_volume.put(body2.id, body2.motion_properties.?.gravity_factor) catch |err| std.debug.panic("Failed to append set: {}", .{err});
         } else if (body2.id == self.gravity_volume.body_id) {
-            std.log.info("Adding Body1: {}", .{body1.id});
+            //std.log.info("Adding Body1: {}", .{body1.id});
             self.gravity_volume.bodies_in_volume.put(body1.id, body1.motion_properties.?.gravity_factor) catch |err| std.debug.panic("Failed to append set: {}", .{err});
         }
     }
@@ -541,10 +554,10 @@ const ContactListener = struct {
         const self = @as(*ContactListener, @ptrCast(cl));
 
         if (sub_shape_pair.first.body_id == self.gravity_volume.body_id) {
-            std.log.info("Removing Body2: {}", .{sub_shape_pair.second.body_id});
+            //std.log.info("Removing Body2: {}", .{sub_shape_pair.second.body_id});
             _ = self.gravity_volume.bodies_in_volume.remove(sub_shape_pair.second.body_id);
         } else if (sub_shape_pair.second.body_id == self.gravity_volume.body_id) {
-            std.log.info("Removing Body1: {}", .{sub_shape_pair.first.body_id});
+            //std.log.info("Removing Body1: {}", .{sub_shape_pair.first.body_id});
             _ = self.gravity_volume.bodies_in_volume.remove(sub_shape_pair.first.body_id);
         }
     }
