@@ -43,12 +43,13 @@ pub const App = struct {
             const CharacterRadius: f32 = 0.5;
 
             const shape = try physics_system.create_capsule(CharacterHeight, CharacterRadius);
-            const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
-            const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
+            // const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
+            // const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
+            // .{ .mesh = mesh, .material = material }
             const character_handle = try game_world.add_character(
                 &.{ .position = za.Vec3.new(5.0, 10.0, 0.0) },
                 shape,
-                .{ .mesh = mesh, .material = material },
+                null,
             );
             game_character = character_handle;
         }
@@ -57,12 +58,12 @@ pub const App = struct {
         _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 1.0, 0.412, 0.38, 1.0 }, .{ 160.0, 0.5, 160.0 }, &.{ .position = za.Vec3.new(0.0, -5.0, 0.0) }, false);
 
         // Cubes
-        for (0..10) |i| {
+        for (0..20) |i| {
             _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .position = za.Vec3.new(@as(f32, @floatFromInt(i)) * 0.5, @as(f32, @floatFromInt(i)) * 1.2, 15.0), .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
         }
 
         // Planet
-        _ = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 100.0, 0.0) }, false);
+        const planet_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 100.0, 0.0) }, false);
 
         // Moon
         const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, 100.0, 0.0) }, true);
@@ -80,6 +81,10 @@ pub const App = struct {
 
         var game_camera = debug_camera.DebugCamera.Default;
         game_camera.transform.position = za.Vec3.new(0.0, 100.0, -250.0);
+
+        if (game_character) |character_handle| {
+            game_world.characters.getPtr(character_handle).?.planet_handle = planet_sphere;
+        }
 
         return .{
             .should_quit = false,
@@ -119,6 +124,12 @@ pub const App = struct {
             .data = self.game_camera.camera,
             .transform = self.game_camera.transform,
         };
+
+        if (self.game_character) |character_handle| {
+            if (self.game_world.characters.getPtr(character_handle)) |character| {
+                scene_camera.transform = character.get_camera_transform();
+            }
+        }
 
         const window_size = try self.platform.get_window_size();
         self.rendering_backend.render_scene(window_size, &self.game_world.rendering_world, &scene_camera);

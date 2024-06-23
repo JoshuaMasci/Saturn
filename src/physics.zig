@@ -72,6 +72,7 @@ pub const BodySettings = struct {
 pub const Character = struct {
     gravity_vector: [3]f32 = .{ 0.0, 0.0, 0.0 },
     character: *jolt.CharacterVirtual,
+    //TODO: Add rigidbody for ability to push objects
 
     pub fn deinit(self: *@This()) void {
         self.character.destroy();

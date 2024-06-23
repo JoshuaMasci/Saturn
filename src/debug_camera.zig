@@ -14,23 +14,24 @@ pub const DebugCamera = struct {
 
     pitch_yaw: za.Vec2 = za.Vec2.ZERO,
 
-    linear_speed: za.Vec3,
-    angular_speed: za.Vec3,
+    linear_speed: za.Vec3 = za.Vec3.set(5.0),
+    angular_speed: za.Vec3 = za.Vec3.set(std.math.pi),
 
-    linear_input: za.Vec3,
-    angular_input: za.Vec3,
+    linear_speed_fast: za.Vec3 = za.Vec3.set(25.0),
+    linear_move_fast: bool = false,
 
-    pub const Default: Self = .{
-        .linear_speed = za.Vec3.set(5.0),
-        .angular_speed = za.Vec3.set(std.math.pi),
-        .linear_input = za.Vec3.set(0.0),
-        .angular_input = za.Vec3.set(0.0),
-    };
+    linear_input: za.Vec3 = za.Vec3.ZERO,
+    angular_input: za.Vec3 = za.Vec3.ZERO,
+
+    pub const Default: Self = .{};
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
-        _ = event; // autofix
-        _ = self;
         //std.log.info("Button {} -> {}", .{ event.button, event.state });
+
+        switch (event.button) {
+            .debug_camera_fast_move => self.linear_move_fast = event.state.is_down(),
+            else => {},
+        }
     }
 
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
@@ -48,7 +49,8 @@ pub const DebugCamera = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32) void {
-        const linear_movement = self.transform.rotation.rotateVec(self.linear_input.mul(self.linear_speed).scale(delta_time));
+        const linear_speed = if (self.linear_move_fast) self.linear_speed_fast else self.linear_speed;
+        const linear_movement = self.transform.rotation.rotateVec(self.linear_input.mul(linear_speed).scale(delta_time));
         self.transform.position = self.transform.position.add(linear_movement);
 
         const angular_rotation = self.angular_input.mul(self.angular_speed).scale(delta_time);

@@ -3,6 +3,7 @@ const StringHash = @import("string_hash.zig");
 
 pub const Button = enum {
     debug_camera_interact,
+    debug_camera_fast_move,
     player_move_jump,
 };
 
@@ -17,6 +18,9 @@ pub const Axis = enum {
 
     player_move_forward_backward,
     player_move_left_right,
+
+    player_rotate_yaw,
+    player_rotate_pitch,
 };
 
 pub const ButtonState = enum {

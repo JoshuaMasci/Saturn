@@ -22,16 +22,26 @@ pub const CharacterHandle = CharacterPool.Handle;
 pub const Character = struct {
     const Self = @This();
 
+    planet_handle: ?EntityHandle = null,
+
     //TODO: 3D movement state
 
     //Ground Movement State
     linear_speed: za.Vec2 = za.Vec2.set(5.0),
+    angular_speed: za.Vec2 = za.Vec2.set(std.math.pi),
+
     jump_velocity: f32 = 10.0,
     max_jumps: u32 = 1,
 
     linear_input: za.Vec2 = za.Vec2.ZERO,
+    angular_input: za.Vec2 = za.Vec2.ZERO,
+
     jump_input: bool = false,
     jump_count: u32 = 0,
+
+    //Camera State
+    camera_offset: za.Vec3 = za.Vec3.Z,
+    camera_pitch: f32 = 0.0,
 
     transform: Transform,
     render_object: ?rendering_system.SceneInstanceHandle,
@@ -50,17 +60,49 @@ pub const Character = struct {
         switch (event.axis) {
             .player_move_left_right => self.linear_input.data[0] = event.get_value(true),
             .player_move_forward_backward => self.linear_input.data[1] = event.get_value(true),
+
+            .player_rotate_yaw => self.angular_input.data[0] = event.get_value(false),
+            .player_rotate_pitch => self.angular_input.data[1] = event.get_value(false),
+
             else => {},
         }
     }
 
     pub fn update(self: *Self, world: *World, delta_time: f32) void {
+        if (self.planet_handle) |planet_handle| {
+            if (world.entities.getPtr(planet_handle)) |planet| {
+                const current_up = self.transform.get_up();
+                const new_up = self.transform.position.sub(planet.transform.position).norm();
+
+                const cross_vector = current_up.cross(new_up);
+                const angle = new_up.getAngle(current_up);
+                if (!std.math.isNan(angle) and angle != 0.0) {
+                    //std.log.info("cross: {d:.3} -> angle: {d:.3}", .{ cross_vector.toArray(), angle });
+                    const rotation_amount = za.Quat.fromAxis(angle, cross_vector);
+                    //std.log.info("Pre: {d:.3} -> Amount: {d:.3}", .{ self.transform.rotation.toArray(), rotation_amount.toArray() });
+                    self.transform.rotation = rotation_amount.mul(self.transform.rotation);
+                    //std.log.info("After: {d:.3}", .{self.transform.rotation.toArray()});
+                }
+            }
+        }
+
         if (self.physics_character) |character_handle| {
             var character = world.physics_world.get_character(character_handle).?;
 
-            var gravity_vector = self.transform.rotation.rotateVec(za.Vec3.NEG_Y).scale(9.8);
+            const angular_movement = self.angular_input.mul(self.angular_speed).scale(delta_time);
 
-            if (character.get_ground_state() == .on_ground) {
+            const up_axis = self.transform.get_up();
+            const yaw_rotation = za.Quat.fromAxis(angular_movement.x(), up_axis);
+            self.transform.rotation = yaw_rotation.mul(self.transform.rotation);
+
+            const pi_half = std.math.pi / 2.0;
+            self.camera_pitch = std.math.clamp(self.camera_pitch + angular_movement.y(), -pi_half, pi_half);
+
+            var gravity_vector = up_axis.scale(-9.8);
+
+            if (character.get_ground_state() == .in_air) {
+                character.add_linear_velocity(gravity_vector.scale(delta_time));
+            } else {
                 var input_velocity = self.linear_input.norm().mul(self.linear_speed);
 
                 var new_velocity = za.Vec3.new(input_velocity.x(), 0.0, input_velocity.y());
@@ -70,14 +112,23 @@ pub const Character = struct {
                 }
 
                 character.set_linear_velocity(self.transform.rotation.rotateVec(new_velocity));
-            } else {
-                character.add_linear_velocity(gravity_vector.scale(delta_time));
             }
 
-            character.set_gravity(gravity_vector);
+            character.set_rotation(self.transform.rotation);
+            character.set_gravity(gravity_vector.norm());
         }
 
         self.jump_input = false;
+        self.angular_input = za.Vec2.set(0.0);
+    }
+
+    pub fn get_camera_transform(self: Self) Transform {
+        const pitch_quat = za.Quat.fromAxis(self.camera_pitch, za.Vec3.X);
+
+        return .{
+            .position = self.transform.position,
+            .rotation = self.transform.rotation.mul(pitch_quat),
+        };
     }
 };
 
@@ -266,48 +317,3 @@ pub const World = struct {
         }
     }
 };
-
-//TODO: use this later?
-// pub const NodePool = object_pool.ObjectPool(u16, Node);
-// pub const NodeHandle = NodePool.Handle;
-
-// pub const NodeComponents = struct {
-//     model: ?void,
-//     collider: ?void,
-// };
-
-// pub const Node = struct {
-//     name: ?[]const u8,
-//     local_transform: Transform,
-//     components: NodeComponents,
-
-//     parent: ?NodeHandle,
-//     childen: std.ArrayList(NodeHandle),
-// };
-
-// pub const EntityComponents = struct {
-//     character: ?void,
-//     body: ?void,
-// };
-
-// pub const EntityData = struct {
-//     name: ?[]const u8,
-//     transform: Transform,
-//     components: EntityComponents,
-
-//     root_nodes: std.ArrayList(NodeHandle),
-//     node_pool: NodePool,
-// };
-
-// pub const EntitySystems = struct {};
-// pub const Entity = struct {
-//     data: EntityData,
-//     systems: EntitySystems,
-// };
-
-// pub const WorldData = struct {};
-
-// pub const World = struct {
-//     data: WorldData,
-//     entity_pool: std.ArrayList(?Entity),
-// };
