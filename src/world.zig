@@ -100,6 +100,8 @@ pub const Character = struct {
 
             var gravity_vector = up_axis.scale(-9.8);
 
+            std.log.info("Character Ground State: {}", .{character.get_ground_state()});
+
             if (character.get_ground_state() == .in_air) {
                 character.add_linear_velocity(gravity_vector.scale(delta_time));
             } else {
@@ -115,7 +117,7 @@ pub const Character = struct {
             }
 
             character.set_rotation(self.transform.rotation);
-            character.set_gravity(gravity_vector.norm());
+            character.set_gravity(gravity_vector);
         }
 
         self.jump_input = false;

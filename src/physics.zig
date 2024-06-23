@@ -278,6 +278,7 @@ pub const World = struct {
         const up = transform.get_up();
 
         character_settings.base.up = up.toVec4(0.0).toArray();
+        character_settings.base.max_slope_angle = 45.0;
         character_settings.base.shape = shape;
 
         const character = try jolt.CharacterVirtual.create(
@@ -424,6 +425,7 @@ pub const CharacterInterface = struct {
     }
 
     pub fn set_rotation(self: Self, rotation: za.Quat) void {
+        self.ptr.character.setUp(rotation.rotateVec(za.Vec3.Y).toArray()); //TODO: seperate rotation up from character up?
         self.ptr.character.setRotation(rotation.toArray());
     }
     pub fn get_rotation(self: Self) za.Quat {
