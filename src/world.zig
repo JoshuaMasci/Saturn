@@ -93,7 +93,7 @@ pub const Character = struct {
 
             const up_axis = self.transform.get_up();
             const yaw_rotation = za.Quat.fromAxis(angular_movement.x(), up_axis);
-            self.transform.rotation = yaw_rotation.mul(self.transform.rotation);
+            self.transform.rotation = yaw_rotation.mul(self.transform.rotation).norm();
 
             const pi_half = std.math.pi / 2.0;
             self.camera_pitch = std.math.clamp(self.camera_pitch + angular_movement.y(), -pi_half, pi_half);
