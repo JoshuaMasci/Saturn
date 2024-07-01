@@ -54,11 +54,8 @@ pub const App = struct {
             game_character = character_handle;
         }
 
-        // Floor
-        _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 1.0, 0.412, 0.38, 1.0 }, .{ 160.0, 0.5, 160.0 }, &.{ .position = za.Vec3.new(0.0, -5.0, 0.0) }, false);
-
         // Cubes
-        for (0..20) |i| {
+        for (0..100) |i| {
             _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .position = za.Vec3.new(@as(f32, @floatFromInt(i)) * 0.5, @as(f32, @floatFromInt(i)) * 1.2, 15.0), .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
         }
 

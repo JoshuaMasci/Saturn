@@ -43,24 +43,6 @@ pub fn create_capsule(
     return try settings.createShape();
 }
 
-pub const UserDataType = enum(u32) {
-    none = 0,
-    gravity_volume,
-    trigger_volume,
-};
-
-pub const UserDataEnum = union {
-    gravity_volume_handle: GravityVolumeHandle,
-};
-
-pub const UserData = struct {
-    type: UserDataType,
-    data: UserDataEnum,
-};
-comptime {
-    std.debug.assert(@sizeOf(UserData) == @sizeOf(u64));
-}
-
 pub const BodyHandle = jolt.BodyId;
 pub const Shape = *jolt.Shape;
 
@@ -102,8 +84,7 @@ pub const GravityVolume = struct {
         self.bodies_in_volume.deinit();
     }
 };
-const GravityVolumePool = ObjectPool(u16, GravityVolume);
-pub const GravityVolumeHandle = GravityVolumePool.Handle;
+pub const GravityVolumeMap = std.AutoHashMap(jolt.BodyId, *GravityVolume);
 
 pub const World = struct {
     const Self = @This();
@@ -117,7 +98,7 @@ pub const World = struct {
 
     characters: CharacterPool,
 
-    gravity_volume: *GravityVolume,
+    gravity_volumes: *GravityVolumeMap,
     gravity_step_listener: *GravityStepListener,
 
     pub fn init(allocator: std.mem.Allocator, args: struct {
@@ -135,11 +116,11 @@ pub const World = struct {
         const object_layer_pair_filter = try allocator.create(ObjectLayerPairFilter);
         object_layer_pair_filter.* = .{};
 
-        const gravity_volume = try allocator.create(GravityVolume);
-        gravity_volume.* = try GravityVolume.init(allocator);
+        const gravity_volumes = try allocator.create(GravityVolumeMap);
+        gravity_volumes.* = GravityVolumeMap.init(allocator);
 
         const contact_listener = try allocator.create(ContactListener);
-        contact_listener.* = .{ .gravity_volume = gravity_volume };
+        contact_listener.* = .{ .gravity_volumes = gravity_volumes };
 
         var physics_system = try jolt.PhysicsSystem.create(
             @as(*const jolt.BroadPhaseLayerInterface, @ptrCast(broad_phase_layer_interface)),
@@ -156,12 +137,15 @@ pub const World = struct {
 
         physics_system.setGravity(.{ 0.0, 0.0, 0.0 });
 
+        const gravity_step_listener = try allocator.create(GravityStepListener);
+        gravity_step_listener.* = .{ .gravity_volumes = gravity_volumes };
+        physics_system.addStepListener(gravity_step_listener);
+
         {
             var body_interface = physics_system.getBodyInterfaceMut();
             var shape = try create_sphere(150.0);
             defer shape.release();
-
-            gravity_volume.body_id = try body_interface.createAndAddBody(.{
+            const body_id = try body_interface.createAndAddBody(.{
                 .position = .{ 0.0, 100.0, 0.0, 0.0 },
                 .rotation = .{ 1.0, 0.0, 0.0, 0.0 },
                 .shape = shape,
@@ -170,11 +154,11 @@ pub const World = struct {
                 .mass_properties_override = .{},
                 .is_sensor = true,
             }, .activate);
+            const gravity_volume = try allocator.create(GravityVolume);
+            gravity_volume.* = try GravityVolume.init(allocator);
+            gravity_volume.body_id = body_id;
+            try gravity_volumes.put(body_id, gravity_volume);
         }
-
-        const gravity_step_listener = try allocator.create(GravityStepListener);
-        gravity_step_listener.* = .{ .self_id = gravity_volume.body_id, .gravity_volume = gravity_volume };
-        physics_system.addStepListener(gravity_step_listener);
 
         return .{
             .allocator = allocator,
@@ -184,14 +168,19 @@ pub const World = struct {
             .contact_listener = contact_listener,
             .physics_system = physics_system,
             .characters = CharacterPool.init(allocator),
-            .gravity_volume = gravity_volume,
+            .gravity_volumes = gravity_volumes,
             .gravity_step_listener = gravity_step_listener,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.gravity_volume.deinit();
-        self.allocator.destroy(self.gravity_volume);
+        var volume_iterator = self.gravity_volumes.iterator();
+        while (volume_iterator.next()) |volume_entry| {
+            volume_entry.value_ptr.*.deinit();
+            self.allocator.destroy(volume_entry.value_ptr.*);
+        }
+        self.gravity_volumes.deinit();
+        self.allocator.destroy(self.gravity_volumes);
         self.allocator.destroy(self.gravity_step_listener);
 
         self.characters.deinit_with_entries();
@@ -203,26 +192,29 @@ pub const World = struct {
         self.allocator.destroy(self.broad_phase_layer_interface);
     }
 
+    //TODO: temp math to be removed later
     pub fn try_orbit(self: *Self, body_handle: BodyHandle) void {
-        const center_of_gravity = self.get_body(self.gravity_volume.body_id).get_position();
+        var iterator = self.gravity_volumes.iterator();
+        if (iterator.next()) |volume_entry| {
+            const center_of_gravity = self.get_body(volume_entry.value_ptr.*.body_id).get_position();
 
-        var body_interface = self.get_body(body_handle);
-        const body_position = body_interface.get_position();
-        const distance = center_of_gravity.sub(body_position).length();
-        const orbital_velocity = @sqrt(self.gravity_volume.point_gravity_strength / distance);
-        body_interface.set_linear_velocity(za.Vec3.NEG_Z.scale(orbital_velocity));
+            var body_interface = self.get_body(body_handle);
+            const body_position = body_interface.get_position();
+            const distance = center_of_gravity.sub(body_position).length();
+            const orbital_velocity = @sqrt(volume_entry.value_ptr.*.point_gravity_strength / distance);
+            body_interface.set_linear_velocity(za.Vec3.NEG_Z.scale(orbital_velocity));
 
-        const orbital_period = 2.0 * std.math.pi * @sqrt(std.math.pow(f32, distance, 3.0) / self.gravity_volume.point_gravity_strength);
+            const orbital_period = 2.0 * std.math.pi * @sqrt(std.math.pow(f32, distance, 3.0) / volume_entry.value_ptr.*.point_gravity_strength);
 
-        std.log.info("orbital_velocity: {d:.3}", .{orbital_velocity});
-        std.log.info("orbital_period: {d:.3}s", .{orbital_period});
+            std.log.info("orbital_velocity: {d:.3}", .{orbital_velocity});
+            std.log.info("orbital_period: {d:.3}s", .{orbital_period});
+        }
     }
 
     pub fn update(self: *Self, delta_time: f32) !void {
         {
             var character_iter = self.characters.iterator();
             while (character_iter.next()) |entry| {
-
                 //TODO: add wrapper for extented_update for stick_to_floor and walk_stair
                 entry.value_ptr.character.update(delta_time, entry.value_ptr.gravity_vector, .{});
             }
@@ -480,39 +472,15 @@ const ContactListener = struct {
     usingnamespace jolt.ContactListener.Methods(@This());
     __v: *const jolt.ContactListener.VTable = &vtable,
 
-    gravity_volume: *GravityVolume,
+    gravity_volumes: *GravityVolumeMap,
 
     const vtable = jolt.ContactListener.VTable{
         .onContactAdded = _onContactAdded,
-        .onContactPersisted = _onContactPersisted,
         .onContactRemoved = _onContactRemoved,
-        .onContactValidate = _onContactValidate,
     };
-
-    pub fn init(allocator: std.mem.Allocator) @This() {
-        return .{
-            .area_enter_list = std.ArrayList(AreaIdPair).init(allocator),
-            .area_exit_list = std.ArrayList(AreaIdPair).init(allocator),
-        };
-    }
 
     pub fn deinit(self: *@This()) void {
         _ = self; // autofix
-    }
-
-    pub fn _onContactValidate(
-        self: *jolt.ContactListener,
-        body1: *const jolt.Body,
-        body2: *const jolt.Body,
-        base_offset: *const [3]jolt.Real,
-        collision_result: *const jolt.CollideShapeResult,
-    ) callconv(.C) jolt.ValidateResult {
-        _ = self; // autofix
-        _ = body1; // autofix
-        _ = body2; // autofix
-        _ = base_offset; // autofix
-        _ = collision_result; // autofix
-        return .accept_all_contacts;
     }
 
     pub fn _onContactAdded(
@@ -527,27 +495,15 @@ const ContactListener = struct {
 
         const self = @as(*ContactListener, @ptrCast(cl));
 
-        if (body1.id == self.gravity_volume.body_id) {
-            //std.log.info("Adding Body2: {}", .{body2.id});
-            self.gravity_volume.bodies_in_volume.put(body2.id, body2.motion_properties.?.gravity_factor) catch |err| std.debug.panic("Failed to append set: {}", .{err});
-        } else if (body2.id == self.gravity_volume.body_id) {
-            //std.log.info("Adding Body1: {}", .{body1.id});
-            self.gravity_volume.bodies_in_volume.put(body1.id, body1.motion_properties.?.gravity_factor) catch |err| std.debug.panic("Failed to append set: {}", .{err});
+        if (self.gravity_volumes.get(body1.id)) |gravity_volume| {
+            //std.log.info("Adding Body2: {}:{}", .{ body2.id, manifold.shape2_sub_shape_id });
+            gravity_volume.bodies_in_volume.put(body2.id, body2.motion_properties.?.gravity_factor) catch |err| std.debug.panic("Failed to append set: {}", .{err});
         }
-    }
 
-    pub fn _onContactPersisted(
-        self: *jolt.ContactListener,
-        body1: *const jolt.Body,
-        body2: *const jolt.Body,
-        manifold: *const jolt.ContactManifold,
-        settings: *jolt.ContactSettings,
-    ) callconv(.C) void {
-        _ = self; // autofix
-        _ = body1; // autofix
-        _ = body2; // autofix
-        _ = manifold; // autofix
-        _ = settings; // autofix
+        if (self.gravity_volumes.get(body2.id)) |gravity_volume| {
+            //std.log.info("Adding Body1: {}:{}", .{ body1.id, manifold.shape1_sub_shape_id });
+            gravity_volume.bodies_in_volume.put(body1.id, body1.motion_properties.?.gravity_factor) catch |err| std.debug.panic("Failed to append set: {}", .{err});
+        }
     }
 
     pub fn _onContactRemoved(
@@ -556,12 +512,14 @@ const ContactListener = struct {
     ) callconv(.C) void {
         const self = @as(*ContactListener, @ptrCast(cl));
 
-        if (sub_shape_pair.first.body_id == self.gravity_volume.body_id) {
-            //std.log.info("Removing Body2: {}", .{sub_shape_pair.second.body_id});
-            _ = self.gravity_volume.bodies_in_volume.remove(sub_shape_pair.second.body_id);
-        } else if (sub_shape_pair.second.body_id == self.gravity_volume.body_id) {
-            //std.log.info("Removing Body1: {}", .{sub_shape_pair.first.body_id});
-            _ = self.gravity_volume.bodies_in_volume.remove(sub_shape_pair.first.body_id);
+        if (self.gravity_volumes.get(sub_shape_pair.first.body_id)) |gravity_volume| {
+            //std.log.info("Adding Body2: {}:{}", .{ body2.id, manifold.shape2_sub_shape_id });
+            _ = gravity_volume.bodies_in_volume.remove(sub_shape_pair.second.body_id);
+        }
+
+        if (self.gravity_volumes.get(sub_shape_pair.second.body_id)) |gravity_volume| {
+            //std.log.info("Adding Body1: {}:{}", .{ body1.id, manifold.shape1_sub_shape_id });
+            _ = gravity_volume.bodies_in_volume.remove(sub_shape_pair.first.body_id);
         }
     }
 };
@@ -575,8 +533,7 @@ const GravityStepListener = extern struct {
     usingnamespace jolt.PhysicsStepListener.Methods(@This());
     __v: *const jolt.PhysicsStepListener.VTable = &vtable,
 
-    self_id: jolt.BodyId,
-    gravity_volume: *GravityVolume,
+    gravity_volumes: *GravityVolumeMap,
 
     const vtable = jolt.PhysicsStepListener.VTable{ .onStep = _onStep };
 
@@ -584,21 +541,24 @@ const GravityStepListener = extern struct {
         const self = @as(*GravityStepListener, @ptrCast(psl));
         const body_interface = physics_system.getBodyInterfaceMutNoLock();
 
-        const gravity_strength = self.gravity_volume.point_gravity_strength;
-        const center_of_gravity = za.Vec3.fromArray(body_interface.getPosition(self.self_id));
+        var volume_iterator = self.gravity_volumes.iterator();
+        while (volume_iterator.next()) |volume_entry| {
+            const gravity_strength = volume_entry.value_ptr.*.point_gravity_strength;
+            const center_of_gravity = za.Vec3.fromArray(body_interface.getPosition(volume_entry.key_ptr.*));
 
-        var iterator = self.gravity_volume.bodies_in_volume.iterator();
-        while (iterator.next()) |affected_body| {
-            const body_id = affected_body.key_ptr.*;
-            const gravity_factor = affected_body.value_ptr.*;
+            var iterator = volume_entry.value_ptr.*.bodies_in_volume.iterator();
+            while (iterator.next()) |affected_body| {
+                const body_id = affected_body.key_ptr.*;
+                const gravity_factor = affected_body.value_ptr.*;
 
-            if (body_interface.isActive(body_id)) {
-                const body_position = za.Vec3.fromArray(body_interface.getPosition(body_id));
-                const distance2 = std.math.pow(f32, center_of_gravity.sub(body_position).length(), 2);
-                const gravity_scale = gravity_strength / (distance2);
-                const gravity_vector = center_of_gravity.sub(body_position).norm().scale(gravity_scale * gravity_factor * delta_time);
-                const velocity = za.Vec3.fromArray(body_interface.getLinearVelocity(body_id));
-                body_interface.setLinearVelocity(body_id, velocity.add(gravity_vector).toArray());
+                if (body_interface.isActive(body_id)) {
+                    const body_position = za.Vec3.fromArray(body_interface.getPosition(body_id));
+                    const distance2 = std.math.pow(f32, center_of_gravity.sub(body_position).length(), 2);
+                    const gravity_scale = gravity_strength / (distance2);
+                    const gravity_vector = center_of_gravity.sub(body_position).norm().scale(gravity_scale * gravity_factor * delta_time);
+                    const velocity = za.Vec3.fromArray(body_interface.getLinearVelocity(body_id));
+                    body_interface.setLinearVelocity(body_id, velocity.add(gravity_vector).toArray());
+                }
             }
         }
     }

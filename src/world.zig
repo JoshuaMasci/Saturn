@@ -69,6 +69,8 @@ pub const Character = struct {
     }
 
     pub fn update(self: *Self, world: *World, delta_time: f32) void {
+        const gravity_strength = 9.8;
+
         if (self.planet_handle) |planet_handle| {
             if (world.entities.getPtr(planet_handle)) |planet| {
                 const current_up = self.transform.get_up();
@@ -98,13 +100,11 @@ pub const Character = struct {
             const pi_half = std.math.pi / 2.0;
             self.camera_pitch = std.math.clamp(self.camera_pitch + angular_movement.y(), -pi_half, pi_half);
 
-            var gravity_vector = up_axis.scale(-9.8);
+            var gravity_vector = up_axis.scale(-1.0 * gravity_strength);
 
-            std.log.info("Character Ground State: {}", .{character.get_ground_state()});
+            //std.log.info("Character Ground State: {}", .{character.get_ground_state()});
 
-            if (character.get_ground_state() == .in_air) {
-                character.add_linear_velocity(gravity_vector.scale(delta_time));
-            } else {
+            if (character.get_ground_state() == .on_ground) {
                 var input_velocity = self.linear_input.norm().mul(self.linear_speed);
 
                 var new_velocity = za.Vec3.new(input_velocity.x(), 0.0, input_velocity.y());
@@ -114,6 +114,8 @@ pub const Character = struct {
                 }
 
                 character.set_linear_velocity(self.transform.rotation.rotateVec(new_velocity));
+            } else {
+                character.add_linear_velocity(gravity_vector.scale(delta_time));
             }
 
             character.set_rotation(self.transform.rotation);
@@ -153,10 +155,10 @@ pub const World = struct {
             .entities = EntityPool.init(allocator),
             .characters = CharacterPool.init(allocator),
             .physics_world = physics_system.World.init(allocator, .{
-                .max_bodies = 1024 * 4,
+                .max_bodies = 1024,
                 .num_body_mutexes = 0,
-                .max_body_pairs = 1024 * 4,
-                .max_contact_constraints = 1024 * 2,
+                .max_body_pairs = 1024,
+                .max_contact_constraints = 1024,
             }) catch |err| {
                 std.debug.panic("Failed to create physics world: {}", .{err});
             },
