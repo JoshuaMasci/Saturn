@@ -30,7 +30,7 @@ pub const Character = struct {
     linear_speed: za.Vec2 = za.Vec2.set(5.0),
     angular_speed: za.Vec2 = za.Vec2.set(std.math.pi),
 
-    jump_velocity: f32 = 10.0,
+    jump_velocity: f32 = 15.0,
     max_jumps: u32 = 1,
 
     linear_input: za.Vec2 = za.Vec2.ZERO,

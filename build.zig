@@ -50,6 +50,11 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zjolt", zjolt.module("root"));
     exe.linkLibrary(zjolt.artifact("joltc"));
 
+    // saturn physics abstraction
+    const saturn_physics = b.dependency("saturn_physics", .{});
+    exe.root_module.addImport("saturn_physics", saturn_physics.module("root"));
+    exe.linkLibrary(saturn_physics.artifact("sjolt"));
+
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

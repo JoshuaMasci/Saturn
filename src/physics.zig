@@ -202,7 +202,7 @@ pub const World = struct {
             const body_position = body_interface.get_position();
             const distance = center_of_gravity.sub(body_position).length();
             const orbital_velocity = @sqrt(volume_entry.value_ptr.*.point_gravity_strength / distance);
-            body_interface.set_linear_velocity(za.Vec3.NEG_Z.scale(orbital_velocity));
+            body_interface.set_linear_velocity(za.Vec3.Y.scale(orbital_velocity));
 
             const orbital_period = 2.0 * std.math.pi * @sqrt(std.math.pow(f32, distance, 3.0) / volume_entry.value_ptr.*.point_gravity_strength);
 
