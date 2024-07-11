@@ -42,14 +42,6 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zstbi", zstbi.module("root"));
     exe.linkLibrary(zstbi.artifact("zstbi"));
 
-    // zjolt
-    const zjolt = b.dependency("zjolt", .{
-        .use_double_precision = false,
-        .enable_cross_platform_determinism = true,
-    });
-    exe.root_module.addImport("zjolt", zjolt.module("root"));
-    exe.linkLibrary(zjolt.artifact("joltc"));
-
     // saturn physics abstraction
     const saturn_physics = b.dependency("saturn_physics", .{});
     exe.root_module.addImport("saturn_physics", saturn_physics.module("root"));

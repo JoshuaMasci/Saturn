@@ -8,19 +8,21 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/saturn_jolt.zig"),
         .imports = &.{},
     });
-    _ = zig_module; // autofix
+    zig_module.addIncludePath(b.path("src/"));
 
     const saturn_physics_lib = build_cpp_lib(b, target, optimize);
-    _ = saturn_physics_lib; // autofix
 
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("src/saturn_jolt.zig"),
         .target = target,
         .optimize = optimize,
     });
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
+
+    const lib = b.step("lib", "build cpp static lib");
+    lib.dependOn(&saturn_physics_lib.step);
 }
 
 fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
@@ -45,6 +47,7 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
     // find ./ -type f -name "*.cpp"
     library.addCSourceFiles(.{
         .files = &.{
+            "src/saturn_jolt.cpp",
             jolt_src_path ++ "Core/TickCounter.cpp",
             jolt_src_path ++ "Core/Factory.cpp",
             jolt_src_path ++ "Core/Memory.cpp",

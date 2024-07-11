@@ -42,10 +42,7 @@ pub const App = struct {
             const CharacterHeight: f32 = 0.9;
             const CharacterRadius: f32 = 0.5;
 
-            const shape = try physics_system.create_capsule(CharacterHeight, CharacterRadius);
-            // const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
-            // const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
-            // .{ .mesh = mesh, .material = material }
+            const shape = physics_system.create_capsule(CharacterHeight, CharacterRadius);
             const character_handle = try game_world.add_character(
                 &.{ .position = za.Vec3.new(5.0, 10.0, 0.0) },
                 shape,
@@ -64,7 +61,7 @@ pub const App = struct {
 
         // Moon
         const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, 100.0, 0.0) }, true);
-        game_world.try_orbit(moon_sphere);
+        _ = moon_sphere; // autofix
 
         // Load resources from gltf file
         const args = try std.process.argsAlloc(allocator);
@@ -212,8 +209,7 @@ fn load_gltf_node(game_world: *world.World, resources: *gltf.Resources, scene: *
 fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color: [4]f32, size: [3]f32, transform: *const Transform, dynamic: bool) !world.EntityHandle {
     const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
     const material = try proc.create_color_material(rendering_backend, color);
-    const shape = try physics_system.create_box(za.Vec3.fromSlice(&size).scale(0.5));
-    defer shape.release();
+    const shape = physics_system.create_box(za.Vec3.fromSlice(&size).scale(0.5));
     return game_world.add_entity(
         transform,
         .{ .shape = shape, .dynamic = dynamic },
@@ -224,8 +220,7 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
 fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color: [4]f32, radius: f32, transform: *const Transform, dynamic: bool) !world.EntityHandle {
     const mesh = try proc.create_sphere_mesh(allocator, rendering_backend, radius);
     const material = try proc.create_color_material(rendering_backend, color);
-    const shape = try physics_system.create_sphere(radius);
-    defer shape.release();
+    const shape = physics_system.create_sphere(radius);
     return game_world.add_entity(
         transform,
         .{ .shape = shape, .dynamic = dynamic },

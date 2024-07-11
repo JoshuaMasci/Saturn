@@ -174,49 +174,9 @@ pub const World = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32) void {
-        {
-            var iter = self.entities.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.body) |body_handle| {
-                    const body = self.physics_world.get_body(body_handle);
-                    body.set_transform_if_changed(entry.value_ptr.transform.get_unscaled());
-                }
-            }
-        }
-
-        {
-            var iter = self.characters.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.physics_character) |character_handle| {
-                    var character = self.physics_world.get_character(character_handle).?;
-                    character.set_transform(entry.value_ptr.transform.get_unscaled());
-                }
-                entry.value_ptr.update(self, delta_time);
-            }
-        }
-
         self.physics_world.update(delta_time) catch |err| {
             std.log.err("Failed to update physics world: {}", .{err});
         };
-
-        {
-            var iter = self.entities.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.body) |body_handle| {
-                    entry.value_ptr.transform.apply_unscaled(&self.physics_world.get_body(body_handle).get_transform());
-                }
-            }
-        }
-
-        {
-            var iter = self.characters.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.physics_character) |character_handle| {
-                    var character = self.physics_world.get_character(character_handle).?;
-                    entry.value_ptr.transform.apply_unscaled(&character.get_transform());
-                }
-            }
-        }
 
         {
             var iter = self.entities.iterator();
@@ -248,14 +208,7 @@ pub const World = struct {
     ) !EntityHandle {
         var body_handle: ?physics_system.BodyHandle = null;
         if (body_opt) |body| {
-            const motion_type: physics_system.BodyMotionType = switch (body.dynamic) {
-                true => .dynamic,
-                false => .static,
-            };
-
-            body_handle = try self.physics_world.create_body(transform.get_unscaled(), body.shape, .{
-                .motion_type = motion_type,
-            });
+            body_handle = self.physics_world.create_body(transform.get_unscaled(), body.shape);
         }
 
         var instance_handle: ?rendering_system.SceneInstanceHandle = null;
@@ -287,7 +240,7 @@ pub const World = struct {
         physics_shape: physics_system.Shape,
         model_opt: ?Model,
     ) !CharacterHandle {
-        const physics_character = try self.physics_world.create_character(transform.get_unscaled(), physics_shape);
+        const physics_character = self.physics_world.create_character(transform.get_unscaled(), physics_shape);
 
         var render_object: ?rendering_system.SceneInstanceHandle = null;
         if (model_opt) |model| {
@@ -308,15 +261,6 @@ pub const World = struct {
             }
             if (character.physics_character) |physics_character_handle| {
                 self.physics_world.destroy_character(physics_character_handle);
-            }
-        }
-    }
-
-    // HORIBLE TEST CODE
-    pub fn try_orbit(self: *Self, entity_handle: EntityHandle) void {
-        if (self.entities.getPtr(entity_handle)) |entity| {
-            if (entity.body) |body_handle| {
-                self.physics_world.try_orbit(body_handle);
             }
         }
     }
