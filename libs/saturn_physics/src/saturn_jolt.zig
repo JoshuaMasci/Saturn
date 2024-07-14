@@ -43,12 +43,20 @@ pub fn deinit() void {
 
 // Shapes
 pub const Shape = struct {
-    pub fn init__sphere(radius: f32) void {
-        _ = radius; // autofix
+    const Self = @This();
+
+    handle: c.SPH_ShapeHandle,
+
+    pub fn init_sphere(radius: f32, density: f32) Self {
+        return .{
+            .handle = c.SPH_Shape_Sphere(radius, density),
+        };
     }
 
-    pub fn init_box(half_extent: [3]f32) void {
-        _ = half_extent; // autofix
+    pub fn init_box(half_extent: [3]f32, density: f32) Self {
+        return .{
+            .handle = c.SPH_Shape_Box(&half_extent, density),
+        };
     }
 
     pub fn init_cylinder(
@@ -67,7 +75,9 @@ pub const Shape = struct {
         _ = radius; // autofix
     }
 
-    pub fn deinit() void {}
+    pub fn deinit(self: Self) void {
+        c.SPH_Shape_Destroy(self.handle);
+    }
 };
 
 // World

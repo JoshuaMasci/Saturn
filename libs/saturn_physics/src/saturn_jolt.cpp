@@ -5,9 +5,14 @@
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Core/Factory.h>
+#include <Jolt/Core/JobSystemSingleThreaded.h>
+#include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
+#include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
-#include <Jolt/Core/JobSystemSingleThreaded.h>
+
+#include "generational_pool.hpp"
 
 template <class T>
 T *alloc_t()
@@ -20,6 +25,9 @@ void free_t(T *ptr)
 {
     JPH::Free((void *)ptr);
 }
+
+typedef GenerationalPool<JPH::Ref<JPH::Shape>> ShapePool;
+ShapePool *shape_pool = NULL;
 
 void SPH_Init(const SPH_AllocationFunctions *functions)
 {
@@ -39,14 +47,46 @@ void SPH_Init(const SPH_AllocationFunctions *functions)
     ::new (factory) JPH::Factory();
     JPH::Factory::sInstance = factory;
     JPH::RegisterTypes();
+
+    shape_pool = alloc_t<ShapePool>();
+    ::new (shape_pool) ShapePool();
 }
 
 void SPH_Deinit()
 {
+    shape_pool->~ShapePool();
+    free_t(shape_pool);
+
     JPH::UnregisterTypes();
     JPH::Factory::sInstance->~Factory();
     JPH::Free((void *)JPH::Factory::sInstance);
     JPH::Factory::sInstance = nullptr;
+
+    JPH::Allocate = NULL;
+    JPH::Free = NULL;
+    JPH::AlignedAllocate = NULL;
+    JPH::AlignedFree = NULL;
+}
+
+SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density)
+{
+    auto settings = JPH::SphereShapeSettings();
+    settings.mRadius = radius;
+    settings.mDensity = density;
+    auto shape = settings.Create().Get();
+    return shape_pool->add(shape).to_u64();
+}
+SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density)
+{
+    auto settings = JPH::BoxShapeSettings();
+    settings.mHalfExtent = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(half_extent));
+    settings.mDensity = density;
+    auto shape = settings.Create().Get();
+    return shape_pool->add(shape).to_u64();
+}
+void SPH_Shape_Destroy(SPH_ShapeHandle handle)
+{
+    shape_pool->remove(ShapePool::Handle::from_u64(handle));
 }
 
 namespace Layers
@@ -176,7 +216,7 @@ class PhysicsWorld
 {
 public:
     PhysicsWorld(const SPH_PhysicsWorldSettings *settings)
-    : temp_allocator(settings->temp_allocation_size)
+        : temp_allocator(settings->temp_allocation_size)
     {
         this->broad_phase_layer_interface = alloc_t<BPLayerInterfaceImpl>();
         ::new (this->broad_phase_layer_interface) BPLayerInterfaceImpl();
@@ -230,7 +270,6 @@ void SPH_PhysicsWorld_Destroy(SPH_PhysicsWorld *ptr)
     physics_world->~PhysicsWorld();
     free_t(physics_world);
 }
-
 
 void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float inDeltaTime, int inCollisionSteps)
 {

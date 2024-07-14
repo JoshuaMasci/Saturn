@@ -210,6 +210,7 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
     const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
     const material = try proc.create_color_material(rendering_backend, color);
     const shape = physics_system.create_box(za.Vec3.fromSlice(&size).scale(0.5));
+    defer shape.deinit();
     return game_world.add_entity(
         transform,
         .{ .shape = shape, .dynamic = dynamic },
@@ -221,6 +222,7 @@ fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system
     const mesh = try proc.create_sphere_mesh(allocator, rendering_backend, radius);
     const material = try proc.create_color_material(rendering_backend, color);
     const shape = physics_system.create_sphere(radius);
+    defer shape.deinit();
     return game_world.add_entity(
         transform,
         .{ .shape = shape, .dynamic = dynamic },

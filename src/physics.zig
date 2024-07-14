@@ -15,13 +15,11 @@ pub fn deinit() void {
 }
 
 pub fn create_sphere(radius: f32) Shape {
-    _ = radius; // autofix
-    return 0;
+    return saturn_physics.Shape.init_sphere(radius, 1.0);
 }
 
 pub fn create_box(half_extent: za.Vec3) Shape {
-    _ = half_extent; // autofix
-    return 0;
+    return saturn_physics.Shape.init_box(half_extent.toArray(), 1.0);
 }
 
 pub fn create_cylinder(
@@ -30,7 +28,7 @@ pub fn create_cylinder(
 ) Shape {
     _ = half_height; // autofix
     _ = radius; // autofix
-    return 0;
+    return .{ .handle = 0 };
 }
 
 pub fn create_capsule(
@@ -39,12 +37,12 @@ pub fn create_capsule(
 ) Shape {
     _ = half_height; // autofix
     _ = radius; // autofix
-    return 0;
+    return .{ .handle = 0 };
 }
 
 pub const BodyHandle = u64;
 pub const CharacterHandle = u64;
-pub const Shape = u64;
+pub const Shape = saturn_physics.Shape;
 
 pub const World = struct {
     const Self = @This();

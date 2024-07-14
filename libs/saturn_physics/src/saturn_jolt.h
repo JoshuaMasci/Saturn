@@ -23,6 +23,13 @@ extern "C"
     void SPH_Init(const SPH_AllocationFunctions *functions);
     void SPH_Deinit();
 
+    // Shape functions
+    typedef uint64_t SPH_ShapeHandle;
+    SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density);
+    SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density);
+    void SPH_Shape_Destroy(SPH_ShapeHandle handle);
+
+    // World functions
     typedef struct SPH_PhysicsWorldSettings
     {
         uint32_t max_bodies;
