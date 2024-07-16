@@ -50,17 +50,16 @@ pub const World = struct {
     allocator: std.mem.Allocator,
     world: saturn_physics.World,
 
-    pub fn init(allocator: std.mem.Allocator, args: struct {
-        max_bodies: u32 = 1024,
-        num_body_mutexes: u32 = 0,
-        max_body_pairs: u32 = 1024,
-        max_contact_constraints: u32 = 1024,
-    }) !Self {
-        _ = args; // autofix
-
+    pub fn init(allocator: std.mem.Allocator) !Self {
         return .{
             .allocator = allocator,
-            .world = saturn_physics.World.init(),
+            .world = saturn_physics.World.init(.{
+                .max_bodies = 1024,
+                .num_body_mutexes = 0,
+                .max_body_pairs = 1024,
+                .max_contact_constraints = 1024,
+                .temp_allocation_size = 10 * 1024 * 1024,
+            }),
         };
     }
 
@@ -77,9 +76,12 @@ pub const World = struct {
         tranform: UnscaledTransform,
         shape: Shape,
     ) BodyHandle {
-        _ = self; // autofix
-        _ = tranform; // autofix
-        _ = shape; // autofix
+        self.world.add_body(&.{
+            .shape = shape.handle,
+            .postion = tranform.position.toArray(),
+            .rotation = tranform.rotation.toArray(),
+        });
+
         return 0;
     }
 

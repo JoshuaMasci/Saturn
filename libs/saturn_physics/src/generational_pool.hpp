@@ -90,7 +90,7 @@ public:
     T &get(Handle handle)
     {
         assert(isValid(handle));
-        return entries[handle.id].data;
+        return entries[handle.id].data.value();
     }
 
     const T &get(Handle handle) const

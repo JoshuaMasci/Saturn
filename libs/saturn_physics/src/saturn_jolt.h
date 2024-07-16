@@ -1,4 +1,5 @@
 #pragma once
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -42,6 +43,30 @@ extern "C"
     SPH_PhysicsWorld *SPH_PhysicsWorld_Create(const SPH_PhysicsWorldSettings *settings);
     void SPH_PhysicsWorld_Destroy(SPH_PhysicsWorld *ptr);
     void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float inDeltaTime, int32_t inCollisionSteps);
+
+    typedef enum SPH_MotionType
+    {
+        Static,
+        Kinematic,
+        Dynamic,
+    } SPH_MotionType;
+
+    typedef struct SPH_BodySettings
+    {
+        SPH_ShapeHandle shape;
+        float postion[3];
+        float rotation[4];
+        float linear_velocity[3];
+        float angular_velocity[3];
+        uint64_t user_data;
+        SPH_MotionType motion_type;
+        bool is_sensor;
+        bool allow_sleep;
+        float friction;
+        float gravity_factor;
+    } SPH_BodySettings;
+    void SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings* body_settings);
+
 
 #ifdef __cplusplus
 }

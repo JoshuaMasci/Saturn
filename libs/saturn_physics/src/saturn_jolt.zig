@@ -80,21 +80,20 @@ pub const Shape = struct {
     }
 };
 
+pub const BodySettings = c.SPH_BodySettings;
+pub const MotionType = c.SPH_MotionType;
+
 // World
 pub const World = struct {
     const Self = @This();
 
+    pub const Settings = c.SPH_PhysicsWorldSettings;
+
     ptr: ?*c.SPH_PhysicsWorld,
 
-    pub fn init() Self {
+    pub fn init(settings: Settings) Self {
         return .{
-            .ptr = c.SPH_PhysicsWorld_Create(&c.SPH_PhysicsWorldSettings{
-                .max_bodies = 1024,
-                .num_body_mutexes = 0,
-                .max_body_pairs = 1024,
-                .max_contact_constraints = 1024,
-                .temp_allocation_size = 10 * 1024 * 1024,
-            }),
+            .ptr = c.SPH_PhysicsWorld_Create(&settings),
         };
     }
     pub fn deinit(self: *Self) void {
@@ -103,6 +102,10 @@ pub const World = struct {
 
     pub fn update(self: *Self, delta_time: f32, collisions_steps: i32) void {
         c.SPH_PhysicsWorld_Update(self.ptr, delta_time, collisions_steps);
+    }
+
+    pub fn add_body(self: *Self, body_settings: *const BodySettings) void {
+        c.SPH_PhysicsWorld_Body_Create(self.ptr, body_settings);
     }
 };
 

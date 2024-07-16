@@ -154,12 +154,7 @@ pub const World = struct {
         return .{
             .entities = EntityPool.init(allocator),
             .characters = CharacterPool.init(allocator),
-            .physics_world = physics_system.World.init(allocator, .{
-                .max_bodies = 1024,
-                .num_body_mutexes = 0,
-                .max_body_pairs = 1024,
-                .max_contact_constraints = 1024,
-            }) catch |err| {
+            .physics_world = physics_system.World.init(allocator) catch |err| {
                 std.debug.panic("Failed to create physics world: {}", .{err});
             },
             .rendering_world = backend.create_scene(),

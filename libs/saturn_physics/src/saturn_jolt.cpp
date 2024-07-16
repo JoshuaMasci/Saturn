@@ -6,6 +6,7 @@
 
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -275,4 +276,42 @@ void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float inDeltaTime, int inCol
 {
     auto physics_world = (PhysicsWorld *)ptr;
     physics_world->physics_system->Update(inDeltaTime, inCollisionSteps, &physics_world->temp_allocator, &physics_world->job_system);
+}
+
+void SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings)
+{
+    auto physics_world = (PhysicsWorld *)ptr;
+    auto shape = shape_pool->get(ShapePool::Handle::from_u64(body_settings->shape));
+    auto postion = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->postion));
+    auto rotation = JPH::Quat(body_settings->rotation[0], body_settings->rotation[1], body_settings->rotation[2], body_settings->rotation[3]);
+    auto linear_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->linear_velocity));
+    auto angular_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->angular_velocity));
+    auto settings = JPH::BodyCreationSettings();
+    settings.SetShape(shape);
+    settings.mPosition = postion;
+    settings.mRotation = rotation;
+    settings.mLinearVelocity = linear_velocity;
+    settings.mAngularVelocity = angular_velocity;
+    settings.mUserData = body_settings->user_data;
+
+    switch (body_settings->motion_type)
+    {
+    case Static:
+        settings.mMotionType = JPH::EMotionType::Static;
+        break;
+    case Kinematic:
+        settings.mMotionType = JPH::EMotionType::Kinematic;
+        break;
+    case Dynamic:
+        settings.mMotionType = JPH::EMotionType::Dynamic;
+        break;
+    }
+
+    settings.mIsSensor = body_settings->is_sensor;
+    settings.mAllowSleeping = body_settings->allow_sleep;
+    settings.mFriction = body_settings->friction;
+    settings.mGravityFactor = body_settings->gravity_factor;
+
+    JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
+    JPH::BodyID body_id = body_interface.CreateAndAddBody(settings, JPH::EActivation::Activate);
 }
