@@ -80,6 +80,8 @@ pub const Shape = struct {
     }
 };
 
+pub const Transform = c.SPH_Transform;
+pub const BodyHandle = c.SPH_BodyHandle;
 pub const BodySettings = c.SPH_BodySettings;
 pub const MotionType = c.SPH_MotionType;
 
@@ -104,8 +106,16 @@ pub const World = struct {
         c.SPH_PhysicsWorld_Update(self.ptr, delta_time, collisions_steps);
     }
 
-    pub fn add_body(self: *Self, body_settings: *const BodySettings) void {
-        c.SPH_PhysicsWorld_Body_Create(self.ptr, body_settings);
+    pub fn add_body(self: *Self, body_settings: *const BodySettings) BodyHandle {
+        return c.SPH_PhysicsWorld_Body_Create(self.ptr, body_settings);
+    }
+
+    pub fn remove_body(self: *Self, handle: BodyHandle) void {
+        c.SPH_PhysicsWorld_Body_Destroy(self.ptr, handle);
+    }
+
+    pub fn get_body_transform(self: *Self, handle: BodyHandle) Transform {
+        return c.SPH_PhysicsWorld_Body_GetTransform(self.ptr, handle);
     }
 };
 

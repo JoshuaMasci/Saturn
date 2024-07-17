@@ -65,8 +65,17 @@ extern "C"
         float friction;
         float gravity_factor;
     } SPH_BodySettings;
-    void SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings* body_settings);
 
+    typedef struct SPH_Transform
+    {
+        float position[3];
+        float rotation[4];
+    } SPH_Transform;
+
+    typedef uint32_t SPH_BodyHandle;
+    SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings);
+    void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
+    SPH_Transform SPH_PhysicsWorld_Body_GetTransform(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
 
 #ifdef __cplusplus
 }

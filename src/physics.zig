@@ -40,7 +40,7 @@ pub fn create_capsule(
     return .{ .handle = 0 };
 }
 
-pub const BodyHandle = u64;
+pub const BodyHandle = saturn_physics.BodyHandle;
 pub const CharacterHandle = u64;
 pub const Shape = saturn_physics.Shape;
 
@@ -76,18 +76,25 @@ pub const World = struct {
         tranform: UnscaledTransform,
         shape: Shape,
     ) BodyHandle {
-        self.world.add_body(&.{
+        return self.world.add_body(&.{
             .shape = shape.handle,
             .postion = tranform.position.toArray(),
             .rotation = tranform.rotation.toArray(),
+            .motion_type = 2,
+            .gravity_factor = 1.0,
         });
-
-        return 0;
     }
 
     pub fn destory_body(self: *Self, handle: BodyHandle) void {
-        _ = self; // autofix
-        _ = handle; // autofix
+        self.world.remove_body(handle);
+    }
+
+    pub fn get_body_transform(self: *Self, handle: BodyHandle) UnscaledTransform {
+        const transform = self.world.get_body_transform(handle);
+        return .{
+            .position = za.Vec3.fromArray(transform.position),
+            .rotation = za.Quat.fromArray(transform.rotation),
+        };
     }
 
     pub fn create_character(

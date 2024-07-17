@@ -4,6 +4,7 @@
 
 #include <Jolt/Jolt.h>
 
+#include <Jolt/Math/Real.h>
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
@@ -217,7 +218,7 @@ class PhysicsWorld
 {
 public:
     PhysicsWorld(const SPH_PhysicsWorldSettings *settings)
-        : temp_allocator(settings->temp_allocation_size)
+        : temp_allocator(settings->temp_allocation_size), job_system(1024)
     {
         this->broad_phase_layer_interface = alloc_t<BPLayerInterfaceImpl>();
         ::new (this->broad_phase_layer_interface) BPLayerInterfaceImpl();
@@ -231,6 +232,7 @@ public:
         this->physics_system = alloc_t<JPH::PhysicsSystem>();
         ::new (this->physics_system) JPH::PhysicsSystem();
         this->physics_system->Init(settings->max_bodies, settings->num_body_mutexes, settings->max_body_pairs, settings->max_contact_constraints, *this->broad_phase_layer_interface, *this->object_vs_broadphase_layer_filter, *this->object_vs_object_layer_filter);
+        this->physics_system->SetGravity(JPH::Vec3(0.0, -9.8, 0.0));
     }
 
     ~PhysicsWorld()
@@ -278,7 +280,7 @@ void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float inDeltaTime, int inCol
     physics_world->physics_system->Update(inDeltaTime, inCollisionSteps, &physics_world->temp_allocator, &physics_world->job_system);
 }
 
-void SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings)
+SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings)
 {
     auto physics_world = (PhysicsWorld *)ptr;
     auto shape = shape_pool->get(ShapePool::Handle::from_u64(body_settings->shape));
@@ -314,4 +316,30 @@ void SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings 
 
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
     JPH::BodyID body_id = body_interface.CreateAndAddBody(settings, JPH::EActivation::Activate);
+    return body_id.GetIndexAndSequenceNumber();
+}
+
+void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle)
+{
+    auto physics_world = (PhysicsWorld *)ptr;
+    auto body_id = JPH::BodyID(handle);
+    JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
+    body_interface.RemoveBody(body_id);
+    body_interface.DestroyBody(body_id);
+}
+
+SPH_Transform SPH_PhysicsWorld_Body_GetTransform(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle)
+{
+    auto physics_world = (PhysicsWorld *)ptr;
+    auto body_id = JPH::BodyID(handle);
+    JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
+    JPH::RVec3 position;
+    JPH::Quat rotation;
+    body_interface.GetPositionAndRotation(body_id, position, rotation);
+    // auto position = body_interface.GetPosition(body_id);
+    // auto rotation = body_interface.GetRotation(body_id);
+
+    return SPH_Transform{
+        {position.GetX(), position.GetY(), position.GetZ()},
+        {rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW()}};
 }

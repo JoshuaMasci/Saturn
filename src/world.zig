@@ -176,6 +176,10 @@ pub const World = struct {
         {
             var iter = self.entities.iterator();
             while (iter.next()) |entry| {
+                if (entry.value_ptr.body) |body_handle| {
+                    entry.value_ptr.transform.apply_unscaled(&self.physics_world.get_body_transform(body_handle));
+                }
+
                 if (entry.value_ptr.instance) |instance_handle| {
                     self.rendering_world.update_instance(instance_handle, &entry.value_ptr.transform);
                 }
