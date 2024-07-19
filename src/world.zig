@@ -207,7 +207,7 @@ pub const World = struct {
     ) !EntityHandle {
         var body_handle: ?physics_system.BodyHandle = null;
         if (body_opt) |body| {
-            body_handle = self.physics_world.create_body(transform.get_unscaled(), body.shape);
+            body_handle = self.physics_world.create_body(transform.get_unscaled(), body.shape, body.dynamic);
         }
 
         var instance_handle: ?rendering_system.SceneInstanceHandle = null;

@@ -75,12 +75,13 @@ pub const World = struct {
         self: *Self,
         tranform: UnscaledTransform,
         shape: Shape,
+        dynamic: bool,
     ) BodyHandle {
         return self.world.add_body(&.{
-            .shape = shape.handle,
+            .shape = shape,
             .postion = tranform.position.toArray(),
             .rotation = tranform.rotation.toArray(),
-            .motion_type = 2,
+            .motion_type = if (dynamic) .Dynamic else .Static,
             .gravity_factor = 1.0,
         });
     }

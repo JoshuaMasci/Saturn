@@ -298,13 +298,13 @@ SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_Bod
 
     switch (body_settings->motion_type)
     {
-    case Static:
+    case 0:
         settings.mMotionType = JPH::EMotionType::Static;
         break;
-    case Kinematic:
+    case 1:
         settings.mMotionType = JPH::EMotionType::Kinematic;
         break;
-    case Dynamic:
+    case 2:
         settings.mMotionType = JPH::EMotionType::Dynamic;
         break;
     }

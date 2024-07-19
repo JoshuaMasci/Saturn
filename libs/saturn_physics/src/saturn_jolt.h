@@ -44,13 +44,6 @@ extern "C"
     void SPH_PhysicsWorld_Destroy(SPH_PhysicsWorld *ptr);
     void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float inDeltaTime, int32_t inCollisionSteps);
 
-    typedef enum SPH_MotionType
-    {
-        Static,
-        Kinematic,
-        Dynamic,
-    } SPH_MotionType;
-
     typedef struct SPH_BodySettings
     {
         SPH_ShapeHandle shape;
@@ -59,7 +52,7 @@ extern "C"
         float linear_velocity[3];
         float angular_velocity[3];
         uint64_t user_data;
-        SPH_MotionType motion_type;
+        uint32_t motion_type;
         bool is_sensor;
         bool allow_sleep;
         float friction;

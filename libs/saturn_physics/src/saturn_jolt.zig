@@ -82,8 +82,25 @@ pub const Shape = struct {
 
 pub const Transform = c.SPH_Transform;
 pub const BodyHandle = c.SPH_BodyHandle;
-pub const BodySettings = c.SPH_BodySettings;
-pub const MotionType = c.SPH_MotionType;
+pub const MotionType = enum(u32) {
+    Static = 0,
+    Kinematic = 1,
+    Dynamic = 2,
+};
+
+pub const BodySettings = struct {
+    shape: Shape,
+    postion: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    rotation: [4]f32 = .{ 0.0, 0.0, 0.0, 0.0 },
+    linear_velocity: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    angular_velocity: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    user_data: u64 = 0,
+    motion_type: MotionType,
+    is_sensor: bool = false,
+    allow_sleep: bool = true,
+    friction: f32 = 0.0,
+    gravity_factor: f32 = 1.0,
+};
 
 // World
 pub const World = struct {
@@ -107,7 +124,20 @@ pub const World = struct {
     }
 
     pub fn add_body(self: *Self, body_settings: *const BodySettings) BodyHandle {
-        return c.SPH_PhysicsWorld_Body_Create(self.ptr, body_settings);
+        const c_body_settings: c.SPH_BodySettings = .{
+            .shape = body_settings.shape.handle,
+            .postion = body_settings.postion,
+            .rotation = body_settings.rotation,
+            .linear_velocity = body_settings.linear_velocity,
+            .angular_velocity = body_settings.angular_velocity,
+            .user_data = body_settings.user_data,
+            .motion_type = @intFromEnum(body_settings.motion_type),
+            .is_sensor = body_settings.is_sensor,
+            .allow_sleep = body_settings.allow_sleep,
+            .friction = body_settings.friction,
+            .gravity_factor = body_settings.gravity_factor,
+        };
+        return c.SPH_PhysicsWorld_Body_Create(self.ptr, &c_body_settings);
     }
 
     pub fn remove_body(self: *Self, handle: BodyHandle) void {
@@ -294,22 +324,7 @@ pub const BodyInterface = struct {
 
 //Memory Allocation
 fn zjoltAlloc(size: usize) callconv(.C) ?*anyopaque {
-    mem_mutex.lock();
-    defer mem_mutex.unlock();
-
-    const ptr = mem_allocator.?.rawAlloc(
-        size,
-        std.math.log2_int(u29, @as(u29, @intCast(mem_alignment))),
-        @returnAddress(),
-    );
-    if (ptr == null) @panic("zjolt: out of memory");
-
-    mem_allocations.?.put(
-        @intFromPtr(ptr),
-        .{ .size = @as(u48, @intCast(size)), .alignment = mem_alignment },
-    ) catch @panic("zjolt: out of memory");
-
-    return ptr;
+    return zjoltAlignedAlloc(size, mem_alignment);
 }
 
 fn zjoltAlignedAlloc(size: usize, alignment: usize) callconv(.C) ?*anyopaque {

@@ -44,7 +44,7 @@ pub const App = struct {
 
             const shape = physics_system.create_capsule(CharacterHeight, CharacterRadius);
             const character_handle = try game_world.add_character(
-                &.{ .position = za.Vec3.new(5.0, 10.0, 0.0) },
+                &.{ .position = za.Vec3.new(0.0, 0.0, 0.0) },
                 shape,
                 null,
             );
@@ -57,10 +57,10 @@ pub const App = struct {
         }
 
         // Planet
-        const planet_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 100.0, 0.0) }, false);
+        const planet_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false);
 
         // Moon
-        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, 100.0, 0.0) }, true);
+        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, 0.0, 200.0) }, true);
         _ = moon_sphere; // autofix
 
         // Load resources from gltf file
