@@ -4,7 +4,7 @@ const za = @import("zalgebra");
 const ObjectPool = @import("object_pool.zig").ObjectPool;
 const Transform = @import("transform.zig");
 
-const physics_system = @import("physics.zig");
+const physics_system = @import("physics");
 const rendering_system = @import("rendering.zig");
 
 const input_system = @import("input.zig");
@@ -154,9 +154,7 @@ pub const World = struct {
         return .{
             .entities = EntityPool.init(allocator),
             .characters = CharacterPool.init(allocator),
-            .physics_world = physics_system.World.init(allocator) catch |err| {
-                std.debug.panic("Failed to create physics world: {}", .{err});
-            },
+            .physics_world = physics_system.World.init(.{}),
             .rendering_world = backend.create_scene(),
         };
     }
@@ -169,15 +167,14 @@ pub const World = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32) void {
-        self.physics_world.update(delta_time) catch |err| {
-            std.log.err("Failed to update physics world: {}", .{err});
-        };
-
+        self.physics_world.update(delta_time, 1);
         {
             var iter = self.entities.iterator();
             while (iter.next()) |entry| {
                 if (entry.value_ptr.body) |body_handle| {
-                    entry.value_ptr.transform.apply_unscaled(&self.physics_world.get_body_transform(body_handle));
+                    const body_transform = self.physics_world.get_body_transform(body_handle);
+                    entry.value_ptr.transform.position = za.Vec3.fromArray(body_transform.position);
+                    entry.value_ptr.transform.rotation = za.Quat.fromArray(body_transform.rotation);
                 }
 
                 if (entry.value_ptr.instance) |instance_handle| {
@@ -207,7 +204,12 @@ pub const World = struct {
     ) !EntityHandle {
         var body_handle: ?physics_system.BodyHandle = null;
         if (body_opt) |body| {
-            body_handle = self.physics_world.create_body(transform.get_unscaled(), body.shape, body.dynamic);
+            body_handle = self.physics_world.add_body(&.{
+                .shape = body.shape,
+                .position = transform.position.toArray(),
+                .rotation = transform.rotation.toArray(),
+                .motion_type = if (body.dynamic) .Dynamic else .Static,
+            });
         }
 
         var instance_handle: ?rendering_system.SceneInstanceHandle = null;
@@ -239,7 +241,8 @@ pub const World = struct {
         physics_shape: physics_system.Shape,
         model_opt: ?Model,
     ) !CharacterHandle {
-        const physics_character = self.physics_world.create_character(transform.get_unscaled(), physics_shape);
+        _ = physics_shape; // autofix
+        const physics_character = 0.0; //self.physics_world.create_character(transform.get_unscaled(), physics_shape);
 
         var render_object: ?rendering_system.SceneInstanceHandle = null;
         if (model_opt) |model| {

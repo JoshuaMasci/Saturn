@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
 
 fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
     const library = b.addStaticLibrary(.{
-        .name = "sjolt",
+        .name = "saturn_jolt",
         .target = target,
         .optimize = optimize,
     });

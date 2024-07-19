@@ -10,15 +10,6 @@ const c = @cImport({
 // 3. VirtualCharacter
 // 4. Multi Shape functions
 
-const SizeAndAlignment = packed struct(u64) {
-    size: u48,
-    alignment: u16,
-};
-var mem_allocator: ?std.mem.Allocator = null;
-var mem_allocations: ?std.AutoHashMap(usize, SizeAndAlignment) = null;
-var mem_mutex: std.Thread.Mutex = .{};
-const mem_alignment = 16;
-
 pub fn init(allocator: std.mem.Allocator) void {
     std.debug.assert(mem_allocator == null and mem_allocations == null);
 
@@ -59,26 +50,24 @@ pub const Shape = struct {
         };
     }
 
-    pub fn init_cylinder(
-        half_height: f32,
-        radius: f32,
-    ) void {
-        _ = half_height; // autofix
-        _ = radius; // autofix
+    pub fn init_cylinder(half_height: f32, radius: f32, density: f32) Self {
+        return .{
+            .handle = c.SPH_Shape_Cylinder(half_height, radius, density),
+        };
     }
 
-    pub fn init_capsule(
-        half_height: f32,
-        radius: f32,
-    ) void {
-        _ = half_height; // autofix
-        _ = radius; // autofix
+    pub fn init_capsule(half_height: f32, radius: f32, density: f32) Self {
+        return .{
+            .handle = c.SPH_Shape_Capsule(half_height, radius, density),
+        };
     }
 
     pub fn deinit(self: Self) void {
         c.SPH_Shape_Destroy(self.handle);
     }
 };
+
+pub const CharacterHandle = u32; //TODO: this
 
 pub const Transform = c.SPH_Transform;
 pub const BodyHandle = c.SPH_BodyHandle;
@@ -90,7 +79,7 @@ pub const MotionType = enum(u32) {
 
 pub const BodySettings = struct {
     shape: Shape,
-    postion: [3]f32 = .{ 0.0, 0.0, 0.0 },
+    position: [3]f32 = .{ 0.0, 0.0, 0.0 },
     rotation: [4]f32 = .{ 0.0, 0.0, 0.0, 0.0 },
     linear_velocity: [3]f32 = .{ 0.0, 0.0, 0.0 },
     angular_velocity: [3]f32 = .{ 0.0, 0.0, 0.0 },
@@ -106,13 +95,25 @@ pub const BodySettings = struct {
 pub const World = struct {
     const Self = @This();
 
-    pub const Settings = c.SPH_PhysicsWorldSettings;
+    pub const Settings = struct {
+        max_bodies: u32 = 1024,
+        num_body_mutexes: u32 = 0,
+        max_body_pairs: u32 = 1024,
+        max_contact_constraints: u32 = 1024,
+        temp_allocation_size: u32 = 1024 * 1024,
+    };
 
     ptr: ?*c.SPH_PhysicsWorld,
 
     pub fn init(settings: Settings) Self {
         return .{
-            .ptr = c.SPH_PhysicsWorld_Create(&settings),
+            .ptr = c.SPH_PhysicsWorld_Create(&.{
+                .max_bodies = settings.max_bodies,
+                .num_body_mutexes = settings.num_body_mutexes,
+                .max_body_pairs = settings.max_body_pairs,
+                .max_contact_constraints = settings.max_contact_constraints,
+                .temp_allocation_size = settings.temp_allocation_size,
+            }),
         };
     }
     pub fn deinit(self: *Self) void {
@@ -126,7 +127,7 @@ pub const World = struct {
     pub fn add_body(self: *Self, body_settings: *const BodySettings) BodyHandle {
         const c_body_settings: c.SPH_BodySettings = .{
             .shape = body_settings.shape.handle,
-            .postion = body_settings.postion,
+            .position = body_settings.position,
             .rotation = body_settings.rotation,
             .linear_velocity = body_settings.linear_velocity,
             .angular_velocity = body_settings.angular_velocity,
@@ -323,6 +324,15 @@ pub const BodyInterface = struct {
 };
 
 //Memory Allocation
+const SizeAndAlignment = packed struct(u64) {
+    size: u48,
+    alignment: u16,
+};
+var mem_allocator: ?std.mem.Allocator = null;
+var mem_allocations: ?std.AutoHashMap(usize, SizeAndAlignment) = null;
+var mem_mutex: std.Thread.Mutex = .{};
+const mem_alignment = 16;
+
 fn zjoltAlloc(size: usize) callconv(.C) ?*anyopaque {
     return zjoltAlignedAlloc(size, mem_alignment);
 }

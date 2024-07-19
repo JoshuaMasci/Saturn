@@ -44,8 +44,8 @@ pub fn build(b: *std.Build) !void {
 
     // saturn physics abstraction
     const saturn_physics = b.dependency("saturn_physics", .{});
-    exe.root_module.addImport("saturn_physics", saturn_physics.module("root"));
-    exe.linkLibrary(saturn_physics.artifact("sjolt"));
+    exe.root_module.addImport("physics", saturn_physics.module("root"));
+    exe.linkLibrary(saturn_physics.artifact("saturn_jolt"));
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);

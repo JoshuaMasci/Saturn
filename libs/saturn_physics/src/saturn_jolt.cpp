@@ -4,13 +4,15 @@
 
 #include <Jolt/Jolt.h>
 
-#include <Jolt/Math/Real.h>
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
+#include <Jolt/Math/Real.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/CylinderShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
@@ -82,6 +84,24 @@ SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density)
 {
     auto settings = JPH::BoxShapeSettings();
     settings.mHalfExtent = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(half_extent));
+    settings.mDensity = density;
+    auto shape = settings.Create().Get();
+    return shape_pool->add(shape).to_u64();
+}
+SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float density)
+{
+    auto settings = JPH::CylinderShapeSettings();
+    settings.mHalfHeight = half_height;
+    settings.mRadius = radius;
+    settings.mDensity = density;
+    auto shape = settings.Create().Get();
+    return shape_pool->add(shape).to_u64();
+}
+SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density)
+{
+    auto settings = JPH::CapsuleShapeSettings();
+    settings.mHalfHeightOfCylinder = half_height;
+    settings.mRadius = radius;
     settings.mDensity = density;
     auto shape = settings.Create().Get();
     return shape_pool->add(shape).to_u64();
@@ -284,13 +304,13 @@ SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_Bod
 {
     auto physics_world = (PhysicsWorld *)ptr;
     auto shape = shape_pool->get(ShapePool::Handle::from_u64(body_settings->shape));
-    auto postion = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->postion));
+    auto position = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->position));
     auto rotation = JPH::Quat(body_settings->rotation[0], body_settings->rotation[1], body_settings->rotation[2], body_settings->rotation[3]);
     auto linear_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->linear_velocity));
     auto angular_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->angular_velocity));
     auto settings = JPH::BodyCreationSettings();
     settings.SetShape(shape);
-    settings.mPosition = postion;
+    settings.mPosition = position;
     settings.mRotation = rotation;
     settings.mLinearVelocity = linear_velocity;
     settings.mAngularVelocity = angular_velocity;

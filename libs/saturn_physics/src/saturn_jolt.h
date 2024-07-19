@@ -28,6 +28,8 @@ extern "C"
     typedef uint64_t SPH_ShapeHandle;
     SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density);
     SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density);
+    SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float density);
+    SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density);
     void SPH_Shape_Destroy(SPH_ShapeHandle handle);
 
     // World functions
@@ -47,7 +49,7 @@ extern "C"
     typedef struct SPH_BodySettings
     {
         SPH_ShapeHandle shape;
-        float postion[3];
+        float position[3];
         float rotation[4];
         float linear_velocity[3];
         float angular_velocity[3];
