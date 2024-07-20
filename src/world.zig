@@ -199,6 +199,7 @@ pub const World = struct {
         body_opt: ?struct {
             shape: physics_system.Shape,
             dynamic: bool,
+            sensor: bool = false,
         },
         model_opt: ?Model,
     ) !EntityHandle {
@@ -209,6 +210,7 @@ pub const World = struct {
                 .position = transform.position.toArray(),
                 .rotation = transform.rotation.toArray(),
                 .motion_type = if (body.dynamic) .Dynamic else .Static,
+                .is_sensor = body.sensor,
             });
         }
 

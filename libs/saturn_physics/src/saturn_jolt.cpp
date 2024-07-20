@@ -9,14 +9,16 @@
 #include <Jolt/Math/Real.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
-#include <Jolt/Physics/Collision/Shape/CylinderShape.h>
-#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
 #include "generational_pool.hpp"
+
+//TODO: override malloc/free & new/delete with zig allocator functions
 
 template <class T>
 T *alloc_t()
@@ -30,7 +32,8 @@ void free_t(T *ptr)
     JPH::Free((void *)ptr);
 }
 
-typedef GenerationalPool<JPH::Ref<JPH::Shape>> ShapePool;
+// typedef GenerationalPool<JPH::Ref<JPH::Shape>> ShapePool;
+typedef std::vector<JPH::ShapeRefC> ShapePool;
 ShapePool *shape_pool = NULL;
 
 void SPH_Init(const SPH_AllocationFunctions *functions)
@@ -78,7 +81,9 @@ SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density)
     settings.mRadius = radius;
     settings.mDensity = density;
     auto shape = settings.Create().Get();
-    return shape_pool->add(shape).to_u64();
+    auto index = shape_pool->size();
+    shape_pool->push_back(shape);
+    return index;
 }
 SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density)
 {
@@ -86,7 +91,9 @@ SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density)
     settings.mHalfExtent = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(half_extent));
     settings.mDensity = density;
     auto shape = settings.Create().Get();
-    return shape_pool->add(shape).to_u64();
+    auto index = shape_pool->size();
+    shape_pool->push_back(shape);
+    return index;
 }
 SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float density)
 {
@@ -95,7 +102,9 @@ SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float densit
     settings.mRadius = radius;
     settings.mDensity = density;
     auto shape = settings.Create().Get();
-    return shape_pool->add(shape).to_u64();
+    auto index = shape_pool->size();
+    shape_pool->push_back(shape);
+    return index;
 }
 SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density)
 {
@@ -104,11 +113,13 @@ SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density
     settings.mRadius = radius;
     settings.mDensity = density;
     auto shape = settings.Create().Get();
-    return shape_pool->add(shape).to_u64();
+    auto index = shape_pool->size();
+    shape_pool->push_back(shape);
+    return index;
 }
 void SPH_Shape_Destroy(SPH_ShapeHandle handle)
 {
-    shape_pool->remove(ShapePool::Handle::from_u64(handle));
+    // shape_pool->remove(ShapePool::Handle::from_u64(handle));
 }
 
 namespace Layers
@@ -124,16 +135,17 @@ class ObjectLayerPairFilterImpl : public JPH::ObjectLayerPairFilter
 public:
     virtual bool ShouldCollide(JPH::ObjectLayer inObject1, JPH::ObjectLayer inObject2) const override
     {
-        switch (inObject1)
-        {
-        case Layers::NON_MOVING:
-            return inObject2 == Layers::MOVING; // Non moving only collides with moving
-        case Layers::MOVING:
-            return true; // Moving collides with everything
-        default:
-            JPH_ASSERT(false);
-            return false;
-        }
+        return true;
+        // switch (inObject1)
+        // {
+        // case Layers::NON_MOVING:
+        //     return inObject2 == Layers::MOVING; // Non moving only collides with moving
+        // case Layers::MOVING:
+        //     return true; // Moving collides with everything
+        // default:
+        //     JPH_ASSERT(false);
+        //     return false;
+        // }
     }
 };
 
@@ -193,16 +205,17 @@ class ObjectVsBroadPhaseLayerFilterImpl : public JPH::ObjectVsBroadPhaseLayerFil
 public:
     virtual bool ShouldCollide(JPH::ObjectLayer inLayer1, JPH::BroadPhaseLayer inLayer2) const override
     {
-        switch (inLayer1)
-        {
-        case Layers::NON_MOVING:
-            return inLayer2 == BroadPhaseLayers::MOVING;
-        case Layers::MOVING:
-            return true;
-        default:
-            JPH_ASSERT(false);
-            return false;
-        }
+        return true;
+        // switch (inLayer1)
+        // {
+        // case Layers::NON_MOVING:
+        //     return inLayer2 == BroadPhaseLayers::MOVING;
+        // case Layers::MOVING:
+        //     return true;
+        // default:
+        //     JPH_ASSERT(false);
+        //     return false;
+        // }
     }
 };
 
@@ -213,7 +226,7 @@ public:
     // See: ContactListener
     virtual JPH::ValidateResult OnContactValidate(const JPH::Body &inBody1, const JPH::Body &inBody2, JPH::RVec3Arg inBaseOffset, const JPH::CollideShapeResult &inCollisionResult) override
     {
-        std::cout << "Contact validate callback" << std::endl;
+        //std::cout << "Contact validate callback" << std::endl;
         // Allows you to ignore a contact before it is created (using layers to not make objects collide is cheaper!)
         return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
     }
@@ -225,7 +238,7 @@ public:
 
     virtual void OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override
     {
-        std::cout << "A contact was persisted" << std::endl;
+        //std::cout << "A contact was persisted" << std::endl;
     }
 
     virtual void OnContactRemoved(const JPH::SubShapeIDPair &inSubShapePair) override
@@ -253,10 +266,18 @@ public:
         ::new (this->physics_system) JPH::PhysicsSystem();
         this->physics_system->Init(settings->max_bodies, settings->num_body_mutexes, settings->max_body_pairs, settings->max_contact_constraints, *this->broad_phase_layer_interface, *this->object_vs_broadphase_layer_filter, *this->object_vs_object_layer_filter);
         this->physics_system->SetGravity(JPH::Vec3(0.0, -9.8, 0.0));
+
+        this->contact_listener = alloc_t<MyContactListener>();
+        ::new (this->contact_listener) MyContactListener();
+        this->physics_system->SetContactListener(this->contact_listener);
     }
 
     ~PhysicsWorld()
     {
+        this->physics_system->SetContactListener(nullptr);
+        this->contact_listener->~MyContactListener();
+        free_t(this->contact_listener);
+
         this->physics_system->~PhysicsSystem();
         free_t(this->physics_system);
 
@@ -275,6 +296,7 @@ public:
     ObjectVsBroadPhaseLayerFilterImpl *object_vs_broadphase_layer_filter;
     ObjectLayerPairFilterImpl *object_vs_object_layer_filter;
     JPH::PhysicsSystem *physics_system;
+    MyContactListener *contact_listener;
 
     JPH::TempAllocatorImpl temp_allocator;
     JPH::JobSystemSingleThreaded job_system;
@@ -303,7 +325,7 @@ void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float inDeltaTime, int inCol
 SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings)
 {
     auto physics_world = (PhysicsWorld *)ptr;
-    auto shape = shape_pool->get(ShapePool::Handle::from_u64(body_settings->shape));
+    auto shape = (*shape_pool)[body_settings->shape]; // shape_pool->get(ShapePool::Handle::from_u64(body_settings->shape));
     auto position = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->position));
     auto rotation = JPH::Quat(body_settings->rotation[0], body_settings->rotation[1], body_settings->rotation[2], body_settings->rotation[3]);
     auto linear_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->linear_velocity));
@@ -320,12 +342,15 @@ SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_Bod
     {
     case 0:
         settings.mMotionType = JPH::EMotionType::Static;
+        settings.mObjectLayer = Layers::NON_MOVING;
         break;
     case 1:
         settings.mMotionType = JPH::EMotionType::Kinematic;
+        settings.mObjectLayer = Layers::MOVING;
         break;
     case 2:
         settings.mMotionType = JPH::EMotionType::Dynamic;
+        settings.mObjectLayer = Layers::MOVING;
         break;
     }
 
@@ -356,9 +381,6 @@ SPH_Transform SPH_PhysicsWorld_Body_GetTransform(SPH_PhysicsWorld *ptr, SPH_Body
     JPH::RVec3 position;
     JPH::Quat rotation;
     body_interface.GetPositionAndRotation(body_id, position, rotation);
-    // auto position = body_interface.GetPosition(body_id);
-    // auto rotation = body_interface.GetRotation(body_id);
-
     return SPH_Transform{
         {position.GetX(), position.GetY(), position.GetZ()},
         {rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW()}};

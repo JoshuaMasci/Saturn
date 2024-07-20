@@ -100,7 +100,7 @@ pub const World = struct {
         num_body_mutexes: u32 = 0,
         max_body_pairs: u32 = 1024,
         max_contact_constraints: u32 = 1024,
-        temp_allocation_size: u32 = 1024 * 1024,
+        temp_allocation_size: u32 = 1024 * 1024 * 10,
     };
 
     ptr: ?*c.SPH_PhysicsWorld,

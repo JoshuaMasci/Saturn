@@ -44,7 +44,7 @@ pub const App = struct {
 
             const shape = physics_system.Shape.init_capsule(CharacterHeight, CharacterRadius, 1.0);
             const character_handle = try game_world.add_character(
-                &.{ .position = za.Vec3.new(0.0, 0.0, 0.0) },
+                &.{ .position = za.Vec3.new(300.0, 0.0, 200.0), .rotation = za.Quat.fromAxis(std.math.degreesToRadians(-90.0), za.Vec3.Y) },
                 shape,
                 null,
             );
@@ -53,14 +53,16 @@ pub const App = struct {
 
         // Cubes
         for (0..100) |i| {
-            _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .position = za.Vec3.new(@as(f32, @floatFromInt(i)) * 0.5, @as(f32, @floatFromInt(i)) * 1.2, 15.0), .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
+            _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .position = za.Vec3.new(@as(f32, @floatFromInt(i)) * 0.5, @as(f32, @floatFromInt(i)) * 1.2 + 100.0, 200.0), .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
         }
 
         // Planet
-        const planet_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false);
+        const planet_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false, false);
+        const planet_sphere_volume = try add_sphere(allocator, &rendering_backend, &game_world, null, 200.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false, true);
+        _ = planet_sphere_volume; // autofix
 
         // Moon
-        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, 0.0, 200.0) }, true);
+        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, 0.0, 200.0) }, true, false);
         _ = moon_sphere; // autofix
 
         // Load resources from gltf file
@@ -210,7 +212,7 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
     const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
     const material = try proc.create_color_material(rendering_backend, color);
     const shape = physics_system.Shape.init_box(za.Vec3.fromSlice(&size).scale(0.5).toArray(), 1.0);
-    defer shape.deinit();
+    //defer shape.deinit();
     return game_world.add_entity(
         transform,
         .{ .shape = shape, .dynamic = dynamic },
@@ -218,14 +220,22 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
     );
 }
 
-fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color: [4]f32, radius: f32, transform: *const Transform, dynamic: bool) !world.EntityHandle {
-    const mesh = try proc.create_sphere_mesh(allocator, rendering_backend, radius);
-    const material = try proc.create_color_material(rendering_backend, color);
+fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color_opt: ?[4]f32, radius: f32, transform: *const Transform, dynamic: bool, sensor: bool) !world.EntityHandle {
+    var model_opt: ?world.Model = null;
+    if (color_opt) |color| {
+        const mesh = try proc.create_sphere_mesh(allocator, rendering_backend, radius);
+        const material = try proc.create_color_material(rendering_backend, color);
+        model_opt = .{
+            .mesh = mesh,
+            .material = material,
+        };
+    }
+
     const shape = physics_system.Shape.init_sphere(radius, 1.0);
-    defer shape.deinit();
+    //defer shape.deinit();
     return game_world.add_entity(
         transform,
-        .{ .shape = shape, .dynamic = dynamic },
-        .{ .mesh = mesh, .material = material },
+        .{ .shape = shape, .dynamic = dynamic, .sensor = sensor },
+        model_opt,
     );
 }
