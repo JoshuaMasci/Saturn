@@ -6,6 +6,9 @@
 
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
+#include <Jolt/Core/STLAllocator.h>
+#include <Jolt/Core/UnorderedMap.h>
+#include <Jolt/Core/UnorderedSet.h>
 #include <Jolt/Math/Real.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
@@ -13,12 +16,11 @@
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/SubShapeID.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
-#include "generational_pool.hpp"
-
-//TODO: override malloc/free & new/delete with zig allocator functions
+// TODO: override malloc/free & new/delete with zig allocator functions
 
 template <class T>
 T *alloc_t()
@@ -32,13 +34,15 @@ void free_t(T *ptr)
     JPH::Free((void *)ptr);
 }
 
-// typedef GenerationalPool<JPH::Ref<JPH::Shape>> ShapePool;
-typedef std::vector<JPH::ShapeRefC> ShapePool;
-ShapePool *shape_pool = NULL;
+template <typename T>
+using JoltVector = std::vector<T, JPH::STLAllocator<T>>;
+
+typedef JoltVector<JPH::ShapeRefC> ShapePool;
+ShapePool *shape_pool = nullptr;
 
 void SPH_Init(const SPH_AllocationFunctions *functions)
 {
-    if (functions != NULL)
+    if (functions != nullptr)
     {
         JPH::Allocate = functions->alloc;
         JPH::Free = functions->free;
@@ -69,10 +73,10 @@ void SPH_Deinit()
     JPH::Free((void *)JPH::Factory::sInstance);
     JPH::Factory::sInstance = nullptr;
 
-    JPH::Allocate = NULL;
-    JPH::Free = NULL;
-    JPH::AlignedAllocate = NULL;
-    JPH::AlignedFree = NULL;
+    JPH::Allocate = nullptr;
+    JPH::Free = nullptr;
+    JPH::AlignedAllocate = nullptr;
+    JPH::AlignedFree = nullptr;
 }
 
 SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density)
@@ -82,7 +86,7 @@ SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density)
     settings.mDensity = density;
     auto shape = settings.Create().Get();
     auto index = shape_pool->size();
-    shape_pool->push_back(shape);
+    shape_pool->emplace_back(shape);
     return index;
 }
 SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density)
@@ -92,7 +96,7 @@ SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density)
     settings.mDensity = density;
     auto shape = settings.Create().Get();
     auto index = shape_pool->size();
-    shape_pool->push_back(shape);
+    shape_pool->emplace_back(shape);
     return index;
 }
 SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float density)
@@ -103,7 +107,7 @@ SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float densit
     settings.mDensity = density;
     auto shape = settings.Create().Get();
     auto index = shape_pool->size();
-    shape_pool->push_back(shape);
+    shape_pool->emplace_back(shape);
     return index;
 }
 SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density)
@@ -114,7 +118,7 @@ SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density
     settings.mDensity = density;
     auto shape = settings.Create().Get();
     auto index = shape_pool->size();
-    shape_pool->push_back(shape);
+    shape_pool->emplace_back(shape);
     return index;
 }
 void SPH_Shape_Destroy(SPH_ShapeHandle handle)
@@ -219,33 +223,77 @@ public:
     }
 };
 
-// An example contact listener
+class PhysicsWorld;
 class MyContactListener : public JPH::ContactListener
 {
 public:
+    MyContactListener(PhysicsWorld* physics_world)
+    {
+        this->physics_world = physics_world;
+    }
+
     // See: ContactListener
     virtual JPH::ValidateResult OnContactValidate(const JPH::Body &inBody1, const JPH::Body &inBody2, JPH::RVec3Arg inBaseOffset, const JPH::CollideShapeResult &inCollisionResult) override
     {
-        //std::cout << "Contact validate callback" << std::endl;
-        // Allows you to ignore a contact before it is created (using layers to not make objects collide is cheaper!)
+        // std::cout << "Contact validate callback" << std::endl;
+        //  Allows you to ignore a contact before it is created (using layers to not make objects collide is cheaper!)
         return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
     }
 
     virtual void OnContactAdded(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override
     {
-        std::cout << "A contact was added" << std::endl;
+        auto inBody1ID = inBody1.GetID();
+        auto inBody2ID = inBody2.GetID();
+
+//        if (this->physics_world->volume_list.contains(inBody1ID))
+//        {
+//            std::cout << "A contact body1 was added" << std::endl;
+//            this->physics_world->volume_list[inBody1ID].emplace(inBody2ID);
+//        }
+//
+//        if (this->physics_world->volume_list.contains(inBody2ID))
+//        {
+//            std::cout << "A contact body2 was added" << std::endl;
+//            this->physics_world->volume_list[inBody2ID].emplace(inBody1ID);
+//        }
     }
 
     virtual void OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override
     {
-        //std::cout << "A contact was persisted" << std::endl;
+        // std::cout << "A contact was persisted" << std::endl;
     }
 
     virtual void OnContactRemoved(const JPH::SubShapeIDPair &inSubShapePair) override
     {
-        std::cout << "A contact was removed" << std::endl;
+        // if (inBody1.IsSensor() || inBody2.IsSensor())
+        // {
+        //  std::cout << "A contact was removed" << std::endl;
+        // }
     }
+private:
+    PhysicsWorld* physics_world = nullptr;
+
 };
+
+struct JoltSubShapeId
+{
+    JPH::BodyID body;
+    JPH::SubShapeID sub_shape;
+};
+namespace std
+{
+    template <>
+    struct hash<JoltSubShapeId>
+    {
+        std::size_t operator()(const JoltSubShapeId &id) const noexcept
+        {
+            // Combine hash values of the individual members
+            std::size_t h1 = std::hash<JPH::BodyID>{}(id.body);
+            std::size_t h2 = std::hash<JPH::SubShapeID::Type>{}(id.sub_shape.GetValue());
+            return h1 ^ (h2 << 1); // or use another hash combination technique
+        }
+    };
+}
 
 class PhysicsWorld
 {
@@ -268,7 +316,7 @@ public:
         this->physics_system->SetGravity(JPH::Vec3(0.0, -9.8, 0.0));
 
         this->contact_listener = alloc_t<MyContactListener>();
-        ::new (this->contact_listener) MyContactListener();
+        ::new (this->contact_listener) MyContactListener(this);
         this->physics_system->SetContactListener(this->contact_listener);
     }
 
@@ -297,6 +345,9 @@ public:
     ObjectLayerPairFilterImpl *object_vs_object_layer_filter;
     JPH::PhysicsSystem *physics_system;
     MyContactListener *contact_listener;
+
+    // TODO: include subshape ids as part of this at some point
+    JPH::UnorderedMap<JPH::BodyID, JPH::UnorderedSet<JPH::BodyID>> volume_list;
 
     JPH::TempAllocatorImpl temp_allocator;
     JPH::JobSystemSingleThreaded job_system;
@@ -361,6 +412,12 @@ SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_Bod
 
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
     JPH::BodyID body_id = body_interface.CreateAndAddBody(settings, JPH::EActivation::Activate);
+
+    if (body_settings->is_sensor)
+    {
+        physics_world->volume_list.emplace(body_id, JPH::UnorderedSet<JPH::BodyID>());
+    }
+
     return body_id.GetIndexAndSequenceNumber();
 }
 
@@ -369,6 +426,9 @@ void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle)
     auto physics_world = (PhysicsWorld *)ptr;
     auto body_id = JPH::BodyID(handle);
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
+
+    physics_world->volume_list.erase(body_id);
+
     body_interface.RemoveBody(body_id);
     body_interface.DestroyBody(body_id);
 }
