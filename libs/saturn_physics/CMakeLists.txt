@@ -145,4 +145,10 @@ add_library(saturn_physics
         "JoltPhysics-5.0.0/Jolt/TriangleSplitter/TriangleSplitter.cpp"
         "JoltPhysics-5.0.0/Jolt/TriangleSplitter/TriangleSplitterBinning.cpp"
         "JoltPhysics-5.0.0/Jolt/TriangleSplitter/TriangleSplitterMorton.cpp"
-        "JoltPhysics-5.0.0/Jolt/TriangleSplitter/TriangleSplitterLongestAxis.cpp")
+        "JoltPhysics-5.0.0/Jolt/TriangleSplitter/TriangleSplitterLongestAxis.cpp"
+        src/contact_listener.hpp
+        src/physics_world.hpp
+        src/layer_filters.hpp
+        src/physics_world.cpp
+        src/memory.hpp
+        src/contact_listener.cpp)
