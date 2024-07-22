@@ -11,10 +11,25 @@
 
 class MyContactListener;
 
-class PhysicsWorld
-{
+class ContactList {
+public:
+    void add(JPH::BodyID);
+
+    void remove(JPH::BodyID);
+
+    size_t size();
+
+    JPH::BodyID *get_ptr() { return this->ids.data(); }
+
+private:
+    JoltVector<JPH::BodyID> ids;
+    JoltVector<int32_t> contact_count;
+};
+
+class PhysicsWorld {
 public:
     PhysicsWorld(const SPH_PhysicsWorldSettings *settings);
+
     ~PhysicsWorld();
 
 public:
@@ -25,7 +40,7 @@ public:
     MyContactListener *contact_listener;
 
     // TODO: include sub-shape ids as part of this at some point
-    JPH::UnorderedMap<JPH::BodyID, JPH::UnorderedSet<JPH::BodyID>> volume_list;
+    JPH::UnorderedMap<JPH::BodyID, ContactList> contact_lists;
 
     JPH::TempAllocatorImpl temp_allocator;
     JPH::JobSystemSingleThreaded job_system;

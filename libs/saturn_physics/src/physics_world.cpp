@@ -2,30 +2,71 @@
 
 #include "contact_listener.hpp"
 
+int32_t vec_find(JoltVector<JPH::BodyID> &vec, JPH::BodyID id) {
+    for (int32_t i = 0; i < vec.size(); i++) {
+        if (vec[i] == id) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void ContactList::add(JPH::BodyID id) {
+    auto current_index = vec_find(this->ids, id);
+    if (current_index != -1) {
+        this->contact_count[current_index] += 1;
+    } else {
+        this->ids.emplace_back(id);
+        this->contact_count.emplace_back(1);
+    }
+    //printf("Add: %zu\n", this->size());
+}
+
+void ContactList::remove(JPH::BodyID id) {
+    auto current_index = vec_find(this->ids, id);
+    if (current_index != -1) {
+        this->contact_count[current_index] -= 1;
+        if (this->contact_count[current_index] <= 0) {
+            auto last_index = this->ids.size() - 1;
+            if (current_index != last_index) {
+                JPH::swap(this->ids[current_index], this->ids[last_index]);
+                JPH::swap(this->contact_count[current_index], this->contact_count[last_index]);
+            }
+            this->ids.pop_back();
+            this->contact_count.pop_back();
+        }
+    }
+    //printf("Remove: %zu\n", this->size());
+}
+
+size_t ContactList::size() {
+    return this->ids.size();
+}
+
 PhysicsWorld::PhysicsWorld(const SPH_PhysicsWorldSettings *settings)
-        : temp_allocator(settings->temp_allocation_size), job_system(1024)
-{
+        : temp_allocator(settings->temp_allocation_size), job_system(1024) {
     this->broad_phase_layer_interface = alloc_t<BPLayerInterfaceImpl>();
-    ::new (this->broad_phase_layer_interface) BPLayerInterfaceImpl();
+    ::new(this->broad_phase_layer_interface) BPLayerInterfaceImpl();
 
     this->object_vs_broadphase_layer_filter = alloc_t<ObjectVsBroadPhaseLayerFilterImpl>();
-    ::new (this->object_vs_broadphase_layer_filter) ObjectVsBroadPhaseLayerFilterImpl();
+    ::new(this->object_vs_broadphase_layer_filter) ObjectVsBroadPhaseLayerFilterImpl();
 
     this->object_vs_object_layer_filter = alloc_t<ObjectLayerPairFilterImpl>();
-    ::new (this->object_vs_object_layer_filter) ObjectLayerPairFilterImpl();
+    ::new(this->object_vs_object_layer_filter) ObjectLayerPairFilterImpl();
 
     this->physics_system = alloc_t<JPH::PhysicsSystem>();
-    ::new (this->physics_system) JPH::PhysicsSystem();
-    this->physics_system->Init(settings->max_bodies, settings->num_body_mutexes, settings->max_body_pairs, settings->max_contact_constraints, *this->broad_phase_layer_interface, *this->object_vs_broadphase_layer_filter, *this->object_vs_object_layer_filter);
+    ::new(this->physics_system) JPH::PhysicsSystem();
+    this->physics_system->Init(settings->max_bodies, settings->num_body_mutexes, settings->max_body_pairs,
+                               settings->max_contact_constraints, *this->broad_phase_layer_interface,
+                               *this->object_vs_broadphase_layer_filter, *this->object_vs_object_layer_filter);
     this->physics_system->SetGravity(JPH::Vec3(0.0, -9.8, 0.0));
 
     this->contact_listener = alloc_t<MyContactListener>();
-    ::new (this->contact_listener) MyContactListener(this);
+    ::new(this->contact_listener) MyContactListener(this);
     this->physics_system->SetContactListener(this->contact_listener);
 }
 
-PhysicsWorld::~PhysicsWorld()
-{
+PhysicsWorld::~PhysicsWorld() {
     this->physics_system->SetContactListener(nullptr);
     this->contact_listener->~MyContactListener();
     free_t(this->contact_listener);

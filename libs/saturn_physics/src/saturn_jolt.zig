@@ -146,7 +146,22 @@ pub const World = struct {
     }
 
     pub fn get_body_transform(self: *Self, handle: BodyHandle) Transform {
+        if (self.get_body_contact_list(handle)) |handle_slice| {
+            std.log.info("Body: {} has {} contacts", .{ handle, handle_slice.len });
+        }
+
+        _ = self.get_body_contact_list(handle);
         return c.SPH_PhysicsWorld_Body_GetTransform(self.ptr, handle);
+    }
+
+    pub fn get_body_contact_list(self: *Self, handle: BodyHandle) ?[]BodyHandle {
+        const result = c.SPH_PhysicsWorld_Body_GetContactList(self.ptr, handle);
+
+        if (result.ptr == null or result.count == 0) {
+            return null;
+        } else {
+            return result.ptr[0..result.count];
+        }
     }
 };
 

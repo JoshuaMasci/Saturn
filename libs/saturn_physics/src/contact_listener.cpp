@@ -20,14 +20,12 @@ void MyContactListener::OnContactAdded(const JPH::Body &inBody1, const JPH::Body
     auto inBody1ID = inBody1.GetID();
     auto inBody2ID = inBody2.GetID();
 
-    if (this->physics_world->volume_list.find(inBody1ID) != this->physics_world->volume_list.end()) {
-        this->physics_world->volume_list[inBody1ID].emplace(inBody2ID);
-        std::cout << "A contact body1 was added: " << this->physics_world->volume_list[inBody1ID].size() << std::endl;
+    if (this->physics_world->contact_lists.find(inBody1ID) != this->physics_world->contact_lists.end()) {
+        this->physics_world->contact_lists[inBody1ID].add(inBody2ID);
     }
 
-    if (this->physics_world->volume_list.find(inBody2ID) != this->physics_world->volume_list.end()) {
-        this->physics_world->volume_list[inBody2ID].emplace(inBody1ID);
-        std::cout << "A contact body2 was added: " << this->physics_world->volume_list[inBody2ID].size() << std::endl;
+    if (this->physics_world->contact_lists.find(inBody2ID) != this->physics_world->contact_lists.end()) {
+        this->physics_world->contact_lists[inBody2ID].add(inBody1ID);
     }
 }
 
@@ -39,13 +37,11 @@ void MyContactListener::OnContactRemoved(const JPH::SubShapeIDPair &inSubShapePa
     auto inBody1ID = inSubShapePair.GetBody1ID();
     auto inBody2ID = inSubShapePair.GetBody2ID();
 
-    if (this->physics_world->volume_list.find(inBody1ID) != this->physics_world->volume_list.end()) {
-        this->physics_world->volume_list[inBody1ID].erase(inBody2ID);
-        std::cout << "A contact body1 was removed: " << this->physics_world->volume_list[inBody1ID].size() << std::endl;
+    if (this->physics_world->contact_lists.find(inBody1ID) != this->physics_world->contact_lists.end()) {
+        this->physics_world->contact_lists[inBody1ID].remove(inBody2ID);
     }
 
-    if (this->physics_world->volume_list.find(inBody2ID) != this->physics_world->volume_list.end()) {
-        this->physics_world->volume_list[inBody2ID].erase(inBody1ID);
-        std::cout << "A contact body2 was removed: " << this->physics_world->volume_list[inBody2ID].size() << std::endl;
+    if (this->physics_world->contact_lists.find(inBody2ID) != this->physics_world->contact_lists.end()) {
+        this->physics_world->contact_lists[inBody2ID].remove(inBody1ID);
     }
 }
