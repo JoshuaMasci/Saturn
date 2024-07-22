@@ -58,11 +58,11 @@ pub const App = struct {
 
         // Planet
         const planet_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false, false);
-        const planet_sphere_volume = try add_sphere(allocator, &rendering_backend, &game_world, null, 200.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false, true);
+        const planet_sphere_volume = try add_sphere(allocator, &rendering_backend, &game_world, null, 500.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false, true);
         _ = planet_sphere_volume; // autofix
 
         // Moon
-        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, 0.0, 200.0) }, true, false);
+        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, -50.0, 200.0) }, true, false);
         _ = moon_sphere; // autofix
 
         // Load resources from gltf file

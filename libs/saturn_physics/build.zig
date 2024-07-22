@@ -49,6 +49,7 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
         .files = &.{
             "src/saturn_jolt.cpp",
             "src/contact_listener.cpp",
+            "src/gravity_step_listener.cpp",
             "src/physics_world.cpp",
             jolt_src_path ++ "Core/TickCounter.cpp",
             jolt_src_path ++ "Core/Factory.cpp",

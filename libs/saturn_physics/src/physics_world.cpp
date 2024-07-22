@@ -1,6 +1,7 @@
 #include "physics_world.hpp"
 
 #include "contact_listener.hpp"
+#include "gravity_step_listener.hpp"
 
 int32_t vec_find(JoltVector<JPH::BodyID> &vec, JPH::BodyID id) {
     for (int32_t i = 0; i < vec.size(); i++) {
@@ -59,14 +60,22 @@ PhysicsWorld::PhysicsWorld(const SPH_PhysicsWorldSettings *settings)
     this->physics_system->Init(settings->max_bodies, settings->num_body_mutexes, settings->max_body_pairs,
                                settings->max_contact_constraints, *this->broad_phase_layer_interface,
                                *this->object_vs_broadphase_layer_filter, *this->object_vs_object_layer_filter);
-    this->physics_system->SetGravity(JPH::Vec3(0.0, -9.8, 0.0));
 
     this->contact_listener = alloc_t<MyContactListener>();
     ::new(this->contact_listener) MyContactListener(this);
     this->physics_system->SetContactListener(this->contact_listener);
+
+    this->physics_system->SetGravity(JPH::Vec3(0.0, 0.0, 0.0));
+    this->gravity_step_listener = alloc_t<GravityStepListener>();
+    ::new(this->gravity_step_listener) GravityStepListener(this);
+    this->physics_system->AddStepListener(this->gravity_step_listener);
 }
 
 PhysicsWorld::~PhysicsWorld() {
+    this->physics_system->RemoveStepListener(this->gravity_step_listener);
+    this->gravity_step_listener->~GravityStepListener();
+    free_t(this->gravity_step_listener);
+
     this->physics_system->SetContactListener(nullptr);
     this->contact_listener->~MyContactListener();
     free_t(this->contact_listener);

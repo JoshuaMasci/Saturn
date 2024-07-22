@@ -211,6 +211,7 @@ pub const World = struct {
                 .rotation = transform.rotation.toArray(),
                 .motion_type = if (body.dynamic) .Dynamic else .Static,
                 .is_sensor = body.sensor,
+                .friction = 0.2,
             });
         }
 

@@ -87,7 +87,7 @@ pub const BodySettings = struct {
     motion_type: MotionType,
     is_sensor: bool = false,
     allow_sleep: bool = true,
-    friction: f32 = 0.0,
+    friction: f32 = 0.2,
     gravity_factor: f32 = 1.0,
 };
 

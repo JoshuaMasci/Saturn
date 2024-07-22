@@ -11,6 +11,8 @@
 
 class MyContactListener;
 
+class GravityStepListener;
+
 class ContactList {
 public:
     void add(JPH::BodyID);
@@ -20,6 +22,10 @@ public:
     size_t size();
 
     JPH::BodyID *get_ptr() { return this->ids.data(); }
+
+    JoltVector<JPH::BodyID> &get_id_list() {
+        return this->ids;
+    }
 
 private:
     JoltVector<JPH::BodyID> ids;
@@ -38,6 +44,7 @@ public:
     ObjectLayerPairFilterImpl *object_vs_object_layer_filter;
     JPH::PhysicsSystem *physics_system;
     MyContactListener *contact_listener;
+    GravityStepListener *gravity_step_listener;
 
     // TODO: include sub-shape ids as part of this at some point
     JPH::UnorderedMap<JPH::BodyID, ContactList> contact_lists;
