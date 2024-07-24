@@ -158,7 +158,7 @@ SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_Bod
     JPH::BodyID body_id = body_interface.CreateAndAddBody(settings, JPH::EActivation::Activate);
 
     if (body_settings->is_sensor) {
-        physics_world->contact_lists.emplace(body_id, ContactList());
+        physics_world->volume_bodies.emplace(body_id, VolumeBody());
     }
 
     return body_id.GetIndexAndSequenceNumber();
@@ -169,7 +169,7 @@ void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle)
     auto body_id = JPH::BodyID(handle);
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
 
-    physics_world->contact_lists.erase(body_id);
+    physics_world->volume_bodies.erase(body_id);
 
     body_interface.RemoveBody(body_id);
     body_interface.DestroyBody(body_id);
@@ -190,8 +190,8 @@ SPH_Transform SPH_PhysicsWorld_Body_GetTransform(SPH_PhysicsWorld *ptr, SPH_Body
 SPH_BodyHandleList SPH_PhysicsWorld_Body_GetContactList(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
-    if (physics_world->contact_lists.find(body_id) != physics_world->contact_lists.end()) {
-        auto contact_list_ref = &physics_world->contact_lists[body_id];
+    if (physics_world->volume_bodies.find(body_id) != physics_world->volume_bodies.end()) {
+        auto contact_list_ref = &physics_world->volume_bodies[body_id].contact_list;
         return SPH_BodyHandleList{
                 reinterpret_cast<SPH_BodyHandle *>(contact_list_ref->get_ptr()), contact_list_ref->size()
         };
@@ -200,5 +200,17 @@ SPH_BodyHandleList SPH_PhysicsWorld_Body_GetContactList(SPH_PhysicsWorld *ptr, S
         return SPH_BodyHandleList{
                 nullptr, 0
         };
+    }
+}
+
+void SPH_PhysicsWorld_Body_AddRadialGravity(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle, float gravity_strength) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto body_id = JPH::BodyID(handle);
+    if (physics_world->volume_bodies.find(body_id) != physics_world->volume_bodies.end()) {
+        if (gravity_strength != 0.0) {
+            physics_world->volume_bodies[body_id].gravity_strength = gravity_strength;
+        } else {
+            physics_world->volume_bodies[body_id].gravity_strength.reset();
+        }
     }
 }

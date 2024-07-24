@@ -20,12 +20,12 @@ void MyContactListener::OnContactAdded(const JPH::Body &inBody1, const JPH::Body
     auto inBody1ID = inBody1.GetID();
     auto inBody2ID = inBody2.GetID();
 
-    if (this->physics_world->contact_lists.find(inBody1ID) != this->physics_world->contact_lists.end()) {
-        this->physics_world->contact_lists[inBody1ID].add(inBody2ID);
+    if (this->physics_world->volume_bodies.find(inBody1ID) != this->physics_world->volume_bodies.end()) {
+        this->physics_world->volume_bodies[inBody1ID].contact_list.add(inBody2ID);
     }
 
-    if (this->physics_world->contact_lists.find(inBody2ID) != this->physics_world->contact_lists.end()) {
-        this->physics_world->contact_lists[inBody2ID].add(inBody1ID);
+    if (this->physics_world->volume_bodies.find(inBody2ID) != this->physics_world->volume_bodies.end()) {
+        this->physics_world->volume_bodies[inBody2ID].contact_list.add(inBody1ID);
     }
 }
 
@@ -37,11 +37,11 @@ void MyContactListener::OnContactRemoved(const JPH::SubShapeIDPair &inSubShapePa
     auto inBody1ID = inSubShapePair.GetBody1ID();
     auto inBody2ID = inSubShapePair.GetBody2ID();
 
-    if (this->physics_world->contact_lists.find(inBody1ID) != this->physics_world->contact_lists.end()) {
-        this->physics_world->contact_lists[inBody1ID].remove(inBody2ID);
+    if (this->physics_world->volume_bodies.find(inBody1ID) != this->physics_world->volume_bodies.end()) {
+        this->physics_world->volume_bodies[inBody1ID].contact_list.remove(inBody2ID);
     }
 
-    if (this->physics_world->contact_lists.find(inBody2ID) != this->physics_world->contact_lists.end()) {
-        this->physics_world->contact_lists[inBody2ID].remove(inBody1ID);
+    if (this->physics_world->volume_bodies.find(inBody2ID) != this->physics_world->volume_bodies.end()) {
+        this->physics_world->volume_bodies[inBody2ID].contact_list.remove(inBody1ID);
     }
 }

@@ -138,7 +138,9 @@ pub const World = struct {
             .friction = body_settings.friction,
             .gravity_factor = body_settings.gravity_factor,
         };
-        return c.SPH_PhysicsWorld_Body_Create(self.ptr, &c_body_settings);
+        const handle = c.SPH_PhysicsWorld_Body_Create(self.ptr, &c_body_settings);
+
+        return handle;
     }
 
     pub fn remove_body(self: *Self, handle: BodyHandle) void {
@@ -146,11 +148,6 @@ pub const World = struct {
     }
 
     pub fn get_body_transform(self: *Self, handle: BodyHandle) Transform {
-        if (self.get_body_contact_list(handle)) |handle_slice| {
-            std.log.info("Body: {} has {} contacts", .{ handle, handle_slice.len });
-        }
-
-        _ = self.get_body_contact_list(handle);
         return c.SPH_PhysicsWorld_Body_GetTransform(self.ptr, handle);
     }
 
@@ -162,6 +159,10 @@ pub const World = struct {
         } else {
             return result.ptr[0..result.count];
         }
+    }
+
+    pub fn set_body_volume_gravity_strength(self: *Self, handle: BodyHandle, gravity_strength: f32) void {
+        c.SPH_PhysicsWorld_Body_AddRadialGravity(self.ptr, handle, gravity_strength);
     }
 };
 

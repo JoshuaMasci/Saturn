@@ -213,6 +213,10 @@ pub const World = struct {
                 .is_sensor = body.sensor,
                 .friction = 0.2,
             });
+
+            if (body.sensor) {
+                self.physics_world.set_body_volume_gravity_strength(body_handle.?, 245000);
+            }
         }
 
         var instance_handle: ?rendering_system.SceneInstanceHandle = null;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -28,8 +29,14 @@ public:
     }
 
 private:
+    // TODO: include sub-shape ids as part of this at some point
     JoltVector<JPH::BodyID> ids;
     JoltVector<int32_t> contact_count;
+};
+
+struct VolumeBody {
+    ContactList contact_list;
+    std::optional<float> gravity_strength;
 };
 
 class PhysicsWorld {
@@ -46,8 +53,7 @@ public:
     MyContactListener *contact_listener;
     GravityStepListener *gravity_step_listener;
 
-    // TODO: include sub-shape ids as part of this at some point
-    JPH::UnorderedMap<JPH::BodyID, ContactList> contact_lists;
+    JPH::UnorderedMap<JPH::BodyID, VolumeBody> volume_bodies;
 
     JPH::TempAllocatorImpl temp_allocator;
     JPH::JobSystemSingleThreaded job_system;
