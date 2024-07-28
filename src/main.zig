@@ -15,7 +15,8 @@ const log = std.log;
 const App = @import("app.zig").App;
 
 pub fn main() !void {
-    var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+    const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
+    var general_purpose_allocator = GeneralPurposeAllocator{};
     defer if (general_purpose_allocator.deinit() == .leak) {
         log.err("GeneralPurposeAllocator has a memory leak!", .{});
     };

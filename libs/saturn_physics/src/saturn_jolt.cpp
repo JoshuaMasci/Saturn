@@ -112,10 +112,9 @@ void SPH_PhysicsWorld_Destroy(SPH_PhysicsWorld *ptr) {
     free_t(physics_world);
 }
 
-void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float inDeltaTime, int inCollisionSteps) {
+void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float delta_time, int collision_steps) {
     auto physics_world = (PhysicsWorld *) ptr;
-    physics_world->physics_system->Update(inDeltaTime, inCollisionSteps, &physics_world->temp_allocator,
-                                          &physics_world->job_system);
+    physics_world->update(delta_time, collision_steps);
 }
 
 SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings) {
@@ -153,6 +152,8 @@ SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_Bod
     settings.mAllowSleeping = body_settings->allow_sleep;
     settings.mFriction = body_settings->friction;
     settings.mGravityFactor = body_settings->gravity_factor;
+    settings.mLinearDamping = body_settings->linear_damping;
+    settings.mAngularDamping = body_settings->angular_damping;
 
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
     JPH::BodyID body_id = body_interface.CreateAndAddBody(settings, JPH::EActivation::Activate);
@@ -187,6 +188,15 @@ SPH_Transform SPH_PhysicsWorld_Body_GetTransform(SPH_PhysicsWorld *ptr, SPH_Body
             {rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW()}};
 }
 
+void SPH_PhysicsWorld_Body_SetLinearVelocity(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle, const float velocity[3]) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto body_id = JPH::BodyID(handle);
+    JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
+    auto linear_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(velocity));
+    body_interface.SetLinearVelocity(body_id, linear_velocity);
+}
+
+
 SPH_BodyHandleList SPH_PhysicsWorld_Body_GetContactList(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
@@ -213,4 +223,14 @@ void SPH_PhysicsWorld_Body_AddRadialGravity(SPH_PhysicsWorld *ptr, SPH_BodyHandl
             physics_world->volume_bodies[body_id].gravity_strength.reset();
         }
     }
+}
+
+SPH_CharacterHandle SPH_PhysicsWorld_Character_Add(SPH_PhysicsWorld *ptr) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    return physics_world->add_character();
+}
+
+void SPH_PhysicsWorld_Character_Remove(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    physics_world->remove_character(handle);
 }

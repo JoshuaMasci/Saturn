@@ -15,6 +15,15 @@ const debug_camera = @import("debug_camera.zig");
 const gltf = @import("gltf.zig");
 const proc = @import("procedural.zig");
 
+fn calc_orbit_speed(gravity_center: za.Vec3, object_pos: za.Vec3, gravity_strength: f32) f32 {
+    const distance = gravity_center.sub(object_pos).length();
+    const orbital_velocity = @sqrt(gravity_strength / distance);
+    // const orbital_period = 2.0 * std.math.pi * @sqrt(std.math.pow(f32, distance, 3.0) / gravity_strength);
+    // std.log.info("orbital_velocity: {d:.3}", .{orbital_velocity});
+    // std.log.info("orbital_period: {d:.3}s", .{orbital_period});
+    return orbital_velocity;
+}
+
 pub const App = struct {
     const Self = @This();
 
@@ -30,7 +39,7 @@ pub const App = struct {
     game_character: ?world.CharacterHandle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
+        const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .off);
 
         var rendering_backend = try rendering_system.Backend.init(allocator);
         physics_system.init(allocator);
@@ -53,17 +62,27 @@ pub const App = struct {
 
         // Cubes
         for (0..100) |i| {
-            _ = try add_cube(allocator, &rendering_backend, &game_world, .{ 0.38, 0.412, 1.0, 1.0 }, .{1.0} ** 3, &.{ .position = za.Vec3.new(@as(f32, @floatFromInt(i)) * 0.5, @as(f32, @floatFromInt(i)) * 1.2 + 100.0, 200.0), .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) }, true);
+            const cube_position = za.Vec3.new(0.0, @as(f32, @floatFromInt(i)) * 1.2 + 100.0, 200.0);
+            _ = try add_cube(
+                allocator,
+                &rendering_backend,
+                &game_world,
+                .{ 0.38, 0.412, 1.0, 1.0 },
+                .{1.0} ** 3,
+                &.{ .position = cube_position, .rotation = za.Quat.new(0.505526, 0.706494, -0.312048, 0.384623) },
+                true,
+            );
         }
 
         // Planet
         const planet_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, 50.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false, false);
         const planet_sphere_volume = try add_sphere(allocator, &rendering_backend, &game_world, null, 500.0, &.{ .position = za.Vec3.new(0.0, 0.0, 200.0) }, false, true);
-        _ = planet_sphere_volume; // autofix
+        game_world.set_planet_gravity_strength(planet_sphere_volume, 245000);
 
         // Moon
-        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(100.0, -50.0, 200.0) }, true, false);
-        _ = moon_sphere; // autofix
+        const moon_sphere = try add_sphere(allocator, &rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = za.Vec3.new(0.0, 0.0, 300.0) }, true, false);
+        const orbital_velocity = calc_orbit_speed(za.Vec3.new(0.0, 0.0, 300.0), za.Vec3.new(0.0, 0.0, 200.0), 245000);
+        game_world.set_linear_velocity(moon_sphere, za.Vec3.new(orbital_velocity, 0.0, 0.0));
 
         // Load resources from gltf file
         const args = try std.process.argsAlloc(allocator);
@@ -75,8 +94,7 @@ pub const App = struct {
             };
         }
 
-        var game_camera = debug_camera.DebugCamera.Default;
-        game_camera.transform.position = za.Vec3.new(0.0, 100.0, -250.0);
+        const game_camera = debug_camera.DebugCamera.Default;
 
         if (game_character) |character_handle| {
             game_world.characters.getPtr(character_handle).?.planet_handle = planet_sphere;
@@ -121,11 +139,11 @@ pub const App = struct {
             .transform = self.game_camera.transform,
         };
 
-        if (self.game_character) |character_handle| {
-            if (self.game_world.characters.getPtr(character_handle)) |character| {
-                scene_camera.transform = character.get_camera_transform();
-            }
-        }
+        // if (self.game_character) |character_handle| {
+        //     if (self.game_world.characters.getPtr(character_handle)) |character| {
+        //         scene_camera.transform = character.get_camera_transform();
+        //     }
+        // }
 
         const window_size = try self.platform.get_window_size();
         self.rendering_backend.render_scene(window_size, &self.game_world.rendering_world, &scene_camera);

@@ -34,6 +34,8 @@ private:
     JoltVector<int32_t> contact_count;
 };
 
+class Character;
+
 struct VolumeBody {
     ContactList contact_list;
     std::optional<float> gravity_strength;
@@ -45,6 +47,12 @@ public:
 
     ~PhysicsWorld();
 
+    void update(float delta_time, int collision_steps);
+
+    SPH_CharacterHandle add_character();
+
+    void remove_character(SPH_CharacterHandle handle);
+
 public:
     BPLayerInterfaceImpl *broad_phase_layer_interface;
     ObjectVsBroadPhaseLayerFilterImpl *object_vs_broadphase_layer_filter;
@@ -52,6 +60,9 @@ public:
     JPH::PhysicsSystem *physics_system;
     MyContactListener *contact_listener;
     GravityStepListener *gravity_step_listener;
+
+    SPH_CharacterHandle next_character_index = 0;
+    JPH::UnorderedMap<SPH_CharacterHandle, Character *> characters;
 
     JPH::UnorderedMap<JPH::BodyID, VolumeBody> volume_bodies;
 

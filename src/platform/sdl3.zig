@@ -13,6 +13,12 @@ pub const WindowSize = union(enum) {
     maximized,
 };
 
+pub const VerticalSync = enum {
+    on,
+    half,
+    off,
+};
+
 pub const Platform = struct {
     const Self = @This();
 
@@ -23,7 +29,7 @@ pub const Platform = struct {
     mouse: ?Mouse,
     keyboard: ?Keyboard,
 
-    pub fn init_window(allocator: std.mem.Allocator, name: [:0]const u8, size: WindowSize) !Self {
+    pub fn init_window(allocator: std.mem.Allocator, name: [:0]const u8, size: WindowSize, vsync: VerticalSync) !Self {
         const version = sdl.getVersion();
         std.log.info("Starting sdl {}.{}.{}", .{ version.major, version.minor, version.patch });
 
@@ -76,14 +82,21 @@ pub const Platform = struct {
             gl.getString(gl.SHADING_LANGUAGE_VERSION),
         });
 
-        try sdl.gl.setSwapInterval(1);
+        try sdl.gl.setSwapInterval(switch (vsync) {
+            .on => 1,
+            .half => 2,
+            .off => 0,
+        });
 
         var mouse: ?Mouse = null;
         if (sdl.hasMouse()) {
             mouse = Mouse.init();
             mouse.?.button_bindings.set(MouseButton.left, .{ .button = .debug_camera_interact });
-            mouse.?.axis_bindings[0] = .{ .axis = .player_rotate_yaw, .sensitivity = 0.2, .invert = true };
-            mouse.?.axis_bindings[1] = .{ .axis = .player_rotate_pitch, .sensitivity = 0.2, .invert = false };
+            mouse.?.axis_bindings[0] = .{ .axis = .debug_camera_yaw, .sensitivity = 0.2, .invert = true };
+            mouse.?.axis_bindings[1] = .{ .axis = .debug_camera_pitch, .sensitivity = 0.2, .invert = false };
+
+            // mouse.?.axis_bindings[0] = .{ .axis = .player_rotate_yaw, .sensitivity = 0.2, .invert = true };
+            // mouse.?.axis_bindings[1] = .{ .axis = .player_rotate_pitch, .sensitivity = 0.2, .invert = false };
         }
 
         var keyboard: ?Keyboard = null;
@@ -91,28 +104,28 @@ pub const Platform = struct {
             keyboard = Keyboard.init(allocator);
 
             // Debug Camera
-            // try keyboard.?.button_bindings.put(sdl.Scancode.a, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .positve } });
-            // try keyboard.?.button_bindings.put(sdl.Scancode.d, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .negitive } });
+            try keyboard.?.button_bindings.put(sdl.Scancode.a, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .positve } });
+            try keyboard.?.button_bindings.put(sdl.Scancode.d, .{ .axis = .{ .axis = .debug_camera_left_right, .dir = .negitive } });
 
-            // try keyboard.?.button_bindings.put(sdl.Scancode.space, .{ .axis = .{ .axis = .debug_camera_up_down, .dir = .positve } });
-            // try keyboard.?.button_bindings.put(sdl.Scancode.lshift, .{ .axis = .{ .axis = .debug_camera_up_down, .dir = .negitive } });
+            try keyboard.?.button_bindings.put(sdl.Scancode.space, .{ .axis = .{ .axis = .debug_camera_up_down, .dir = .positve } });
+            try keyboard.?.button_bindings.put(sdl.Scancode.lshift, .{ .axis = .{ .axis = .debug_camera_up_down, .dir = .negitive } });
 
-            // try keyboard.?.button_bindings.put(sdl.Scancode.w, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .positve } });
-            // try keyboard.?.button_bindings.put(sdl.Scancode.s, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .negitive } });
+            try keyboard.?.button_bindings.put(sdl.Scancode.w, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .positve } });
+            try keyboard.?.button_bindings.put(sdl.Scancode.s, .{ .axis = .{ .axis = .debug_camera_forward_backward, .dir = .negitive } });
 
-            // try keyboard.?.button_bindings.put(sdl.Scancode.q, .{ .button = .debug_camera_fast_move });
+            try keyboard.?.button_bindings.put(sdl.Scancode.q, .{ .button = .debug_camera_fast_move });
 
             // Player Character
-            try keyboard.?.button_bindings.put(sdl.Scancode.n, .{ .axis = .{ .axis = .player_rotate_yaw, .dir = .positve } });
-            try keyboard.?.button_bindings.put(sdl.Scancode.m, .{ .axis = .{ .axis = .player_rotate_yaw, .dir = .negitive } });
+            // try keyboard.?.button_bindings.put(sdl.Scancode.n, .{ .axis = .{ .axis = .player_rotate_yaw, .dir = .positve } });
+            // try keyboard.?.button_bindings.put(sdl.Scancode.m, .{ .axis = .{ .axis = .player_rotate_yaw, .dir = .negitive } });
 
-            try keyboard.?.button_bindings.put(sdl.Scancode.w, .{ .axis = .{ .axis = .player_move_forward_backward, .dir = .positve } });
-            try keyboard.?.button_bindings.put(sdl.Scancode.s, .{ .axis = .{ .axis = .player_move_forward_backward, .dir = .negitive } });
+            // try keyboard.?.button_bindings.put(sdl.Scancode.w, .{ .axis = .{ .axis = .player_move_forward_backward, .dir = .positve } });
+            // try keyboard.?.button_bindings.put(sdl.Scancode.s, .{ .axis = .{ .axis = .player_move_forward_backward, .dir = .negitive } });
 
-            try keyboard.?.button_bindings.put(sdl.Scancode.a, .{ .axis = .{ .axis = .player_move_left_right, .dir = .positve } });
-            try keyboard.?.button_bindings.put(sdl.Scancode.d, .{ .axis = .{ .axis = .player_move_left_right, .dir = .negitive } });
+            // try keyboard.?.button_bindings.put(sdl.Scancode.a, .{ .axis = .{ .axis = .player_move_left_right, .dir = .positve } });
+            // try keyboard.?.button_bindings.put(sdl.Scancode.d, .{ .axis = .{ .axis = .player_move_left_right, .dir = .negitive } });
 
-            try keyboard.?.button_bindings.put(sdl.Scancode.space, .{ .button = .player_move_jump });
+            // try keyboard.?.button_bindings.put(sdl.Scancode.space, .{ .button = .player_move_jump });
         }
 
         imgui.init(allocator);

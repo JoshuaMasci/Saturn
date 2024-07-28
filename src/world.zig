@@ -212,11 +212,8 @@ pub const World = struct {
                 .motion_type = if (body.dynamic) .Dynamic else .Static,
                 .is_sensor = body.sensor,
                 .friction = 0.2,
+                .linear_damping = 0.0,
             });
-
-            if (body.sensor) {
-                self.physics_world.set_body_volume_gravity_strength(body_handle.?, 245000);
-            }
         }
 
         var instance_handle: ?rendering_system.SceneInstanceHandle = null;
@@ -242,6 +239,18 @@ pub const World = struct {
         }
     }
 
+    pub fn set_linear_velocity(self: *Self, handle: EntityHandle, linear_velocity: za.Vec3) void {
+        if (self.entities.get(handle)) |entity| {
+            self.physics_world.set_body_linear_velocity(entity.body.?, linear_velocity.toArray());
+        }
+    }
+
+    pub fn set_planet_gravity_strength(self: *Self, handle: EntityHandle, gravity_strength: f32) void {
+        if (self.entities.get(handle)) |entity| {
+            self.physics_world.set_body_volume_gravity_strength(entity.body.?, gravity_strength);
+        }
+    }
+
     pub fn add_character(
         self: *Self,
         transform: *const Transform,
@@ -249,7 +258,8 @@ pub const World = struct {
         model_opt: ?Model,
     ) !CharacterHandle {
         _ = physics_shape; // autofix
-        const physics_character = 0.0; //self.physics_world.create_character(transform.get_unscaled(), physics_shape);
+        const physics_character =
+            self.physics_world.add_character();
 
         var render_object: ?rendering_system.SceneInstanceHandle = null;
         if (model_opt) |model| {

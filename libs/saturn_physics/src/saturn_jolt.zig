@@ -67,8 +67,6 @@ pub const Shape = struct {
     }
 };
 
-pub const CharacterHandle = u32; //TODO: this
-
 pub const Transform = c.SPH_Transform;
 pub const BodyHandle = c.SPH_BodyHandle;
 pub const MotionType = enum(u32) {
@@ -76,6 +74,7 @@ pub const MotionType = enum(u32) {
     Kinematic = 1,
     Dynamic = 2,
 };
+pub const CharacterHandle = u32; //TODO: this
 
 pub const BodySettings = struct {
     shape: Shape,
@@ -88,6 +87,8 @@ pub const BodySettings = struct {
     is_sensor: bool = false,
     allow_sleep: bool = true,
     friction: f32 = 0.2,
+    linear_damping: f32 = 0.05,
+    angular_damping: f32 = 0.05,
     gravity_factor: f32 = 1.0,
 };
 
@@ -136,6 +137,8 @@ pub const World = struct {
             .is_sensor = body_settings.is_sensor,
             .allow_sleep = body_settings.allow_sleep,
             .friction = body_settings.friction,
+            .linear_damping = body_settings.linear_damping,
+            .angular_damping = body_settings.angular_damping,
             .gravity_factor = body_settings.gravity_factor,
         };
         const handle = c.SPH_PhysicsWorld_Body_Create(self.ptr, &c_body_settings);
@@ -151,9 +154,13 @@ pub const World = struct {
         return c.SPH_PhysicsWorld_Body_GetTransform(self.ptr, handle);
     }
 
+    pub fn set_body_linear_velocity(self: *Self, handle: BodyHandle, velocity: [3]f32) void {
+        const c_velocity: [*c]const f32 = @ptrCast(&velocity);
+        c.SPH_PhysicsWorld_Body_SetLinearVelocity(self.ptr, handle, c_velocity);
+    }
+
     pub fn get_body_contact_list(self: *Self, handle: BodyHandle) ?[]BodyHandle {
         const result = c.SPH_PhysicsWorld_Body_GetContactList(self.ptr, handle);
-
         if (result.ptr == null or result.count == 0) {
             return null;
         } else {
@@ -163,6 +170,14 @@ pub const World = struct {
 
     pub fn set_body_volume_gravity_strength(self: *Self, handle: BodyHandle, gravity_strength: f32) void {
         c.SPH_PhysicsWorld_Body_AddRadialGravity(self.ptr, handle, gravity_strength);
+    }
+
+    pub fn add_character(self: *Self) CharacterHandle {
+        return c.SPH_PhysicsWorld_Character_Add(self.ptr);
+    }
+
+    pub fn remove_character(self: *Self, handle: CharacterHandle) void {
+        c.SPH_PhysicsWorld_Character_Remove(self.ptr, handle);
     }
 };
 

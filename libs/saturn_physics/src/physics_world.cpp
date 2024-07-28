@@ -3,6 +3,8 @@
 #include "contact_listener.hpp"
 #include "gravity_step_listener.hpp"
 
+#include "character.hpp"
+
 int32_t vec_find(JoltVector<JPH::BodyID> &vec, JPH::BodyID id) {
     for (int32_t i = 0; i < vec.size(); i++) {
         if (vec[i] == id) {
@@ -72,6 +74,11 @@ PhysicsWorld::PhysicsWorld(const SPH_PhysicsWorldSettings *settings)
 }
 
 PhysicsWorld::~PhysicsWorld() {
+    for (auto pair: this->characters) {
+        pair.second->~Character();
+        free_t(pair.second);
+    }
+
     this->physics_system->RemoveStepListener(this->gravity_step_listener);
     this->gravity_step_listener->~GravityStepListener();
     free_t(this->gravity_step_listener);
@@ -91,4 +98,31 @@ PhysicsWorld::~PhysicsWorld() {
 
     this->object_vs_object_layer_filter->~ObjectLayerPairFilterImpl();
     free_t(this->object_vs_object_layer_filter);
+}
+
+
+void PhysicsWorld::update(float delta_time, int collision_steps) {
+    this->physics_system->Update(delta_time, collision_steps, &this->temp_allocator,
+                                 &this->job_system);
+
+    for (auto pair: this->characters) {
+        pair.second->update(this, delta_time);
+    }
+}
+
+SPH_CharacterHandle PhysicsWorld::add_character() {
+    auto new_character = alloc_t<Character>();
+    ::new(new_character) Character(this);
+    auto character_handle = this->next_character_index;
+    this->next_character_index++;
+    this->characters.emplace(character_handle, new_character);
+    return character_handle;
+}
+
+void PhysicsWorld::remove_character(SPH_CharacterHandle handle) {
+    auto character = this->characters[handle];
+    character->~Character();
+    free_t(character);
+
+    this->characters.erase(handle);
 }
