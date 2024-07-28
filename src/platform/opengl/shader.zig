@@ -1,6 +1,6 @@
 const std = @import("std");
 const gl = @import("zopengl").bindings;
-const zm = @import("zmath");
+const za = @import("zalgebra");
 
 const Self = @This();
 
@@ -56,14 +56,14 @@ pub fn set_uniform_int(self: Self, name: []const u8, value: i32) void {
     gl.uniform1i(uniform_index, value);
 }
 
-pub fn set_uniform_vec4(self: Self, name: []const u8, vec: zm.Vec) void {
+pub fn set_uniform_vec4(self: Self, name: []const u8, vec: za.Vec4) void {
     const uniform_index = gl.getUniformLocation(self.shader_program, name.ptr);
     std.debug.assert(uniform_index != gl.INVALID_VALUE);
-    gl.uniform4fv(uniform_index, 1, &zm.vecToArr4(vec));
+    gl.uniform4fv(uniform_index, 1, &vec.toArray());
 }
 
-pub fn set_uniform_mat4(self: Self, name: []const u8, mat: *const zm.Mat) void {
+pub fn set_uniform_mat4(self: Self, name: []const u8, mat: *const za.Mat4) void {
     const uniform_index = gl.getUniformLocation(self.shader_program, name.ptr);
     std.debug.assert(uniform_index != gl.INVALID_VALUE);
-    gl.uniformMatrix4fv(uniform_index, 1, gl.FALSE, &zm.matToArr(mat.*));
+    gl.uniformMatrix4fv(uniform_index, 1, gl.FALSE, mat.getData());
 }

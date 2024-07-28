@@ -1,5 +1,5 @@
 const std = @import("std");
-const zm = @import("zmath");
+const za = @import("zalgebra");
 
 const Transform = @import("transform.zig");
 
@@ -32,8 +32,8 @@ pub const PerspectiveCamera = struct {
 
     pub const Default: Self = .{};
 
-    pub fn perspective_gl(self: Self, aspect_ratio: f32) zm.Mat {
-        return zm.perspectiveFovRhGl(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far);
+    pub fn perspective_gl(self: Self, aspect_ratio: f32) za.Mat4 {
+        return za.Mat4.RightHanded.Gl.perspective(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far);
     }
 };
 

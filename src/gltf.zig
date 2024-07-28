@@ -1,5 +1,5 @@
 const std = @import("std");
-const zm = @import("zmath");
+const za = @import("zalgebra");
 const zmesh = @import("zmesh");
 const gltf = zmesh.io.zcgltf;
 
@@ -375,15 +375,15 @@ fn add_gltf_node(scene: *Scene, allocator: std.mem.Allocator, data: *gltf.Data, 
     std.debug.assert(gltf_node.has_matrix == 0);
 
     if (gltf_node.has_translation != 0) {
-        node.transform.position = zm.loadArr3(gltf_node.translation);
+        node.transform.position = za.Vec3.fromArray(gltf_node.translation);
     }
 
     if (gltf_node.has_rotation != 0) {
-        node.transform.rotation = zm.loadArr4(gltf_node.rotation);
+        node.transform.rotation = za.Quat.fromArray(gltf_node.rotation);
     }
 
     if (gltf_node.has_scale != 0) {
-        node.transform.scale = zm.loadArr3(gltf_node.scale);
+        node.transform.scale = za.Vec3.fromArray(gltf_node.scale);
     }
 
     if (gltf_node.mesh) |gltf_mesh| {

@@ -12,6 +12,10 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    // zalgebra
+    const zalgebra = b.dependency("zalgebra", .{});
+    exe.root_module.addImport("zalgebra", zalgebra.module("zalgebra"));
+
     // zsdl
     const zsdl = b.dependency("zsdl", .{});
     exe.root_module.addImport("zsdl3", zsdl.module("zsdl3"));
@@ -28,10 +32,6 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zimgui", zimgui.module("root"));
     exe.linkLibrary(zimgui.artifact("imgui"));
 
-    // zmath
-    const zmath = b.dependency("zmath", .{ .enable_cross_platform_determinism = true });
-    exe.root_module.addImport("zmath", zmath.module("root"));
-
     // zmesh
     const zmesh = b.dependency("zmesh", .{});
     exe.root_module.addImport("zmesh", zmesh.module("root"));
@@ -42,13 +42,10 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zstbi", zstbi.module("root"));
     exe.linkLibrary(zstbi.artifact("zstbi"));
 
-    // zjolt
-    const zjolt = b.dependency("zjolt", .{
-        .use_double_precision = false,
-        .enable_cross_platform_determinism = true,
-    });
-    exe.root_module.addImport("zjolt", zjolt.module("root"));
-    exe.linkLibrary(zjolt.artifact("joltc"));
+    // saturn physics abstraction
+    const saturn_physics = b.dependency("saturn_physics", .{});
+    exe.root_module.addImport("physics", saturn_physics.module("root"));
+    exe.linkLibrary(saturn_physics.artifact("saturn_jolt"));
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
