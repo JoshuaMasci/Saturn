@@ -49,7 +49,8 @@ public:
 
     void update(float delta_time, int collision_steps);
 
-    SPH_CharacterHandle add_character();
+    SPH_CharacterHandle
+    add_character(JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation);
 
     void remove_character(SPH_CharacterHandle handle);
 

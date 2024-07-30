@@ -110,9 +110,10 @@ void PhysicsWorld::update(float delta_time, int collision_steps) {
     }
 }
 
-SPH_CharacterHandle PhysicsWorld::add_character() {
+SPH_CharacterHandle
+PhysicsWorld::add_character(JPH::RefConst<JPH::Shape> shape, const JPH::RVec3 position, const JPH::Quat rotation) {
     auto new_character = alloc_t<Character>();
-    ::new(new_character) Character(this);
+    ::new(new_character) Character(this, shape, position, rotation);
     auto character_handle = this->next_character_index;
     this->next_character_index++;
     this->characters.emplace(character_handle, new_character);

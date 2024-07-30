@@ -75,6 +75,7 @@ typedef struct SPH_BodyHandleList {
     uint64_t count;
 } SPH_BodyHandleList;
 
+
 SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings);
 void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
 SPH_Transform SPH_PhysicsWorld_Body_GetTransform(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
@@ -83,10 +84,12 @@ SPH_BodyHandleList SPH_PhysicsWorld_Body_GetContactList(SPH_PhysicsWorld *ptr, S
 
 void SPH_PhysicsWorld_Body_AddRadialGravity(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle, float gravity_strength);
 
-SPH_CharacterHandle SPH_PhysicsWorld_Character_Add(SPH_PhysicsWorld *ptr);
+SPH_CharacterHandle
+SPH_PhysicsWorld_Character_Add(SPH_PhysicsWorld *ptr, SPH_ShapeHandle shape, const SPH_Transform *transform);
 void SPH_PhysicsWorld_Character_Remove(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle);
-SPH_Transform SPH_PhysicsWorld_Character_GetTransform(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
-void SPH_PhysicsWorld_Character_SetTransform(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle, SPH_Transform transform);
+SPH_Transform SPH_PhysicsWorld_Character_GetTransform(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle);
+void
+SPH_PhysicsWorld_Character_SetTransform(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle, SPH_Transform *transform);
 
 
 #ifdef __cplusplus

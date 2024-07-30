@@ -186,6 +186,12 @@ pub const World = struct {
         {
             var iter = self.characters.iterator();
             while (iter.next()) |entry| {
+                if (entry.value_ptr.physics_character) |physics_character_handle| {
+                    const body_transform = self.physics_world.get_character_transform(physics_character_handle);
+                    entry.value_ptr.transform.position = za.Vec3.fromArray(body_transform.position);
+                    entry.value_ptr.transform.rotation = za.Quat.fromArray(body_transform.rotation);
+                }
+
                 if (entry.value_ptr.render_object) |render_object_handle| {
                     self.rendering_world.update_instance(render_object_handle, &entry.value_ptr.transform);
                 }
@@ -257,9 +263,11 @@ pub const World = struct {
         physics_shape: physics_system.Shape,
         model_opt: ?Model,
     ) !CharacterHandle {
-        _ = physics_shape; // autofix
         const physics_character =
-            self.physics_world.add_character();
+            self.physics_world.add_character(physics_shape, &.{
+            .position = transform.position.toArray(),
+            .rotation = transform.rotation.toArray(),
+        });
 
         var render_object: ?rendering_system.SceneInstanceHandle = null;
         if (model_opt) |model| {

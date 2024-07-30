@@ -172,12 +172,16 @@ pub const World = struct {
         c.SPH_PhysicsWorld_Body_AddRadialGravity(self.ptr, handle, gravity_strength);
     }
 
-    pub fn add_character(self: *Self) CharacterHandle {
-        return c.SPH_PhysicsWorld_Character_Add(self.ptr);
+    pub fn add_character(self: *Self, shape: Shape, transform: *const Transform) CharacterHandle {
+        return c.SPH_PhysicsWorld_Character_Add(self.ptr, shape.handle, transform);
     }
 
     pub fn remove_character(self: *Self, handle: CharacterHandle) void {
         c.SPH_PhysicsWorld_Character_Remove(self.ptr, handle);
+    }
+
+    pub fn get_character_transform(self: *Self, handle: CharacterHandle) Transform {
+        return c.SPH_PhysicsWorld_Character_GetTransform(self.ptr, handle);
     }
 };
 

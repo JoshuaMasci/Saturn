@@ -16,6 +16,8 @@
 
 #include "memory.hpp"
 #include "physics_world.hpp"
+#include "math.hpp"
+#include "character.hpp"
 
 typedef JoltVector<JPH::ShapeRefC> ShapePool;
 ShapePool *shape_pool = nullptr;
@@ -66,7 +68,7 @@ SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density) {
 
 SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density) {
     auto settings = JPH::BoxShapeSettings();
-    settings.mHalfExtent = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(half_extent));
+    settings.mHalfExtent = load_vec3(half_extent);
     settings.mDensity = density;
     auto shape = settings.Create().Get();
     auto index = shape_pool->size();
@@ -119,12 +121,11 @@ void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float delta_time, int collis
 
 SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings) {
     auto physics_world = (PhysicsWorld *) ptr;
-    auto shape = (*shape_pool)[body_settings->shape]; // shape_pool->get(ShapePool::Handle::from_u64(body_settings->shape));
-    auto position = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->position));
-    auto rotation = JPH::Quat(body_settings->rotation[0], body_settings->rotation[1], body_settings->rotation[2],
-                              body_settings->rotation[3]);
-    auto linear_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->linear_velocity));
-    auto angular_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(body_settings->angular_velocity));
+    auto shape = (*shape_pool)[body_settings->shape];
+    auto position = load_vec3(body_settings->position);
+    auto rotation = load_quat(body_settings->rotation);
+    auto linear_velocity = load_vec3(body_settings->linear_velocity);
+    auto angular_velocity = load_vec3(body_settings->angular_velocity);
     auto settings = JPH::BodyCreationSettings();
     settings.SetShape(shape);
     settings.mPosition = position;
@@ -192,7 +193,7 @@ void SPH_PhysicsWorld_Body_SetLinearVelocity(SPH_PhysicsWorld *ptr, SPH_BodyHand
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
-    auto linear_velocity = JPH::Vec3(*reinterpret_cast<const JPH::Float3 *>(velocity));
+    auto linear_velocity = load_vec3(velocity);
     body_interface.SetLinearVelocity(body_id, linear_velocity);
 }
 
@@ -225,12 +226,24 @@ void SPH_PhysicsWorld_Body_AddRadialGravity(SPH_PhysicsWorld *ptr, SPH_BodyHandl
     }
 }
 
-SPH_CharacterHandle SPH_PhysicsWorld_Character_Add(SPH_PhysicsWorld *ptr) {
+SPH_CharacterHandle
+SPH_PhysicsWorld_Character_Add(SPH_PhysicsWorld *ptr, SPH_ShapeHandle shape, const SPH_Transform *transform) {
+    auto shape_ref = (*shape_pool)[shape];
     auto physics_world = (PhysicsWorld *) ptr;
-    return physics_world->add_character();
+    return physics_world->add_character(shape_ref, load_rvec3(transform->position), load_quat(transform->rotation));
 }
 
 void SPH_PhysicsWorld_Character_Remove(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     physics_world->remove_character(handle);
+}
+
+SPH_Transform SPH_PhysicsWorld_Character_GetTransform(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto character = physics_world->characters[handle];
+
+    SPH_Transform transform;
+    character->character->GetPosition().StoreFloat3(reinterpret_cast<JPH::Real3 *>(transform.position));
+    character->character->GetRotation().GetXYZW().StoreFloat4(reinterpret_cast<JPH::Float4 *>(transform.rotation));
+    return transform;
 }
