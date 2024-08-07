@@ -75,6 +75,7 @@ typedef struct SPH_BodyHandleList {
     uint64_t count;
 } SPH_BodyHandleList;
 
+typedef uint32_t SPH_GroundState;
 
 SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings);
 void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
@@ -90,6 +91,7 @@ void SPH_PhysicsWorld_Character_Remove(SPH_PhysicsWorld *ptr, SPH_CharacterHandl
 SPH_Transform SPH_PhysicsWorld_Character_GetTransform(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle);
 void
 SPH_PhysicsWorld_Character_SetTransform(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle, SPH_Transform *transform);
+SPH_GroundState SPH_PhysicsWorld_Character_GetGroundState(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle);
 
 
 #ifdef __cplusplus

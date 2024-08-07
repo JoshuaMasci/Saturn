@@ -190,6 +190,8 @@ pub const World = struct {
                     const body_transform = self.physics_world.get_character_transform(physics_character_handle);
                     entry.value_ptr.transform.position = za.Vec3.fromArray(body_transform.position);
                     entry.value_ptr.transform.rotation = za.Quat.fromArray(body_transform.rotation);
+
+                    std.log.info("Ground State: {}", .{self.physics_world.get_character_ground_state(physics_character_handle)});
                 }
 
                 if (entry.value_ptr.render_object) |render_object_handle| {

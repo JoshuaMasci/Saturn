@@ -56,7 +56,7 @@ pub const App = struct {
             const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
 
             const character_handle = try game_world.add_character(
-                &.{ .position = za.Vec3.new(10.0, 55.0, 200.0), .rotation = za.Quat.fromAxis(std.math.degreesToRadians(-90.0), za.Vec3.Y) },
+                &.{ .position = za.Vec3.new(45.0, 55.0, 200.0), .rotation = za.Quat.fromAxis(std.math.degreesToRadians(-90.0), za.Vec3.Y) },
                 shape,
                 .{ .mesh = mesh, .material = material },
             );
@@ -97,7 +97,8 @@ pub const App = struct {
             };
         }
 
-        const game_camera = debug_camera.DebugCamera.Default;
+        var game_camera = debug_camera.DebugCamera.Default;
+        game_camera.transform.position = za.Vec3.new(45.0, 55.0, 150.0);
 
         if (game_character) |character_handle| {
             game_world.characters.getPtr(character_handle).?.planet_handle = planet_sphere;

@@ -68,13 +68,13 @@ pub const Shape = struct {
 };
 
 pub const Transform = c.SPH_Transform;
+
 pub const BodyHandle = c.SPH_BodyHandle;
 pub const MotionType = enum(u32) {
     Static = 0,
     Kinematic = 1,
     Dynamic = 2,
 };
-pub const CharacterHandle = u32; //TODO: this
 
 pub const BodySettings = struct {
     shape: Shape,
@@ -90,6 +90,15 @@ pub const BodySettings = struct {
     linear_damping: f32 = 0.05,
     angular_damping: f32 = 0.05,
     gravity_factor: f32 = 1.0,
+};
+
+pub const CharacterHandle = u32; //TODO: this
+
+pub const GroundState = enum(u32) {
+    OnGround = 0,
+    OnSteepGround = 1,
+    InAir = 2,
+    NotSupported = 3,
 };
 
 // World
@@ -182,6 +191,10 @@ pub const World = struct {
 
     pub fn get_character_transform(self: *Self, handle: CharacterHandle) Transform {
         return c.SPH_PhysicsWorld_Character_GetTransform(self.ptr, handle);
+    }
+
+    pub fn get_character_ground_state(self: *Self, handle: CharacterHandle) GroundState {
+        return @enumFromInt(c.SPH_PhysicsWorld_Character_GetGroundState(self.ptr, handle));
     }
 };
 

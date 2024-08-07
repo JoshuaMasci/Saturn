@@ -247,3 +247,25 @@ SPH_Transform SPH_PhysicsWorld_Character_GetTransform(SPH_PhysicsWorld *ptr, SPH
     character->character->GetRotation().GetXYZW().StoreFloat4(reinterpret_cast<JPH::Float4 *>(transform.rotation));
     return transform;
 }
+
+SPH_GroundState SPH_PhysicsWorld_Character_GetGroundState(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto character = physics_world->characters[handle];
+
+    SPH_GroundState ground_state;
+    switch (character->character->GetGroundState()) {
+        case JPH::CharacterBase::EGroundState::OnGround:
+            ground_state = 0;
+            break;
+        case JPH::CharacterBase::EGroundState::OnSteepGround:
+            ground_state = 1;
+            break;
+        case JPH::CharacterBase::EGroundState::InAir:
+            ground_state = 2;
+            break;
+        case JPH::CharacterBase::EGroundState::NotSupported:
+            ground_state = 3;
+            break;
+    }
+    return ground_state;
+}
