@@ -23,7 +23,8 @@ static inline JPH::Quat rotation_between_vectors(const JPH::Vec3 &v0, const JPH:
     JPH::Vec3 v1_normalized = v1.Normalized();
 
     JPH::Vec3 cross_product = v0_normalized.Cross(v1_normalized).Normalized();
-    float angle = acosf(v0_normalized.Dot(v1_normalized));
+    float dot_product = v0_normalized.Dot(v1_normalized);
+    float angle = acosf(dot_product);
 
     if (!isnanf(angle) && angle != 0.0) {
         return JPH::Quat::sRotation(cross_product, angle);
