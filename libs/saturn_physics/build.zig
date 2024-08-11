@@ -38,7 +38,7 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
 
     library.addIncludePath(b.path("src/"));
 
-    const jolt_path = "JoltPhysics-5.0.0";
+    const jolt_path = "JoltPhysics";
     library.addIncludePath(b.path(jolt_path));
 
     const jolt_src_path = jolt_path ++ "/Jolt/";
