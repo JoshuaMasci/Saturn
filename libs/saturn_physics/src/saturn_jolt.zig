@@ -404,6 +404,10 @@ fn zjoltAlignedAlloc(size: usize, alignment: usize) callconv(.C) ?*anyopaque {
     return ptr;
 }
 
+fn zjoltReallocate() void {
+    //TODO: impliment this
+}
+
 fn zjoltFree(maybe_ptr: ?*anyopaque) callconv(.C) void {
     if (maybe_ptr) |ptr| {
         mem_mutex.lock();

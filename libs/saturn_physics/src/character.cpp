@@ -37,17 +37,17 @@ void Character::update(PhysicsWorld *physics_world, float delta_time) {
 
     {
         auto rotation = this->character->GetRotation();
-//        auto linear_velocity = rotation.Inversed() * this->character->GetLinearVelocity();
-//        linear_velocity.SetX(0.0);
-//        linear_velocity.SetZ(5.0);
-        this->character->SetLinearVelocity(rotation * JPH::Vec3(0.0, 0.0, 5.0));
+        auto linear_velocity = rotation.Inversed() * this->character->GetLinearVelocity();
+        linear_velocity.SetX(0.0);
+        linear_velocity.SetZ(5.0);
+        this->character->SetLinearVelocity(rotation * linear_velocity);
     }
 
-
-    this->character->Update(delta_time, this->gravity_velocity,
-                            JPH::BroadPhaseLayerFilter(),
-                            JPH::ObjectLayerFilter(), JPH::BodyFilter(), JPH::ShapeFilter(),
-                            physics_world->temp_allocator);
+    JPH::CharacterVirtual::ExtendedUpdateSettings update_settings;
+    this->character->ExtendedUpdate(delta_time, this->gravity_velocity, update_settings,
+                                    JPH::BroadPhaseLayerFilter(),
+                                    JPH::ObjectLayerFilter(), JPH::BodyFilter(), JPH::ShapeFilter(),
+                                    physics_world->temp_allocator);
 
     JPH::BodyID gravity_body;
     for (auto body_id: this->contact_bodies) {
@@ -68,18 +68,18 @@ void Character::update(PhysicsWorld *physics_world, float delta_time) {
             JPH::Real distance2 = difference.LengthSq();
             this->gravity_velocity = difference.Normalized() * (gravity_strength / distance2);
 
-//            if (this->character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround) {
-//                this->character->SetLinearVelocity(
-//                        this->character->GetLinearVelocity() + (this->gravity_velocity * delta_time));
-//            } else {
-//                this->character->SetLinearVelocity(this->character->GetGroundVelocity());
-//            }
+            if (this->character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround) {
+                this->character->SetLinearVelocity(
+                        this->character->GetLinearVelocity() + (this->gravity_velocity * delta_time));
+            } else {
+                this->character->SetLinearVelocity(this->character->GetGroundVelocity());
+            }
 
             auto current_rotation = this->character->GetRotation();
             auto current_up = current_rotation.RotateAxisY();
             auto new_up = (character_position - gravity_position).Normalized();
-            auto rotation = rotation_between_vectors(current_up, new_up);
-            this->character->SetRotation((current_rotation * rotation).Normalized());
+            this->character->SetUp(new_up);
+            this->character->SetRotation((JPH::Quat::sFromTo(current_up, new_up) * current_rotation).Normalized());
         }
     }
 }

@@ -24,10 +24,13 @@ ShapePool *shape_pool = nullptr;
 
 void SPH_Init(const SPH_AllocationFunctions *functions) {
     if (functions != nullptr) {
-        JPH::Allocate = functions->alloc;
-        JPH::Free = functions->free;
-        JPH::AlignedAllocate = functions->aligned_alloc;
-        JPH::AlignedFree = functions->aligned_free;
+//        JPH::Allocate = functions->alloc;
+//        JPH::Free = functions->free;
+//        JPH::AlignedAllocate = functions->aligned_alloc;
+//        JPH::AlignedFree = functions->aligned_free;
+
+        //TODO: swtich back to custom allocator once I can support Reallocate
+        JPH::RegisterDefaultAllocator();
     } else {
         JPH::RegisterDefaultAllocator();
     }
