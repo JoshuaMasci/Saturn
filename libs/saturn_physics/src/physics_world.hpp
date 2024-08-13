@@ -43,16 +43,16 @@ struct VolumeBody {
 
 class PhysicsWorld {
 public:
-    PhysicsWorld(const SPH_PhysicsWorldSettings *settings);
+    PhysicsWorld(const PhysicsWorldSettings *settings);
 
     ~PhysicsWorld();
 
     void update(float delta_time, int collision_steps);
 
-    SPH_CharacterHandle
+    CharacterHandle
     add_character(JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation);
 
-    void remove_character(SPH_CharacterHandle handle);
+    void remove_character(CharacterHandle handle);
 
 public:
     BPLayerInterfaceImpl *broad_phase_layer_interface;
@@ -62,8 +62,8 @@ public:
     MyContactListener *contact_listener;
     GravityStepListener *gravity_step_listener;
 
-    SPH_CharacterHandle next_character_index = 0;
-    JPH::UnorderedMap<SPH_CharacterHandle, Character *> characters;
+    CharacterHandle next_character_index = 0;
+    JPH::UnorderedMap<CharacterHandle, Character *> characters;
 
     JPH::UnorderedMap<JPH::BodyID, VolumeBody> volume_bodies;
 

@@ -33,22 +33,6 @@ Character::~Character() {
 }
 
 void Character::update(PhysicsWorld *physics_world, float delta_time) {
-    this->contact_bodies.clear();
-
-    {
-        auto rotation = this->character->GetRotation();
-        auto linear_velocity = rotation.Inversed() * this->character->GetLinearVelocity();
-        linear_velocity.SetX(0.0);
-        linear_velocity.SetZ(5.0);
-        this->character->SetLinearVelocity(rotation * linear_velocity);
-    }
-
-    JPH::CharacterVirtual::ExtendedUpdateSettings update_settings;
-    this->character->ExtendedUpdate(delta_time, this->gravity_velocity, update_settings,
-                                    JPH::BroadPhaseLayerFilter(),
-                                    JPH::ObjectLayerFilter(), JPH::BodyFilter(), JPH::ShapeFilter(),
-                                    physics_world->temp_allocator);
-
     JPH::BodyID gravity_body;
     for (auto body_id: this->contact_bodies) {
         if (physics_world->volume_bodies.find(body_id) != physics_world->volume_bodies.end()) {
@@ -68,12 +52,10 @@ void Character::update(PhysicsWorld *physics_world, float delta_time) {
             JPH::Real distance2 = difference.LengthSq();
             this->gravity_velocity = difference.Normalized() * (gravity_strength / distance2);
 
-            if (this->character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround) {
-                this->character->SetLinearVelocity(
-                        this->character->GetLinearVelocity() + (this->gravity_velocity * delta_time));
-            } else {
-                this->character->SetLinearVelocity(this->character->GetGroundVelocity());
-            }
+            //if (this->character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround) {
+            this->character->SetLinearVelocity(
+                    this->character->GetLinearVelocity() + (this->gravity_velocity * delta_time));
+            //}
 
             auto current_rotation = this->character->GetRotation();
             auto current_up = current_rotation.RotateAxisY();
@@ -82,6 +64,16 @@ void Character::update(PhysicsWorld *physics_world, float delta_time) {
             this->character->SetRotation((JPH::Quat::sFromTo(current_up, new_up) * current_rotation).Normalized());
         }
     }
+
+    this->contact_bodies.clear();
+
+    JPH::CharacterVirtual::ExtendedUpdateSettings update_settings;
+    update_settings.mStickToFloorStepDown = this->character->GetRotation().RotateAxisY() * -0.5f;
+    update_settings.mWalkStairsStepUp = this->character->GetRotation().RotateAxisY() * 0.4f;
+    this->character->ExtendedUpdate(delta_time, this->gravity_velocity, update_settings,
+                                    JPH::BroadPhaseLayerFilter(),
+                                    JPH::ObjectLayerFilter(), JPH::BodyFilter(), JPH::ShapeFilter(),
+                                    physics_world->temp_allocator);
 }
 
 void Character::OnContactAdded(const JPH::CharacterVirtual *inCharacter, const JPH::BodyID &inBodyID2,

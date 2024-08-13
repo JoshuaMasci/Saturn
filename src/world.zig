@@ -191,7 +191,24 @@ pub const World = struct {
                     entry.value_ptr.transform.position = za.Vec3.fromArray(body_transform.position);
                     entry.value_ptr.transform.rotation = za.Quat.fromArray(body_transform.rotation);
 
-                    std.log.info("Ground State: {}", .{self.physics_world.get_character_ground_state(physics_character_handle)});
+                    const ground_state = self.physics_world.get_character_ground_state(physics_character_handle);
+                    if (ground_state == .OnGround) {
+                        // If player is on ground
+                        //std.log.info("Player On Ground", .{});
+
+                        //TODO: player move logic
+                        var velocity = za.Vec3.fromArray(self.physics_world.get_character_ground_velocity(physics_character_handle));
+                        velocity = velocity.add(entry.value_ptr.transform.rotation.rotateVec(za.Vec3.Z.scale(5.0)));
+                        self.physics_world.set_character_linear_velocity(physics_character_handle, velocity.toArray());
+                    } else {
+                        // If player is in the air
+                        //std.log.info("Player In Air", .{});
+
+                        //TODO: player air move logic
+                        var velocity = za.Vec3.fromArray(self.physics_world.get_character_linear_velocity(physics_character_handle));
+                        velocity = velocity.add(entry.value_ptr.transform.rotation.rotateVec(za.Vec3.Z.scale(10.0 * delta_time)));
+                        self.physics_world.set_character_linear_velocity(physics_character_handle, velocity.toArray());
+                    }
                 }
 
                 if (entry.value_ptr.render_object) |render_object_handle| {

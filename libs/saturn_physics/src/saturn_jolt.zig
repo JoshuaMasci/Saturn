@@ -17,7 +17,7 @@ pub fn init(allocator: std.mem.Allocator) void {
     mem_allocations = std.AutoHashMap(usize, SizeAndAlignment).init(allocator);
     mem_allocations.?.ensureTotalCapacity(32) catch unreachable;
 
-    c.SPH_Init(&c.SPH_AllocationFunctions{
+    c.init(&c.AllocationFunctions{
         .alloc = zjoltAlloc,
         .free = zjoltFree,
         .aligned_alloc = zjoltAlignedAlloc,
@@ -25,7 +25,7 @@ pub fn init(allocator: std.mem.Allocator) void {
     });
 }
 pub fn deinit() void {
-    c.SPH_Deinit();
+    c.deinit();
 
     mem_allocations.?.deinit();
     mem_allocations = null;
@@ -36,40 +36,40 @@ pub fn deinit() void {
 pub const Shape = struct {
     const Self = @This();
 
-    handle: c.SPH_ShapeHandle,
+    handle: c.ShapeHandle,
 
     pub fn init_sphere(radius: f32, density: f32) Self {
         return .{
-            .handle = c.SPH_Shape_Sphere(radius, density),
+            .handle = c.create_sphere_shape(radius, density),
         };
     }
 
     pub fn init_box(half_extent: [3]f32, density: f32) Self {
         return .{
-            .handle = c.SPH_Shape_Box(&half_extent, density),
+            .handle = c.create_box_shape(&half_extent, density),
         };
     }
 
     pub fn init_cylinder(half_height: f32, radius: f32, density: f32) Self {
         return .{
-            .handle = c.SPH_Shape_Cylinder(half_height, radius, density),
+            .handle = c.create_cylinder_shape(half_height, radius, density),
         };
     }
 
     pub fn init_capsule(half_height: f32, radius: f32, density: f32) Self {
         return .{
-            .handle = c.SPH_Shape_Capsule(half_height, radius, density),
+            .handle = c.create_capsule_shape(half_height, radius, density),
         };
     }
 
     pub fn deinit(self: Self) void {
-        c.SPH_Shape_Destroy(self.handle);
+        c.destroy_shape(self.handle);
     }
 };
 
-pub const Transform = c.SPH_Transform;
+pub const Transform = c.Transform;
 
-pub const BodyHandle = c.SPH_BodyHandle;
+pub const BodyHandle = c.BodyHandle;
 pub const MotionType = enum(u32) {
     Static = 0,
     Kinematic = 1,
@@ -113,11 +113,11 @@ pub const World = struct {
         temp_allocation_size: u32 = 1024 * 1024 * 10,
     };
 
-    ptr: ?*c.SPH_PhysicsWorld,
+    ptr: ?*c.PhysicsWorld,
 
     pub fn init(settings: Settings) Self {
         return .{
-            .ptr = c.SPH_PhysicsWorld_Create(&.{
+            .ptr = c.create_physics_world(&.{
                 .max_bodies = settings.max_bodies,
                 .num_body_mutexes = settings.num_body_mutexes,
                 .max_body_pairs = settings.max_body_pairs,
@@ -127,15 +127,15 @@ pub const World = struct {
         };
     }
     pub fn deinit(self: *Self) void {
-        c.SPH_PhysicsWorld_Destroy(self.ptr);
+        c.destroy_physics_world(self.ptr);
     }
 
     pub fn update(self: *Self, delta_time: f32, collisions_steps: i32) void {
-        c.SPH_PhysicsWorld_Update(self.ptr, delta_time, collisions_steps);
+        c.update_physics_world(self.ptr, delta_time, collisions_steps);
     }
 
     pub fn add_body(self: *Self, body_settings: *const BodySettings) BodyHandle {
-        const c_body_settings: c.SPH_BodySettings = .{
+        const c_body_settings: c.BodySettings = .{
             .shape = body_settings.shape.handle,
             .position = body_settings.position,
             .rotation = body_settings.rotation,
@@ -150,26 +150,26 @@ pub const World = struct {
             .angular_damping = body_settings.angular_damping,
             .gravity_factor = body_settings.gravity_factor,
         };
-        const handle = c.SPH_PhysicsWorld_Body_Create(self.ptr, &c_body_settings);
+        const handle = c.create_body(self.ptr, &c_body_settings);
 
         return handle;
     }
 
     pub fn remove_body(self: *Self, handle: BodyHandle) void {
-        c.SPH_PhysicsWorld_Body_Destroy(self.ptr, handle);
+        c.destroy_body(self.ptr, handle);
     }
 
     pub fn get_body_transform(self: *Self, handle: BodyHandle) Transform {
-        return c.SPH_PhysicsWorld_Body_GetTransform(self.ptr, handle);
+        return c.get_body_transform(self.ptr, handle);
     }
 
     pub fn set_body_linear_velocity(self: *Self, handle: BodyHandle, velocity: [3]f32) void {
         const c_velocity: [*c]const f32 = @ptrCast(&velocity);
-        c.SPH_PhysicsWorld_Body_SetLinearVelocity(self.ptr, handle, c_velocity);
+        c.set_body_linear_velocity(self.ptr, handle, c_velocity);
     }
 
     pub fn get_body_contact_list(self: *Self, handle: BodyHandle) ?[]BodyHandle {
-        const result = c.SPH_PhysicsWorld_Body_GetContactList(self.ptr, handle);
+        const result = c.get_body_contact_list(self.ptr, handle);
         if (result.ptr == null or result.count == 0) {
             return null;
         } else {
@@ -178,23 +178,40 @@ pub const World = struct {
     }
 
     pub fn set_body_volume_gravity_strength(self: *Self, handle: BodyHandle, gravity_strength: f32) void {
-        c.SPH_PhysicsWorld_Body_AddRadialGravity(self.ptr, handle, gravity_strength);
+        c.add_body_radial_gravity(self.ptr, handle, gravity_strength);
     }
 
     pub fn add_character(self: *Self, shape: Shape, transform: *const Transform) CharacterHandle {
-        return c.SPH_PhysicsWorld_Character_Add(self.ptr, shape.handle, transform);
+        return c.add_character(self.ptr, shape.handle, transform);
     }
 
     pub fn remove_character(self: *Self, handle: CharacterHandle) void {
-        c.SPH_PhysicsWorld_Character_Remove(self.ptr, handle);
+        c.destroy_character(self.ptr, handle);
     }
 
     pub fn get_character_transform(self: *Self, handle: CharacterHandle) Transform {
-        return c.SPH_PhysicsWorld_Character_GetTransform(self.ptr, handle);
+        return c.get_character_transform(self.ptr, handle);
+    }
+
+    pub fn get_character_linear_velocity(self: *Self, handle: CharacterHandle) [3]f32 {
+        var velocity: [3]f32 = .{ 0.0, 0.0, 0.0 };
+        c.get_character_linear_velocity(self.ptr, handle, @ptrCast(&velocity[0]));
+        return velocity;
+    }
+
+    pub fn set_character_linear_velocity(self: *Self, handle: CharacterHandle, velocity: [3]f32) void {
+        const c_velocity: [*c]const f32 = @ptrCast(&velocity);
+        c.set_character_linear_velocity(self.ptr, handle, c_velocity);
+    }
+
+    pub fn get_character_ground_velocity(self: *Self, handle: CharacterHandle) [3]f32 {
+        var velocity: [3]f32 = .{ 0.0, 0.0, 0.0 };
+        c.get_character_ground_velocity(self.ptr, handle, @ptrCast(&velocity[0]));
+        return velocity;
     }
 
     pub fn get_character_ground_state(self: *Self, handle: CharacterHandle) GroundState {
-        return @enumFromInt(c.SPH_PhysicsWorld_Character_GetGroundState(self.ptr, handle));
+        return @enumFromInt(c.get_character_ground_state(self.ptr, handle));
     }
 };
 

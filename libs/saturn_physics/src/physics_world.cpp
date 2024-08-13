@@ -46,7 +46,7 @@ size_t ContactList::size() {
     return this->ids.size();
 }
 
-PhysicsWorld::PhysicsWorld(const SPH_PhysicsWorldSettings *settings)
+PhysicsWorld::PhysicsWorld(const PhysicsWorldSettings *settings)
         : temp_allocator(settings->temp_allocation_size), job_system(1024) {
     this->broad_phase_layer_interface = alloc_t<BPLayerInterfaceImpl>();
     ::new(this->broad_phase_layer_interface) BPLayerInterfaceImpl();
@@ -110,7 +110,7 @@ void PhysicsWorld::update(float delta_time, int collision_steps) {
     }
 }
 
-SPH_CharacterHandle
+CharacterHandle
 PhysicsWorld::add_character(JPH::RefConst<JPH::Shape> shape, const JPH::RVec3 position, const JPH::Quat rotation) {
     auto new_character = alloc_t<Character>();
     ::new(new_character) Character(this, shape, position, rotation);
@@ -120,7 +120,7 @@ PhysicsWorld::add_character(JPH::RefConst<JPH::Shape> shape, const JPH::RVec3 po
     return character_handle;
 }
 
-void PhysicsWorld::remove_character(SPH_CharacterHandle handle) {
+void PhysicsWorld::remove_character(CharacterHandle handle) {
     auto character = this->characters[handle];
     character->~Character();
     free_t(character);

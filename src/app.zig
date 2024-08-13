@@ -38,7 +38,7 @@ pub const App = struct {
     game_character: ?world.CharacterHandle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .off);
+        const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
 
         var rendering_backend = try rendering_system.Backend.init(allocator);
         physics_system.init(allocator);

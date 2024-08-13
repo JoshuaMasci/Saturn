@@ -22,14 +22,14 @@
 typedef JoltVector<JPH::ShapeRefC> ShapePool;
 ShapePool *shape_pool = nullptr;
 
-void SPH_Init(const SPH_AllocationFunctions *functions) {
+void init(const AllocationFunctions *functions) {
     if (functions != nullptr) {
 //        JPH::Allocate = functions->alloc;
 //        JPH::Free = functions->free;
 //        JPH::AlignedAllocate = functions->aligned_alloc;
 //        JPH::AlignedFree = functions->aligned_free;
 
-        //TODO: swtich back to custom allocator once I can support Reallocate
+        //TODO: switch back to custom allocator once I can support Reallocate
         JPH::RegisterDefaultAllocator();
     } else {
         JPH::RegisterDefaultAllocator();
@@ -44,7 +44,7 @@ void SPH_Init(const SPH_AllocationFunctions *functions) {
     ::new(shape_pool) ShapePool();
 }
 
-void SPH_Deinit() {
+void deinit() {
     shape_pool->~ShapePool();
     free_t(shape_pool);
 
@@ -59,7 +59,7 @@ void SPH_Deinit() {
     JPH::AlignedFree = nullptr;
 }
 
-SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density) {
+ShapeHandle create_sphere_shape(float radius, float density) {
     auto settings = JPH::SphereShapeSettings();
     settings.mRadius = radius;
     settings.mDensity = density;
@@ -69,7 +69,7 @@ SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density) {
     return index;
 }
 
-SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density) {
+ShapeHandle create_box_shape(const float half_extent[3], float density) {
     auto settings = JPH::BoxShapeSettings();
     settings.mHalfExtent = load_vec3(half_extent);
     settings.mDensity = density;
@@ -79,7 +79,7 @@ SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density) {
     return index;
 }
 
-SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float density) {
+ShapeHandle create_cylinder_shape(float half_height, float radius, float density) {
     auto settings = JPH::CylinderShapeSettings();
     settings.mHalfHeight = half_height;
     settings.mRadius = radius;
@@ -90,7 +90,7 @@ SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float densit
     return index;
 }
 
-SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density) {
+ShapeHandle create_capsule_shape(float half_height, float radius, float density) {
     auto settings = JPH::CapsuleShapeSettings();
     settings.mHalfHeightOfCylinder = half_height;
     settings.mRadius = radius;
@@ -101,28 +101,28 @@ SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density
     return index;
 }
 
-void SPH_Shape_Destroy(SPH_ShapeHandle handle) {
-    // shape_pool->remove(ShapePool::Handle::from_u64(handle));
+void destroy_shape(ShapeHandle handle) {
+    //shape_pool->remove(ShapePool::Handle::from_u64(handle));
 }
 
-SPH_PhysicsWorld *SPH_PhysicsWorld_Create(const SPH_PhysicsWorldSettings *settings) {
+PhysicsWorld *create_physics_world(const PhysicsWorldSettings *settings) {
     auto physics_world = alloc_t<PhysicsWorld>();
     ::new(physics_world) PhysicsWorld(settings);
-    return (SPH_PhysicsWorld *) physics_world;
+    return (PhysicsWorld *) physics_world;
 }
 
-void SPH_PhysicsWorld_Destroy(SPH_PhysicsWorld *ptr) {
+void destroy_physics_world(PhysicsWorld *ptr) {
     auto physics_world = (PhysicsWorld *) ptr;
     physics_world->~PhysicsWorld();
     free_t(physics_world);
 }
 
-void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float delta_time, int collision_steps) {
+void update_physics_world(PhysicsWorld *ptr, float delta_time, int collision_steps) {
     auto physics_world = (PhysicsWorld *) ptr;
     physics_world->update(delta_time, collision_steps);
 }
 
-SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings) {
+BodyHandle create_body(PhysicsWorld *ptr, const BodySettings *body_settings) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto shape = (*shape_pool)[body_settings->shape];
     auto position = load_vec3(body_settings->position);
@@ -169,7 +169,7 @@ SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_Bod
     return body_id.GetIndexAndSequenceNumber();
 }
 
-void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle) {
+void destroy_body(PhysicsWorld *ptr, BodyHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
@@ -180,19 +180,19 @@ void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle)
     body_interface.DestroyBody(body_id);
 }
 
-SPH_Transform SPH_PhysicsWorld_Body_GetTransform(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle) {
+Transform get_body_transform(PhysicsWorld *ptr, BodyHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
     JPH::RVec3 position;
     JPH::Quat rotation;
     body_interface.GetPositionAndRotation(body_id, position, rotation);
-    return SPH_Transform{
+    return Transform{
             {position.GetX(), position.GetY(), position.GetZ()},
             {rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW()}};
 }
 
-void SPH_PhysicsWorld_Body_SetLinearVelocity(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle, const float velocity[3]) {
+void set_body_linear_velocity(PhysicsWorld *ptr, BodyHandle handle, const float velocity[3]) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
     JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
@@ -201,23 +201,23 @@ void SPH_PhysicsWorld_Body_SetLinearVelocity(SPH_PhysicsWorld *ptr, SPH_BodyHand
 }
 
 
-SPH_BodyHandleList SPH_PhysicsWorld_Body_GetContactList(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle) {
+BodyHandleList get_body_contact_list(PhysicsWorld *ptr, BodyHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
     if (physics_world->volume_bodies.find(body_id) != physics_world->volume_bodies.end()) {
         auto contact_list_ref = &physics_world->volume_bodies[body_id].contact_list;
-        return SPH_BodyHandleList{
-                reinterpret_cast<SPH_BodyHandle *>(contact_list_ref->get_ptr()), contact_list_ref->size()
+        return BodyHandleList{
+                reinterpret_cast<BodyHandle *>(contact_list_ref->get_ptr()), contact_list_ref->size()
         };
 
     } else {
-        return SPH_BodyHandleList{
+        return BodyHandleList{
                 nullptr, 0
         };
     }
 }
 
-void SPH_PhysicsWorld_Body_AddRadialGravity(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle, float gravity_strength) {
+void add_body_radial_gravity(PhysicsWorld *ptr, BodyHandle handle, float gravity_strength) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
     if (physics_world->volume_bodies.find(body_id) != physics_world->volume_bodies.end()) {
@@ -229,33 +229,64 @@ void SPH_PhysicsWorld_Body_AddRadialGravity(SPH_PhysicsWorld *ptr, SPH_BodyHandl
     }
 }
 
-SPH_CharacterHandle
-SPH_PhysicsWorld_Character_Add(SPH_PhysicsWorld *ptr, SPH_ShapeHandle shape, const SPH_Transform *transform) {
+CharacterHandle
+add_character(PhysicsWorld *ptr, ShapeHandle shape, const Transform *transform) {
     auto shape_ref = (*shape_pool)[shape];
     auto physics_world = (PhysicsWorld *) ptr;
     return physics_world->add_character(shape_ref, load_rvec3(transform->position), load_quat(transform->rotation));
 }
 
-void SPH_PhysicsWorld_Character_Remove(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle) {
+void destroy_character(PhysicsWorld *ptr, CharacterHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     physics_world->remove_character(handle);
 }
 
-SPH_Transform SPH_PhysicsWorld_Character_GetTransform(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle) {
+Transform get_character_transform(PhysicsWorld *ptr, CharacterHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto character = physics_world->characters[handle];
 
-    SPH_Transform transform;
+    Transform transform;
     character->character->GetPosition().StoreFloat3(reinterpret_cast<JPH::Real3 *>(transform.position));
     character->character->GetRotation().GetXYZW().StoreFloat4(reinterpret_cast<JPH::Float4 *>(transform.rotation));
     return transform;
 }
 
-SPH_GroundState SPH_PhysicsWorld_Character_GetGroundState(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle) {
+void get_character_linear_velocity(PhysicsWorld *ptr, CharacterHandle handle, float *velocity_ptr) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto character = physics_world->characters[handle];
+    auto velocity = character->character->GetLinearVelocity();
+    velocity_ptr[0] = velocity.GetX();
+    velocity_ptr[1] = velocity.GetY();
+    velocity_ptr[2] = velocity.GetZ();
+}
+
+void set_character_linear_velocity(PhysicsWorld *ptr, CharacterHandle handle, const float velocity[3]) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto character = physics_world->characters[handle];
+    character->character->SetLinearVelocity(load_vec3(velocity));
+}
+
+void get_character_ground_velocity(PhysicsWorld *ptr, CharacterHandle handle, float *velocity_ptr) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto character = physics_world->characters[handle];
 
-    SPH_GroundState ground_state;
+    if (character->character->GetGroundState() == JPH::CharacterBase::EGroundState::OnGround) {
+        auto velocity = character->character->GetGroundVelocity();
+        velocity_ptr[0] = velocity.GetX();
+        velocity_ptr[1] = velocity.GetY();
+        velocity_ptr[2] = velocity.GetZ();
+    } else {
+        velocity_ptr[0] = 0.0f;
+        velocity_ptr[1] = 0.0f;
+        velocity_ptr[2] = 0.0f;
+    }
+}
+
+GroundState get_character_ground_state(PhysicsWorld *ptr, CharacterHandle handle) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto character = physics_world->characters[handle];
+
+    GroundState ground_state;
     switch (character->character->GetGroundState()) {
         case JPH::CharacterBase::EGroundState::OnGround:
             ground_state = 0;

@@ -9,48 +9,47 @@ extern "C"
 {
 #endif
 
-
 // Must be 16 byte aligned
-typedef void *(*SPH_AllocateFunction)(size_t in_size);
-typedef void (*SPH_FreeFunction)(void *in_block);
-typedef void *(*SPH_AlignedAllocateFunction)(size_t in_size, size_t in_alignment);
-typedef void (*SPH_AlignedFreeFunction)(void *in_block);
-typedef struct SPH_AllocationFunctions {
-    SPH_AllocateFunction alloc;
-    SPH_FreeFunction free;
-    SPH_AlignedAllocateFunction aligned_alloc;
-    SPH_AlignedFreeFunction aligned_free;
-} SPH_AllocationFunctions;
+typedef void *(*AllocateFunction)(size_t in_size);
+typedef void (*FreeFunction)(void *in_block);
+typedef void *(*AlignedAllocateFunction)(size_t in_size, size_t in_alignment);
+typedef void (*AlignedFreeFunction)(void *in_block);
+typedef struct AllocationFunctions {
+    AllocateFunction alloc;
+    FreeFunction free;
+    AlignedAllocateFunction aligned_alloc;
+    AlignedFreeFunction aligned_free;
+} AllocationFunctions;
 
-typedef uint64_t SPH_ShapeHandle;
-typedef uint32_t SPH_BodyHandle;
-typedef uint32_t SPH_CharacterHandle;
+typedef uint64_t ShapeHandle;
+typedef uint32_t BodyHandle;
+typedef uint32_t CharacterHandle;
 
-void SPH_Init(const SPH_AllocationFunctions *functions);
-void SPH_Deinit();
+void init(const AllocationFunctions *functions);
+void deinit();
 
 // Shape functions
-SPH_ShapeHandle SPH_Shape_Sphere(float radius, float density);
-SPH_ShapeHandle SPH_Shape_Box(const float half_extent[3], float density);
-SPH_ShapeHandle SPH_Shape_Cylinder(float half_height, float radius, float density);
-SPH_ShapeHandle SPH_Shape_Capsule(float half_height, float radius, float density);
-void SPH_Shape_Destroy(SPH_ShapeHandle handle);
+ShapeHandle create_sphere_shape(float radius, float density);
+ShapeHandle create_box_shape(const float half_extent[3], float density);
+ShapeHandle create_cylinder_shape(float half_height, float radius, float density);
+ShapeHandle create_capsule_shape(float half_height, float radius, float density);
+void destroy_shape(ShapeHandle handle);
 
 // World functions
-typedef struct SPH_PhysicsWorldSettings {
+typedef struct PhysicsWorldSettings {
     uint32_t max_bodies;
     uint32_t num_body_mutexes;
     uint32_t max_body_pairs;
     uint32_t max_contact_constraints;
     uint32_t temp_allocation_size;
-} SPH_PhysicsWorldSettings;
-typedef struct SPH_PhysicsWorld SPH_PhysicsWorld;
-SPH_PhysicsWorld *SPH_PhysicsWorld_Create(const SPH_PhysicsWorldSettings *settings);
-void SPH_PhysicsWorld_Destroy(SPH_PhysicsWorld *ptr);
-void SPH_PhysicsWorld_Update(SPH_PhysicsWorld *ptr, float delta_time, int collision_steps);
+} PhysicsWorldSettings;
+typedef struct PhysicsWorld PhysicsWorld;
+PhysicsWorld *create_physics_world(const PhysicsWorldSettings *settings);
+void destroy_physics_world(PhysicsWorld *ptr);
+void update_physics_world(PhysicsWorld *ptr, float delta_time, int collision_steps);
 
-typedef struct SPH_BodySettings {
-    SPH_ShapeHandle shape;
+typedef struct BodySettings {
+    ShapeHandle shape;
     float position[3];
     float rotation[4];
     float linear_velocity[3];
@@ -63,35 +62,37 @@ typedef struct SPH_BodySettings {
     float linear_damping;
     float angular_damping;
     float gravity_factor;
-} SPH_BodySettings;
+} BodySettings;
 
-typedef struct SPH_Transform {
+typedef struct Transform {
     float position[3];
     float rotation[4];
-} SPH_Transform;
+} Transform;
 
-typedef struct SPH_BodyHandleList {
-    SPH_BodyHandle *ptr;
+typedef struct BodyHandleList {
+    BodyHandle *ptr;
     uint64_t count;
-} SPH_BodyHandleList;
+} BodyHandleList;
 
-typedef uint32_t SPH_GroundState;
+typedef uint32_t GroundState;
 
-SPH_BodyHandle SPH_PhysicsWorld_Body_Create(SPH_PhysicsWorld *ptr, const SPH_BodySettings *body_settings);
-void SPH_PhysicsWorld_Body_Destroy(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
-SPH_Transform SPH_PhysicsWorld_Body_GetTransform(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
-void SPH_PhysicsWorld_Body_SetLinearVelocity(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle, const float velocity[3]);
-SPH_BodyHandleList SPH_PhysicsWorld_Body_GetContactList(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle);
+BodyHandle create_body(PhysicsWorld *ptr, const BodySettings *body_settings);
+void destroy_body(PhysicsWorld *ptr, BodyHandle handle);
+Transform get_body_transform(PhysicsWorld *ptr, BodyHandle handle);
+void set_body_linear_velocity(PhysicsWorld *ptr, BodyHandle handle, const float velocity[3]);
+BodyHandleList get_body_contact_list(PhysicsWorld *ptr, BodyHandle handle);
+void add_body_radial_gravity(PhysicsWorld *ptr, BodyHandle handle, float gravity_strength);
 
-void SPH_PhysicsWorld_Body_AddRadialGravity(SPH_PhysicsWorld *ptr, SPH_BodyHandle handle, float gravity_strength);
-
-SPH_CharacterHandle
-SPH_PhysicsWorld_Character_Add(SPH_PhysicsWorld *ptr, SPH_ShapeHandle shape, const SPH_Transform *transform);
-void SPH_PhysicsWorld_Character_Remove(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle);
-SPH_Transform SPH_PhysicsWorld_Character_GetTransform(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle);
+CharacterHandle
+add_character(PhysicsWorld *ptr, ShapeHandle shape, const Transform *transform);
+void destroy_character(PhysicsWorld *ptr, CharacterHandle handle);
+Transform get_character_transform(PhysicsWorld *ptr, CharacterHandle handle);
 void
-SPH_PhysicsWorld_Character_SetTransform(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle, SPH_Transform *transform);
-SPH_GroundState SPH_PhysicsWorld_Character_GetGroundState(SPH_PhysicsWorld *ptr, SPH_CharacterHandle handle);
+set_character_transform(PhysicsWorld *ptr, CharacterHandle handle, Transform *transform);
+void get_character_linear_velocity(PhysicsWorld *ptr, CharacterHandle handle, float *velocity_ptr);
+void set_character_linear_velocity(PhysicsWorld *ptr, CharacterHandle handle, const float velocity[3]);
+void get_character_ground_velocity(PhysicsWorld *ptr, CharacterHandle handle, float *velocity_ptr);
+GroundState get_character_ground_state(PhysicsWorld *ptr, CharacterHandle handle);
 
 
 #ifdef __cplusplus
