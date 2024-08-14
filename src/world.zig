@@ -26,11 +26,12 @@ pub const Character = struct {
 
     //TODO: 3D movement state
 
-    //Ground Movement State
-    linear_speed: za.Vec2 = za.Vec2.set(5.0),
+    ground_velocity: za.Vec2 = za.Vec2.set(5.0),
+    air_acceleration: za.Vec2 = za.Vec2.set(1.0),
+
     angular_speed: za.Vec2 = za.Vec2.set(std.math.pi),
 
-    jump_velocity: f32 = 15.0,
+    jump_velocity: f32 = 10.0,
     max_jumps: u32 = 1,
 
     linear_input: za.Vec2 = za.Vec2.ZERO,
@@ -87,21 +88,22 @@ pub const Character = struct {
             const ground_state = world.physics_world.get_character_ground_state(physics_character_handle);
             if (ground_state == .OnGround) {
                 // If player is on ground
-                //std.log.info("Player On Ground", .{});
-
-                //TODO: player move logic
                 var velocity = za.Vec3.fromArray(world.physics_world.get_character_ground_velocity(physics_character_handle));
-                const input_velocity = self.linear_input.norm().mul(self.linear_speed);
+                const input_velocity = self.linear_input.norm().mul(self.ground_velocity);
                 const input_velocity_ws = self.transform.rotation.rotateVec(za.Vec3.new(input_velocity.x(), 0.0, input_velocity.y()));
                 velocity = velocity.add(input_velocity_ws);
+
+                if (self.jump_input) {
+                    velocity = velocity.add(self.transform.get_up().scale(self.jump_velocity));
+                }
+
                 world.physics_world.set_character_linear_velocity(physics_character_handle, velocity.toArray());
             } else {
                 // If player is in the air
-                //std.log.info("Player In Air", .{});
-
-                //TODO: player air move logic
                 var velocity = za.Vec3.fromArray(world.physics_world.get_character_linear_velocity(physics_character_handle));
-                velocity = velocity.add(self.transform.rotation.rotateVec(za.Vec3.Z.scale(10.0 * delta_time)));
+                const input_acceleration = self.linear_input.norm().mul(self.air_acceleration).scale(delta_time);
+                const input_acceleration_ws = self.transform.rotation.rotateVec(za.Vec3.new(input_acceleration.x(), 0.0, input_acceleration.y()));
+                velocity = velocity.add(input_acceleration_ws);
                 world.physics_world.set_character_linear_velocity(physics_character_handle, velocity.toArray());
             }
         }
@@ -111,62 +113,6 @@ pub const Character = struct {
         }
         self.jump_input = false;
         self.angular_input = za.Vec2.set(0.0);
-
-        // const gravity_strength = 9.8;
-
-        // if (self.planet_handle) |planet_handle| {
-        //     if (world.entities.getPtr(planet_handle)) |planet| {
-        //         const current_up = self.transform.get_up();
-        //         const new_up = self.transform.position.sub(planet.transform.position).norm();
-
-        //         const cross_vector = current_up.cross(new_up);
-        //         const angle = new_up.getAngle(current_up);
-        //         if (!std.math.isNan(angle) and angle != 0.0) {
-        //             //std.log.info("cross: {d:.3} -> angle: {d:.3}", .{ cross_vector.toArray(), angle });
-        //             const rotation_amount = za.Quat.fromAxis(angle, cross_vector);
-        //             //std.log.info("Pre: {d:.3} -> Amount: {d:.3}", .{ self.transform.rotation.toArray(), rotation_amount.toArray() });
-        //             self.transform.rotation = rotation_amount.mul(self.transform.rotation);
-        //             //std.log.info("After: {d:.3}", .{self.transform.rotation.toArray()});
-        //         }
-        //     }
-        // }
-
-        // if (self.physics_character) |character_handle| {
-        //     var character = world.physics_world.get_character(character_handle).?;
-
-        //     const angular_movement = self.angular_input.mul(self.angular_speed).scale(delta_time);
-
-        //     const up_axis = self.transform.get_up();
-        //     const yaw_rotation = za.Quat.fromAxis(angular_movement.x(), up_axis);
-        //     self.transform.rotation = yaw_rotation.mul(self.transform.rotation).norm();
-
-        //     const pi_half = std.math.pi / 2.0;
-        //     self.camera_pitch = std.math.clamp(self.camera_pitch + angular_movement.y(), -pi_half, pi_half);
-
-        //     var gravity_vector = up_axis.scale(-1.0 * gravity_strength);
-
-        //     //std.log.info("Character Ground State: {}", .{character.get_ground_state()});
-
-        //     if (character.get_ground_state() == .on_ground) {
-        //         var input_velocity = self.linear_input.norm().mul(self.linear_speed);
-
-        //         var new_velocity = za.Vec3.new(input_velocity.x(), 0.0, input_velocity.y());
-
-        //         if (self.jump_input) {
-        //             new_velocity = new_velocity.add(za.Vec3.Y.scale(self.jump_velocity));
-        //         }
-
-        //         character.set_linear_velocity(self.transform.rotation.rotateVec(new_velocity));
-        //     } else {
-        //         character.add_linear_velocity(gravity_vector.scale(delta_time));
-        //     }
-
-        //     character.set_rotation(self.transform.rotation);
-        //     character.set_gravity(gravity_vector);
-        // }
-
-        // self.jump_input = false;
-        // self.angular_input = za.Vec2.set(0.0);
     }
 
     pub fn get_camera_transform(self: Self) Transform {
