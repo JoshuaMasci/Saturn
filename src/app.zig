@@ -104,6 +104,25 @@ pub const App = struct {
             game_world.characters.getPtr(character_handle).?.planet_handle = planet_sphere;
         }
 
+        {
+            const skybox_base_path = "res/textures/space_skybox_1e1r04uzdb7k/";
+            const skybox_paths: [6][:0]const u8 = .{
+                skybox_base_path ++ "right.png",
+
+                skybox_base_path ++ "left.png",
+                skybox_base_path ++ "top.png",
+                skybox_base_path ++ "bottom.png",
+                skybox_base_path ++ "front.png",
+                skybox_base_path ++ "back.png",
+            };
+
+            if (load_skybox(&rendering_backend, skybox_paths)) |skybox_handle| {
+                game_world.rendering_world.skybox = skybox_handle;
+            } else |err| {
+                std.log.warn("Loading skybox {s} failed with {}", .{ skybox_base_path, err });
+            }
+        }
+
         return .{
             .should_quit = false,
             .allocator = allocator,
@@ -260,4 +279,50 @@ fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system
         .{ .shape = shape, .dynamic = dynamic, .sensor = sensor },
         model_opt,
     );
+}
+
+fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]const u8) !rendering_system.TextureHandle {
+    const zstbi = @import("zstbi");
+    const Texture = @import("platform/opengl/texture.zig");
+
+    var images: [6]zstbi.Image = undefined;
+    var face_data: [6][]u8 = undefined;
+    for (file_paths, 0..) |file_path, i| {
+        images[i] = try zstbi.Image.loadFromFile(file_path, 4);
+        face_data[i] = images[i].data;
+    }
+    defer for (&images) |*image| {
+        image.deinit();
+    };
+
+    std.debug.assert(images[0].width == images[0].height);
+    const size = images[0].width;
+    const pixel_format: Texture.PixelFormat = switch (images[0].num_components) {
+        1 => .R,
+        2 => .RG,
+        3 => .RGB,
+        4 => .RGBA,
+        else => unreachable,
+    };
+    const pixel_type: Texture.PixelType = .u8;
+
+    for (images[1..]) |image| {
+        std.debug.assert(images[0].num_components == image.num_components);
+        std.debug.assert(image.bytes_per_component == 1);
+        std.debug.assert(image.width == size);
+        std.debug.assert(image.height == size);
+    }
+
+    const texture = Texture.init_cube(
+        size,
+        face_data,
+        .{
+            .load = pixel_format,
+            .store = pixel_format,
+            .layout = pixel_type,
+            .mips = true,
+        },
+        Texture.Filtering.Linear,
+    );
+    return try rendering_backend.load_texture(texture);
 }

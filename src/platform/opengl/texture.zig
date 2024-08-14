@@ -5,6 +5,7 @@ const Self = @This();
 
 texture: gl.Uint,
 size: [2]u32,
+target: gl.Enum,
 
 pub const PixelFormat = enum {
     R,
@@ -92,7 +93,7 @@ pub const Sampler = struct {
     address_mode_v: AddressMode = .Repeat,
 };
 
-pub fn init(
+pub fn init_2d(
     size: [2]u32,
     data: []u8,
     format: Format,
@@ -115,6 +116,40 @@ pub fn init(
     return .{
         .texture = texture,
         .size = size,
+        .target = gl.TEXTURE_2D,
+    };
+}
+
+pub fn init_cube(
+    size: u32,
+    face_data: [6][]u8,
+    format: Format,
+    filter: Filtering,
+) Self {
+    var texture: gl.Uint = undefined;
+    gl.genTextures(1, &texture);
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, filter.to_gl());
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, filter.to_gl());
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_BORDER);
+
+    for (face_data, 0..) |data, i| {
+        const face_offset: gl.Enum = @intCast(i);
+        const face: gl.Enum = gl.TEXTURE_CUBE_MAP_POSITIVE_X + face_offset;
+        gl.texImage2D(face, 0, format.load.to_gl(), @intCast(size), @intCast(size), 0, format.store.to_gl(), format.layout.to_gl(), data.ptr);
+    }
+
+    if (format.mips) {
+        gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+    }
+
+    return .{
+        .texture = texture,
+        .size = .{ size, size },
+        .target = gl.TEXTURE_CUBE_MAP,
     };
 }
 
@@ -124,5 +159,5 @@ pub fn deinit(self: Self) void {
 
 pub fn bind(self: Self, slot: u32) void {
     gl.activeTexture(gl.TEXTURE0 + slot);
-    gl.bindTexture(gl.TEXTURE_2D, self.texture);
+    gl.bindTexture(self.target, self.texture);
 }

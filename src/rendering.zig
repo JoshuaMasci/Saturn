@@ -41,11 +41,23 @@ fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u
     return try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
 }
 
+fn create_shader(allocator: std.mem.Allocator, vertex_path: []const u8, fragment_path: []const u8) !Shader {
+    const vertex_code = try read_file_to_string(allocator, vertex_path);
+    defer allocator.free(vertex_code);
+
+    const fragment_code = try read_file_to_string(allocator, fragment_path);
+    defer allocator.free(fragment_code);
+    return Shader.init(vertex_code, fragment_code);
+}
+
 pub const Backend = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
 
+    skybox_vao: gl.Uint,
+    skybox_shader: Shader,
+    colored_material_shader: Shader,
     pbr_material_shader: Shader,
 
     static_meshes: StaticMeshPool,
@@ -53,28 +65,17 @@ pub const Backend = struct {
     materials: MaterialPool,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        var colored_mesh_shader: Shader = undefined;
-        {
-            const colored_vertex_code = try read_file_to_string(allocator, "res/shaders/colored.vert");
-            defer allocator.free(colored_vertex_code);
-
-            const colored_fragment_code = try read_file_to_string(allocator, "res/shaders/colored.frag");
-            defer allocator.free(colored_fragment_code);
-            colored_mesh_shader = Shader.init(colored_vertex_code, colored_fragment_code);
-        }
-
-        var pbr_material_shader: Shader = undefined;
-        {
-            const textured_vertex_code = try read_file_to_string(allocator, "res/shaders/pbr_material.vert");
-            defer allocator.free(textured_vertex_code);
-
-            const textured_fragment_code = try read_file_to_string(allocator, "res/shaders/pbr_material.frag");
-            defer allocator.free(textured_fragment_code);
-            pbr_material_shader = Shader.init(textured_vertex_code, textured_fragment_code);
-        }
+        var skybox_vao: gl.Uint = undefined;
+        gl.genVertexArrays(1, &skybox_vao);
+        const skybox_shader: Shader = try create_shader(allocator, "res/shaders/whole_screen.vert", "res/shaders/skybox.frag");
+        const colored_material_shader: Shader = try create_shader(allocator, "res/shaders/colored.vert", "res/shaders/colored.frag");
+        const pbr_material_shader: Shader = try create_shader(allocator, "res/shaders/pbr_material.vert", "res/shaders/pbr_material.frag");
 
         return .{
+            .skybox_vao = skybox_vao,
             .allocator = allocator,
+            .skybox_shader = skybox_shader,
+            .colored_material_shader = colored_material_shader,
             .pbr_material_shader = pbr_material_shader,
             .static_meshes = StaticMeshPool.init(allocator),
             .textures = TexturePool.init(allocator),
@@ -83,6 +84,9 @@ pub const Backend = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        gl.deleteVertexArrays(1, &self.skybox_vao);
+        self.skybox_shader.deinit();
+        self.colored_material_shader.deinit();
         self.pbr_material_shader.deinit();
 
         self.static_meshes.deinit_with_entries();
@@ -150,6 +154,27 @@ pub const Backend = struct {
         const projection_matrix = scene_camera.data.perspective_gl(aspect_ratio);
         var view_projection_matrix = projection_matrix.mul(view_matrix);
 
+        if (scene.skybox) |skybox_handle| {
+            if (self.textures.get(skybox_handle)) |skybox_texture| {
+                gl.disable(gl.DEPTH_TEST);
+                defer gl.enable(gl.DEPTH_TEST);
+
+                const rotation = Transform{ .rotation = scene_camera.transform.rotation };
+                const rotation_view_matrix = rotation.get_view_matrix();
+                const inverse_view_projection_matrix = projection_matrix.mul(rotation_view_matrix).inv();
+
+                self.skybox_shader.bind();
+                self.skybox_shader.set_uniform_mat4("inverse_view_projection_matrix", &inverse_view_projection_matrix);
+
+                const cube_map_slot = 0;
+                self.skybox_shader.set_uniform_int("skybox", cube_map_slot);
+                skybox_texture.bind(cube_map_slot);
+
+                gl.bindVertexArray(self.skybox_vao);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            }
+        }
+
         self.pbr_material_shader.bind();
         self.pbr_material_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
 
@@ -191,6 +216,8 @@ pub const Scene = struct {
     allocator: std.mem.Allocator,
 
     instances: SceneInstanceMap,
+
+    skybox: ?TextureHandle = null,
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{

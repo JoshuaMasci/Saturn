@@ -260,7 +260,7 @@ fn load_gltf_texture(renderer: *rendering_system.Backend, data: *gltf.Data, imag
         };
     }
 
-    const texture = Texture.init(
+    const texture = Texture.init_2d(
         size,
         image.data,
         .{
