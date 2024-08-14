@@ -295,7 +295,10 @@ fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]
         image.deinit();
     };
 
-    std.debug.assert(images[0].width == images[0].height);
+    if (images[0].width != images[0].height) {
+        return error.image_not_square;
+    }
+
     const size = images[0].width;
     const pixel_format: Texture.PixelFormat = switch (images[0].num_components) {
         1 => .R,
@@ -307,10 +310,17 @@ fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]
     const pixel_type: Texture.PixelType = .u8;
 
     for (images[1..]) |image| {
-        std.debug.assert(images[0].num_components == image.num_components);
-        std.debug.assert(image.bytes_per_component == 1);
-        std.debug.assert(image.width == size);
-        std.debug.assert(image.height == size);
+        if (images[0].num_components != image.num_components) {
+            return error.inconsistent_image_component_count;
+        }
+
+        if (image.bytes_per_component != 1) {
+            return error.image_not_8_bit;
+        }
+
+        if (image.width != size or image.height != size) {
+            return error.inconsistent_image_size;
+        }
     }
 
     const texture = Texture.init_cube(
