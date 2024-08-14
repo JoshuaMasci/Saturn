@@ -51,12 +51,8 @@ void Character::update(PhysicsWorld *physics_world, float delta_time) {
             JPH::RVec3 difference = gravity_position - character_position;
             JPH::Real distance2 = difference.LengthSq();
             this->gravity_velocity = difference.Normalized() * (gravity_strength / distance2);
-
-            //if (this->character->GetGroundState() != JPH::CharacterBase::EGroundState::OnGround) {
             this->character->SetLinearVelocity(
                     this->character->GetLinearVelocity() + (this->gravity_velocity * delta_time));
-            //}
-
             auto current_rotation = this->character->GetRotation();
             auto current_up = current_rotation.RotateAxisY();
             auto new_up = (character_position - gravity_position).Normalized();

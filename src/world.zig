@@ -74,6 +74,16 @@ pub const Character = struct {
             self.transform.position = za.Vec3.fromArray(body_transform.position);
             self.transform.rotation = za.Quat.fromArray(body_transform.rotation);
 
+            {
+                const angular_movement = self.angular_input.mul(self.angular_speed).scale(delta_time);
+                const up_axis = self.transform.get_up();
+                const yaw_rotation = za.Quat.fromAxis(angular_movement.x(), up_axis);
+                self.transform.rotation = yaw_rotation.mul(self.transform.rotation).norm();
+                const pi_half = std.math.pi / 2.0;
+                self.camera_pitch = std.math.clamp(self.camera_pitch + angular_movement.y(), -pi_half, pi_half);
+                world.physics_world.set_character_rotation(physics_character_handle, self.transform.rotation.toArray());
+            }
+
             const ground_state = world.physics_world.get_character_ground_state(physics_character_handle);
             if (ground_state == .OnGround) {
                 // If player is on ground

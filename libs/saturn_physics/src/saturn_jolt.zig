@@ -189,6 +189,11 @@ pub const World = struct {
         c.destroy_character(self.ptr, handle);
     }
 
+    pub fn set_character_rotation(self: *Self, handle: CharacterHandle, rotation: [4]f32) void {
+        const c_rotation: [*c]const f32 = @ptrCast(&rotation);
+        c.set_character_rotation(self.ptr, handle, c_rotation);
+    }
+
     pub fn get_character_transform(self: *Self, handle: CharacterHandle) Transform {
         return c.get_character_transform(self.ptr, handle);
     }

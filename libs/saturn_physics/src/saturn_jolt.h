@@ -86,6 +86,7 @@ void add_body_radial_gravity(PhysicsWorld *ptr, BodyHandle handle, float gravity
 CharacterHandle
 add_character(PhysicsWorld *ptr, ShapeHandle shape, const Transform *transform);
 void destroy_character(PhysicsWorld *ptr, CharacterHandle handle);
+void set_character_rotation(PhysicsWorld *ptr, CharacterHandle handle, const float rotation[4]);
 Transform get_character_transform(PhysicsWorld *ptr, CharacterHandle handle);
 void
 set_character_transform(PhysicsWorld *ptr, CharacterHandle handle, Transform *transform);

@@ -52,13 +52,13 @@ pub const App = struct {
 
             const shape = physics_system.Shape.init_capsule(CharacterHeight, CharacterRadius, 1.0);
 
-            const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
-            const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
+            // const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
+            // const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
 
             const character_handle = try game_world.add_character(
                 &.{ .position = za.Vec3.new(45.0, 55.0, 200.0), .rotation = za.Quat.fromAxis(std.math.degreesToRadians(-90.0), za.Vec3.Y) },
                 shape,
-                .{ .mesh = mesh, .material = material },
+                null, //.{ .mesh = mesh, .material = material },
             );
             game_character = character_handle;
         }
@@ -162,11 +162,11 @@ pub const App = struct {
             .transform = self.game_camera.transform,
         };
 
-        // if (self.game_character) |character_handle| {
-        //     if (self.game_world.characters.getPtr(character_handle)) |character| {
-        //         scene_camera.transform = character.get_camera_transform();
-        //     }
-        // }
+        if (self.game_character) |character_handle| {
+            if (self.game_world.characters.getPtr(character_handle)) |character| {
+                scene_camera.transform = character.get_camera_transform();
+            }
+        }
 
         const window_size = try self.platform.get_window_size();
         self.rendering_backend.render_scene(window_size, &self.game_world.rendering_world, &scene_camera);

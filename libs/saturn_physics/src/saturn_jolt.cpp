@@ -241,6 +241,14 @@ void destroy_character(PhysicsWorld *ptr, CharacterHandle handle) {
     physics_world->remove_character(handle);
 }
 
+void set_character_rotation(PhysicsWorld *ptr, CharacterHandle handle, const float rotation[4]) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto character = physics_world->characters[handle];
+    auto rotation_quat = load_quat(rotation);
+    character->character->SetRotation(rotation_quat);
+    character->character->SetUp(rotation_quat.RotateAxisY());
+}
+
 Transform get_character_transform(PhysicsWorld *ptr, CharacterHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto character = physics_world->characters[handle];
