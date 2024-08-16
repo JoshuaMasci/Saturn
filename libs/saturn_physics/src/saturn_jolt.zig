@@ -22,6 +22,7 @@ pub fn init(allocator: std.mem.Allocator) void {
         .free = zjoltFree,
         .aligned_alloc = zjoltAlignedAlloc,
         .aligned_free = zjoltFree,
+        .realloc = zjoltReallocate,
     });
 }
 pub fn deinit() void {
@@ -426,8 +427,21 @@ fn zjoltAlignedAlloc(size: usize, alignment: usize) callconv(.C) ?*anyopaque {
     return ptr;
 }
 
-fn zjoltReallocate() void {
-    //TODO: impliment this
+fn zjoltReallocate(maybe_ptr: ?*anyopaque, old_size: usize, new_size: usize) callconv(.C) ?*anyopaque {
+    if (maybe_ptr) |old_ptr| {
+        const alignment = mem_allocations.?.get(@intFromPtr(old_ptr)).?.alignment;
+        const new_ptr = zjoltAlignedAlloc(new_size, alignment);
+
+        const copy_len = @min(old_size, new_size);
+        const new_slice = @as([*]u8, @ptrCast(new_ptr))[0..copy_len];
+        const old_slice = @as([*]u8, @ptrCast(old_ptr))[0..copy_len];
+        @memcpy(new_slice, old_slice);
+
+        zjoltFree(old_ptr);
+
+        return new_ptr;
+    }
+    return zjoltAlloc(new_size);
 }
 
 fn zjoltFree(maybe_ptr: ?*anyopaque) callconv(.C) void {

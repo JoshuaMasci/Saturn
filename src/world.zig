@@ -22,8 +22,6 @@ pub const CharacterHandle = CharacterPool.Handle;
 pub const Character = struct {
     const Self = @This();
 
-    planet_handle: ?EntityHandle = null,
-
     //TODO: 3D movement state
 
     ground_velocity: za.Vec2 = za.Vec2.set(5.0),

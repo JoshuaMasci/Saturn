@@ -14,11 +14,14 @@ typedef void *(*AllocateFunction)(size_t in_size);
 typedef void (*FreeFunction)(void *in_block);
 typedef void *(*AlignedAllocateFunction)(size_t in_size, size_t in_alignment);
 typedef void (*AlignedFreeFunction)(void *in_block);
+typedef void *(*ReallocateFunction)(void *inBlock, size_t old_size, size_t new_size);
+
 typedef struct AllocationFunctions {
     AllocateFunction alloc;
     FreeFunction free;
     AlignedAllocateFunction aligned_alloc;
     AlignedFreeFunction aligned_free;
+    ReallocateFunction realloc;
 } AllocationFunctions;
 
 typedef uint64_t ShapeHandle;
