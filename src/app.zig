@@ -50,8 +50,8 @@ pub const App = struct {
 
             const character_handle = try game_world.add_character(
                 &.{
-                    .position = za.Vec3.new(45.0, 0.0, 0.0),
-                    .rotation = za.Quat.fromAxis(std.math.degreesToRadians(-90.0), za.Vec3.Y),
+                    .position = za.Vec3.new(0.0, 0.0, 25.0),
+                    .rotation = za.Quat.fromAxis(std.math.degreesToRadians(180.0), za.Vec3.Y),
                 },
                 shape,
                 null, //.{ .mesh = mesh, .material = material },

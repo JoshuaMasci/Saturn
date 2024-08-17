@@ -13,6 +13,11 @@
             .url = "https://github.com/JoshuaMasci/zalgebra/archive/2ecb52.tar.gz",
             .hash = "122030e04ec710fc1d3dd98bdd248135b9190495c1e63e361996623a3af31b7a5983",
         },
+        .zgltf = .{
+            .url = "https://github.com/kooparse/zgltf/archive/17fb60b.tar.gz",
+            .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
+        },
+
         .saturn_physics = .{ .path = "libs/saturn_physics" },
 
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
