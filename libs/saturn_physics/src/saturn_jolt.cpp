@@ -11,6 +11,7 @@
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
@@ -98,6 +99,27 @@ ShapeHandle create_capsule_shape(float half_height, float radius, float density)
     shape_pool->emplace_back(shape);
     return index;
 }
+
+ShapeHandle
+create_mesh_shape(const float positions[][3], size_t position_count, const uint32_t *indices, size_t indices_count) {
+    JPH::VertexList vertex_list;
+    for (size_t i = 0; i < position_count; i++) {
+        vertex_list.push_back(load_float3(positions[i]));
+    }
+
+    JPH::IndexedTriangleList triangle_list;
+    const size_t triangle_count = indices_count / 3;
+    for (int i = 0; i < triangle_count; i++) {
+        const size_t offset = i * 3;
+        triangle_list.push_back(JPH::IndexedTriangle(indices[offset + 0], indices[offset + 1], indices[offset + 2], 0));
+    }
+    auto settings = JPH::MeshShapeSettings(vertex_list, triangle_list);
+    auto shape = settings.Create().Get();
+    auto index = shape_pool->size();
+    shape_pool->emplace_back(shape);
+    return index;
+}
+
 
 void destroy_shape(ShapeHandle handle) {
     //shape_pool->remove(ShapePool::Handle::from_u64(handle));

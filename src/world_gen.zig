@@ -3,6 +3,7 @@ const za = @import("zalgebra");
 const world = @import("world.zig");
 
 const gltf = @import("gltf.zig");
+const gltf2 = @import("gltf2.zig");
 const proc = @import("procedural.zig");
 
 const rendering_system = @import("rendering.zig");
@@ -31,8 +32,21 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
     const orbital_velocity = calc_orbit_speed(planet_position, moon_position, gravity_stregth);
     game_world.set_linear_velocity(moon_sphere, za.Vec3.new(orbital_velocity, 0.0, 0.0));
 
-    // var resources = try gltf.load(allocator, rendering_backend, "res/models/airlock.glb");
-    // defer resources.deinit();
+    // Test Load
+    {
+        const file_path = "res/models/airlock.glb";
+        const start = std.time.Instant.now() catch unreachable;
+        defer {
+            const end = std.time.Instant.now() catch unreachable;
+            const time_ns: f32 = @floatFromInt(end.since(start));
+            std.log.info("loading gltf file {s} took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
+        }
+        var some = try gltf2.load_gltf_file(allocator, file_path);
+        defer some.deinit();
+
+        const shape = physics_system.Shape.init_mesh(some.meshes.items[0].?.primitives.items[0].positions.?.items, some.meshes.items[0].?.primitives.items[0].indices.?.items);
+        _ = try game_world.add_entity(&.{}, .{ .shape = shape, .dynamic = false }, null);
+    }
 
     _ = try load_gltf_scene(allocator, rendering_backend, &game_world, "res/models/airlock.glb");
 
@@ -92,6 +106,20 @@ fn load_gltf_node(game_world: *world.World, resources: *gltf.Resources, scene: *
             load_gltf_node(game_world, resources, scene, child);
         }
     }
+}
+
+fn load_gltf_scene2(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, file_path: []const u8) !void {
+    var gltf_file = try gltf2.load_gltf_file(allocator, file_path);
+    defer gltf_file.deinit();
+
+    if (gltf_file.default_scene) |default_scene_index| {
+        const scene = &gltf_file.scenes[default_scene_index];
+        _ = scene; // autofix
+
+    }
+
+    _ = rendering_backend; // autofix
+    _ = game_world; // autofix
 }
 
 fn calc_orbit_speed(gravity_center: za.Vec3, object_pos: za.Vec3, gravity_strength: f32) f32 {

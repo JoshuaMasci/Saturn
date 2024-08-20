@@ -63,6 +63,13 @@ pub const Shape = struct {
         };
     }
 
+    pub fn init_mesh(positions: [][3]f32, indices: []u32) Self {
+        std.log.info("positions: {}", .{positions.len});
+        return .{
+            .handle = c.create_mesh_shape(@alignCast(@ptrCast(positions.ptr)), positions.len, @alignCast(@ptrCast(indices.ptr)), indices.len),
+        };
+    }
+
     pub fn deinit(self: Self) void {
         c.destroy_shape(self.handle);
     }

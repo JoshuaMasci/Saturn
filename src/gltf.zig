@@ -169,7 +169,6 @@ pub fn load(allocator: std.mem.Allocator, renderer: *rendering_system.Backend, f
 
 fn load_gltf_image(allocator: std.mem.Allocator, parent_path: []const u8, gltf_image: *const zgltf.Image) !?zstbi.Image {
     if (gltf_image.data) |data| {
-        std.log.info("Data: {}", .{data.len});
         return try zstbi.Image.loadFromMemory(data, 0);
     }
 

@@ -40,8 +40,8 @@ pub const App = struct {
 
         var game_character: ?world.CharacterHandle = null;
         {
-            const CharacterHeight: f32 = 0.9;
-            const CharacterRadius: f32 = 0.5;
+            const CharacterHeight: f32 = 0.5;
+            const CharacterRadius: f32 = 0.4;
 
             const shape = physics_system.Shape.init_capsule(CharacterHeight, CharacterRadius, 1.0);
 
