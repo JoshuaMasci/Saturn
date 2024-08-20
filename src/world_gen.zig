@@ -41,11 +41,13 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
             const time_ns: f32 = @floatFromInt(end.since(start));
             std.log.info("loading gltf file {s} took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
         }
-        var some = try gltf2.load_gltf_file(allocator, file_path);
-        defer some.deinit();
+        var gltf_file = try gltf2.load_gltf_file(allocator, file_path);
+        defer gltf_file.deinit();
 
-        const shape = physics_system.Shape.init_mesh(some.meshes.items[0].?.primitives.items[0].positions.?.items, some.meshes.items[0].?.primitives.items[0].indices.?.items);
+        const shape = physics_system.Shape.init_mesh(gltf_file.meshes.items[0].?.primitives.items[0].positions.?.items, gltf_file.meshes.items[0].?.primitives.items[0].indices.?.items);
         _ = try game_world.add_entity(&.{}, .{ .shape = shape, .dynamic = false }, null);
+
+        try load_gltf_scene2(&game_world, &gltf_file);
     }
 
     _ = try load_gltf_scene(allocator, rendering_backend, &game_world, "res/models/airlock.glb");
@@ -93,10 +95,7 @@ fn load_gltf_node(game_world: *world.World, resources: *gltf.Resources, scene: *
             _ = game_world.add_entity(
                 &node.transform,
                 null,
-                .{
-                    .mesh = mesh,
-                    .material = material,
-                },
+                .{ .mesh = mesh, .material = material },
             ) catch |err| {
                 std.log.err("failed to add scene instance {}", .{err});
             };
@@ -108,18 +107,29 @@ fn load_gltf_node(game_world: *world.World, resources: *gltf.Resources, scene: *
     }
 }
 
-fn load_gltf_scene2(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, file_path: []const u8) !void {
-    var gltf_file = try gltf2.load_gltf_file(allocator, file_path);
-    defer gltf_file.deinit();
+fn load_gltf_scene2(game_world: *world.World, gltf_file: *gltf2.File) !void {
+    // var gltf_file = try gltf2.load_gltf_file(allocator, file_path);
+    // defer gltf_file.deinit();
 
     if (gltf_file.default_scene) |default_scene_index| {
-        const scene = &gltf_file.scenes[default_scene_index];
-        _ = scene; // autofix
-
+        if (gltf_file.scenes.items[default_scene_index]) |*gltf_scene| {
+            const root_transform = Transform{};
+            for (gltf_scene.root_nodes.items) |root_node| {
+                load_gltf_node2(game_world, &root_transform, gltf_file, gltf_scene, root_node);
+            }
+        }
     }
+}
 
-    _ = rendering_backend; // autofix
-    _ = game_world; // autofix
+fn load_gltf_node2(game_world: *world.World, parent_transform: *const Transform, gltf_file: *const gltf2.File, gltf_scene: *const gltf2.Scene, node_handle: gltf2.NodeHandle) void {
+    if (gltf_scene.pool.getPtr(node_handle)) |node| {
+        std.log.info("Node: {s}", .{node.name.items});
+        const node_transform_ws = parent_transform.transform_by(&node.transform);
+
+        for (node.children.items) |child_node| {
+            load_gltf_node2(game_world, &node_transform_ws, gltf_file, gltf_scene, child_node);
+        }
+    }
 }
 
 fn calc_orbit_speed(gravity_center: za.Vec3, object_pos: za.Vec3, gravity_strength: f32) f32 {

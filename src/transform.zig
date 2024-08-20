@@ -24,6 +24,14 @@ pub fn get_forward(self: Self) za.Vec3 {
     return self.rotation.rotateVec(Self.Forward).norm();
 }
 
+pub fn transform_by(parent: *const Self, child: *const Self) Self {
+    return .{
+        .position = parent.position.add(parent.rotation.rotateVec(child.position.mul(parent.scale))),
+        .rotation = parent.rotation.mul(child.rotation).norm(),
+        .scale = parent.scale.mul(child.scale),
+    };
+}
+
 pub fn get_unscaled(self: Self) UnscaledTransform {
     return .{
         .position = self.position,
