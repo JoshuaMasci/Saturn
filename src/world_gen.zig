@@ -160,7 +160,8 @@ fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]
             .layout = pixel_type,
             .mips = true,
         },
-        OpenglTexture.Filtering.nearest,
+        OpenglTexture.Filtering.linear,
+        OpenglTexture.AddressMode.clamp_to_edge,
     );
     return try rendering_backend.load_texture(texture);
 }

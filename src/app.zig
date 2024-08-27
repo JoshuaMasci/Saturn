@@ -53,7 +53,7 @@ pub const App = struct {
             game_character = character_handle;
         }
 
-        var game_camera = debug_camera.DebugCamera.Default;
+        var game_camera: debug_camera.DebugCamera = .{};
         game_camera.transform.position = za.Vec3.new(45.0, 55.0, 150.0);
         game_camera.camera.far = 10_000.0;
 

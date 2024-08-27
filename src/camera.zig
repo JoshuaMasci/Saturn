@@ -30,8 +30,6 @@ pub const PerspectiveCamera = struct {
     near: f32 = 0.1,
     far: f32 = 1000.0,
 
-    pub const Default: Self = .{};
-
     pub fn perspective_gl(self: Self, aspect_ratio: f32) za.Mat4 {
         return za.Mat4.RightHanded.Gl.perspective(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far);
     }

@@ -10,7 +10,7 @@ pub const DebugCamera = struct {
     const Self = @This();
 
     transform: Transform = Transform.Identity,
-    camera: PerspectiveCamera = PerspectiveCamera.Default,
+    camera: PerspectiveCamera = .{},
 
     pitch_yaw: za.Vec2 = za.Vec2.ZERO,
 
@@ -22,8 +22,6 @@ pub const DebugCamera = struct {
 
     linear_input: za.Vec3 = za.Vec3.ZERO,
     angular_input: za.Vec3 = za.Vec3.ZERO,
-
-    pub const Default: Self = .{};
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
         //std.log.info("Button {} -> {}", .{ event.button, event.state });

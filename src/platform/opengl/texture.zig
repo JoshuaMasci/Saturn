@@ -74,12 +74,14 @@ pub const MipFiltering = enum {
 
 pub const AddressMode = enum {
     clamp_to_edge,
+    clamp_to_border,
     mirrored_repeat,
     repeat,
 
     fn to_gl(self: @This()) gl.Int {
         return switch (self) {
             .clamp_to_edge => gl.CLAMP_TO_EDGE,
+            .clamp_to_border => gl.CLAMP_TO_BORDER,
             .mirrored_repeat => gl.MIRRORED_REPEAT,
             .repeat => gl.REPEAT,
         };
@@ -125,6 +127,7 @@ pub fn init_cube(
     face_data: [6][]u8,
     format: Format,
     filter: Filtering,
+    address_mode: AddressMode,
 ) Self {
     var texture: gl.Uint = undefined;
     gl.genTextures(1, &texture);
@@ -132,9 +135,9 @@ pub fn init_cube(
 
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, filter.to_gl());
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, filter.to_gl());
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_BORDER);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, address_mode.to_gl());
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, address_mode.to_gl());
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, address_mode.to_gl());
 
     for (face_data, 0..) |data, i| {
         const face_offset: gl.Enum = @intCast(i);
