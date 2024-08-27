@@ -49,7 +49,7 @@ pub const Character = struct {
     pub fn on_button_event(self: *Self, event: input_system.ButtonEvent) void {
         switch (event.button) {
             .player_move_jump => {
-                self.jump_input = event.state.is_down();
+                self.jump_input = event.state == .pressed;
             },
             else => {},
         }

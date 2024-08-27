@@ -47,7 +47,7 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
         const shape = physics_system.Shape.init_mesh(gltf_file.meshes.items[0].?.primitives.items[0].positions.?.items, gltf_file.meshes.items[0].?.primitives.items[0].indices.?.items);
         _ = try game_world.add_entity(&.{}, .{ .shape = shape, .dynamic = false }, null);
 
-        try load_gltf_scene2(&game_world, &gltf_file);
+        try load_gltf_scene2(allocator, &game_world, &gltf_file, rendering_backend);
     }
 
     _ = try load_gltf_scene(allocator, rendering_backend, &game_world, "res/models/airlock.glb");
@@ -107,7 +107,10 @@ fn load_gltf_node(game_world: *world.World, resources: *gltf.Resources, scene: *
     }
 }
 
-fn load_gltf_scene2(game_world: *world.World, gltf_file: *gltf2.File) !void {
+fn load_gltf_scene2(allocator: std.mem.Allocator, game_world: *world.World, gltf_file: *gltf2.File, render_backend: *rendering_system.Backend) !void {
+    _ = allocator; // autofix
+    _ = render_backend; // autofix
+
     // var gltf_file = try gltf2.load_gltf_file(allocator, file_path);
     // defer gltf_file.deinit();
 

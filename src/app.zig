@@ -90,7 +90,7 @@ pub const App = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
-        self.platform.proccess_events(self);
+        try self.platform.proccess_events(self);
 
         self.game_camera.update(delta_time);
         self.game_world.update(delta_time);

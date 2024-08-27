@@ -17,14 +17,11 @@
             .url = "https://github.com/kooparse/zgltf/archive/17fb60b.tar.gz",
             .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
         },
-
         .saturn_physics = .{ .path = "libs/saturn_physics" },
 
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
-        .zmath = .{ .path = "libs/zig-gamedev/libs/zmath" },
         .zimgui = .{ .path = "libs/zig-gamedev/libs/zimgui" },
-        .zjolt = .{ .path = "libs/zig-gamedev/libs/zjolt" },
         .zmesh = .{ .path = "libs/zig-gamedev/libs/zmesh" },
         .zstbi = .{ .path = "libs/zig-gamedev/libs/zstbi" },
     },

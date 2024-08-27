@@ -29,7 +29,7 @@ pub const DebugCamera = struct {
         //std.log.info("Button {} -> {}", .{ event.button, event.state });
 
         switch (event.button) {
-            .debug_camera_fast_move => self.linear_move_fast = event.state.is_down(),
+            .debug_camera_fast_move => self.linear_move_fast = event.state == .pressed,
             else => {},
         }
     }

@@ -22,12 +22,17 @@ pub const VerticalSync = enum {
 pub const Platform = struct {
     const Self = @This();
 
+    allocator: std.mem.Allocator,
     should_quit: bool,
     window: *sdl.Window,
     gl_context: ?sdl.gl.Context,
 
     mouse: ?Mouse,
     keyboard: ?Keyboard,
+    controllers: std.AutoHashMap(sdl.JoystickId, Controller),
+
+    //button_state: std.EnumArray(input.Button, input.ButtonState),
+    axis_state: std.EnumArray(input.Axis, input.ButtonAxisState),
 
     pub fn init_window(allocator: std.mem.Allocator, name: [:0]const u8, size: WindowSize, vsync: VerticalSync) !Self {
         const version = sdl.getVersion();
@@ -132,21 +137,33 @@ pub const Platform = struct {
         imgui.io.setConfigFlags(.{
             .dock_enable = true,
             .nav_enable_keyboard = true,
-            .nav_enable_gamepad = true,
+            .nav_enable_gamepad = false,
         });
         imgui.backend.init(window, gl_context);
 
+        const controllers = std.AutoHashMap(sdl.JoystickId, Controller).init(allocator);
+
         return .{
+            .allocator = allocator,
             .should_quit = false,
             .window = window,
             .gl_context = gl_context,
             .mouse = mouse,
             .keyboard = keyboard,
+            .controllers = controllers,
+
+            .axis_state = std.EnumArray(input.Axis, input.ButtonAxisState).initFill(.{}),
         };
     }
 
     pub fn deinit(self: *Self) void {
         std.log.info("Shutting down sdl", .{});
+
+        var it = self.controllers.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.deinit();
+        }
+        self.controllers.deinit();
 
         if (self.keyboard) |*keyboard| {
             keyboard.deinit();
@@ -177,7 +194,7 @@ pub const Platform = struct {
         sdl.gl.swapWindow(self.window) catch |err| std.log.err("glSwapWindow Error: {}", .{err});
     }
 
-    pub fn proccess_events(self: *Self, app: *App) void {
+    pub fn proccess_events(self: *Self, app: *App) !void {
         var event: sdl.Event = undefined;
         while (sdl.pollEvent(&event)) {
             _ = imgui.backend.processEvent(&event);
@@ -201,6 +218,26 @@ pub const Platform = struct {
 
                     keyboard.on_button_event(app, &event.key);
                 },
+                .gamepad_added => {
+                    const controller = Controller.init(self.allocator, event.gdevice.which);
+                    try self.controllers.put(controller.id, controller);
+                },
+                .gamepad_removed => {
+                    if (self.controllers.fetchRemove(event.gdevice.which)) |entry| {
+                        var controller = entry.value;
+                        controller.deinit();
+                    }
+                },
+                .gamepad_button_down, .gamepad_button_up => {
+                    if (self.controllers.getPtr(event.gbutton.which)) |controller| {
+                        controller.on_button_event(app, &event.gbutton);
+                    }
+                },
+                .gamepad_axis_motion => {
+                    if (self.controllers.getPtr(event.gbutton.which)) |controller| {
+                        controller.on_axis_event(app, &event.gaxis);
+                    }
+                },
                 else => {},
             }
         }
@@ -220,27 +257,17 @@ const Mouse = struct {
     const Self = @This();
 
     const ButtonBindingArray = std.EnumArray(MouseButton, ?input.ButtonBinding);
-    const ButtonAxisStateArray = std.EnumArray(input.Axis, input.ButtonAxisState);
-    pub const ButtonAxisBinding = struct {
-        axis: input.Axis,
-        sensitivity: f32,
-        invert: bool,
-
-        pub fn calc_value(self: @This(), raw_input: f32) f32 {
-            const sign: f32 = if (self.invert) -1.0 else 1.0;
-            return raw_input * self.sensitivity * sign;
-        }
-    };
+    //const ButtonAxisStateArray = std.EnumArray(input.Axis, input.ButtonAxisState);
 
     button_bindings: ButtonBindingArray,
-    axis_state: ButtonAxisStateArray,
+    //axis_state: ButtonAxisStateArray,
 
-    axis_bindings: [2]?ButtonAxisBinding = .{ null, null },
+    axis_bindings: [2]?input.AxisBinding = .{ null, null },
 
     fn init() Self {
         return .{
             .button_bindings = ButtonBindingArray.initFill(null),
-            .axis_state = ButtonAxisStateArray.initFill(input.ButtonAxisState.Default),
+            //.axis_state = ButtonAxisStateArray.initFill(input.ButtonAxisState.Default),
         };
     }
 
@@ -281,12 +308,12 @@ const Mouse = struct {
                     .state = state,
                 }),
                 .axis => |value| {
-                    var axis_state = self.axis_state.getPtr(value.axis);
-                    axis_state.update(value.dir, state);
+                    //var axis_state = self.axis_state.getPtr(value.axis);
+                    //axis_state.update(value.dir, state);
 
                     app.on_axis_event(.{
                         .axis = value.axis,
-                        .value = axis_state.get_value(),
+                        .value = if (state == .pressed) value.dir.get_value() else 0.0,
                     });
                 },
             }
@@ -309,15 +336,15 @@ const Mouse = struct {
 const Keyboard = struct {
     const Self = @This();
     const ButtonBindingArray = std.AutoArrayHashMap(sdl.Scancode, input.ButtonBinding);
-    const ButtonAxisStateArray = std.EnumArray(input.Axis, input.ButtonAxisState);
+    //const ButtonAxisStateArray = std.EnumArray(input.Axis, input.ButtonAxisState);
 
     button_bindings: ButtonBindingArray,
-    axis_state: ButtonAxisStateArray,
+    //axis_state: ButtonAxisStateArray,
 
     fn init(allocator: std.mem.Allocator) Self {
         return .{
             .button_bindings = ButtonBindingArray.init(allocator),
-            .axis_state = ButtonAxisStateArray.initFill(input.ButtonAxisState.Default),
+            //.axis_state = ButtonAxisStateArray.initFill(input.ButtonAxisState.Default),
         };
     }
 
@@ -343,15 +370,102 @@ const Keyboard = struct {
                     .state = state,
                 }),
                 .axis => |value| {
-                    var axis_state = self.axis_state.getPtr(value.axis);
-                    axis_state.update(value.dir, state);
+                    // var axis_state = self.axis_state.getPtr(value.axis);
+                    // axis_state.update(value.dir, state);
 
                     app.on_axis_event(.{
                         .axis = value.axis,
-                        .value = axis_state.get_value(),
+                        .value = if (state == .pressed) value.dir.get_value() else 0.0,
                     });
                 },
             }
+        }
+    }
+};
+
+const Controller = struct {
+    const Self = @This();
+    const ButtonBindingArray = std.AutoArrayHashMap(sdl.Gamepad.Button, input.ButtonBinding);
+    //const ButtonAxisStateArray = std.EnumArray(input.Axis, input.ButtonAxisState);
+    const AxisBindingArray = std.AutoArrayHashMap(sdl.Gamepad.Axis, input.AxisBinding);
+
+    id: sdl.JoystickId,
+    gamepad: *sdl.Gamepad,
+
+    button_bindings: ButtonBindingArray,
+    //axis_state: ButtonAxisStateArray,
+    axis_bindings: AxisBindingArray,
+
+    fn init(allocator: std.mem.Allocator, id: sdl.JoystickId) Self {
+        const gamepad = sdl.Gamepad.open(id).?;
+        const name_slice = gamepad.getName();
+        std.log.info("Gamepad: {s}", .{name_slice});
+
+        gamepad.setLed(.{ 0, 255, 255 });
+
+        var button_bindings = ButtonBindingArray.init(allocator);
+        button_bindings.put(.south, .{ .button = .player_move_jump }) catch unreachable;
+
+        var axis_bindings = AxisBindingArray.init(allocator);
+        axis_bindings.put(.left_x, .{ .axis = .player_move_left_right }) catch unreachable;
+        axis_bindings.put(.left_y, .{ .axis = .player_move_forward_backward }) catch unreachable;
+        axis_bindings.put(.right_x, .{ .axis = .player_rotate_yaw }) catch unreachable;
+        axis_bindings.put(.right_y, .{ .axis = .player_rotate_pitch }) catch unreachable;
+
+        return .{
+            .id = id,
+            .gamepad = gamepad,
+            .button_bindings = button_bindings,
+            //.axis_state = ButtonAxisStateArray.initFill(input.ButtonAxisState.Default),
+            .axis_bindings = axis_bindings,
+        };
+    }
+
+    fn deinit(self: *Self) void {
+        self.gamepad.close();
+        self.button_bindings.deinit();
+        self.axis_bindings.deinit();
+    }
+
+    fn on_button_event(self: *Self, app: *App, event: *sdl.GamepadButtonEvent) void {
+        const gamepad_button = std.meta.intToEnum(sdl.Gamepad.Button, event.button) catch {
+            std.log.warn("Unknown Gamepad Button: {}", .{event.button});
+            return;
+        };
+
+        if (self.button_bindings.get(gamepad_button)) |button_binding| {
+            const state: input.ButtonState = switch (event.state) {
+                .pressed => .pressed,
+                .released => .released,
+            };
+
+            switch (button_binding) {
+                .button => |button| app.on_button_event(.{
+                    .button = button,
+                    .state = state,
+                }),
+                .axis => |value| {
+                    // var axis_state = self.axis_state.getPtr(value.axis);
+                    // axis_state.update(value.dir, state);
+
+                    app.on_axis_event(.{
+                        .axis = value.axis,
+                        .value = if (state == .pressed) value.dir.get_value() else 0.0,
+                    });
+                },
+            }
+        }
+    }
+
+    fn on_axis_event(self: *Self, app: *App, event: *sdl.GamepadAxisEvent) void {
+        const gamepad_axis = std.meta.intToEnum(sdl.Gamepad.Axis, event.axis) catch {
+            std.log.warn("Unknown Gamepad Axis: {}", .{event.axis});
+            return;
+        };
+
+        if (self.axis_bindings.get(gamepad_axis)) |binding| {
+            const value = @as(f32, @floatFromInt(event.value)) / @as(f32, @floatFromInt(std.math.maxInt(i16)));
+            app.on_axis_event(.{ .axis = binding.axis, .value = binding.calc_value(value) });
         }
     }
 };
