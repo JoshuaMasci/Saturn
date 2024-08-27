@@ -8,17 +8,17 @@ size: [2]u32,
 target: gl.Enum,
 
 pub const PixelFormat = enum {
-    R,
-    RG,
-    RGB,
-    RGBA,
+    r,
+    rg,
+    rgb,
+    rgba,
 
     fn to_gl(self: @This()) gl.Enum {
         return switch (self) {
-            .R => gl.RED,
-            .RG => gl.RG,
-            .RGB => gl.RGB,
-            .RGBA => gl.RGBA,
+            .r => gl.RED,
+            .rg => gl.RG,
+            .rgb => gl.RGB,
+            .rgba => gl.RGBA,
         };
     }
 };
@@ -34,63 +34,63 @@ pub const PixelType = enum {
 };
 
 pub const Format = struct {
-    load: PixelFormat = .RGBA,
-    store: PixelFormat = .RGBA,
+    load: PixelFormat = .rgba,
+    store: PixelFormat = .rgba,
     layout: PixelType = .u8,
     mips: bool = true,
 };
 
 pub const Filtering = enum {
-    Linear,
-    Nearest,
+    linear,
+    nearest,
 
     fn to_gl(self: @This()) gl.Int {
         return switch (self) {
-            .Linear => gl.LINEAR,
-            .Nearest => gl.NEAREST,
+            .linear => gl.LINEAR,
+            .nearest => gl.NEAREST,
         };
     }
 };
 
 pub const MipFiltering = enum {
-    Linear,
-    Nearest,
-    Nearest_Mip_Nearest,
-    Linear_Mip_Nearest,
-    Nearest_Mip_Linear,
-    Linear_Mip_Linear,
+    linear,
+    nearest,
+    nearest_mipmap_nearest,
+    linear_mipmap_nearest,
+    nearest_mipmap_linear,
+    linear_mipmap_linear,
 
     fn to_gl(self: @This()) gl.Int {
         return switch (self) {
-            .Linear => gl.LINEAR,
-            .Nearest => gl.NEAREST,
-            .Nearest_Mip_Nearest => gl.NEAREST_MIPMAP_NEAREST,
-            .Linear_Mip_Nearest => gl.LINEAR_MIPMAP_NEAREST,
-            .Nearest_Mip_Linear => gl.NEAREST_MIPMAP_LINEAR,
-            .Linear_Mip_Linear => gl.LINEAR_MIPMAP_LINEAR,
+            .linear => gl.LINEAR,
+            .nearest => gl.NEAREST,
+            .nearest_mipmap_nearest => gl.NEAREST_MIPMAP_NEAREST,
+            .linear_mipmap_nearest => gl.LINEAR_MIPMAP_NEAREST,
+            .nearest_mipmap_linear => gl.NEAREST_MIPMAP_LINEAR,
+            .linear_mipmap_linear => gl.LINEAR_MIPMAP_LINEAR,
         };
     }
 };
 
 pub const AddressMode = enum {
-    Clamp_To_Edge,
-    Mirrored_Repeat,
-    Repeat,
+    clamp_to_edge,
+    mirrored_repeat,
+    repeat,
 
     fn to_gl(self: @This()) gl.Int {
         return switch (self) {
-            .Clamp_To_Edge => gl.CLAMP_TO_EDGE,
-            .Mirrored_Repeat => gl.MIRRORED_REPEAT,
-            .Repeat => gl.REPEAT,
+            .clamp_to_edge => gl.CLAMP_TO_EDGE,
+            .mirrored_repeat => gl.MIRRORED_REPEAT,
+            .repeat => gl.REPEAT,
         };
     }
 };
 
 pub const Sampler = struct {
-    min: MipFiltering = .Linear,
-    mag: Filtering = .Linear,
-    address_mode_u: AddressMode = .Repeat,
-    address_mode_v: AddressMode = .Repeat,
+    min: MipFiltering = .linear,
+    mag: Filtering = .linear,
+    address_mode_u: AddressMode = .repeat,
+    address_mode_v: AddressMode = .repeat,
 };
 
 pub fn init_2d(

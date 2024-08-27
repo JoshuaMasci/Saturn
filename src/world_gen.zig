@@ -3,13 +3,17 @@ const za = @import("zalgebra");
 const world = @import("world.zig");
 
 const gltf = @import("gltf.zig");
-const gltf2 = @import("gltf2.zig");
 const proc = @import("procedural.zig");
 
 const rendering_system = @import("rendering.zig");
 const physics_system = @import("physics");
 
 const Transform = @import("transform.zig");
+
+const zstbi = @import("zstbi");
+const OpenglTexture = @import("platform/opengl/texture.zig");
+const OpenglMesh = @import("platform/opengl/mesh.zig");
+const TexturedVertex = @import("platform/opengl/vertex.zig").TexturedVertex;
 
 pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend) !world.World {
     var game_world = world.World.init(allocator, rendering_backend);
@@ -41,16 +45,11 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
             const time_ns: f32 = @floatFromInt(end.since(start));
             std.log.info("loading gltf file {s} took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
         }
-        var gltf_file = try gltf2.load_gltf_file(allocator, file_path);
+        var gltf_file = try gltf.load_gltf_file(allocator, file_path);
         defer gltf_file.deinit();
 
-        const shape = physics_system.Shape.init_mesh(gltf_file.meshes.items[0].?.primitives.items[0].positions.?.items, gltf_file.meshes.items[0].?.primitives.items[0].indices.?.items);
-        _ = try game_world.add_entity(&.{}, .{ .shape = shape, .dynamic = false }, null);
-
-        try load_gltf_scene2(allocator, &game_world, &gltf_file, rendering_backend);
+        try load_gltf_scene(allocator, &game_world, &gltf_file, rendering_backend);
     }
-
-    _ = try load_gltf_scene(allocator, rendering_backend, &game_world, "res/models/airlock.glb");
 
     {
         const skybox_base_path = "res/textures/space_skybox_1e1r04uzdb7k/";
@@ -74,67 +73,6 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
     return game_world;
 }
 
-fn load_gltf_scene(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, file_path: [:0]const u8) !void {
-    var resources = try gltf.load(allocator, rendering_backend, file_path);
-    defer resources.deinit();
-
-    if (resources.default_scene) |default_scene_index| {
-        if (resources.scenes.items[default_scene_index]) |*default_scene| {
-            for (default_scene.root_nodes.items) |root_node| {
-                load_gltf_node(game_world, &resources, default_scene, root_node);
-            }
-        }
-    }
-}
-
-fn load_gltf_node(game_world: *world.World, resources: *gltf.Resources, scene: *const gltf.Scene, node_handle: gltf.NodeHandle) void {
-    if (scene.pool.getPtr(node_handle)) |node| {
-        if (node.model) |model| {
-            const mesh = resources.meshes.items[model.mesh].?;
-            const material = resources.materials.items[model.materials.items[0]].?;
-            _ = game_world.add_entity(
-                &node.transform,
-                null,
-                .{ .mesh = mesh, .material = material },
-            ) catch |err| {
-                std.log.err("failed to add scene instance {}", .{err});
-            };
-        }
-
-        for (node.children.items) |child| {
-            load_gltf_node(game_world, resources, scene, child);
-        }
-    }
-}
-
-fn load_gltf_scene2(allocator: std.mem.Allocator, game_world: *world.World, gltf_file: *gltf2.File, render_backend: *rendering_system.Backend) !void {
-    _ = allocator; // autofix
-    _ = render_backend; // autofix
-
-    // var gltf_file = try gltf2.load_gltf_file(allocator, file_path);
-    // defer gltf_file.deinit();
-
-    if (gltf_file.default_scene) |default_scene_index| {
-        if (gltf_file.scenes.items[default_scene_index]) |*gltf_scene| {
-            const root_transform = Transform{};
-            for (gltf_scene.root_nodes.items) |root_node| {
-                load_gltf_node2(game_world, &root_transform, gltf_file, gltf_scene, root_node);
-            }
-        }
-    }
-}
-
-fn load_gltf_node2(game_world: *world.World, parent_transform: *const Transform, gltf_file: *const gltf2.File, gltf_scene: *const gltf2.Scene, node_handle: gltf2.NodeHandle) void {
-    if (gltf_scene.pool.getPtr(node_handle)) |node| {
-        std.log.info("Node: {s}", .{node.name.items});
-        const node_transform_ws = parent_transform.transform_by(&node.transform);
-
-        for (node.children.items) |child_node| {
-            load_gltf_node2(game_world, &node_transform_ws, gltf_file, gltf_scene, child_node);
-        }
-    }
-}
-
 fn calc_orbit_speed(gravity_center: za.Vec3, object_pos: za.Vec3, gravity_strength: f32) f32 {
     const distance = gravity_center.sub(object_pos).length();
     const orbital_velocity = @sqrt(gravity_strength / distance);
@@ -148,7 +86,7 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
     const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
     const material = try proc.create_color_material(rendering_backend, color);
     const shape = physics_system.Shape.init_box(za.Vec3.fromSlice(&size).scale(0.5).toArray(), 1.0);
-    //defer shape.deinit();
+    defer shape.deinit();
     return game_world.add_entity(
         transform,
         .{ .shape = shape, .dynamic = dynamic },
@@ -168,7 +106,7 @@ fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system
     }
 
     const shape = physics_system.Shape.init_sphere(radius, 1.0);
-    //defer shape.deinit();
+    defer shape.deinit();
     return game_world.add_entity(
         transform,
         .{ .shape = shape, .dynamic = dynamic, .sensor = sensor },
@@ -177,9 +115,6 @@ fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system
 }
 
 fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]const u8) !rendering_system.TextureHandle {
-    const zstbi = @import("zstbi");
-    const Texture = @import("platform/opengl/texture.zig");
-
     var images: [6]zstbi.Image = undefined;
     var face_data: [6][]u8 = undefined;
     for (file_paths, 0..) |file_path, i| {
@@ -195,14 +130,14 @@ fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]
     }
 
     const size = images[0].width;
-    const pixel_format: Texture.PixelFormat = switch (images[0].num_components) {
-        1 => .R,
-        2 => .RG,
-        3 => .RGB,
-        4 => .RGBA,
+    const pixel_format: OpenglTexture.PixelFormat = switch (images[0].num_components) {
+        1 => .r,
+        2 => .rg,
+        3 => .rgb,
+        4 => .rgba,
         else => unreachable,
     };
-    const pixel_type: Texture.PixelType = .u8;
+    const pixel_type: OpenglTexture.PixelType = .u8;
 
     for (images[1..]) |image| {
         if (images[0].num_components != image.num_components) {
@@ -218,7 +153,7 @@ fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]
         }
     }
 
-    const texture = Texture.init_cube(
+    const texture = OpenglTexture.init_cube(
         size,
         face_data,
         .{
@@ -227,7 +162,215 @@ fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]
             .layout = pixel_type,
             .mips = true,
         },
-        Texture.Filtering.Linear,
+        OpenglTexture.Filtering.nearest,
     );
     return try rendering_backend.load_texture(texture);
+}
+
+fn load_gltf_scene(allocator: std.mem.Allocator, game_world: *world.World, gltf_file: *gltf.File, render_backend: *rendering_system.Backend) !void {
+    var gpu_textures = std.ArrayList(rendering_system.TextureHandle).init(allocator);
+    defer gpu_textures.deinit();
+    for (gltf_file.textures.items) |texture| {
+        try gpu_textures.append(try load_gltf_texture(render_backend, gltf_file.images.items, gltf_file.samplers.items, &texture));
+    }
+
+    var gpu_materials = std.ArrayList(rendering_system.MaterialHandle).init(allocator);
+    defer gpu_materials.deinit();
+    for (gltf_file.materials.items) |material| {
+        try gpu_materials.append(try load_gltf_material(render_backend, gpu_textures.items, &material));
+    }
+
+    var meshes = std.ArrayList(Mesh).init(allocator);
+    defer meshes.deinit();
+    for (gltf_file.meshes.items) |mesh| {
+        try meshes.append(try load_gltf_mesh(allocator, render_backend, gpu_materials.items, &mesh.?));
+    }
+
+    if (gltf_file.default_scene) |default_scene_index| {
+        if (gltf_file.scenes.items[default_scene_index]) |*gltf_scene| {
+            const root_transform = Transform{};
+            for (gltf_scene.root_nodes.items) |root_node| {
+                try load_gltf_node(game_world, &root_transform, meshes.items, gltf_scene, root_node);
+            }
+        }
+    }
+}
+
+fn load_gltf_node(game_world: *world.World, parent_transform: *const Transform, gltf_meshes: []const Mesh, gltf_scene: *const gltf.Scene, node_handle: gltf.NodeHandle) !void {
+    if (gltf_scene.pool.getPtr(node_handle)) |node| {
+        std.log.info("Node: {s}", .{node.name.items});
+        const node_transform_ws = parent_transform.transform_by(&node.transform);
+
+        if (node.mesh) |mesh_index| {
+            for (gltf_meshes[mesh_index].primitives.slice()) |primitive| {
+                _ = try game_world.add_entity(
+                    &node_transform_ws,
+                    .{ .shape = primitive.physics_shape, .dynamic = false, .sensor = false },
+                    .{ .mesh = primitive.gpu_mesh, .material = primitive.gpu_material },
+                );
+            }
+        }
+
+        for (node.children.items) |child_node| {
+            try load_gltf_node(game_world, &node_transform_ws, gltf_meshes, gltf_scene, child_node);
+        }
+    }
+}
+
+fn load_gltf_texture(render_backend: *rendering_system.Backend, images: []?zstbi.Image, samplers: []gltf.Sampler, gltf_texture: *const gltf.Texture) !rendering_system.TextureHandle {
+    const image_index = gltf_texture.image_index orelse return error.NoImageForTexture;
+
+    if (image_index >= images.len) {
+        return error.ImageNotLoaded;
+    }
+
+    const image = images[image_index] orelse return error.ImageNotLoaded;
+
+    const size: [2]u32 = .{ image.width, image.height };
+
+    const pixel_format: OpenglTexture.PixelFormat = switch (image.num_components) {
+        1 => .r,
+        2 => .rg,
+        3 => .rgb,
+        4 => .rgba,
+        else => unreachable,
+    };
+
+    //Don't support higher bit componets
+    if (image.bytes_per_component != 1) {
+        return error.UnsupportedImageFormat;
+    }
+
+    const pixel_type: OpenglTexture.PixelType = .u8;
+
+    var sampler = OpenglTexture.Sampler{};
+    if (gltf_texture.sampler_index) |gltf_sampler_index| {
+        const gltf_sampler = samplers[gltf_sampler_index];
+
+        if (gltf_sampler.min) |min_filter| {
+            sampler.min = switch (min_filter) {
+                .nearest => .nearest,
+                .linear => .linear,
+                .nearest_mipmap_nearest => .nearest_mipmap_nearest,
+                .linear_mipmap_nearest => .linear_mipmap_nearest,
+                .nearest_mipmap_linear => .nearest_mipmap_linear,
+                .linear_mipmap_linear => .linear_mipmap_linear,
+            };
+        }
+
+        if (gltf_sampler.mag) |mag_filter| {
+            sampler.min = switch (mag_filter) {
+                .nearest => .nearest,
+                .linear => .linear,
+            };
+        }
+
+        sampler.address_mode_u = switch (gltf_sampler.address_mode_u) {
+            .clamp_to_edge => .clamp_to_edge,
+            .mirrored_repeat => .mirrored_repeat,
+            .repeat => .repeat,
+        };
+
+        sampler.address_mode_u = switch (gltf_sampler.address_mode_v) {
+            .clamp_to_edge => .clamp_to_edge,
+            .mirrored_repeat => .mirrored_repeat,
+            .repeat => .repeat,
+        };
+    }
+
+    const texture = OpenglTexture.init_2d(
+        size,
+        image.data,
+        .{
+            .load = pixel_format,
+            .store = pixel_format,
+            .layout = pixel_type,
+            .mips = true,
+        },
+        sampler,
+    );
+
+    return try render_backend.load_texture(texture);
+}
+
+fn load_gltf_material(render_backend: *rendering_system.Backend, textures: []rendering_system.TextureHandle, gltf_material: *const gltf.Material) !rendering_system.MaterialHandle {
+    var material: rendering_system.Material = .{};
+
+    material.base_color_factor = gltf_material.base_color_factor;
+    if (gltf_material.base_color_texture) |texture| {
+        material.base_color_texture = textures[texture.index];
+    }
+
+    material.metallic_roughness_factor = gltf_material.metallic_roughness_factor;
+    if (gltf_material.metallic_roughness_texture) |texture| {
+        material.metallic_roughness_texture = textures[texture.index];
+    }
+
+    if (gltf_material.normal_texture) |texture| {
+        material.normal_texture = textures[texture.index];
+    }
+
+    if (gltf_material.occlusion_texture) |texture| {
+        material.occlusion_texture = textures[texture.index];
+    }
+
+    material.emissive_factor = gltf_material.emissive_factor;
+    if (gltf_material.emissive_texture) |texture| {
+        material.emissive_texture = textures[texture.index];
+    }
+
+    return try render_backend.load_material(material);
+}
+
+pub const Mesh = struct {
+    const MAX_PRIMITIVES: usize = 8;
+    primitives: std.BoundedArray(Primitive, MAX_PRIMITIVES),
+};
+
+pub const Primitive = struct {
+    physics_shape: physics_system.Shape,
+    gpu_mesh: rendering_system.StaticMeshHandle,
+    gpu_material: rendering_system.MaterialHandle,
+};
+
+fn load_gltf_mesh(allocator: std.mem.Allocator, render_backend: *rendering_system.Backend, materials: []const rendering_system.MaterialHandle, mesh: *const gltf.Mesh) !Mesh {
+    var primitives = try std.BoundedArray(Primitive, Mesh.MAX_PRIMITIVES).init(0);
+
+    for (mesh.primitives.items, 0..@min(mesh.primitives.items.len, Mesh.MAX_PRIMITIVES)) |primitive, _| {
+        const physics_shape = physics_system.Shape.init_mesh(primitive.positions.?.items, primitive.indices.?.items);
+
+        const gpu_mesh = try load_gltf_gpu_primitive(allocator, render_backend, &primitive);
+
+        //TODO: get correct default material
+        const gpu_material = materials[primitive.default_material_index orelse 0];
+
+        try primitives.append(.{
+            .physics_shape = physics_shape,
+            .gpu_mesh = gpu_mesh,
+            .gpu_material = gpu_material,
+        });
+    }
+
+    return .{ .primitives = primitives };
+}
+
+fn load_gltf_gpu_primitive(
+    allocator: std.mem.Allocator,
+    render_backend: *rendering_system.Backend,
+    primitive: *const gltf.Primitive,
+) !rendering_system.StaticMeshHandle {
+    var mesh_vertices = try std.ArrayList(TexturedVertex).initCapacity(allocator, primitive.positions.?.items.len);
+    defer mesh_vertices.deinit();
+
+    for (primitive.positions.?.items, primitive.normals.?.items, primitive.uv0s.?.items) |position, normal, uv0| {
+        mesh_vertices.appendAssumeCapacity(.{
+            .position = position,
+            .normal = normal,
+            .tangent = .{ 0.0, 0.0, 0.0, 1.0 },
+            .uv0 = uv0,
+        });
+    }
+
+    const mesh = OpenglMesh.init(TexturedVertex, u32, mesh_vertices.items, primitive.indices.?.items);
+    return try render_backend.static_meshes.insert(mesh);
 }

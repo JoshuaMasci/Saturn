@@ -12,9 +12,6 @@ const Transform = @import("transform.zig");
 const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
-const gltf = @import("gltf.zig");
-const proc = @import("procedural.zig");
-
 const world_gen = @import("world_gen.zig");
 
 pub const App = struct {
@@ -45,16 +42,13 @@ pub const App = struct {
 
             const shape = physics_system.Shape.init_capsule(CharacterHeight, CharacterRadius, 1.0);
 
-            // const mesh = try proc.create_capsule_mesh(allocator, &rendering_backend, CharacterHeight, CharacterRadius);
-            // const material = try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 });
-
             const character_handle = try game_world.add_character(
                 &.{
                     .position = za.Vec3.new(0.0, 0.0, 25.0),
                     .rotation = za.Quat.fromAxis(std.math.degreesToRadians(180.0), za.Vec3.Y),
                 },
                 shape,
-                null, //.{ .mesh = mesh, .material = material },
+                null,
             );
             game_character = character_handle;
         }
