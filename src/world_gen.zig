@@ -1,4 +1,6 @@
 const std = @import("std");
+const Timer = @import("timer.zig");
+
 const za = @import("zalgebra");
 const world = @import("world.zig");
 
@@ -19,34 +21,30 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
     var game_world = world.World.init(allocator, rendering_backend);
 
     const surface_height = 50.0;
-    const planet_position = za.Vec3.NEG_Y.scale(surface_height + 1.5);
+    const planet_position = za.Vec3.NEG_Y.scale(surface_height);
 
     // Planet
-    const planet_sphere = try add_sphere(allocator, rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, surface_height, &.{ .position = planet_position }, false, false);
-    _ = planet_sphere; // autofix
+    // const planet_sphere = try add_sphere(allocator, rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, surface_height, &.{ .position = planet_position }, false, false);
+    // _ = planet_sphere; // autofix
     const planet_sphere_volume = try add_sphere(allocator, rendering_backend, &game_world, null, surface_height * 10.0, &.{ .position = planet_position }, false, true);
-
     const surface_gravity = 9.8;
     const gravity_stregth = surface_gravity * (surface_height * surface_height);
     game_world.set_planet_gravity_strength(planet_sphere_volume, gravity_stregth);
 
     // Moon
-    const moon_position: za.Vec3 = planet_position.add(planet_position).add(za.Vec3.Z.scale(surface_height * 1.5));
+    const moon_position: za.Vec3 = planet_position.add(za.Vec3.Z.scale(surface_height * 1.5));
     const moon_sphere = try add_sphere(allocator, rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = moon_position }, true, false);
-    const orbital_velocity = calc_orbit_speed(planet_position, moon_position, gravity_stregth);
-    game_world.set_linear_velocity(moon_sphere, za.Vec3.new(orbital_velocity, 0.0, 0.0));
+    const orbital_speed = calc_orbit_speed(planet_position, moon_position, gravity_stregth);
+    const orbital_velocity = za.Vec3.new(1.0, 0.75, 0.0).norm().scale(orbital_speed);
+    game_world.set_linear_velocity(moon_sphere, orbital_velocity);
 
     // Test Load
     {
-        const file_path = "res/models/airlock.glb";
-        const start = std.time.Instant.now() catch unreachable;
-        defer {
-            const end = std.time.Instant.now() catch unreachable;
-            const time_ns: f32 = @floatFromInt(end.since(start));
-            std.log.info("loading gltf file {s} took: {d:.3}ms", .{ file_path, time_ns / std.time.ns_per_ms });
-        }
+        const file_path = "res/models/planet.glb";
+        const load_file = Timer.start();
         var gltf_file = try gltf.load_gltf_file(allocator, file_path);
         defer gltf_file.deinit();
+        load_file.end("gltf file load");
 
         try load_gltf_scene(allocator, &game_world, &gltf_file, rendering_backend);
     }
@@ -168,6 +166,8 @@ fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]
 }
 
 fn load_gltf_scene(allocator: std.mem.Allocator, game_world: *world.World, gltf_file: *gltf.File, render_backend: *rendering_system.Backend) !void {
+    const load_resources = Timer.start();
+
     var gpu_textures = std.ArrayList(rendering_system.TextureHandle).init(allocator);
     defer gpu_textures.deinit();
     for (gltf_file.textures.items) |texture| {
@@ -185,7 +185,9 @@ fn load_gltf_scene(allocator: std.mem.Allocator, game_world: *world.World, gltf_
     for (gltf_file.meshes.items) |mesh| {
         try meshes.append(try load_gltf_mesh(allocator, render_backend, gpu_materials.items, &mesh.?));
     }
+    load_resources.end("gltf resource load");
 
+    const load_scene = Timer.start();
     if (gltf_file.default_scene) |default_scene_index| {
         if (gltf_file.scenes.items[default_scene_index]) |*gltf_scene| {
             const root_transform = Transform{};
@@ -194,11 +196,12 @@ fn load_gltf_scene(allocator: std.mem.Allocator, game_world: *world.World, gltf_
             }
         }
     }
+    load_scene.end("gltf scene load");
 }
 
 fn load_gltf_node(game_world: *world.World, parent_transform: *const Transform, gltf_meshes: []const Mesh, gltf_scene: *const gltf.Scene, node_handle: gltf.NodeHandle) !void {
     if (gltf_scene.pool.getPtr(node_handle)) |node| {
-        std.log.info("Node: {s}", .{node.name.items});
+        //std.log.info("Node: {s}", .{node.name.items});
         const node_transform_ws = parent_transform.transform_by(&node.transform);
 
         if (node.mesh) |mesh_index| {
@@ -342,7 +345,7 @@ fn load_gltf_mesh(allocator: std.mem.Allocator, render_backend: *rendering_syste
         const gpu_mesh = try load_gltf_gpu_primitive(allocator, render_backend, &primitive);
 
         //TODO: get correct default material
-        const gpu_material = materials[primitive.default_material_index orelse 0];
+        const gpu_material = materials[primitive.default_material_index.?];
 
         try primitives.append(.{
             .physics_shape = physics_shape,

@@ -315,9 +315,7 @@ fn load_gltf_material(allocator: std.mem.Allocator, gltf_material: *const zgltf.
     var name = try std.ArrayList(u8).initCapacity(allocator, gltf_material.name.len);
     name.appendSliceAssumeCapacity(gltf_material.name);
 
-    var material: Material = .{
-        .name = name,
-    };
+    var material: Material = .{ .name = name };
 
     material.base_color_factor = gltf_material.metallic_roughness.base_color_factor;
     if (gltf_material.metallic_roughness.base_color_texture) |texture| {
@@ -356,7 +354,7 @@ fn load_gltf_mesh(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf_me
 }
 
 fn load_gltf_primitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf_primitive: *const zgltf.Primitive) !Primitive {
-    var primitive = Primitive{};
+    var primitive = Primitive{ .default_material_index = gltf_primitive.material };
 
     if (gltf_primitive.indices) |indices_index| {
         const accessor = gltf_file.data.accessors.items[indices_index];
