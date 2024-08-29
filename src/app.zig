@@ -2,7 +2,9 @@ const std = @import("std");
 const za = @import("zalgebra");
 const imgui = @import("zimgui");
 
-const sdl_platform = @import("platform/sdl3.zig");
+const saturn_options = @import("saturn_options");
+const sdl_platform = if (saturn_options.sdl3) @import("platform/sdl3.zig") else @import("platform/sdl2.zig");
+
 const rendering_system = @import("rendering.zig");
 const physics_system = @import("physics");
 

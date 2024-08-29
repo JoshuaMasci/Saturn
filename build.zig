@@ -2,6 +2,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
+    const use_sdl3 = b.option(bool, "use_sdl3", "use sdl3 instead of sdl2 (default: no_backend)") orelse false;
+    var option_step = b.addOptions();
+    option_step.addOption(bool, "sdl3", use_sdl3);
+
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -11,6 +15,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    exe.root_module.addImport("saturn_options", option_step.createModule());
 
     // zalgebra
     const zalgebra = b.dependency("zalgebra", .{});
@@ -22,17 +27,21 @@ pub fn build(b: *std.Build) !void {
 
     // zsdl
     const zsdl = b.dependency("zsdl", .{});
-    exe.root_module.addImport("zsdl3", zsdl.module("zsdl3"));
-    @import("zsdl").link_SDL3(exe);
+    if (use_sdl3) {
+        exe.root_module.addImport("zsdl3", zsdl.module("zsdl3"));
+        @import("zsdl").link_SDL3(exe);
+    } else {
+        exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
+        @import("zsdl").link_SDL2(exe);
+    }
 
     // zopengl
     const zopengl = b.dependency("zopengl", .{});
     exe.root_module.addImport("zopengl", zopengl.module("root"));
 
     // zimgui
-    const zimgui = b.dependency("zimgui", .{
-        .backend = .sdl3_opengl3,
-    });
+
+    const zimgui = if (use_sdl3) b.dependency("zimgui", .{ .backend = .sdl3_opengl3 }) else b.dependency("zimgui", .{ .backend = .sdl2_opengl3 });
     exe.root_module.addImport("zimgui", zimgui.module("root"));
     exe.linkLibrary(zimgui.artifact("imgui"));
 
