@@ -1,5 +1,6 @@
 #include "saturn_jolt.h"
 
+#include <cstdio>
 #include <iostream>
 
 #include <Jolt/Jolt.h>
@@ -15,6 +16,8 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
+#include "Jolt/Physics/Collision/CastResult.h"
+#include "Jolt/Physics/Collision/RayCast.h"
 #include "memory.hpp"
 #include "physics_world.hpp"
 #include "math.hpp"
@@ -330,4 +333,19 @@ GroundState get_character_ground_state(PhysicsWorld *ptr, CharacterHandle handle
             break;
     }
     return ground_state;
+}
+
+#include <iostream>
+
+bool raycast(PhysicsWorld *ptr, const float origin[3], const float direction[3]) {
+    auto physics_world = (PhysicsWorld *) ptr;
+
+    JPH::RayCast ray;
+    ray.mOrigin = load_vec3(origin);
+    ray.mDirection = load_vec3(direction);
+    JPH::RayCastResult hit;
+
+    bool had_hit = physics_world->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit, JPH::BroadPhaseLayerFilter(), JPH::ObjectLayerFilter(), JPH::BodyFilter());
+
+    return had_hit;
 }

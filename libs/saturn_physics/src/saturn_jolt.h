@@ -100,6 +100,7 @@ void set_character_linear_velocity(PhysicsWorld *ptr, CharacterHandle handle, co
 void get_character_ground_velocity(PhysicsWorld *ptr, CharacterHandle handle, float *velocity_ptr);
 GroundState get_character_ground_state(PhysicsWorld *ptr, CharacterHandle handle);
 
+bool raycast(PhysicsWorld *ptr, const float origin[3], const float direction[3]);
 
 #ifdef __cplusplus
 }

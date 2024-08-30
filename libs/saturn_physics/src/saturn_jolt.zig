@@ -225,6 +225,10 @@ pub const World = struct {
     pub fn get_character_ground_state(self: *Self, handle: CharacterHandle) GroundState {
         return @enumFromInt(c.get_character_ground_state(self.ptr, handle));
     }
+
+    pub fn raycast(self: *Self, origin: [3]f32, direction: [3]f32) bool {
+        return c.raycast(self.ptr, @ptrCast(&origin[0]), @ptrCast(&direction[0]));
+    }
 };
 
 pub const BodyInterface = struct {

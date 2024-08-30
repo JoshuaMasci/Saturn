@@ -4,6 +4,8 @@ project(saturn_physics)
 
 set(CMAKE_CXX_STANDARD 17)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 include_directories(JoltPhysics/)
 include_directories(src)
 

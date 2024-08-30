@@ -29,6 +29,8 @@ pub const App = struct {
     game_camera: debug_camera.DebugCamera,
     game_character: ?world.CharacterHandle,
 
+    fire_ray: bool = false,
+
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
 
@@ -104,6 +106,15 @@ pub const App = struct {
             }
         }
 
+        if (self.fire_ray) {
+            if (self.game_world.physics_world.raycast(scene_camera.transform.position.toArray(), scene_camera.transform.get_forward().scale(10.0).toArray())) {
+                std.log.info("Raycast Hit!!!", .{});
+            } else {
+                std.log.info("Raycast Missed", .{});
+            }
+            self.fire_ray = false;
+        }
+
         const window_size = try self.platform.get_window_size();
         self.rendering_backend.render_scene(window_size, &self.game_world.rendering_world, &scene_camera);
 
@@ -135,6 +146,10 @@ pub const App = struct {
         if (self.game_character) |character_handle| {
             var character = self.game_world.characters.getPtr(character_handle).?;
             character.on_button_event(event);
+        }
+
+        if (event.button == .debug_camera_interact and event.state == .pressed) {
+            self.fire_ray = true;
         }
     }
 

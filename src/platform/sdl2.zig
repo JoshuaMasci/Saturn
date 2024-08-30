@@ -94,7 +94,7 @@ pub const Platform = struct {
         var mouse: ?Mouse = null;
         {
             mouse = Mouse.init();
-            // mouse.?.button_bindings.set(MouseButton.left, .{ .button = .debug_camera_interact });
+            mouse.?.button_bindings.set(MouseButton.left, .{ .button = .debug_camera_interact });
             // mouse.?.axis_bindings[0] = .{ .axis = .debug_camera_yaw, .sensitivity = 0.2, .invert = true };
             // mouse.?.axis_bindings[1] = .{ .axis = .debug_camera_pitch, .sensitivity = 0.2, .invert = false };
 
@@ -129,6 +129,8 @@ pub const Platform = struct {
             try keyboard.?.button_bindings.put(sdl.Scancode.d, .{ .axis = .{ .axis = .player_move_left_right, .dir = .negitive } });
 
             try keyboard.?.button_bindings.put(sdl.Scancode.space, .{ .button = .player_move_jump });
+
+            try keyboard.?.button_bindings.put(sdl.Scancode.t, .{ .button = .debug_camera_interact });
         }
 
         imgui.init(allocator);
@@ -224,17 +226,12 @@ const Mouse = struct {
     const Self = @This();
 
     const ButtonBindingArray = std.EnumArray(MouseButton, ?input.ButtonBinding);
-    //const ButtonAxisStateArray = std.EnumArray(input.Axis, input.ButtonAxisState);
-
     button_bindings: ButtonBindingArray,
-    //axis_state: ButtonAxisStateArray,
-
     axis_bindings: [2]?input.AxisBinding = .{ null, null },
 
     fn init() Self {
         return .{
             .button_bindings = ButtonBindingArray.initFill(null),
-            //.axis_state = ButtonAxisStateArray.initFill(input.ButtonAxisState.Default),
         };
     }
 
@@ -275,9 +272,6 @@ const Mouse = struct {
                     .state = state,
                 }),
                 .axis => |value| {
-                    //var axis_state = self.axis_state.getPtr(value.axis);
-                    //axis_state.update(value.dir, state);
-
                     app.on_axis_event(.{
                         .axis = value.axis,
                         .value = if (state == .pressed) value.dir.get_value() else 0.0,
@@ -307,15 +301,12 @@ const Mouse = struct {
 const Keyboard = struct {
     const Self = @This();
     const ButtonBindingArray = std.AutoArrayHashMap(sdl.Scancode, input.ButtonBinding);
-    //const ButtonAxisStateArray = std.EnumArray(input.Axis, input.ButtonAxisState);
 
     button_bindings: ButtonBindingArray,
-    //axis_state: ButtonAxisStateArray,
 
     fn init(allocator: std.mem.Allocator) Self {
         return .{
             .button_bindings = ButtonBindingArray.init(allocator),
-            //.axis_state = ButtonAxisStateArray.initFill(input.ButtonAxisState.Default),
         };
     }
 
@@ -341,9 +332,6 @@ const Keyboard = struct {
                     .state = state,
                 }),
                 .axis => |value| {
-                    // var axis_state = self.axis_state.getPtr(value.axis);
-                    // axis_state.update(value.dir, state);
-
                     app.on_axis_event(.{
                         .axis = value.axis,
                         .value = if (state == .pressed) value.dir.get_value() else 0.0,
