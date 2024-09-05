@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
-    const use_sdl3 = b.option(bool, "use_sdl3", "use sdl3 instead of sdl2 (default: no_backend)") orelse false;
+    const use_sdl3 = b.option(bool, "use_sdl3", "use sdl3 instead of sdl2") orelse false;
     var option_step = b.addOptions();
     option_step.addOption(bool, "sdl3", use_sdl3);
 
