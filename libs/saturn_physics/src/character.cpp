@@ -14,7 +14,7 @@ Character::Character(PhysicsWorld *physics_world, JPH::RefConst<JPH::Shape> shap
 
     JPH::CharacterVirtualSettings settings = JPH::CharacterVirtualSettings();
     settings.mShape = this->shape;
-    settings.mMaxSlopeAngle = M_PI_4f;
+    settings.mMaxSlopeAngle = M_PI_4;
     settings.mMaxStrength = 100.0f;
     settings.mBackFaceMode = JPH::EBackFaceMode::CollideWithBackFaces;
     settings.mCharacterPadding = 0.02f;
@@ -77,4 +77,3 @@ void Character::OnContactAdded(const JPH::CharacterVirtual *inCharacter, const J
                                JPH::Vec3Arg inContactNormal, JPH::CharacterContactSettings &ioSettings) {
     this->contact_bodies.push_back(inBodyID2);
 }
-
