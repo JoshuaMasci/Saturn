@@ -107,7 +107,7 @@ pub const App = struct {
         }
 
         if (self.fire_ray) {
-            if (self.game_world.physics_world.raycast(1, scene_camera.transform.position.toArray(), scene_camera.transform.get_forward().scale(2.0).toArray())) {
+            if (self.game_world.physics_world.cast_ray(1, scene_camera.transform.position.toArray(), scene_camera.transform.get_forward().scale(2.0).toArray())) {
                 std.log.info("Raycast Hit!!!", .{});
             } else {
                 std.log.info("Raycast Missed", .{});

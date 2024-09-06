@@ -228,8 +228,8 @@ pub const World = struct {
         return @enumFromInt(c.get_character_ground_state(self.ptr, handle));
     }
 
-    pub fn ray_cast(self: *Self, object_layer_pattern: u16, origin: [3]f32, direction: [3]f32) bool {
-        return c.ray_cast(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]));
+    pub fn cast_ray(self: *Self, object_layer_pattern: u16, origin: [3]f32, direction: [3]f32) bool {
+        return c.cast_ray(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]));
     }
 };
 

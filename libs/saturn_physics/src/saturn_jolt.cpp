@@ -342,7 +342,7 @@ GroundState get_character_ground_state(PhysicsWorld *ptr, CharacterHandle handle
 	return ground_state;
 }
 
-bool ray_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3]) {
+bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3]) {
 	auto physics_world = (PhysicsWorld *)ptr;
 
 	JPH::RayCast ray;
@@ -353,6 +353,7 @@ bool ray_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float o
 	return had_hit;
 }
 
-bool shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern) {
+bool collide_shape(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform) {
+	auto physics_world = (PhysicsWorld *)ptr;
 	return false;
 }
