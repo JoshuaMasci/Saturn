@@ -15,55 +15,55 @@ class MyContactListener;
 class GravityStepListener;
 
 class ContactList {
-public:
-  void add(JPH::BodyID);
+  public:
+	void add(JPH::BodyID);
 
-  void remove(JPH::BodyID);
+	void remove(JPH::BodyID);
 
-  size_t size();
+	size_t size();
 
-  JPH::BodyID *get_ptr() { return this->ids.data(); }
+	JPH::BodyID *get_ptr() { return this->ids.data(); }
 
-  JoltVector<JPH::BodyID> &get_id_list() { return this->ids; }
+	JoltVector<JPH::BodyID> &get_id_list() { return this->ids; }
 
-private:
-  // TODO: include sub-shape ids as part of this at some point
-  JoltVector<JPH::BodyID> ids;
-  JoltVector<int32_t> contact_count;
+  private:
+	// TODO: include sub-shape ids as part of this at some point
+	JoltVector<JPH::BodyID> ids;
+	JoltVector<int32_t> contact_count;
 };
 
 class Character;
 
 struct VolumeBody {
-  ContactList contact_list;
-  std::optional<float> gravity_strength;
+	ContactList contact_list;
+	std::optional<float> gravity_strength;
 };
 
 class PhysicsWorld {
-public:
-  PhysicsWorld(const PhysicsWorldSettings *settings);
+  public:
+	PhysicsWorld(const PhysicsWorldSettings *settings);
 
-  ~PhysicsWorld();
+	~PhysicsWorld();
 
-  void update(float delta_time, int collision_steps);
+	void update(float delta_time, int collision_steps);
 
-  CharacterHandle add_character(JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation);
+	CharacterHandle add_character(JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation);
 
-  void remove_character(CharacterHandle handle);
+	void remove_character(CharacterHandle handle);
 
-public:
-  BroadPhaseLayerInterfaceImpl *broad_phase_layer_interface;
-  ObjectVsBroadPhaseLayerFilterImpl *object_vs_broadphase_layer_filter;
-  AnyMatchObjectLayerPairFilter *object_vs_object_layer_filter;
-  JPH::PhysicsSystem *physics_system;
-  MyContactListener *contact_listener;
-  GravityStepListener *gravity_step_listener;
+  public:
+	BroadPhaseLayerInterfaceImpl *broad_phase_layer_interface;
+	ObjectVsBroadPhaseLayerFilterImpl *object_vs_broadphase_layer_filter;
+	AnyMatchObjectLayerPairFilter *object_vs_object_layer_filter;
+	JPH::PhysicsSystem *physics_system;
+	MyContactListener *contact_listener;
+	GravityStepListener *gravity_step_listener;
 
-  CharacterHandle next_character_index = 0;
-  JPH::UnorderedMap<CharacterHandle, Character *> characters;
+	CharacterHandle next_character_index = 0;
+	JPH::UnorderedMap<CharacterHandle, Character *> characters;
 
-  JPH::UnorderedMap<JPH::BodyID, VolumeBody> volume_bodies;
+	JPH::UnorderedMap<JPH::BodyID, VolumeBody> volume_bodies;
 
-  JPH::TempAllocatorImpl temp_allocator;
-  JPH::JobSystemSingleThreaded job_system;
+	JPH::TempAllocatorImpl temp_allocator;
+	JPH::JobSystemSingleThreaded job_system;
 };

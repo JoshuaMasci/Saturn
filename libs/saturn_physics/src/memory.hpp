@@ -7,7 +7,7 @@
 
 template <class T>
 T *alloc_t() {
-  return static_cast<T *>(JPH::Allocate(sizeof(T)));
+	return static_cast<T *>(JPH::Allocate(sizeof(T)));
 }
 
 template <class T>
