@@ -9,11 +9,10 @@ class PhysicsWorld;
 
 class GravityStepListener : public JPH::PhysicsStepListener {
 public:
-    GravityStepListener(PhysicsWorld *physics_world);
+  GravityStepListener(PhysicsWorld *physics_world);
 
-    virtual void OnStep(float inDeltaTime, JPH::PhysicsSystem &inPhysicsSystem) override;
+  virtual void OnStep(float inDeltaTime, JPH::PhysicsSystem &inPhysicsSystem) override;
 
 private:
-    PhysicsWorld *physics_world = nullptr;
+  PhysicsWorld *physics_world = nullptr;
 };
-

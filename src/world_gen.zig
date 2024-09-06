@@ -24,8 +24,6 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
     const planet_position = za.Vec3.NEG_Y.scale(surface_height);
 
     // Planet
-    // const planet_sphere = try add_sphere(allocator, rendering_backend, &game_world, .{ 0.412, 1.0, 0.38, 1.0 }, surface_height, &.{ .position = planet_position }, false, false);
-    // _ = planet_sphere; // autofix
     const planet_sphere_volume = try add_sphere(allocator, rendering_backend, &game_world, null, surface_height * 10.0, &.{ .position = planet_position }, false, true);
     const surface_gravity = 9.8;
     const gravity_stregth = surface_gravity * (surface_height * surface_height);

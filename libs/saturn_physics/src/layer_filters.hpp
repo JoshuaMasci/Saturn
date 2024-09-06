@@ -4,63 +4,74 @@
 
 #include <Jolt/Physics/PhysicsSystem.h>
 
-namespace Layers
-{
-    static constexpr JPH::ObjectLayer NON_MOVING = 0;
-    static constexpr JPH::ObjectLayer MOVING = 1;
-    static constexpr JPH::ObjectLayer NUM_LAYERS = 2;
-};
-
-/// Class that determines if two object layers can collide
-class ObjectLayerPairFilterImpl : public JPH::ObjectLayerPairFilter
-{
+/// Objects collide if the have a matching high bit
+class AnyMatchObjectLayerPairFilter : public JPH::ObjectLayerPairFilter {
 public:
-    virtual bool ShouldCollide(JPH::ObjectLayer inObject1, JPH::ObjectLayer inObject2) const override
-    {
-        return true;
-    }
+  virtual bool ShouldCollide(JPH::ObjectLayer object_layer1, JPH::ObjectLayer object_layer2) const override {
+	return (object_layer1 & object_layer2) > 0;
+  }
 };
 
-namespace BroadPhaseLayers
-{
-    static constexpr JPH::BroadPhaseLayer NON_MOVING(0);
-    static constexpr JPH::BroadPhaseLayer MOVING(1);
-    static constexpr uint NUM_LAYERS(2);
+class ExactMatchObjectLayerPairFilter : public JPH::ObjectLayerPairFilter {
+public:
+  virtual bool ShouldCollide(JPH::ObjectLayer object_layer1, JPH::ObjectLayer object_layer2) const override {
+	return object_layer1 == object_layer2;
+  }
+};
+
+/// Object collide if any high bits match the pattern
+class AnyMatchObjectLayerFilter : public JPH::ObjectLayerFilter {
+public:
+  /// Constructor
+  explicit AnyMatchObjectLayerFilter(JPH::ObjectLayer pattern)
+	  : pattern(pattern) {}
+
+  // See ObjectLayerFilter::ShouldCollide
+  virtual bool ShouldCollide(JPH::ObjectLayer object_layer1) const override {
+	return (this->pattern & object_layer1) > 0;
+  }
+
+private:
+  JPH::ObjectLayer pattern;
+};
+
+/// Object collide if all high bits match the pattern
+class ExactMatchObjectLayerFilter : public JPH::ObjectLayerFilter {
+public:
+  /// Constructor
+  explicit ExactMatchObjectLayerFilter(JPH::ObjectLayer pattern)
+	  : pattern(pattern) {}
+
+  // See ObjectLayerFilter::ShouldCollide
+  virtual bool ShouldCollide(JPH::ObjectLayer object_layer1) const override {
+	return (this->pattern & object_layer1) == this->pattern;
+  }
+
+private:
+  JPH::ObjectLayer pattern;
 };
 
 // BroadPhaseLayerInterface implementation
 // This defines a mapping between object and broadphase layers.
-class BPLayerInterfaceImpl final : public JPH::BroadPhaseLayerInterface
-{
+class BroadPhaseLayerInterfaceImpl final
+	: public JPH::BroadPhaseLayerInterface {
 public:
-    BPLayerInterfaceImpl()
-    {
-        // Create a mapping table from object to broad phase layer
-        mObjectToBroadPhase[Layers::NON_MOVING] = BroadPhaseLayers::NON_MOVING;
-        mObjectToBroadPhase[Layers::MOVING] = BroadPhaseLayers::MOVING;
-    }
+  BroadPhaseLayerInterfaceImpl() {}
 
-    virtual uint GetNumBroadPhaseLayers() const override
-    {
-        return BroadPhaseLayers::NUM_LAYERS;
-    }
+  virtual uint GetNumBroadPhaseLayers() const override { return 1; }
 
-    virtual JPH::BroadPhaseLayer GetBroadPhaseLayer(JPH::ObjectLayer inLayer) const override
-    {
-        JPH_ASSERT(inLayer < Layers::NUM_LAYERS);
-        return mObjectToBroadPhase[inLayer];
-    }
-
-private:
-    JPH::BroadPhaseLayer mObjectToBroadPhase[Layers::NUM_LAYERS];
+  virtual JPH::BroadPhaseLayer
+  GetBroadPhaseLayer(JPH::ObjectLayer in_layer) const override {
+	return JPH::BroadPhaseLayer(0);
+  }
 };
 
 /// Class that determines if an object layer can collide with a broadphase layer
-class ObjectVsBroadPhaseLayerFilterImpl : public JPH::ObjectVsBroadPhaseLayerFilter
-{
+class ObjectVsBroadPhaseLayerFilterImpl
+	: public JPH::ObjectVsBroadPhaseLayerFilter {
 public:
-    virtual bool ShouldCollide(JPH::ObjectLayer inLayer1, JPH::BroadPhaseLayer inLayer2) const override
-    {
-        return true;
-    }
+  virtual bool ShouldCollide(JPH::ObjectLayer in_layer1,
+							 JPH::BroadPhaseLayer in_layer2) const override {
+	return true;
+  }
 };

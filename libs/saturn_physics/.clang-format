@@ -1,0 +1,16 @@
+BasedOnStyle: LLVM
+AlignAfterOpenBracket: Align
+ColumnLimit: 0
+TabWidth: 4
+UseTab: Always
+
+AllowShortIfStatementsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+
+AllowAllParametersOfDeclarationOnNextLine: false
+BinPackParameters: false
+BinPackArguments: false
+
+NamespaceIndentation: All

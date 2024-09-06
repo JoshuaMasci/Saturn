@@ -194,6 +194,7 @@ pub const World = struct {
                 .shape = body.shape,
                 .position = transform.position.toArray(),
                 .rotation = transform.rotation.toArray(),
+                .object_layer = if (!body.sensor) 1 else 2,
                 .motion_type = if (body.dynamic) .Dynamic else .Static,
                 .is_sensor = body.sensor,
                 .friction = 0.2,
