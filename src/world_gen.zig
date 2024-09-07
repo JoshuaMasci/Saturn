@@ -66,6 +66,8 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
         }
     }
 
+    _ = try add_cube(allocator, rendering_backend, &game_world, .{ 0.0, 1.0, 0.5, 1.0 }, .{0.5} ** 3, &.{ .position = za.Vec3.new(0.0, 1.5, 0.0) }, true);
+
     return game_world;
 }
 

@@ -231,6 +231,10 @@ pub const World = struct {
     pub fn cast_ray(self: *Self, object_layer_pattern: u16, origin: [3]f32, direction: [3]f32) bool {
         return c.cast_ray(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]));
     }
+
+    pub fn collide_shape(self: *Self, object_layer_pattern: u16, shape: Shape, transform: *const Transform) bool {
+        return c.collide_shape(self.ptr, object_layer_pattern, shape.handle, transform);
+    }
 };
 
 // Memory Allocation

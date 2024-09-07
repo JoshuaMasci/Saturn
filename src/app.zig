@@ -28,6 +28,7 @@ pub const App = struct {
     game_world: world.World,
     game_camera: debug_camera.DebugCamera,
     game_character: ?world.CharacterHandle,
+    game_cube: physics_system.Shape,
 
     fire_ray: bool = false,
 
@@ -72,6 +73,7 @@ pub const App = struct {
             .rendering_backend = rendering_backend,
             .game_camera = game_camera,
             .game_character = game_character,
+            .game_cube = physics_system.Shape.init_box(.{1.0} ** 3, 1.0),
         };
     }
 
@@ -112,6 +114,9 @@ pub const App = struct {
             } else {
                 std.log.info("Raycast Missed", .{});
             }
+
+            _ = self.game_world.physics_world.collide_shape(0, self.game_cube, &.{ .position = .{ 0.0, 1.5, 0.0 }, .rotation = .{ 0.0, 0.0, 0.0, 1.0 } });
+
             self.fire_ray = false;
         }
 
