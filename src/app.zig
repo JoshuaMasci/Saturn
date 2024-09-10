@@ -16,6 +16,8 @@ const debug_camera = @import("debug_camera.zig");
 
 const world_gen = @import("world_gen.zig");
 
+const World2 = @import("world2.zig").World;
+
 pub const App = struct {
     const Self = @This();
 
@@ -31,6 +33,8 @@ pub const App = struct {
     game_cube: physics_system.Shape,
 
     fire_ray: bool = false,
+
+    game_world2: World2,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
@@ -62,6 +66,11 @@ pub const App = struct {
         game_camera.transform.position = za.Vec3.new(45.0, 55.0, 150.0);
         game_camera.camera.far = 10_000.0;
 
+        var game_world2 = World2.init(allocator, &rendering_backend);
+        const StaticEntity = @import("entity.zig").StaticEntity;
+        const handle = try game_world2.add(StaticEntity, .{});
+        std.log.info("Handle: {any}", .{handle.to_u64()});
+
         return .{
             .should_quit = false,
             .allocator = allocator,
@@ -74,10 +83,14 @@ pub const App = struct {
             .game_camera = game_camera,
             .game_character = game_character,
             .game_cube = physics_system.Shape.init_box(.{1.0} ** 3, 1.0),
+
+            .game_world2 = game_world2,
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.game_world2.deinit();
+
         self.game_world.deinit();
 
         physics_system.deinit();
@@ -109,13 +122,11 @@ pub const App = struct {
         }
 
         if (self.fire_ray) {
-            if (self.game_world.physics_world.cast_ray(1, scene_camera.transform.position.toArray(), scene_camera.transform.get_forward().scale(2.0).toArray())) {
-                std.log.info("Raycast Hit!!!", .{});
+            if (self.game_world.physics_world.cast_ray(1, scene_camera.transform.position.toArray(), scene_camera.transform.get_forward().scale(2.0).toArray())) |hit| {
+                std.log.info("Raycast Hit: {any:0.3}", .{hit});
             } else {
                 std.log.info("Raycast Missed", .{});
             }
-
-            _ = self.game_world.physics_world.collide_shape(0, self.game_cube, &.{ .position = .{ 0.0, 1.5, 0.0 }, .rotation = .{ 0.0, 0.0, 0.0, 1.0 } });
 
             self.fire_ray = false;
         }
@@ -142,6 +153,8 @@ pub const App = struct {
             imgui.backend.draw();
         }
         self.platform.gl_swap_window();
+
+        self.game_world2.update(delta_time);
     }
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {

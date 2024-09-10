@@ -20,3 +20,11 @@ pub fn get_forward(self: Self) za.Vec3 {
 pub fn eql(self: Self, other: Self) bool {
     return self.position.eql(other.position) and self.rotation.eql(other.rotation);
 }
+
+pub fn to_scaled(self: Self, scale: za.Vec3) Transform {
+    return .{
+        .position = self.position,
+        .rotation = self.rotation,
+        .scale = scale,
+    };
+}

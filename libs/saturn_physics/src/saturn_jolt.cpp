@@ -213,12 +213,34 @@ Transform get_body_transform(PhysicsWorld *ptr, BodyHandle handle) {
     auto body_id = JPH::BodyID(handle);
     JPH::BodyInterface &body_interface =
             physics_world->physics_system->GetBodyInterface();
-    JPH::RVec3 position;
-    JPH::Quat rotation;
+    JPH::RVec3 position{};
+    JPH::Quat rotation{};
     body_interface.GetPositionAndRotation(body_id, position, rotation);
     return Transform{
             {position.GetX(), position.GetY(), position.GetZ()},
             {rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW()}};
+}
+
+void set_body_transform(PhysicsWorld *ptr, BodyHandle handle, const Transform *transform) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto body_id = JPH::BodyID(handle);
+    JPH::BodyInterface &body_interface =
+            physics_world->physics_system->GetBodyInterface();
+
+    auto position = load_vec3(transform->position);
+    auto rotation = load_quat(transform->rotation);
+    body_interface.SetPositionAndRotationWhenChanged(body_id, position, rotation, JPH::EActivation::Activate);
+}
+
+void get_body_linear_velocity(PhysicsWorld *ptr, BodyHandle handle, float *velocity_ptr) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto body_id = JPH::BodyID(handle);
+    JPH::BodyInterface &body_interface =
+            physics_world->physics_system->GetBodyInterface();
+    auto velocity = body_interface.GetLinearVelocity(body_id);
+    velocity_ptr[0] = velocity.GetX();
+    velocity_ptr[1] = velocity.GetY();
+    velocity_ptr[2] = velocity.GetZ();
 }
 
 void set_body_linear_velocity(PhysicsWorld *ptr, BodyHandle handle, const float velocity[3]) {
@@ -229,6 +251,27 @@ void set_body_linear_velocity(PhysicsWorld *ptr, BodyHandle handle, const float 
     auto linear_velocity = load_vec3(velocity);
     body_interface.SetLinearVelocity(body_id, linear_velocity);
 }
+
+void get_body_angular_velocity(PhysicsWorld *ptr, BodyHandle handle, float *velocity_ptr) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto body_id = JPH::BodyID(handle);
+    JPH::BodyInterface &body_interface =
+            physics_world->physics_system->GetBodyInterface();
+    auto velocity = body_interface.GetAngularVelocity(body_id);
+    velocity_ptr[0] = velocity.GetX();
+    velocity_ptr[1] = velocity.GetY();
+    velocity_ptr[2] = velocity.GetZ();
+}
+
+void set_body_angular_velocity(PhysicsWorld *ptr, BodyHandle handle, const float velocity[3]) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto body_id = JPH::BodyID(handle);
+    JPH::BodyInterface &body_interface =
+            physics_world->physics_system->GetBodyInterface();
+    auto angular_velocity = load_vec3(velocity);
+    body_interface.SetAngularVelocity(body_id, angular_velocity);
+}
+
 
 BodyHandleList get_body_contact_list(PhysicsWorld *ptr, BodyHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
@@ -345,19 +388,45 @@ GroundState get_character_ground_state(PhysicsWorld *ptr, CharacterHandle handle
     return ground_state;
 }
 
-bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3]) {
+bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
+              RayCastHit *hit_result) {
     auto physics_world = (PhysicsWorld *) ptr;
 
     JPH::RayCast ray;
     ray.mOrigin = load_vec3(origin);
     ray.mDirection = load_vec3(direction);
     JPH::RayCastResult hit;
-    bool had_hit = physics_world->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit,
+    bool has_hit = physics_world->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit,
                                                                                 JPH::BroadPhaseLayerFilter(),
                                                                                 AnyMatchObjectLayerFilter(
                                                                                         object_layer_pattern),
                                                                                 JPH::BodyFilter());
-    return had_hit;
+
+    if (has_hit) {
+        auto ray_distance = ray.mDirection * hit.mFraction;
+        auto ws_position = ray.mOrigin + ray_distance;
+
+        hit_result->body = hit.mBodyID.GetIndexAndSequenceNumber();
+        hit_result->shape_index = 0;//hit.mSubShapeID2.GetValue(); //TODO: figure this out once subshapes are supported
+        hit_result->distance = ray_distance.Length();
+        hit_result->ws_position[0] = ws_position.GetX();
+        hit_result->ws_position[1] = ws_position.GetY();
+        hit_result->ws_position[2] = ws_position.GetZ();
+
+        {
+            JPH::BodyLockRead lock(physics_world->physics_system->GetBodyLockInterface(), hit.mBodyID);
+            if (lock.Succeeded()) {
+                const JPH::Body &body = lock.GetBody();
+                auto ws_normal = body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, ws_position);
+                hit_result->ws_normal[0] = ws_normal.GetX();
+                hit_result->ws_normal[1] = ws_normal.GetY();
+                hit_result->ws_normal[2] = ws_normal.GetZ();
+                hit_result->body_user_data = body.GetUserData();
+                hit_result->shape_user_data = body.GetShape()->GetSubShapeUserData(hit.mSubShapeID2);
+            }
+        }
+    }
+    return has_hit;
 }
 
 bool collide_shape(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform) {
@@ -371,7 +440,7 @@ bool collide_shape(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHan
     JPH::CollideShapeSettings settings = JPH::CollideShapeSettings();
 
     JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> collector;
-    
+
     physics_world->physics_system->GetNarrowPhaseQuery().CollideShape(shape_ref, JPH::Vec3::sReplicate(1.0f),
                                                                       center_of_mass_transform, settings, position,
                                                                       collector);

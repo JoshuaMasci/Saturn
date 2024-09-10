@@ -78,9 +78,9 @@ pub const Transform = c.Transform;
 
 pub const BodyHandle = c.BodyHandle;
 pub const MotionType = enum(u32) {
-    Static = 0,
-    Kinematic = 1,
-    Dynamic = 2,
+    static = 0,
+    kinematic = 1,
+    dynamic = 2,
 };
 
 pub const BodySettings = struct {
@@ -108,6 +108,8 @@ pub const GroundState = enum(u32) {
     InAir = 2,
     NotSupported = 3,
 };
+
+pub const RayCastHit = c.RayCastHit;
 
 // World
 pub const World = struct {
@@ -171,10 +173,28 @@ pub const World = struct {
     pub fn get_body_transform(self: *Self, handle: BodyHandle) Transform {
         return c.get_body_transform(self.ptr, handle);
     }
+    pub fn set_body_transform(self: *Self, handle: BodyHandle, transform: *const Transform) void {
+        return c.set_body_transform(self.ptr, handle, transform);
+    }
 
+    pub fn get_body_linear_velocity(self: *Self, handle: BodyHandle) [3]f32 {
+        var velocity: [3]f32 = .{ 0.0, 0.0, 0.0 };
+        c.get_body_linear_velocity(self.ptr, handle, @ptrCast(&velocity[0]));
+        return velocity;
+    }
     pub fn set_body_linear_velocity(self: *Self, handle: BodyHandle, velocity: [3]f32) void {
         const c_velocity: [*c]const f32 = @ptrCast(&velocity);
         c.set_body_linear_velocity(self.ptr, handle, c_velocity);
+    }
+
+    pub fn get_body_angular_velocity(self: *Self, handle: BodyHandle) [3]f32 {
+        var velocity: [3]f32 = .{ 0.0, 0.0, 0.0 };
+        c.get_body_angular_velocity(self.ptr, handle, @ptrCast(&velocity[0]));
+        return velocity;
+    }
+    pub fn set_body_angular_velocity(self: *Self, handle: BodyHandle, velocity: [3]f32) void {
+        const c_velocity: [*c]const f32 = @ptrCast(&velocity);
+        c.set_body_angular_velocity(self.ptr, handle, c_velocity);
     }
 
     pub fn get_body_contact_list(self: *Self, handle: BodyHandle) ?[]BodyHandle {
@@ -228,8 +248,10 @@ pub const World = struct {
         return @enumFromInt(c.get_character_ground_state(self.ptr, handle));
     }
 
-    pub fn cast_ray(self: *Self, object_layer_pattern: u16, origin: [3]f32, direction: [3]f32) bool {
-        return c.cast_ray(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]));
+    pub fn cast_ray(self: *Self, object_layer_pattern: u16, origin: [3]f32, direction: [3]f32) ?RayCastHit {
+        var raycast_hit: c.RayCastHit = .{};
+        const has_hit = c.cast_ray(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &raycast_hit);
+        return if (has_hit) raycast_hit else null;
     }
 
     pub fn collide_shape(self: *Self, object_layer_pattern: u16, shape: Shape, transform: *const Transform) bool {

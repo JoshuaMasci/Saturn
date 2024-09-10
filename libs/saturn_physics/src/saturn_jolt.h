@@ -41,7 +41,7 @@ ShapeHandle
 create_mesh_shape(const float positions[][3], size_t position_count, const uint32_t *indices, size_t indices_count);
 void destroy_shape(ShapeHandle handle);
 
-// World functions
+// World Structs and functions
 typedef struct PhysicsWorldSettings {
     uint32_t max_bodies;
     uint32_t num_body_mutexes;
@@ -49,10 +49,31 @@ typedef struct PhysicsWorldSettings {
     uint32_t max_contact_constraints;
     uint32_t temp_allocation_size;
 } PhysicsWorldSettings;
+
+typedef struct Transform {
+    float position[3];
+    float rotation[4];
+} Transform;
+
 typedef struct PhysicsWorld PhysicsWorld;
+
+typedef struct RayCastHit {
+    BodyHandle body;
+    uint32_t shape_index;
+    float distance;
+    float ws_position[3];
+    float ws_normal[3];
+    uint64_t body_user_data;
+    uint64_t shape_user_data;
+} RayCastHit;
+
 PhysicsWorld *create_physics_world(const PhysicsWorldSettings *settings);
 void destroy_physics_world(PhysicsWorld *ptr);
 void update_physics_world(PhysicsWorld *ptr, float delta_time, int collision_steps);
+
+bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
+              RayCastHit *hit_result);
+bool collide_shape(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform);
 
 typedef struct BodySettings {
     ShapeHandle shape;
@@ -71,11 +92,6 @@ typedef struct BodySettings {
     float gravity_factor;
 } BodySettings;
 
-typedef struct Transform {
-    float position[3];
-    float rotation[4];
-} Transform;
-
 typedef struct BodyHandleList {
     BodyHandle *ptr;
     uint64_t count;
@@ -83,15 +99,24 @@ typedef struct BodyHandleList {
 
 typedef uint32_t GroundState;
 
+// Body Functions
 BodyHandle create_body(PhysicsWorld *ptr, const BodySettings *body_settings);
 void destroy_body(PhysicsWorld *ptr, BodyHandle handle);
+
 Transform get_body_transform(PhysicsWorld *ptr, BodyHandle handle);
+void set_body_transform(PhysicsWorld *ptr, BodyHandle handle, const Transform *transform);
+void get_body_linear_velocity(PhysicsWorld *ptr, BodyHandle handle, float *velocity_ptr);
 void set_body_linear_velocity(PhysicsWorld *ptr, BodyHandle handle, const float velocity[3]);
+void get_body_angular_velocity(PhysicsWorld *ptr, BodyHandle handle, float *velocity_ptr);
+void set_body_angular_velocity(PhysicsWorld *ptr, BodyHandle handle, const float velocity[3]);
+
 BodyHandleList get_body_contact_list(PhysicsWorld *ptr, BodyHandle handle);
 void add_body_radial_gravity(PhysicsWorld *ptr, BodyHandle handle, float gravity_strength);
 
+// Character Functions
 CharacterHandle add_character(PhysicsWorld *ptr, ShapeHandle shape, const Transform *transform);
 void destroy_character(PhysicsWorld *ptr, CharacterHandle handle);
+
 void set_character_rotation(PhysicsWorld *ptr, CharacterHandle handle, const float rotation[4]);
 Transform get_character_transform(PhysicsWorld *ptr, CharacterHandle handle);
 void set_character_transform(PhysicsWorld *ptr, CharacterHandle handle, Transform *transform);
@@ -100,10 +125,6 @@ void set_character_linear_velocity(PhysicsWorld *ptr, CharacterHandle handle, co
 void get_character_ground_velocity(PhysicsWorld *ptr, CharacterHandle handle, float *velocity_ptr);
 GroundState get_character_ground_state(PhysicsWorld *ptr,
                                        CharacterHandle handle);
-
-bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3]);
-bool collide_shape(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform);
-
 
 #ifdef __cplusplus
 }
