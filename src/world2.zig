@@ -8,24 +8,49 @@ const rendering_system = @import("rendering.zig");
 const entity_zig = @import("entity.zig");
 const StaticEntity = entity_zig.StaticEntity;
 const DynamicEntity = entity_zig.DynamicEntity;
+const Character = entity_zig.Character;
 
 const ObjectPool = @import("object_pool.zig").ObjectPool;
 
-pub const EntityHandle = union(enum(u32)) {
+//TODO: entites will probably need some sort of GUID
+pub const EntityType = enum(u32) {
+    static = 1,
+    dynamic,
+    character,
+};
+pub const EntityHandle = union(EntityType) {
     static: StaticEntityPool.Handle,
     dynamic: DynamicEntityPool.Handle,
     character: CharacterPool.Handle,
 
-    pub fn to_u64(self: @This()) u64 {
-        _ = self; // autofix
-        comptime std.debug.assert(@sizeOf(@This()) == @sizeOf(u64));
-        return 0;
+    //TODO: convert these values without ptr casting?
+    const Self = @This();
+    pub fn to_u64(self: Self) u64 {
+        comptime std.debug.assert(@sizeOf(Self) == @sizeOf(u64));
+        const ptr = &self;
+        const u64_ptr: *const u64 = @alignCast(@ptrCast(ptr));
+        return u64_ptr.*;
     }
+    pub fn from_u64(value: u64) Self {
+        const u64_ptr = &value;
+        const ptr: *const Self = @alignCast(@ptrCast(u64_ptr));
+        return ptr.*;
+    }
+};
+pub const Entity = union(EntityType) {
+    static: StaticEntity,
+    dynamic: DynamicEntity,
+    character: Character,
+};
+pub const EntityPtr = union(EntityType) {
+    static: *StaticEntity,
+    dynamic: *DynamicEntity,
+    character: *Character,
 };
 
 pub const StaticEntityPool = ObjectPool(u16, StaticEntity);
 pub const DynamicEntityPool = ObjectPool(u16, DynamicEntity);
-pub const CharacterPool = ObjectPool(u16, void);
+pub const CharacterPool = ObjectPool(u16, Character);
 
 pub const World = struct {
     const Self = @This();
@@ -64,7 +89,7 @@ pub const World = struct {
         {
             var iter = self.dynamic_entities.iterator();
             while (iter.next()) |entry| {
-                entry.value_ptr.*.pre_physics_update(self);
+                entry.value_ptr.*.pre_physics_update(self, delta_time);
             }
         }
 
@@ -86,13 +111,28 @@ pub const World = struct {
     }
 
     pub fn add(self: *Self, comptime entity_type: type, entity: entity_type) !EntityHandle {
-        var entity_clone: entity_type = entity;
-        try entity_clone.add_to_world(self);
-
-        return switch (entity_type) {
-            StaticEntity => .{ .static = try self.static_entities.insert(entity_clone) },
-            DynamicEntity => .{ .dynamic = try self.dynamic_entities.insert(entity_clone) },
+        const entity_handle: EntityHandle = switch (entity_type) {
+            StaticEntity => .{ .static = try self.static_entities.insert(entity) },
+            DynamicEntity => .{ .dynamic = try self.dynamic_entities.insert(entity) },
+            Character => .{ .character = try self.characters.insert(entity) },
             else => @compileError("Invalid Entity Type"),
+        };
+
+        //Get the ptr and add to world with the id.
+        switch (self.get_ptr(entity_handle).?) {
+            .static => |ptr| try ptr.add_to_world(entity_handle, self),
+            .dynamic => |ptr| try ptr.add_to_world(entity_handle, self),
+            .character => |ptr| try ptr.add_to_world(entity_handle, self),
+        }
+
+        return entity_handle;
+    }
+
+    pub fn get_ptr(self: *Self, handle: EntityHandle) ?EntityPtr {
+        return switch (handle) {
+            .static => |static_handle| if (self.static_entities.getPtr(static_handle)) |ptr| .{ .static = ptr } else null,
+            .dynamic => |dynamic_handle| if (self.dynamic_entities.getPtr(dynamic_handle)) |ptr| .{ .dynamic = ptr } else null,
+            .character => |character_handle| if (self.dynamic_entities.getPtr(character_handle)) |ptr| .{ .dynamic = ptr } else null,
         };
     }
 };

@@ -68,8 +68,13 @@ pub const App = struct {
 
         var game_world2 = World2.init(allocator, &rendering_backend);
         const StaticEntity = @import("entity.zig").StaticEntity;
-        const handle = try game_world2.add(StaticEntity, .{});
-        std.log.info("Handle: {any}", .{handle.to_u64()});
+        const DynamicEntity = @import("entity.zig").DynamicEntity;
+        const handle1 = try game_world2.add(StaticEntity, .{});
+        const handle2 = try game_world2.add(DynamicEntity, .{});
+        const handle3 = try game_world2.add(DynamicEntity, .{});
+        std.log.info("Handle1: {any}", .{handle1.to_u64()});
+        std.log.info("Handle2: {any}", .{handle2.to_u64()});
+        std.log.info("Handle3: {any}", .{handle3.to_u64()});
 
         return .{
             .should_quit = false,
