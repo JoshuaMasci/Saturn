@@ -5,8 +5,9 @@ const Transform = @import("unscaled_transform.zig");
 const physics_system = @import("physics");
 const rendering_system = @import("rendering.zig");
 
-const EntityHandle = @import("world2.zig").EntityHandle;
-const World = @import("world2.zig").World;
+const world_zig = @import("world.zig");
+const EntityHandle = world_zig.EntityHandle;
+const World = world_zig.World;
 
 pub const EntityPhysics = struct {
     shape: physics_system.Shape,
@@ -38,7 +39,7 @@ pub const StaticEntity = struct {
                 .position = self.transform.position.toArray(),
                 .rotation = self.transform.rotation.toArray(),
                 .user_data = self.handle.?.to_u64(),
-                .object_layer = if (body.sensor) 3 else 2,
+                .object_layer = if (body.sensor) 2 else 3,
                 .motion_type = .static,
                 .is_sensor = body.sensor,
                 .friction = 0.2,
@@ -88,7 +89,7 @@ pub const DynamicEntity = struct {
                 .position = self.transform.position.toArray(),
                 .rotation = self.transform.rotation.toArray(),
                 .user_data = self.handle.?.to_u64(),
-                .object_layer = if (!body.sensor) 1 else 3,
+                .object_layer = if (body.sensor) 2 else 3,
                 .motion_type = .dynamic,
                 .is_sensor = body.sensor,
                 .friction = 0.2,
@@ -169,7 +170,7 @@ pub const Character = struct {
     jump_velocity: f32 = 10.0,
     max_jumps: u32 = 1,
 
-    physics: ?physics_system.CharacterHandle,
+    physics: ?physics_system.CharacterHandle = null,
     instance: ?rendering_system.SceneInstanceHandle = null,
 
     pub fn add_to_world(self: *Self, handle: EntityHandle, world: *World) !void {
@@ -201,7 +202,7 @@ pub const Character = struct {
     }
 
     pub fn pre_physics_update(self: *Self, world: *World, delta_time: f32) void {
-        if (self.physics_character) |physics_handle| {
+        if (self.physics) |physics_handle| {
             {
                 const angular_movement = self.angular_input.mul(self.angular_speed).scale(delta_time);
                 const up_axis = self.transform.get_up();
@@ -262,5 +263,27 @@ pub const Character = struct {
             .position = self.transform.position,
             .rotation = self.transform.rotation.mul(pitch_quat),
         };
+    }
+
+    const input_system = @import("input.zig");
+    pub fn on_button_event(self: *Self, event: input_system.ButtonEvent) void {
+        switch (event.button) {
+            .player_move_jump => {
+                self.jump_input = event.state == .pressed;
+            },
+            else => {},
+        }
+    }
+
+    pub fn on_axis_event(self: *Self, event: input_system.AxisEvent) void {
+        switch (event.axis) {
+            .player_move_left_right => self.linear_input.data[0] = event.get_value(true),
+            .player_move_forward_backward => self.linear_input.data[1] = event.get_value(true),
+
+            .player_rotate_yaw => self.angular_input.data[0] = event.get_value(false),
+            .player_rotate_pitch => self.angular_input.data[1] = event.get_value(false),
+
+            else => {},
+        }
     }
 };

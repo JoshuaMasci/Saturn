@@ -44,6 +44,13 @@ pub fn apply_unscaled(self: *Self, transform: *const UnscaledTransform) void {
     self.rotation = transform.rotation;
 }
 
+pub fn to_unscaled(self: Self) UnscaledTransform {
+    return .{
+        .position = self.position,
+        .rotation = self.rotation,
+    };
+}
+
 pub fn get_model_matrix(self: Self) za.Mat4 {
     const translation = za.Mat4.fromTranslate(self.position);
     const rotation = self.rotation.toMat4();

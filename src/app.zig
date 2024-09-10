@@ -9,14 +9,14 @@ const rendering_system = @import("rendering.zig");
 const physics_system = @import("physics");
 
 const input = @import("input.zig");
+
+const entities = @import("entity.zig");
 const world = @import("world.zig");
-const Transform = @import("transform.zig");
+
 const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
 const world_gen = @import("world_gen.zig");
-
-const World2 = @import("world2.zig").World;
 
 pub const App = struct {
     const Self = @This();
@@ -29,12 +29,10 @@ pub const App = struct {
 
     game_world: world.World,
     game_camera: debug_camera.DebugCamera,
-    game_character: ?world.CharacterHandle,
+    game_character: ?world.CharacterPool.Handle,
     game_cube: physics_system.Shape,
 
     fire_ray: bool = false,
-
-    game_world2: World2,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
@@ -44,37 +42,33 @@ pub const App = struct {
 
         var game_world = try world_gen.create_planet_world(allocator, &rendering_backend);
 
-        var game_character: ?world.CharacterHandle = null;
+        var game_character: ?world.CharacterPool.Handle = null;
         {
             const CharacterHeight: f32 = 0.5;
             const CharacterRadius: f32 = 0.4;
 
             const shape = physics_system.Shape.init_capsule(CharacterHeight, CharacterRadius, 1.0);
 
-            const character_handle = try game_world.add_character(
-                &.{
-                    .position = za.Vec3.new(0.0, 0.0, 25.0),
-                    .rotation = za.Quat.fromAxis(std.math.degreesToRadians(180.0), za.Vec3.Y),
-                },
-                shape,
-                null,
-            );
-            game_character = character_handle;
+            const character_handle = try game_world.add(entities.Character, .{
+                .transform = .{ .position = za.Vec3.new(0.0, 0.0, 25.0), .rotation = za.Quat.fromAxis(std.math.degreesToRadians(180.0), za.Vec3.Y) },
+                .physics_shape = shape,
+            });
+            game_character = character_handle.character;
         }
 
         var game_camera: debug_camera.DebugCamera = .{};
         game_camera.transform.position = za.Vec3.new(45.0, 55.0, 150.0);
         game_camera.camera.far = 10_000.0;
 
-        var game_world2 = World2.init(allocator, &rendering_backend);
-        const StaticEntity = @import("entity.zig").StaticEntity;
-        const DynamicEntity = @import("entity.zig").DynamicEntity;
-        const handle1 = try game_world2.add(StaticEntity, .{});
-        const handle2 = try game_world2.add(DynamicEntity, .{});
-        const handle3 = try game_world2.add(DynamicEntity, .{});
-        std.log.info("Handle1: {any}", .{handle1.to_u64()});
-        std.log.info("Handle2: {any}", .{handle2.to_u64()});
-        std.log.info("Handle3: {any}", .{handle3.to_u64()});
+        // var game_world2 = World2.init(allocator, &rendering_backend);
+        // const StaticEntity = @import("entity.zig").StaticEntity;
+        // const DynamicEntity = @import("entity.zig").DynamicEntity;
+        // const handle1 = try game_world2.add(StaticEntity, .{});
+        // const handle2 = try game_world2.add(DynamicEntity, .{});
+        // const handle3 = try game_world2.add(DynamicEntity, .{});
+        // std.log.info("Handle1: {any}", .{handle1.to_u64()});
+        // std.log.info("Handle2: {any}", .{handle2.to_u64()});
+        // std.log.info("Handle3: {any}", .{handle3.to_u64()});
 
         return .{
             .should_quit = false,
@@ -88,14 +82,10 @@ pub const App = struct {
             .game_camera = game_camera,
             .game_character = game_character,
             .game_cube = physics_system.Shape.init_box(.{1.0} ** 3, 1.0),
-
-            .game_world2 = game_world2,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.game_world2.deinit();
-
         self.game_world.deinit();
 
         physics_system.deinit();
@@ -122,12 +112,12 @@ pub const App = struct {
 
         if (self.game_character) |character_handle| {
             if (self.game_world.characters.getPtr(character_handle)) |character| {
-                scene_camera.transform = character.get_camera_transform();
+                scene_camera.transform = character.get_camera_transform().to_scaled(za.Vec3.ONE);
             }
         }
 
         if (self.fire_ray) {
-            if (self.game_world.physics_world.cast_ray(1, scene_camera.transform.position.toArray(), scene_camera.transform.get_forward().scale(2.0).toArray())) |hit| {
+            if (self.game_world.physics_world.cast_ray(1, scene_camera.transform.position.toArray(), scene_camera.transform.get_forward().scale(1000.0).toArray())) |hit| {
                 std.log.info("Raycast Hit: {any:0.3}", .{hit});
             } else {
                 std.log.info("Raycast Missed", .{});
@@ -158,8 +148,6 @@ pub const App = struct {
             imgui.backend.draw();
         }
         self.platform.gl_swap_window();
-
-        self.game_world2.update(delta_time);
     }
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
