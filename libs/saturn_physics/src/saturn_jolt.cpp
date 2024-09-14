@@ -29,6 +29,14 @@
 typedef JoltVector<JPH::ShapeRefC> ShapePool;
 ShapePool *shape_pool = nullptr;
 
+JPH::ShapeRefC get_shape(ShapeHandle handle) {
+    if (handle == INVALID_SHAPE_HANDLE) {
+        return nullptr;
+    }
+    return (*shape_pool)[handle];
+}
+
+
 void init(const AllocationFunctions *functions) {
     if (functions != nullptr) {
         JPH::Allocate = functions->alloc;
@@ -48,6 +56,8 @@ void init(const AllocationFunctions *functions) {
 
     shape_pool = alloc_t<ShapePool>();
     ::new(shape_pool) ShapePool();
+    //Zero slot will be used for invalid
+    shape_pool->emplace_back(nullptr);
 }
 
 void deinit() {
@@ -151,13 +161,13 @@ void update_physics_world(PhysicsWorld *ptr, float delta_time, int collision_ste
 
 BodyHandle create_body(PhysicsWorld *ptr, const BodySettings *body_settings) {
     auto physics_world = (PhysicsWorld *) ptr;
-    auto shape = (*shape_pool)[body_settings->shape];
+    auto shape_ref = get_shape(body_settings->shape);
     auto position = load_vec3(body_settings->position);
     auto rotation = load_quat(body_settings->rotation);
     auto linear_velocity = load_vec3(body_settings->linear_velocity);
     auto angular_velocity = load_vec3(body_settings->angular_velocity);
     auto settings = JPH::BodyCreationSettings();
-    settings.SetShape(shape);
+    settings.SetShape(shape_ref);
     settings.mPosition = position;
     settings.mRotation = rotation;
     settings.mLinearVelocity = linear_velocity;
@@ -301,12 +311,12 @@ void add_body_radial_gravity(PhysicsWorld *ptr, BodyHandle handle, float gravity
     }
 }
 
-CharacterHandle add_character(PhysicsWorld *ptr, ShapeHandle shape, const Transform *transform) {
-    auto shape_ref = (*shape_pool)[shape];
+CharacterHandle add_character(PhysicsWorld *ptr, const CharacterSettings *character_settings) {
     auto physics_world = (PhysicsWorld *) ptr;
-    return physics_world->add_character(shape_ref,
-                                        load_rvec3(transform->position),
-                                        load_quat(transform->rotation));
+    auto shape_ref = get_shape(character_settings->shape);
+    auto position = load_vec3(character_settings->position);
+    auto rotation = load_quat(character_settings->rotation);
+    return physics_world->add_character(shape_ref, position, rotation);
 }
 
 void destroy_character(PhysicsWorld *ptr, CharacterHandle handle) {
@@ -407,7 +417,7 @@ bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float o
         auto ws_position = ray.mOrigin + ray_distance;
 
         hit_result->body = hit.mBodyID.GetIndexAndSequenceNumber();
-        hit_result->shape_index = 0;//hit.mSubShapeID2.GetValue(); //TODO: figure this out once subshapes are supported
+        hit_result->shape_index = 0;//hit.mSubShapeID2.GetValue(); //TODO: figure this out once sub-shapes are supported
         hit_result->distance = ray_distance.Length();
         hit_result->ws_position[0] = ws_position.GetX();
         hit_result->ws_position[1] = ws_position.GetY();

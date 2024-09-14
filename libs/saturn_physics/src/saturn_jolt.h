@@ -24,6 +24,8 @@ typedef struct AllocationFunctions {
 } AllocationFunctions;
 
 typedef uint64_t ShapeHandle;
+const ShapeHandle INVALID_SHAPE_HANDLE = 0;
+
 typedef uint32_t BodyHandle;
 typedef uint32_t CharacterHandle;
 typedef uint16_t ObjectLayer;
@@ -97,6 +99,14 @@ typedef struct BodyHandleList {
     uint64_t count;
 } BodyHandleList;
 
+typedef struct CharacterSettings {
+    ShapeHandle shape;
+    float position[3];
+    float rotation[4];
+    ShapeHandle inner_body_shape;
+    ObjectLayer inner_body_layer;
+} CharacterSettings;
+
 typedef uint32_t GroundState;
 
 // Body Functions
@@ -114,7 +124,7 @@ BodyHandleList get_body_contact_list(PhysicsWorld *ptr, BodyHandle handle);
 void add_body_radial_gravity(PhysicsWorld *ptr, BodyHandle handle, float gravity_strength);
 
 // Character Functions
-CharacterHandle add_character(PhysicsWorld *ptr, ShapeHandle shape, const Transform *transform);
+CharacterHandle add_character(PhysicsWorld *ptr, const CharacterSettings *character_settings);
 void destroy_character(PhysicsWorld *ptr, CharacterHandle handle);
 
 void set_character_rotation(PhysicsWorld *ptr, CharacterHandle handle, const float rotation[4]);

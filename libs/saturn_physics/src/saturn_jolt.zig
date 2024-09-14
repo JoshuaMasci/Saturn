@@ -75,7 +75,7 @@ pub const Shape = struct {
 };
 
 pub const Transform = c.Transform;
-
+pub const ObjectLayer = c.ObjectLayer;
 pub const BodyHandle = c.BodyHandle;
 pub const MotionType = enum(u32) {
     static = 0,
@@ -90,7 +90,7 @@ pub const BodySettings = struct {
     linear_velocity: [3]f32 = .{ 0.0, 0.0, 0.0 },
     angular_velocity: [3]f32 = .{ 0.0, 0.0, 0.0 },
     user_data: u64 = 0,
-    object_layer: u16 = 0,
+    object_layer: ObjectLayer = 0,
     motion_type: MotionType,
     is_sensor: bool = false,
     allow_sleep: bool = true,
@@ -210,8 +210,22 @@ pub const World = struct {
         c.add_body_radial_gravity(self.ptr, handle, gravity_strength);
     }
 
-    pub fn add_character(self: *Self, shape: Shape, transform: *const Transform) CharacterHandle {
-        return c.add_character(self.ptr, shape.handle, transform);
+    pub fn add_character(self: *Self, shape: Shape, transform: *const Transform, inner_body_opt: ?struct { shape: Shape, object_layer: ObjectLayer }) CharacterHandle {
+        var inner_body_shape = c.INVALID_SHAPE_HANDLE;
+        var inner_body_layer: u16 = 0;
+        if (inner_body_opt) |inner_body| {
+            inner_body_shape = inner_body.shape.handle;
+            inner_body_layer = inner_body.object_layer;
+        }
+
+        return c.add_character(self.ptr, &.{
+            .shape = shape.handle,
+            .position = transform.position,
+            .rotation = transform.rotation,
+
+            .inner_body_shape = inner_body_shape,
+            .inner_body_layer = inner_body_layer,
+        });
     }
 
     pub fn remove_character(self: *Self, handle: CharacterHandle) void {
@@ -248,13 +262,13 @@ pub const World = struct {
         return @enumFromInt(c.get_character_ground_state(self.ptr, handle));
     }
 
-    pub fn cast_ray(self: *Self, object_layer_pattern: u16, origin: [3]f32, direction: [3]f32) ?RayCastHit {
+    pub fn cast_ray(self: Self, object_layer_pattern: ObjectLayer, origin: [3]f32, direction: [3]f32) ?RayCastHit {
         var raycast_hit: c.RayCastHit = .{};
         const has_hit = c.cast_ray(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &raycast_hit);
         return if (has_hit) raycast_hit else null;
     }
 
-    pub fn collide_shape(self: *Self, object_layer_pattern: u16, shape: Shape, transform: *const Transform) bool {
+    pub fn collide_shape(self: Self, object_layer_pattern: ObjectLayer, shape: Shape, transform: *const Transform) bool {
         return c.collide_shape(self.ptr, object_layer_pattern, shape.handle, transform);
     }
 };

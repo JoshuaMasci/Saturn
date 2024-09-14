@@ -180,7 +180,7 @@ pub const Character = struct {
             world.physics_world.add_character(self.physics_shape, &.{
             .position = self.transform.position.toArray(),
             .rotation = self.transform.rotation.toArray(),
-        });
+        }, null);
 
         if (self.mesh) |mesh| {
             self.instance = try world.rendering_world.add_instace(mesh.mesh, mesh.material, &self.transform.to_scaled(za.Vec3.ONE));

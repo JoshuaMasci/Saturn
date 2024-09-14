@@ -52,6 +52,14 @@ pub const StaticEntityPool = ObjectPool(u16, StaticEntity);
 pub const DynamicEntityPool = ObjectPool(u16, DynamicEntity);
 pub const CharacterPool = ObjectPool(u16, Character);
 
+pub const RayCastHit = struct {
+    entity_handle: EntityHandle,
+    shape_index: u32 = 0.0,
+    distance: f32,
+    ws_position: za.Vec3,
+    ws_normal: za.Vec3,
+};
+
 pub const World = struct {
     const Self = @This();
 
@@ -141,5 +149,24 @@ pub const World = struct {
             .dynamic => |dynamic_handle| if (self.dynamic_entities.getPtr(dynamic_handle)) |ptr| .{ .dynamic = ptr } else null,
             .character => |character_handle| if (self.characters.getPtr(character_handle)) |ptr| .{ .character = ptr } else null,
         };
+    }
+
+    pub fn cast_ray(
+        self: Self,
+        object_layer: physics_system.ObjectLayer,
+        start: za.Vec3,
+        direction: za.Vec3,
+    ) ?RayCastHit {
+        if (self.physics_world.cast_ray(object_layer, start.toArray(), direction.toArray())) |hit| {
+            return .{
+                .entity_handle = EntityHandle.from_u64(hit.body_user_data),
+                .shape_index = hit.shape_index,
+                .distance = hit.distance,
+                .ws_position = za.Vec3.fromArray(hit.ws_position),
+                .ws_normal = za.Vec3.fromArray(hit.ws_normal),
+            };
+        }
+
+        return null;
     }
 };

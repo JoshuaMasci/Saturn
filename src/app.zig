@@ -60,16 +60,6 @@ pub const App = struct {
         game_camera.transform.position = za.Vec3.new(45.0, 55.0, 150.0);
         game_camera.camera.far = 10_000.0;
 
-        // var game_world2 = World2.init(allocator, &rendering_backend);
-        // const StaticEntity = @import("entity.zig").StaticEntity;
-        // const DynamicEntity = @import("entity.zig").DynamicEntity;
-        // const handle1 = try game_world2.add(StaticEntity, .{});
-        // const handle2 = try game_world2.add(DynamicEntity, .{});
-        // const handle3 = try game_world2.add(DynamicEntity, .{});
-        // std.log.info("Handle1: {any}", .{handle1.to_u64()});
-        // std.log.info("Handle2: {any}", .{handle2.to_u64()});
-        // std.log.info("Handle3: {any}", .{handle3.to_u64()});
-
         return .{
             .should_quit = false,
             .allocator = allocator,
@@ -117,12 +107,9 @@ pub const App = struct {
         }
 
         if (self.fire_ray) {
-            if (self.game_world.physics_world.cast_ray(1, scene_camera.transform.position.toArray(), scene_camera.transform.get_forward().scale(1000.0).toArray())) |hit| {
+            if (self.game_world.cast_ray(1, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
                 std.log.info("Raycast Hit: {any:0.3}", .{hit});
-            } else {
-                std.log.info("Raycast Missed", .{});
             }
-
             self.fire_ray = false;
         }
 
