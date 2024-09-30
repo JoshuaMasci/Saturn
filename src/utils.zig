@@ -33,9 +33,8 @@ fn human_readable_unit(value: usize) []const u8 {
     }
 }
 
-pub fn format_human_readable_bytes(allocator: std.mem.Allocator, bytes: usize) ![]u8 {
+pub fn format_human_readable_bytes(allocator: std.mem.Allocator, bytes: usize) ?[]u8 {
     const value = human_readable_bytes(bytes);
     const unit = human_readable_unit(bytes);
-    const string = try std.fmt.allocPrint(allocator, comptime "{} {s}", .{ value, unit });
-    return string;
+    return std.fmt.allocPrint(allocator, comptime "{} {s}", .{ value, unit }) catch null;
 }

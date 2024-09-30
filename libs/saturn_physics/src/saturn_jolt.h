@@ -68,14 +68,28 @@ typedef struct RayCastHit {
     uint64_t body_user_data;
     uint64_t shape_user_data;
 } RayCastHit;
+typedef void (*RayCastCallback)(void *, RayCastHit);
+
+typedef struct ShapeCastHit {
+    BodyHandle body;
+    uint32_t shape_index;
+    uint64_t body_user_data;
+    uint64_t shape_user_data;
+    float offset[3];
+} ShapeCastHit;
+typedef void (*ShapeCastCallback)(void *, ShapeCastHit);
 
 PhysicsWorld *create_physics_world(const PhysicsWorldSettings *settings);
 void destroy_physics_world(PhysicsWorld *ptr);
 void update_physics_world(PhysicsWorld *ptr, float delta_time, int collision_steps);
 
-bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
-              RayCastHit *hit_result);
-bool collide_shape(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform);
+bool
+ray_cast_closest(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
+                 RayCastHit *hit_result);
+void ray_cast_all(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
+                  RayCastCallback callback, void *callback_ptr);
+void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform,
+                ShapeCastCallback callback, void *callback_ptr);
 
 typedef struct BodySettings {
     ShapeHandle shape;

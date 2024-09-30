@@ -398,13 +398,11 @@ GroundState get_character_ground_state(PhysicsWorld *ptr, CharacterHandle handle
     return ground_state;
 }
 
-bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
-              RayCastHit *hit_result) {
+bool
+ray_cast_closest(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
+                 RayCastHit *hit_result) {
     auto physics_world = (PhysicsWorld *) ptr;
-
-    JPH::RayCast ray;
-    ray.mOrigin = load_vec3(origin);
-    ray.mDirection = load_vec3(direction);
+    JPH::RayCast ray(load_vec3(origin), load_vec3(direction));
     JPH::RayCastResult hit;
     bool has_hit = physics_world->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit,
                                                                                 JPH::BroadPhaseLayerFilter(),
@@ -439,10 +437,10 @@ bool cast_ray(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float o
     return has_hit;
 }
 
-bool collide_shape(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform) {
+void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform,
+                ShapeCastCallback callback, void *callback_ptr) {
     auto physics_world = (PhysicsWorld *) ptr;
-    auto shape_ref = (*shape_pool)[shape];
-
+    const auto &shape_ref = (*shape_pool)[shape];
     auto position = load_rvec3(transform->position);
     auto rotation = load_quat(transform->rotation);
     auto center_of_mass_transform = JPH::RMat44::sRotationTranslation(rotation, position);
@@ -455,7 +453,22 @@ bool collide_shape(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHan
                                                                       center_of_mass_transform, settings, position,
                                                                       collector);
 
-    printf("Shape Hit: %zu\n", collector.mHits.size());
+    JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
 
-    return false;
+    for (const auto &hit: collector.mHits) {
+        auto object_layer = body_interface.GetObjectLayer(hit.mBodyID2);
+        if ((object_layer_pattern && object_layer) > 0) {
+            JPH::RVec3 offset = position - body_interface.GetPosition(hit.mBodyID2);
+
+            ShapeCastHit data;
+            data.body = hit.mBodyID2.GetIndexAndSequenceNumber();
+            data.body_user_data = body_interface.GetUserData(hit.mBodyID2);
+            data.shape_index = 0;
+            data.shape_user_data = 0;
+            data.offset[0] = offset.GetX();
+            data.offset[1] = offset.GetY();
+            data.offset[2] = offset.GetZ();
+            callback(callback_ptr, data);
+        }
+    }
 }

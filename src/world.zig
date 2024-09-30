@@ -52,6 +52,13 @@ pub const StaticEntityPool = ObjectPool(u16, StaticEntity);
 pub const DynamicEntityPool = ObjectPool(u16, DynamicEntity);
 pub const CharacterPool = ObjectPool(u16, Character);
 
+pub const PhysicsLayer = packed struct(physics_system.ObjectLayer) {
+    static: bool = false,
+    dynamic: bool = false,
+    sensor: bool = false,
+    padding: u13 = 0,
+};
+
 pub const RayCastHit = struct {
     entity_handle: EntityHandle,
     shape_index: u32 = 0.0,
@@ -151,13 +158,13 @@ pub const World = struct {
         };
     }
 
-    pub fn cast_ray(
+    pub fn ray_cast(
         self: Self,
-        object_layer: physics_system.ObjectLayer,
+        physics_layer: PhysicsLayer,
         start: za.Vec3,
         direction: za.Vec3,
     ) ?RayCastHit {
-        if (self.physics_world.cast_ray(object_layer, start.toArray(), direction.toArray())) |hit| {
+        if (self.physics_world.ray_cast_closest(@bitCast(physics_layer), start.toArray(), direction.toArray())) |hit| {
             return .{
                 .entity_handle = EntityHandle.from_u64(hit.body_user_data),
                 .shape_index = hit.shape_index,
@@ -165,6 +172,14 @@ pub const World = struct {
                 .ws_position = za.Vec3.fromArray(hit.ws_position),
                 .ws_normal = za.Vec3.fromArray(hit.ws_normal),
             };
+        }
+
+        return null;
+    }
+
+    pub fn shape_cast(self: Self, physics_layer: PhysicsLayer, shape: physics_system.Shape, transform: Transform) ?void {
+        if (self.physics_world.shape_cast(@bitCast(physics_layer), shape, &.{ .position = transform.position.toArray(), .rotation = transform.rotation.toArray() })) {
+            //TODO: build hit list
         }
 
         return null;

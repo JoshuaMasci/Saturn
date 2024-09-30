@@ -107,9 +107,12 @@ pub const App = struct {
         }
 
         if (self.fire_ray) {
-            if (self.game_world.cast_ray(1, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
+            if (self.game_world.ray_cast(.{ .static = false, .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
                 std.log.info("Raycast Hit: {any:0.3}", .{hit});
             }
+
+            _ = self.game_world.shape_cast(.{ .dynamic = true }, self.game_cube, .{});
+
             self.fire_ray = false;
         }
 
@@ -120,13 +123,12 @@ pub const App = struct {
             imgui.backend.newFrame(try self.platform.get_window_size());
 
             if (imgui.begin("Performance", .{})) {
-                imgui.text("Delta Time {d:.3}", .{delta_time * 1000});
+                imgui.text("Delta Time {d:.3} ms", .{delta_time * 1000});
                 imgui.text("FPS {d:.3}", .{1.0 / delta_time});
                 if (mem_usage_opt) |mem_usage| {
-                    const mem_usage_string_opt: ?[]u8 = @import("utils.zig").format_human_readable_bytes(self.allocator, mem_usage) catch null;
-                    if (mem_usage_string_opt) |mem_usage_string| {
+                    if (@import("utils.zig").format_human_readable_bytes(self.allocator, mem_usage)) |mem_usage_string| {
+                        defer self.allocator.free(mem_usage_string);
                         imgui.text("Memory Usage {s}", .{mem_usage_string});
-                        self.allocator.free(mem_usage_string);
                     }
                 }
             }

@@ -34,12 +34,13 @@ pub const StaticEntity = struct {
         self.handle = handle;
 
         if (self.physics) |body| {
+            const layer: world_zig.PhysicsLayer = if (body.sensor) .{ .sensor = true } else .{ .static = true };
             self.body = world.physics_world.add_body(&.{
                 .shape = body.shape,
                 .position = self.transform.position.toArray(),
                 .rotation = self.transform.rotation.toArray(),
                 .user_data = self.handle.?.to_u64(),
-                .object_layer = if (body.sensor) 2 else 3,
+                .object_layer = @bitCast(layer),
                 .motion_type = .static,
                 .is_sensor = body.sensor,
                 .friction = 0.2,
@@ -84,12 +85,13 @@ pub const DynamicEntity = struct {
         self.handle = handle;
 
         if (self.physics) |body| {
+            const layer: world_zig.PhysicsLayer = if (body.sensor) .{} else .{ .static = true, .dynamic = true, .sensor = true };
             self.body = world.physics_world.add_body(&.{
                 .shape = body.shape,
                 .position = self.transform.position.toArray(),
                 .rotation = self.transform.rotation.toArray(),
                 .user_data = self.handle.?.to_u64(),
-                .object_layer = if (body.sensor) 2 else 3,
+                .object_layer = @bitCast(layer),
                 .motion_type = .dynamic,
                 .is_sensor = body.sensor,
                 .friction = 0.2,

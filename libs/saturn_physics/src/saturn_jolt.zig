@@ -110,6 +110,7 @@ pub const GroundState = enum(u32) {
 };
 
 pub const RayCastHit = c.RayCastHit;
+pub const ShapeCastHit = c.ShapeCastHit;
 
 // World
 pub const World = struct {
@@ -262,16 +263,30 @@ pub const World = struct {
         return @enumFromInt(c.get_character_ground_state(self.ptr, handle));
     }
 
-    pub fn cast_ray(self: Self, object_layer_pattern: ObjectLayer, origin: [3]f32, direction: [3]f32) ?RayCastHit {
+    pub fn ray_cast_closest(self: Self, object_layer_pattern: ObjectLayer, origin: [3]f32, direction: [3]f32) ?RayCastHit {
         var raycast_hit: c.RayCastHit = .{};
-        const has_hit = c.cast_ray(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &raycast_hit);
+        const has_hit = c.ray_cast_closest(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &raycast_hit);
         return if (has_hit) raycast_hit else null;
     }
 
-    pub fn collide_shape(self: Self, object_layer_pattern: ObjectLayer, shape: Shape, transform: *const Transform) bool {
-        return c.collide_shape(self.ptr, object_layer_pattern, shape.handle, transform);
+    pub fn shape_cast(self: Self, object_layer_pattern: ObjectLayer, shape: Shape, transform: *const Transform) bool {
+        var hit_list = std.ArrayList(ShapeCastHit).init(mem_allocator.?);
+        defer hit_list.deinit();
+        c.shape_cast(self.ptr, object_layer_pattern, shape.handle, transform, &shape_cast_callback, @ptrCast(&hit_list));
+
+        std.log.info("Shape Hit Count: {}", .{hit_list.items.len});
+        return false;
     }
 };
+
+fn shape_cast_callback(ptr_opt: ?*anyopaque, hit: ShapeCastHit) callconv(.C) void {
+    if (ptr_opt) |ptr| {
+        const array_list_ptr: *std.ArrayList(ShapeCastHit) = @alignCast(@ptrCast(ptr));
+        array_list_ptr.append(hit) catch |err| {
+            std.log.err("Failed to append shape cast hit {}", .{err});
+        };
+    }
+}
 
 // Memory Allocation
 const SizeAndAlignment = packed struct(u64) {
