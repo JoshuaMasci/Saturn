@@ -55,16 +55,23 @@ pub const CharacterPool = ObjectPool(u16, Character);
 pub const PhysicsLayer = packed struct(physics_system.ObjectLayer) {
     static: bool = false,
     dynamic: bool = false,
-    sensor: bool = false,
-    padding: u13 = 0,
+    gravity: bool = false,
+    airlock: bool = false,
+    padding: u12 = 0,
 };
 
 pub const RayCastHit = struct {
     entity_handle: EntityHandle,
-    shape_index: u32 = 0.0,
+    shape_index: u32 = 0,
     distance: f32,
     ws_position: za.Vec3,
     ws_normal: za.Vec3,
+};
+
+pub const ShapeCastHit = struct {
+    entity_handle: EntityHandle,
+    shape_index: u32 = 0,
+    offset: za.Vec3,
 };
 
 pub const World = struct {
@@ -177,11 +184,28 @@ pub const World = struct {
         return null;
     }
 
-    pub fn shape_cast(self: Self, physics_layer: PhysicsLayer, shape: physics_system.Shape, transform: Transform) ?void {
-        if (self.physics_world.shape_cast(@bitCast(physics_layer), shape, &.{ .position = transform.position.toArray(), .rotation = transform.rotation.toArray() })) {
-            //TODO: build hit list
-        }
+    pub fn shape_cast(self: *Self, temp_allocator: std.mem.Allocator, physics_layer: PhysicsLayer, shape: physics_system.Shape, transform: Transform) ?[]ShapeCastHit {
+        var data: ShapeCastCallbackData = .{
+            .world = self,
+            .list = std.ArrayList(physics_system.ShapeCastHit).init(temp_allocator),
+        };
+
+        self.physics_world.shape_cast(@bitCast(physics_layer), shape, &.{ .position = transform.position.toArray(), .rotation = transform.rotation.toArray() }, &shape_cast_callback, &data);
+
+        std.log.info("Shape Cast Hits: {}", .{data.list.items.len});
+
+        data.list.deinit();
 
         return null;
     }
 };
+
+const ShapeCastCallbackData = struct { world: *World, list: std.ArrayList(physics_system.ShapeCastHit) };
+fn shape_cast_callback(ptr_opt: ?*anyopaque, hit: physics_system.ShapeCastHit) callconv(.C) void {
+    if (ptr_opt) |ptr| {
+        const callback_data: *ShapeCastCallbackData = @alignCast(@ptrCast(ptr));
+        callback_data.list.append(hit) catch |err| {
+            std.log.err("Failed to append shape cast hit {}", .{err});
+        };
+    }
+}

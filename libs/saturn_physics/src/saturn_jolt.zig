@@ -111,6 +111,7 @@ pub const GroundState = enum(u32) {
 
 pub const RayCastHit = c.RayCastHit;
 pub const ShapeCastHit = c.ShapeCastHit;
+pub const ShapeCastCallback = *const fn (?*anyopaque, ShapeCastHit) callconv(.C) void;
 
 // World
 pub const World = struct {
@@ -269,23 +270,27 @@ pub const World = struct {
         return if (has_hit) raycast_hit else null;
     }
 
-    pub fn shape_cast(self: Self, object_layer_pattern: ObjectLayer, shape: Shape, transform: *const Transform) bool {
-        var hit_list = std.ArrayList(ShapeCastHit).init(mem_allocator.?);
-        defer hit_list.deinit();
-        c.shape_cast(self.ptr, object_layer_pattern, shape.handle, transform, &shape_cast_callback, @ptrCast(&hit_list));
-
-        std.log.info("Shape Hit Count: {}", .{hit_list.items.len});
-        return false;
+    pub fn shape_cast(
+        self: Self,
+        object_layer_pattern: ObjectLayer,
+        shape: Shape,
+        transform: *const Transform,
+        callback: ShapeCastCallback,
+        callback_data: ?*anyopaque,
+    ) void {
+        var zig_callback_info = .{ .callback = callback, .callback_data = callback_data };
+        c.shape_cast(self.ptr, object_layer_pattern, shape.handle, transform, &shape_cast_callback, @ptrCast(&zig_callback_info));
     }
 };
 
+const ShapeCastCallbackData = struct {
+    callback: ShapeCastCallback,
+    callback_data: ?*anyopaque,
+};
+
 fn shape_cast_callback(ptr_opt: ?*anyopaque, hit: ShapeCastHit) callconv(.C) void {
-    if (ptr_opt) |ptr| {
-        const array_list_ptr: *std.ArrayList(ShapeCastHit) = @alignCast(@ptrCast(ptr));
-        array_list_ptr.append(hit) catch |err| {
-            std.log.err("Failed to append shape cast hit {}", .{err});
-        };
-    }
+    const zig_callback_info: *ShapeCastCallbackData = @alignCast(@ptrCast(ptr_opt.?));
+    zig_callback_info.callback(zig_callback_info.callback_data, hit);
 }
 
 // Memory Allocation

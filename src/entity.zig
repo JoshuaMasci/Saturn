@@ -12,6 +12,7 @@ const World = world_zig.World;
 pub const EntityPhysics = struct {
     shape: physics_system.Shape,
     sensor: bool,
+    layer: world_zig.PhysicsLayer,
 };
 
 pub const EntityRendering = struct {
@@ -34,13 +35,12 @@ pub const StaticEntity = struct {
         self.handle = handle;
 
         if (self.physics) |body| {
-            const layer: world_zig.PhysicsLayer = if (body.sensor) .{ .sensor = true } else .{ .static = true };
             self.body = world.physics_world.add_body(&.{
                 .shape = body.shape,
                 .position = self.transform.position.toArray(),
                 .rotation = self.transform.rotation.toArray(),
                 .user_data = self.handle.?.to_u64(),
-                .object_layer = @bitCast(layer),
+                .object_layer = @bitCast(body.layer),
                 .motion_type = .static,
                 .is_sensor = body.sensor,
                 .friction = 0.2,
@@ -85,13 +85,12 @@ pub const DynamicEntity = struct {
         self.handle = handle;
 
         if (self.physics) |body| {
-            const layer: world_zig.PhysicsLayer = if (body.sensor) .{} else .{ .static = true, .dynamic = true, .sensor = true };
             self.body = world.physics_world.add_body(&.{
                 .shape = body.shape,
                 .position = self.transform.position.toArray(),
                 .rotation = self.transform.rotation.toArray(),
                 .user_data = self.handle.?.to_u64(),
-                .object_layer = @bitCast(layer),
+                .object_layer = @bitCast(body.layer),
                 .motion_type = .dynamic,
                 .is_sensor = body.sensor,
                 .friction = 0.2,
@@ -121,10 +120,7 @@ pub const DynamicEntity = struct {
     pub fn pre_physics_update(self: *Self, world: *World, delta_time: f32) void {
         _ = delta_time; // autofix
         if (self.body) |body_handle| {
-            world.physics_world.set_body_transform(body_handle, &.{
-                .position = self.transform.position.toArray(),
-                .rotation = self.transform.rotation.toArray(),
-            });
+            world.physics_world.set_body_transform(body_handle, &.{ .position = self.transform.position.toArray(), .rotation = self.transform.rotation.toArray() });
             world.physics_world.set_body_linear_velocity(body_handle, self.linear_velocity.toArray());
             world.physics_world.set_body_angular_velocity(body_handle, self.angular_velocity.toArray());
         }

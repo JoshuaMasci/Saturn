@@ -107,11 +107,11 @@ pub const App = struct {
         }
 
         if (self.fire_ray) {
-            if (self.game_world.ray_cast(.{ .static = false, .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
+            if (self.game_world.ray_cast(.{ .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
                 std.log.info("Raycast Hit: {any:0.3}", .{hit});
             }
 
-            _ = self.game_world.shape_cast(.{ .dynamic = true }, self.game_cube, .{});
+            _ = self.game_world.shape_cast(self.allocator, .{ .airlock = true }, self.game_cube, .{});
 
             self.fire_ray = false;
         }

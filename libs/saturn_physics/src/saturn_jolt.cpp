@@ -457,7 +457,7 @@ void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle
 
     for (const auto &hit: collector.mHits) {
         auto object_layer = body_interface.GetObjectLayer(hit.mBodyID2);
-        if ((object_layer_pattern && object_layer) > 0) {
+        if ((object_layer_pattern & object_layer) > 0) {
             JPH::RVec3 offset = position - body_interface.GetPosition(hit.mBodyID2);
 
             ShapeCastHit data;

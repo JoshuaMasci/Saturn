@@ -29,13 +29,13 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
     const planet_position = za.Vec3.NEG_Y.scale(surface_height);
 
     // Planet
-    const planet_sphere_volume = try add_sphere(allocator, rendering_backend, &game_world, null, surface_height * 10.0, &.{ .position = planet_position }, false, true);
+    const planet_sphere_volume = try add_sphere(allocator, rendering_backend, &game_world, null, surface_height * 10.0, &.{ .position = planet_position }, false, true, .{ .gravity = true });
     const planet_sphere_volume_body = game_world.static_entities.getPtr(planet_sphere_volume.static).?.body.?;
     game_world.physics_world.set_body_volume_gravity_strength(planet_sphere_volume_body, gravity_stregth);
 
     // Moon
     const moon_position: za.Vec3 = planet_position.add(za.Vec3.Z.scale(surface_height * 1.5));
-    const moon_sphere = try add_sphere(allocator, rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = moon_position }, true, false);
+    const moon_sphere = try add_sphere(allocator, rendering_backend, &game_world, .{ 0.88, 0.072, 0.76, 1.0 }, 10.0, &.{ .position = moon_position }, true, false, .{ .dynamic = true, .gravity = true });
     const orbital_speed = calc_orbit_speed(planet_position, moon_position, gravity_stregth);
     const orbital_velocity = za.Vec3.new(1.0, 0.75, 0.0).norm().scale(orbital_speed);
     game_world.dynamic_entities.getPtr(moon_sphere.dynamic).?.linear_velocity = orbital_velocity;
@@ -96,6 +96,12 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
             .physics = .{
                 .shape = shape,
                 .sensor = false,
+                .layer = .{
+                    .static = true,
+                    .dynamic = true,
+                    .gravity = true,
+                    .airlock = true,
+                },
             },
             .mesh = .{ .mesh = mesh, .material = material },
         }),
@@ -104,13 +110,16 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
             .physics = .{
                 .shape = shape,
                 .sensor = false,
+                .layer = .{
+                    .static = true,
+                },
             },
             .mesh = .{ .mesh = mesh, .material = material },
         }),
     };
 }
 
-fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color_opt: ?[4]f32, radius: f32, transform: *const Transform, dynamic: bool, sensor: bool) !world.EntityHandle {
+fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color_opt: ?[4]f32, radius: f32, transform: *const Transform, dynamic: bool, sensor: bool, layer: world.PhysicsLayer) !world.EntityHandle {
     var mesh_opt: ?entities.EntityRendering = null;
     if (color_opt) |color| {
         const mesh = try proc.create_sphere_mesh(allocator, rendering_backend, radius);
@@ -127,12 +136,12 @@ fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system
     return switch (dynamic) {
         true => try game_world.add(entities.DynamicEntity, .{
             .transform = transform.to_unscaled(),
-            .physics = .{ .shape = shape, .sensor = sensor },
+            .physics = .{ .shape = shape, .sensor = sensor, .layer = layer },
             .mesh = mesh_opt,
         }),
         false => try game_world.add(entities.StaticEntity, .{
             .transform = transform.to_unscaled(),
-            .physics = .{ .shape = shape, .sensor = sensor },
+            .physics = .{ .shape = shape, .sensor = sensor, .layer = layer },
             .mesh = mesh_opt,
         }),
     };
@@ -235,7 +244,7 @@ fn load_gltf_node(game_world: *world.World, parent_transform: *const Transform, 
             for (gltf_meshes[mesh_index].primitives.slice()) |primitive| {
                 _ = try game_world.add(entities.StaticEntity, .{
                     .transform = node_transform_ws.get_unscaled(),
-                    .physics = .{ .shape = primitive.physics_shape, .sensor = false },
+                    .physics = .{ .shape = primitive.physics_shape, .sensor = false, .layer = .{ .static = true } },
                     .mesh = .{ .mesh = primitive.gpu_mesh, .material = primitive.gpu_material },
                 });
             }
