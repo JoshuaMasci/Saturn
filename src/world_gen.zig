@@ -96,12 +96,7 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
             .physics = .{
                 .shape = shape,
                 .sensor = false,
-                .layer = .{
-                    .static = true,
-                    .dynamic = true,
-                    .gravity = true,
-                    .airlock = true,
-                },
+                .layer = .{ .static = true, .dynamic = true, .gravity = true },
             },
             .mesh = .{ .mesh = mesh, .material = material },
         }),

@@ -75,7 +75,6 @@ typedef struct ShapeCastHit {
     uint32_t shape_index;
     uint64_t body_user_data;
     uint64_t shape_user_data;
-    float offset[3];
 } ShapeCastHit;
 typedef void (*ShapeCastCallback)(void *, ShapeCastHit);
 
@@ -87,9 +86,9 @@ bool
 ray_cast_closest(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
                  RayCastHit *hit_result);
 void ray_cast_all(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
-                  RayCastCallback callback, void *callback_ptr);
+                  RayCastCallback callback, void *callback_data);
 void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform,
-                ShapeCastCallback callback, void *callback_ptr);
+                ShapeCastCallback callback, void *callback_data);
 
 typedef struct BodySettings {
     ShapeHandle shape;

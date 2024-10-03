@@ -111,7 +111,10 @@ pub const App = struct {
                 std.log.info("Raycast Hit: {any:0.3}", .{hit});
             }
 
-            _ = self.game_world.shape_cast(self.allocator, .{ .airlock = true }, self.game_cube, .{});
+            if (self.game_world.shape_cast(self.allocator, .{ .dynamic = true }, self.game_cube, .{})) |hit_list| {
+                std.log.info("ShapeCast Hit: {}", .{hit_list.items.len});
+                hit_list.deinit();
+            }
 
             self.fire_ray = false;
         }

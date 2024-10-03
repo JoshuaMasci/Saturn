@@ -56,8 +56,7 @@ pub const PhysicsLayer = packed struct(physics_system.ObjectLayer) {
     static: bool = false,
     dynamic: bool = false,
     gravity: bool = false,
-    airlock: bool = false,
-    padding: u12 = 0,
+    padding: u13 = 0,
 };
 
 pub const RayCastHit = struct {
@@ -71,8 +70,8 @@ pub const RayCastHit = struct {
 pub const ShapeCastHit = struct {
     entity_handle: EntityHandle,
     shape_index: u32 = 0,
-    offset: za.Vec3,
 };
+pub const ShapeCastHitList = std.ArrayList(ShapeCastHit);
 
 pub const World = struct {
     const Self = @This();
@@ -184,27 +183,32 @@ pub const World = struct {
         return null;
     }
 
-    pub fn shape_cast(self: *Self, temp_allocator: std.mem.Allocator, physics_layer: PhysicsLayer, shape: physics_system.Shape, transform: Transform) ?[]ShapeCastHit {
+    pub fn shape_cast(self: *Self, temp_allocator: std.mem.Allocator, physics_layer: PhysicsLayer, shape: physics_system.Shape, transform: Transform) ?ShapeCastHitList {
         var data: ShapeCastCallbackData = .{
             .world = self,
-            .list = std.ArrayList(physics_system.ShapeCastHit).init(temp_allocator),
+            .list = ShapeCastHitList.init(temp_allocator),
         };
 
         self.physics_world.shape_cast(@bitCast(physics_layer), shape, &.{ .position = transform.position.toArray(), .rotation = transform.rotation.toArray() }, &shape_cast_callback, &data);
 
-        std.log.info("Shape Cast Hits: {}", .{data.list.items.len});
+        if (data.list.items.len == 0)
+            return null;
 
-        data.list.deinit();
-
-        return null;
+        return data.list;
     }
 };
 
-const ShapeCastCallbackData = struct { world: *World, list: std.ArrayList(physics_system.ShapeCastHit) };
+const ShapeCastCallbackData = struct {
+    world: *World,
+    list: ShapeCastHitList,
+};
 fn shape_cast_callback(ptr_opt: ?*anyopaque, hit: physics_system.ShapeCastHit) callconv(.C) void {
     if (ptr_opt) |ptr| {
         const callback_data: *ShapeCastCallbackData = @alignCast(@ptrCast(ptr));
-        callback_data.list.append(hit) catch |err| {
+        callback_data.list.append(.{
+            .entity_handle = EntityHandle.from_u64(hit.body_user_data),
+            .shape_index = hit.shape_index,
+        }) catch |err| {
             std.log.err("Failed to append shape cast hit {}", .{err});
         };
     }

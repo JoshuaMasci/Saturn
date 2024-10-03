@@ -20,6 +20,7 @@
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 
+#include "collision_collector.hpp"
 #include "character.hpp"
 #include "layer_filters.hpp"
 #include "math.hpp"
@@ -438,7 +439,7 @@ ray_cast_closest(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const floa
 }
 
 void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform,
-                ShapeCastCallback callback, void *callback_ptr) {
+                ShapeCastCallback callback, void *callback_data) {
     auto physics_world = (PhysicsWorld *) ptr;
     const auto &shape_ref = (*shape_pool)[shape];
     auto position = load_rvec3(transform->position);
@@ -446,29 +447,11 @@ void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle
     auto center_of_mass_transform = JPH::RMat44::sRotationTranslation(rotation, position);
 
     JPH::CollideShapeSettings settings = JPH::CollideShapeSettings();
-
-    JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> collector;
-
+    ShapeCastCallbackCollisionCollector collector(callback, callback_data,
+                                                  physics_world->physics_system->GetBodyInterface());
+    \
     physics_world->physics_system->GetNarrowPhaseQuery().CollideShape(shape_ref, JPH::Vec3::sReplicate(1.0f),
                                                                       center_of_mass_transform, settings, position,
-                                                                      collector);
-
-    JPH::BodyInterface &body_interface = physics_world->physics_system->GetBodyInterface();
-
-    for (const auto &hit: collector.mHits) {
-        auto object_layer = body_interface.GetObjectLayer(hit.mBodyID2);
-        if ((object_layer_pattern & object_layer) > 0) {
-            JPH::RVec3 offset = position - body_interface.GetPosition(hit.mBodyID2);
-
-            ShapeCastHit data;
-            data.body = hit.mBodyID2.GetIndexAndSequenceNumber();
-            data.body_user_data = body_interface.GetUserData(hit.mBodyID2);
-            data.shape_index = 0;
-            data.shape_user_data = 0;
-            data.offset[0] = offset.GetX();
-            data.offset[1] = offset.GetY();
-            data.offset[2] = offset.GetZ();
-            callback(callback_ptr, data);
-        }
-    }
+                                                                      collector, {}, AnyMatchObjectLayerFilter(
+                    object_layer_pattern), {}, {});
 }
