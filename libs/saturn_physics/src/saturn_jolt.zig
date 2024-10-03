@@ -217,7 +217,7 @@ pub const World = struct {
         c.set_body_gravity_mode_vector(self.ptr, handle, c_gravity);
     }
 
-    pub fn add_character(self: *Self, shape: Shape, transform: *const Transform, inner_body_opt: ?struct { shape: Shape, object_layer: ObjectLayer }) CharacterHandle {
+    pub fn add_character(self: *Self, shape: Shape, transform: *const Transform, user_data: u64, inner_body_opt: ?struct { shape: Shape, object_layer: ObjectLayer }) CharacterHandle {
         var inner_body_shape = c.INVALID_SHAPE_HANDLE;
         var inner_body_layer: u16 = 0;
         if (inner_body_opt) |inner_body| {
@@ -229,7 +229,7 @@ pub const World = struct {
             .shape = shape.handle,
             .position = transform.position,
             .rotation = transform.rotation,
-
+            .user_data = user_data,
             .inner_body_shape = inner_body_shape,
             .inner_body_layer = inner_body_layer,
         });
@@ -237,6 +237,11 @@ pub const World = struct {
 
     pub fn remove_character(self: *Self, handle: CharacterHandle) void {
         c.destroy_character(self.ptr, handle);
+    }
+
+    pub fn set_character_position(self: *Self, handle: CharacterHandle, position: [3]f32) void {
+        const c_position: [*c]const f32 = @ptrCast(&position);
+        c.set_character_position(self.ptr, handle, c_position);
     }
 
     pub fn set_character_rotation(self: *Self, handle: CharacterHandle, rotation: [4]f32) void {

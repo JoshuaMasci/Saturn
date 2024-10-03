@@ -4,19 +4,19 @@
 
 #include <utility>
 
-#include "math.hpp"
 #include "memory.hpp"
 #include "physics_world.hpp"
 
 Character::Character(PhysicsWorld *physics_world, JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position,
-                     JPH::Quat rotation, JPH::RefConst<JPH::Shape> inner_shape, ObjectLayer inner_object_layer) {
+                     JPH::Quat rotation, uint64_t user_data, JPH::RefConst<JPH::Shape> inner_shape,
+                     ObjectLayer inner_object_layer) {
     this->shape = std::move(shape);
     this->inner_shape = std::move(inner_shape);
 
     JPH::CharacterVirtualSettings settings = JPH::CharacterVirtualSettings();
     settings.mShape = this->shape;
     settings.mMaxSlopeAngle = M_PI_4;
-    settings.mMaxStrength = 100.0f;
+    settings.mMaxStrength = 10.0f;
     settings.mBackFaceMode = JPH::EBackFaceMode::CollideWithBackFaces;
     settings.mCharacterPadding = 0.02f;
     settings.mPenetrationRecoverySpeed = 1.0f;
@@ -29,7 +29,7 @@ Character::Character(PhysicsWorld *physics_world, JPH::RefConst<JPH::Shape> shap
 
     this->character = alloc_t<JPH::CharacterVirtual>();
     ::new(this->character) JPH::CharacterVirtual(
-            &settings, position, rotation, 0, physics_world->physics_system);
+            &settings, position, rotation, user_data, physics_world->physics_system);
     this->character->SetListener(this);
     this->gravity_velocity = JPH::Vec3::sReplicate(0.0);
 }

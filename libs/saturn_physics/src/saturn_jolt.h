@@ -116,6 +116,7 @@ typedef struct CharacterSettings {
     ShapeHandle shape;
     float position[3];
     float rotation[4];
+    uint64_t user_data;
     ShapeHandle inner_body_shape;
     ObjectLayer inner_body_layer;
 } CharacterSettings;
@@ -142,6 +143,7 @@ void clear_body_gravity_mode(PhysicsWorld *ptr, BodyHandle handle);
 CharacterHandle add_character(PhysicsWorld *ptr, const CharacterSettings *character_settings);
 void destroy_character(PhysicsWorld *ptr, CharacterHandle handle);
 
+void set_character_position(PhysicsWorld *ptr, CharacterHandle handle, const float position[3]);
 void set_character_rotation(PhysicsWorld *ptr, CharacterHandle handle, const float rotation[4]);
 Transform get_character_transform(PhysicsWorld *ptr, CharacterHandle handle);
 void set_character_transform(PhysicsWorld *ptr, CharacterHandle handle, Transform *transform);

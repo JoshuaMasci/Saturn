@@ -42,8 +42,8 @@ pub const App = struct {
         var rendering_backend = try rendering_system.Backend.init(allocator);
         physics_system.init(allocator);
 
-        const game_world1 = try world_gen.create_planet_world(allocator, &rendering_backend);
-        var game_world2 = try world_gen.create_flat_world(allocator, &rendering_backend);
+        var game_world1 = try world_gen.create_planet_world(allocator, &rendering_backend);
+        const game_world2 = try world_gen.create_flat_world(allocator, &rendering_backend);
 
         var game_character: ?world.CharacterPool.Handle = null;
         {
@@ -51,10 +51,12 @@ pub const App = struct {
             const CharacterRadius: f32 = 0.4;
 
             const shape = physics_system.Shape.init_capsule(CharacterHeight, CharacterRadius, 1.0);
+            const shape2 = physics_system.Shape.init_capsule(CharacterHeight - 0.05, CharacterRadius - 0.05, 1.0);
 
-            const character_handle = try game_world2.add(entities.Character, .{
+            const character_handle = try game_world1.add(entities.Character, .{
                 .transform = .{ .position = za.Vec3.new(0.0, 10.0, 10.0), .rotation = za.Quat.fromAxis(std.math.degreesToRadians(180.0), za.Vec3.Y) },
-                .physics_shape = shape,
+                .character_shape = shape,
+                .body_shape = shape2,
             });
             game_character = character_handle.character;
         }
@@ -98,21 +100,22 @@ pub const App = struct {
 
         self.rendering_backend.clear_framebuffer();
 
+        const scene = &self.game_world1.rendering_world;
         var scene_camera = camera.Camera{
             .data = self.game_camera.camera,
             .transform = self.game_camera.transform,
         };
 
         if (self.game_character) |character_handle| {
-            if (self.game_world2.characters.getPtr(character_handle)) |character| {
+            if (self.game_world1.characters.getPtr(character_handle)) |character| {
                 scene_camera.transform = character.get_camera_transform().to_scaled(za.Vec3.ONE);
             }
         }
 
         if (self.fire_ray) {
-            if (self.game_world1.ray_cast(.{ .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
-                std.log.info("Raycast Hit: {any:0.3}", .{hit});
-            }
+            // if (self.game_world1.ray_cast(.{ .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
+            //     std.log.info("Raycast Hit: {any:0.3}", .{hit});
+            // }
 
             if (self.game_world1.shape_cast(self.allocator, .{ .dynamic = true }, self.game_cube, .{})) |hit_list| {
                 defer hit_list.deinit();
@@ -121,6 +124,10 @@ pub const App = struct {
                 for (hit_list.items) |hit| {
                     switch (self.game_world1.get_ptr(hit.entity_handle).?) {
                         .dynamic => |ptr| {
+                            ptr.transform.position = ptr.transform.position.add(za.Vec3.Y.scale(10.0));
+                        },
+                        .character => |ptr| {
+                            std.log.info("Char Move", .{});
                             ptr.transform.position = ptr.transform.position.add(za.Vec3.Y.scale(10.0));
                         },
                         else => {},
@@ -132,7 +139,7 @@ pub const App = struct {
         }
 
         const window_size = try self.platform.get_window_size();
-        self.rendering_backend.render_scene(window_size, &self.game_world2.rendering_world, &scene_camera);
+        self.rendering_backend.render_scene(window_size, scene, &scene_camera);
 
         {
             imgui.backend.newFrame(try self.platform.get_window_size());
@@ -159,7 +166,7 @@ pub const App = struct {
         self.game_camera.on_button_event(event);
 
         if (self.game_character) |character_handle| {
-            var character = self.game_world2.characters.getPtr(character_handle).?;
+            var character = self.game_world1.characters.getPtr(character_handle).?;
             character.on_button_event(event);
         }
 
@@ -173,7 +180,7 @@ pub const App = struct {
         self.game_camera.on_axis_event(event);
 
         if (self.game_character) |character_handle| {
-            var character = self.game_world2.characters.getPtr(character_handle).?;
+            var character = self.game_world1.characters.getPtr(character_handle).?;
             character.on_axis_event(event);
         }
     }

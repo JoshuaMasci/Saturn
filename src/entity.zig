@@ -148,8 +148,10 @@ pub const Character = struct {
     transform: Transform = .{},
     linear_velocity: za.Vec3 = za.Vec3.ZERO,
 
+    character_shape: physics_system.Shape,
+    body_shape: physics_system.Shape,
+
     mesh: ?EntityRendering = null,
-    physics_shape: physics_system.Shape,
 
     //Camera State
     camera_offset: za.Vec3 = za.Vec3.Z,
@@ -175,10 +177,15 @@ pub const Character = struct {
         self.handle = handle;
 
         self.physics =
-            world.physics_world.add_character(self.physics_shape, &.{
-            .position = self.transform.position.toArray(),
-            .rotation = self.transform.rotation.toArray(),
-        }, null);
+            world.physics_world.add_character(
+            self.character_shape,
+            &.{
+                .position = self.transform.position.toArray(),
+                .rotation = self.transform.rotation.toArray(),
+            },
+            handle.to_u64(),
+            .{ .shape = self.body_shape, .object_layer = @bitCast(world_zig.PhysicsLayer{ .dynamic = true }) },
+        );
 
         if (self.mesh) |mesh| {
             self.instance = try world.rendering_world.add_instace(mesh.mesh, mesh.material, &self.transform.to_scaled(za.Vec3.ONE));
@@ -210,6 +217,8 @@ pub const Character = struct {
                 self.camera_pitch = std.math.clamp(self.camera_pitch + angular_movement.y(), -pi_half, pi_half);
                 world.physics_world.set_character_rotation(physics_handle, self.transform.rotation.toArray());
             }
+
+            world.physics_world.set_character_position(physics_handle, self.transform.position.toArray());
 
             const ground_state = world.physics_world.get_character_ground_state(physics_handle);
             if (ground_state == .OnGround) {

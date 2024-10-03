@@ -333,14 +333,23 @@ void clear_body_gravity_mode(PhysicsWorld *ptr, BodyHandle handle) {
 CharacterHandle add_character(PhysicsWorld *ptr, const CharacterSettings *character_settings) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto shape_ref = get_shape(character_settings->shape);
+    auto inner_shape_ref = get_shape(character_settings->inner_body_shape);
     auto position = load_vec3(character_settings->position);
     auto rotation = load_quat(character_settings->rotation);
-    return physics_world->add_character(shape_ref, position, rotation);
+    return physics_world->add_character(shape_ref, position, rotation, character_settings->user_data, inner_shape_ref,
+                                        character_settings->inner_body_layer);
 }
 
 void destroy_character(PhysicsWorld *ptr, CharacterHandle handle) {
     auto physics_world = (PhysicsWorld *) ptr;
     physics_world->remove_character(handle);
+}
+
+void set_character_position(PhysicsWorld *ptr, CharacterHandle handle, const float position[3]) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto character = physics_world->characters[handle];
+    auto r_position = load_rvec3(position);
+    character->character->SetPosition(r_position);
 }
 
 void set_character_rotation(PhysicsWorld *ptr, CharacterHandle handle, const float rotation[4]) {

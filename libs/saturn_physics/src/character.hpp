@@ -12,12 +12,12 @@ class PhysicsWorld;
 
 class Character : JPH::CharacterContactListener {
 public:
-    Character(PhysicsWorld *physics_world, JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation)
-            : Character(physics_world, std::move(shape), position, rotation,
-                        nullptr, 0) {}
+    Character(PhysicsWorld *physics_world, JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation,
+              uint64_t user_data)
+            : Character(physics_world, std::move(shape), position, rotation, user_data, nullptr, 0) {}
 
     Character(PhysicsWorld *physics_world, JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation,
-              JPH::RefConst<JPH::Shape> inner_shape, ObjectLayer inner_object_layer);
+              uint64_t user_data, JPH::RefConst<JPH::Shape> inner_shape, ObjectLayer inner_object_layer);
 
     ~Character() override;
 
@@ -34,5 +34,5 @@ public:
 
     JPH::CharacterVirtual *character;
     JoltVector<JPH::BodyID> contact_bodies;
-    JPH::Vec3 gravity_velocity;
+    JPH::Vec3 gravity_velocity{};
 };

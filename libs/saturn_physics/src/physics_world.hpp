@@ -101,7 +101,10 @@ public:
 
     void update(float delta_time, int collision_steps);
 
-    CharacterHandle add_character(JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation);
+    CharacterHandle
+    add_character(JPH::RefConst<JPH::Shape> shape, JPH::RVec3 position, JPH::Quat rotation, uint64_t user_data,
+                  JPH::RefConst<JPH::Shape> inner_shape = nullptr,
+                  JPH::ObjectLayer inner_object_layer = 0);
 
     void remove_character(CharacterHandle handle);
 
