@@ -208,8 +208,13 @@ pub const World = struct {
         }
     }
 
-    pub fn set_body_volume_gravity_strength(self: *Self, handle: BodyHandle, gravity_strength: f32) void {
-        c.add_body_radial_gravity(self.ptr, handle, gravity_strength);
+    pub fn set_body_gravity_mode_radial(self: *Self, handle: BodyHandle, gravity_strength: f32) void {
+        c.set_body_gravity_mode_radial(self.ptr, handle, gravity_strength);
+    }
+
+    pub fn set_body_gravity_mode_vector(self: *Self, handle: BodyHandle, gravity: [3]f32) void {
+        const c_gravity: [*c]const f32 = @ptrCast(&gravity);
+        c.set_body_gravity_mode_vector(self.ptr, handle, c_gravity);
     }
 
     pub fn add_character(self: *Self, shape: Shape, transform: *const Transform, inner_body_opt: ?struct { shape: Shape, object_layer: ObjectLayer }) CharacterHandle {

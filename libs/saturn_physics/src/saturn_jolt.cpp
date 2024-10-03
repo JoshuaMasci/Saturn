@@ -299,16 +299,34 @@ BodyHandleList get_body_contact_list(PhysicsWorld *ptr, BodyHandle handle) {
     }
 }
 
-void add_body_radial_gravity(PhysicsWorld *ptr, BodyHandle handle, float gravity_strength) {
+void set_body_gravity_mode_radial(PhysicsWorld *ptr, BodyHandle handle, float gravity_strength) {
     auto physics_world = (PhysicsWorld *) ptr;
     auto body_id = JPH::BodyID(handle);
     if (physics_world->volume_bodies.find(body_id) !=
         physics_world->volume_bodies.end()) {
-        if (gravity_strength != 0.0) {
-            physics_world->volume_bodies[body_id].gravity_strength = gravity_strength;
-        } else {
-            physics_world->volume_bodies[body_id].gravity_strength.reset();
-        }
+        physics_world->volume_bodies[body_id].gravity = GravityMode::with_radial(RadialGravity{
+                JPH::RVec3::sReplicate(0.0), gravity_strength
+        });
+    }
+}
+
+void set_body_gravity_mode_vector(PhysicsWorld *ptr, BodyHandle handle, const float gravity[3]) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto body_id = JPH::BodyID(handle);
+    if (physics_world->volume_bodies.find(body_id) !=
+        physics_world->volume_bodies.end()) {
+        physics_world->volume_bodies[body_id].gravity = GravityMode::with_vector(VectorGravity{
+                load_rvec3(gravity)
+        });
+    }
+}
+
+void clear_body_gravity_mode(PhysicsWorld *ptr, BodyHandle handle) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    auto body_id = JPH::BodyID(handle);
+    if (physics_world->volume_bodies.find(body_id) !=
+        physics_world->volume_bodies.end()) {
+        physics_world->volume_bodies[body_id].gravity.reset();
     }
 }
 

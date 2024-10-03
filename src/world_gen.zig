@@ -29,9 +29,9 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
     const planet_position = za.Vec3.NEG_Y.scale(surface_height);
 
     // Planet
-    const planet_sphere_volume = try add_sphere(allocator, rendering_backend, &game_world, null, surface_height * 10.0, &.{ .position = planet_position }, false, true, .{ .gravity = true });
-    const planet_sphere_volume_body = game_world.static_entities.getPtr(planet_sphere_volume.static).?.body.?;
-    game_world.physics_world.set_body_volume_gravity_strength(planet_sphere_volume_body, gravity_stregth);
+    const gravity_sphere_volume = try add_sphere(allocator, rendering_backend, &game_world, null, surface_height * 10.0, &.{ .position = planet_position }, false, true, .{ .gravity = true });
+    const gravity_sphere_volume_body = game_world.static_entities.getPtr(gravity_sphere_volume.static).?.body.?;
+    game_world.physics_world.set_body_gravity_mode_radial(gravity_sphere_volume_body, gravity_stregth);
 
     // Moon
     const moon_position: za.Vec3 = planet_position.add(za.Vec3.Z.scale(surface_height * 1.5));
@@ -70,7 +70,7 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
         }
     }
 
-    _ = try add_cube(allocator, rendering_backend, &game_world, .{ 0.0, 1.0, 0.5, 1.0 }, .{0.5} ** 3, &.{ .position = za.Vec3.new(0.0, 1.5, 0.0) }, true);
+    _ = try add_cube(allocator, rendering_backend, &game_world, .{ 0.0, 1.0, 0.5, 1.0 }, .{0.5} ** 3, &.{ .position = za.Vec3.new(0.0, 1.5, 0.0) }, true, false, .{ .static = true, .dynamic = true, .gravity = true });
 
     return game_world;
 }
@@ -84,32 +84,75 @@ fn calc_orbit_speed(gravity_center: za.Vec3, object_pos: za.Vec3, gravity_streng
     return orbital_velocity;
 }
 
-fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color: [4]f32, size: [3]f32, transform: *const Transform, dynamic: bool) !world.EntityHandle {
-    const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
-    const material = try proc.create_color_material(rendering_backend, color);
+pub fn create_flat_world(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend) !world.World {
+    var game_world = world.World.init(allocator, rendering_backend);
+
+    const gravity_stregth = 9.8;
+    const gravity_vector = za.Vec3.NEG_Y.scale(gravity_stregth);
+
+    const gravity_cube_volume = try add_cube(allocator, rendering_backend, &game_world, null, .{400.0} ** 3, &.{}, false, true, .{ .gravity = true });
+    const gravity_cube_volume_body = game_world.static_entities.getPtr(gravity_cube_volume.static).?.body.?;
+    game_world.physics_world.set_body_gravity_mode_vector(gravity_cube_volume_body, gravity_vector.toArray());
+
+    // Test Load
+    {
+        const file_path = "res/models/flat.glb";
+        const load_file = Timer.start();
+        var gltf_file = try gltf.load_gltf_file(allocator, file_path);
+        defer gltf_file.deinit();
+        load_file.end("gltf file load");
+
+        try load_gltf_scene(allocator, &game_world, &gltf_file, rendering_backend);
+    }
+
+    {
+        const skybox_base_path = "res/textures/space_skybox_1e1r04uzdb7k/";
+        const skybox_paths: [6][:0]const u8 = .{
+            skybox_base_path ++ "right.png",
+
+            skybox_base_path ++ "left.png",
+            skybox_base_path ++ "top.png",
+            skybox_base_path ++ "bottom.png",
+            skybox_base_path ++ "front.png",
+            skybox_base_path ++ "back.png",
+        };
+
+        if (load_skybox(rendering_backend, skybox_paths)) |skybox_handle| {
+            game_world.rendering_world.skybox = skybox_handle;
+        } else |err| {
+            std.log.warn("Loading skybox {s} failed with {}", .{ skybox_base_path, err });
+        }
+    }
+
+    _ = try add_cube(allocator, rendering_backend, &game_world, .{ 1.0, 0.0, 0.5, 1.0 }, .{0.5} ** 3, &.{ .position = za.Vec3.new(0.0, 1.5, 0.0) }, true, false, .{ .static = true, .dynamic = true, .gravity = true });
+
+    return game_world;
+}
+
+fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend, game_world: *world.World, color_opt: ?[4]f32, size: [3]f32, transform: *const Transform, dynamic: bool, sensor: bool, layer: world.PhysicsLayer) !world.EntityHandle {
+    var mesh_opt: ?entities.EntityRendering = null;
+    if (color_opt) |color| {
+        const mesh = try proc.create_cube_mesh(allocator, rendering_backend, size);
+        const material = try proc.create_color_material(rendering_backend, color);
+        mesh_opt = .{
+            .mesh = mesh,
+            .material = material,
+        };
+    }
+
     const shape = physics_system.Shape.init_box(za.Vec3.fromSlice(&size).scale(0.5).toArray(), 1.0);
     defer shape.deinit();
 
     return switch (dynamic) {
         true => try game_world.add(entities.DynamicEntity, .{
             .transform = transform.to_unscaled(),
-            .physics = .{
-                .shape = shape,
-                .sensor = false,
-                .layer = .{ .static = true, .dynamic = true, .gravity = true },
-            },
-            .mesh = .{ .mesh = mesh, .material = material },
+            .physics = .{ .shape = shape, .sensor = sensor, .layer = layer },
+            .mesh = mesh_opt,
         }),
         false => try game_world.add(entities.StaticEntity, .{
             .transform = transform.to_unscaled(),
-            .physics = .{
-                .shape = shape,
-                .sensor = false,
-                .layer = .{
-                    .static = true,
-                },
-            },
-            .mesh = .{ .mesh = mesh, .material = material },
+            .physics = .{ .shape = shape, .sensor = sensor, .layer = layer },
+            .mesh = mesh_opt,
         }),
     };
 }

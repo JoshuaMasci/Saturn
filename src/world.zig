@@ -52,6 +52,7 @@ pub const StaticEntityPool = ObjectPool(u16, StaticEntity);
 pub const DynamicEntityPool = ObjectPool(u16, DynamicEntity);
 pub const CharacterPool = ObjectPool(u16, Character);
 
+//TODO: define what layers should collide with other layers
 pub const PhysicsLayer = packed struct(physics_system.ObjectLayer) {
     static: bool = false,
     dynamic: bool = false,
@@ -184,28 +185,22 @@ pub const World = struct {
     }
 
     pub fn shape_cast(self: *Self, temp_allocator: std.mem.Allocator, physics_layer: PhysicsLayer, shape: physics_system.Shape, transform: Transform) ?ShapeCastHitList {
-        var data: ShapeCastCallbackData = .{
-            .world = self,
-            .list = ShapeCastHitList.init(temp_allocator),
-        };
+        var callback_list = ShapeCastHitList.init(temp_allocator);
+        self.physics_world.shape_cast(@bitCast(physics_layer), shape, &.{ .position = transform.position.toArray(), .rotation = transform.rotation.toArray() }, &shape_cast_callback, &callback_list);
 
-        self.physics_world.shape_cast(@bitCast(physics_layer), shape, &.{ .position = transform.position.toArray(), .rotation = transform.rotation.toArray() }, &shape_cast_callback, &data);
-
-        if (data.list.items.len == 0)
+        if (callback_list.items.len == 0) {
+            callback_list.deinit();
             return null;
+        }
 
-        return data.list;
+        return callback_list;
     }
 };
 
-const ShapeCastCallbackData = struct {
-    world: *World,
-    list: ShapeCastHitList,
-};
 fn shape_cast_callback(ptr_opt: ?*anyopaque, hit: physics_system.ShapeCastHit) callconv(.C) void {
     if (ptr_opt) |ptr| {
-        const callback_data: *ShapeCastCallbackData = @alignCast(@ptrCast(ptr));
-        callback_data.list.append(.{
+        const callback_list: *ShapeCastHitList = @alignCast(@ptrCast(ptr));
+        callback_list.append(.{
             .entity_handle = EntityHandle.from_u64(hit.body_user_data),
             .shape_index = hit.shape_index,
         }) catch |err| {

@@ -134,7 +134,9 @@ void get_body_angular_velocity(PhysicsWorld *ptr, BodyHandle handle, float *velo
 void set_body_angular_velocity(PhysicsWorld *ptr, BodyHandle handle, const float velocity[3]);
 
 BodyHandleList get_body_contact_list(PhysicsWorld *ptr, BodyHandle handle);
-void add_body_radial_gravity(PhysicsWorld *ptr, BodyHandle handle, float gravity_strength);
+void set_body_gravity_mode_radial(PhysicsWorld *ptr, BodyHandle handle, float gravity_strength);
+void set_body_gravity_mode_vector(PhysicsWorld *ptr, BodyHandle handle, const float gravity[3]);
+void clear_body_gravity_mode(PhysicsWorld *ptr, BodyHandle handle);
 
 // Character Functions
 CharacterHandle add_character(PhysicsWorld *ptr, const CharacterSettings *character_settings);

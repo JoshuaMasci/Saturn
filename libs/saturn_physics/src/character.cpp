@@ -53,19 +53,24 @@ void Character::update(PhysicsWorld *physics_world, float delta_time) {
                 physics_world->physics_system->GetBodyInterface();
         auto volume_body = &physics_world->volume_bodies[gravity_body];
 
-        if (volume_body->gravity_strength) {
-            JPH::Real gravity_strength = volume_body->gravity_strength.value();
-            JPH::RVec3 gravity_position = body_interface.GetPosition(gravity_body);
+        if (volume_body->gravity) {
+            GravityMode gravity_mode = volume_body->gravity.value();
+
+            JPH::RVec3 gravity_position;
+            JPH::Quat gravity_rotation{};
+            body_interface.GetPositionAndRotation(gravity_body, gravity_position, gravity_rotation);
+
             JPH::RVec3 character_position = this->character->GetPosition();
-            JPH::RVec3 difference = gravity_position - character_position;
-            JPH::Real distance2 = difference.LengthSq();
-            this->gravity_velocity =
-                    difference.Normalized() * (gravity_strength / distance2);
+            this->gravity_velocity = gravity_mode.get_velocity(gravity_position, gravity_rotation,
+                                                               character_position);
             this->character->SetLinearVelocity(this->character->GetLinearVelocity() +
                                                (this->gravity_velocity * delta_time));
+
+
             auto current_rotation = this->character->GetRotation();
             auto current_up = current_rotation.RotateAxisY();
-            auto new_up = (character_position - gravity_position).Normalized();
+            auto new_up = gravity_mode.get_up(gravity_position, gravity_rotation,
+                                              character_position);
             this->character->SetUp(new_up);
             this->character->SetRotation(
                     (JPH::Quat::sFromTo(current_up, new_up) * current_rotation)
