@@ -31,8 +31,10 @@ pub const App = struct {
     game_world2: world.World,
 
     game_camera: debug_camera.DebugCamera,
-    game_character: ?world.CharacterPool.Handle,
     game_cube: physics_system.Shape,
+
+    game_character_world_index: usize = 1,
+    game_character: ?world.CharacterPool.Handle,
 
     fire_ray: bool = false,
 
@@ -100,14 +102,14 @@ pub const App = struct {
 
         self.rendering_backend.clear_framebuffer();
 
-        const scene = &self.game_world1.rendering_world;
+        const scene = &self.get_active_world().rendering_world;
         var scene_camera = camera.Camera{
             .data = self.game_camera.camera,
             .transform = self.game_camera.transform,
         };
 
         if (self.game_character) |character_handle| {
-            if (self.game_world1.characters.getPtr(character_handle)) |character| {
+            if (self.get_active_world().characters.getPtr(character_handle)) |character| {
                 scene_camera.transform = character.get_camera_transform().to_scaled(za.Vec3.ONE);
             }
         }
@@ -117,21 +119,35 @@ pub const App = struct {
             //     std.log.info("Raycast Hit: {any:0.3}", .{hit});
             // }
 
-            if (self.game_world1.shape_cast(self.allocator, .{ .dynamic = true }, self.game_cube, .{})) |hit_list| {
+            const src_world = self.get_active_world();
+            const dst_world = self.get_other_world();
+
+            if (src_world.shape_cast(self.allocator, .{ .dynamic = true }, self.game_cube, .{})) |hit_list| {
                 defer hit_list.deinit();
                 std.log.info("ShapeCast Hit: {}", .{hit_list.items.len});
 
                 for (hit_list.items) |hit| {
-                    switch (self.game_world1.get_ptr(hit.entity_handle).?) {
-                        .dynamic => |ptr| {
-                            ptr.transform.position = ptr.transform.position.add(za.Vec3.Y.scale(10.0));
-                        },
-                        .character => |ptr| {
-                            std.log.info("Char Move", .{});
-                            ptr.transform.position = ptr.transform.position.add(za.Vec3.Y.scale(10.0));
-                        },
-                        else => {},
+                    const handle_opt = try moveBetweenWorlds(hit.entity_handle, src_world, dst_world);
+                    if (handle_opt) |handle| {
+                        switch (handle) {
+                            .character => |new_handle| {
+                                self.game_character = new_handle;
+                                self.flip_world();
+                            },
+                            else => {},
+                        }
                     }
+
+                    // switch (self.game_world1.get_ptr(hit.entity_handle).?) {
+                    //     .dynamic => |ptr| {
+                    //         ptr.transform.position = ptr.transform.position.add(za.Vec3.Y.scale(10.0));
+                    //     },
+                    //     .character => |ptr| {
+                    //         std.log.info("Char Move", .{});
+                    //         ptr.transform.position = ptr.transform.position.add(za.Vec3.Y.scale(10.0));
+                    //     },
+                    //     else => {},
+                    // }
                 }
             }
 
@@ -166,7 +182,7 @@ pub const App = struct {
         self.game_camera.on_button_event(event);
 
         if (self.game_character) |character_handle| {
-            var character = self.game_world1.characters.getPtr(character_handle).?;
+            var character = self.get_active_world().characters.getPtr(character_handle).?;
             character.on_button_event(event);
         }
 
@@ -180,8 +196,40 @@ pub const App = struct {
         self.game_camera.on_axis_event(event);
 
         if (self.game_character) |character_handle| {
-            var character = self.game_world1.characters.getPtr(character_handle).?;
+            var character = self.get_active_world().characters.getPtr(character_handle).?;
             character.on_axis_event(event);
         }
     }
+
+    pub fn get_active_world(self: *Self) *world.World {
+        return switch (self.game_character_world_index) {
+            1 => &self.game_world1,
+            2 => &self.game_world2,
+            else => undefined,
+        };
+    }
+
+    pub fn get_other_world(self: *Self) *world.World {
+        return switch (self.game_character_world_index) {
+            1 => &self.game_world2,
+            2 => &self.game_world1,
+            else => undefined,
+        };
+    }
+
+    pub fn flip_world(self: *Self) void {
+        self.game_character_world_index = switch (self.game_character_world_index) {
+            1 => 2,
+            2 => 1,
+            else => 1,
+        };
+    }
 };
+
+fn moveBetweenWorlds(handle: world.EntityHandle, src_world: *world.World, dst_world: *world.World) !?world.EntityHandle {
+    if (src_world.remove(handle)) |entity| {
+        return try dst_world.add_enum_entity(entity);
+    }
+
+    return null;
+}

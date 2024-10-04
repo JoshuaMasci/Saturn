@@ -246,8 +246,8 @@ pub const Scene = struct {
         }
     }
 
-    pub fn remove_instance(self: *Self, instance: SceneInstanceHandle) !void {
-        if (try self.instances.remove(instance) == null) {
+    pub fn remove_instance(self: *Self, instance: SceneInstanceHandle) void {
+        if (self.instances.remove(instance) == null) {
             std.log.err("Scene doesn't contain SceneInstanceHandle({})", .{instance});
         }
     }

@@ -19,6 +19,7 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
         const ListEntry = struct {
             revision: IndexType,
             value: ?T,
+            next_freed: ?IndexType,
         };
 
         pub const Handle = struct {
@@ -27,18 +28,17 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
         };
 
         list: std.ArrayList(ListEntry),
-        freed_indexes: std.ArrayList(IndexType),
+        first_freed: ?IndexType,
 
         pub fn init(allocator: Allocator) Self {
             return .{
                 .list = std.ArrayList(ListEntry).init(allocator),
-                .freed_indexes = std.ArrayList(IndexType).init(allocator),
+                .first_freed = null,
             };
         }
 
         pub fn deinit(self: *Self) void {
             self.list.deinit();
-            self.freed_indexes.deinit();
         }
 
         pub fn deinit_with_entries(self: *Self) void {
@@ -54,7 +54,7 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
 
         pub fn insert(self: *Self, value: T) !Handle {
             var handle: Handle = undefined;
-            if (self.freed_indexes.popOrNull()) |index| {
+            if (self.first_freed) |index| {
                 var entry = &self.list.items[index];
 
                 entry.value = value;
@@ -62,19 +62,22 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
                     .index = index,
                     .revision = entry.revision,
                 };
+                self.first_freed = entry.next_freed;
+                entry.next_freed = null;
             } else {
                 const index: IndexType = @intCast(self.list.items.len);
                 const revision: IndexType = 0;
                 try self.list.append(.{
                     .revision = revision,
                     .value = value,
+                    .next_freed = null,
                 });
                 handle = .{ .index = index, .revision = revision };
             }
             return handle;
         }
 
-        pub fn remove(self: *Self, handle: Handle) !?T {
+        pub fn remove(self: *Self, handle: Handle) ?T {
             if (self.list.items.len > handle.index) {
                 var entry = &self.list.items[handle.index];
 
@@ -82,12 +85,25 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
                     if (entry.value) |value| {
                         entry.revision += 1;
                         entry.value = null;
-                        try self.freed_indexes.append(handle.index);
+                        entry.next_freed = null;
+                        self.append_freed_list(handle.index);
                         return value;
                     }
                 }
             }
             return null;
+        }
+
+        fn append_freed_list(self: *Self, index: IndexType) void {
+            if (self.first_freed) |freed_index| {
+                var current_index = freed_index;
+                while (self.list.items[current_index].next_freed) |next_freed| {
+                    current_index = next_freed;
+                }
+                self.list.items[current_index].next_freed = index;
+            } else {
+                self.first_freed = index;
+            }
         }
 
         pub fn get(self: Self, handle: Handle) ?T {
@@ -132,6 +148,10 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
                 if (it.index >= it.slice.len) return null;
 
                 const list_entry = &it.slice[it.index];
+                if (list_entry.value == null) {
+                    return null;
+                }
+
                 const result = .{
                     .handle = .{ .index = it.index, .revision = list_entry.revision },
                     .value_ptr = &list_entry.value.?,

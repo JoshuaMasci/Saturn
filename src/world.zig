@@ -157,6 +157,31 @@ pub const World = struct {
         return entity_handle;
     }
 
+    pub fn add_enum_entity(self: *Self, entity: Entity) !EntityHandle {
+        return switch (entity) {
+            .static => |static| try self.add(StaticEntity, static),
+            .dynamic => |dynamic| try self.add(DynamicEntity, dynamic),
+            .character => |character| try self.add(Character, character),
+        };
+    }
+
+    pub fn remove(self: *Self, handle: EntityHandle) ?Entity {
+        var entity_opt: ?Entity = switch (handle) {
+            .static => |static_handle| if (self.static_entities.remove(static_handle)) |entity| .{ .static = entity } else null,
+            .dynamic => |dynamic_handle| if (self.dynamic_entities.remove(dynamic_handle)) |entity| .{ .dynamic = entity } else null,
+            .character => |character_handle| if (self.characters.remove(character_handle)) |entity| .{ .character = entity } else null,
+        };
+
+        if (entity_opt) |*entity| {
+            switch (entity.*) {
+                .static => |*static| static.remove_from_world(self),
+                .dynamic => |*dynamic| dynamic.remove_from_world(self),
+                .character => |*character| character.remove_from_world(self),
+            }
+        }
+        return entity_opt;
+    }
+
     pub fn get_ptr(self: *Self, handle: EntityHandle) ?EntityPtr {
         return switch (handle) {
             .static => |static_handle| if (self.static_entities.getPtr(static_handle)) |ptr| .{ .static = ptr } else null,
