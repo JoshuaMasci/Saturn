@@ -115,14 +115,14 @@ pub const App = struct {
         }
 
         if (self.fire_ray) {
-            // if (self.game_world1.ray_cast(.{ .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
+            // if (self.get_active_world().ray_cast(.{ .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
             //     std.log.info("Raycast Hit: {any:0.3}", .{hit});
             // }
 
             const src_world = self.get_active_world();
             const dst_world = self.get_other_world();
 
-            if (src_world.shape_cast(self.allocator, .{ .dynamic = true }, self.game_cube, .{})) |hit_list| {
+            if (src_world.shape_cast(self.allocator, .{ .dynamic = true }, self.game_cube, .{ .position = za.Vec3.Y.scale(1.5) })) |hit_list| {
                 defer hit_list.deinit();
                 std.log.info("ShapeCast Hit: {}", .{hit_list.items.len});
 

@@ -83,8 +83,14 @@ void destroy_physics_world(PhysicsWorld *ptr);
 void update_physics_world(PhysicsWorld *ptr, float delta_time, int collision_steps);
 
 bool
-ray_cast_closest(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
+ray_cast_closest(PhysicsWorld *ptr, ObjectLayer object_layer_pattern,
+                 const float origin[3], const float direction[3],
                  RayCastHit *hit_result);
+
+bool
+ray_cast_closest_ignore(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, BodyHandle ignore_body,
+                        const float origin[3], const float direction[3],
+                        RayCastHit *hit_result);
 void ray_cast_all(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, const float origin[3], const float direction[3],
                   RayCastCallback callback, void *callback_data);
 void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform,
