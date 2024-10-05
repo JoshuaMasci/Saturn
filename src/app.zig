@@ -102,18 +102,6 @@ pub const App = struct {
 
         self.rendering_backend.clear_framebuffer();
 
-        const scene = &self.get_active_world().rendering_world;
-        var scene_camera = camera.Camera{
-            .data = self.game_camera.camera,
-            .transform = self.game_camera.transform,
-        };
-
-        if (self.game_character) |character_handle| {
-            if (self.get_active_world().characters.getPtr(character_handle)) |character| {
-                scene_camera.transform = character.get_camera_transform().to_scaled(za.Vec3.ONE);
-            }
-        }
-
         if (self.fire_ray) {
             // if (self.get_active_world().ray_cast(.{ .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
             //     std.log.info("Raycast Hit: {any:0.3}", .{hit});
@@ -152,6 +140,17 @@ pub const App = struct {
             }
 
             self.fire_ray = false;
+        }
+
+        const scene = &self.get_active_world().rendering_world;
+        var scene_camera = camera.Camera{
+            .data = self.game_camera.camera,
+            .transform = self.game_camera.transform,
+        };
+        if (self.game_character) |character_handle| {
+            if (self.get_active_world().characters.getPtr(character_handle)) |character| {
+                scene_camera.transform = character.get_camera_transform().to_scaled(za.Vec3.ONE);
+            }
         }
 
         const window_size = try self.platform.get_window_size();
