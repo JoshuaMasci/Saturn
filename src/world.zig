@@ -190,6 +190,16 @@ pub const World = struct {
         };
     }
 
+    fn ray_hit_convert(hit: physics_system.RayCastHit) RayCastHit {
+        return .{
+            .entity_handle = EntityHandle.from_u64(hit.body_user_data),
+            .shape_index = hit.shape_index,
+            .distance = hit.distance,
+            .ws_position = za.Vec3.fromArray(hit.ws_position),
+            .ws_normal = za.Vec3.fromArray(hit.ws_normal),
+        };
+    }
+
     pub fn ray_cast(
         self: Self,
         physics_layer: PhysicsLayer,
@@ -197,13 +207,34 @@ pub const World = struct {
         direction: za.Vec3,
     ) ?RayCastHit {
         if (self.physics_world.ray_cast_closest(@bitCast(physics_layer), start.toArray(), direction.toArray())) |hit| {
-            return .{
-                .entity_handle = EntityHandle.from_u64(hit.body_user_data),
-                .shape_index = hit.shape_index,
-                .distance = hit.distance,
-                .ws_position = za.Vec3.fromArray(hit.ws_position),
-                .ws_normal = za.Vec3.fromArray(hit.ws_normal),
-            };
+            return ray_hit_convert(hit);
+        }
+
+        return null;
+    }
+
+    pub fn ray_cast_ignore(
+        self: Self,
+        physics_layer: PhysicsLayer,
+        ignore_entity: EntityHandle,
+        start: za.Vec3,
+        direction: za.Vec3,
+    ) ?RayCastHit {
+        const entity_ptr_opt = self.get_ptr(ignore_entity);
+
+        if (entity_ptr_opt) |entity_ptr| {
+            switch (entity_ptr) {
+                .character => |character| {
+                    if (self.physics_world.ray_cast_closest_ignore_character(@bitCast(physics_layer), character.physics.?, start.toArray(), direction.toArray())) |hit| {
+                        return ray_hit_convert(hit);
+                    }
+                },
+                else => unreachable,
+            }
+
+            return null;
+        } else {
+            return self.ray_cast(physics_layer, start, direction);
         }
 
         return null;

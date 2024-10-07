@@ -286,6 +286,12 @@ pub const World = struct {
         return if (has_hit) raycast_hit else null;
     }
 
+    pub fn ray_cast_closest_ignore_character(self: Self, object_layer_pattern: ObjectLayer, ignore_character: CharacterHandle, origin: [3]f32, direction: [3]f32) ?RayCastHit {
+        var raycast_hit: c.RayCastHit = .{};
+        const has_hit = c.ray_cast_closest_ignore_character(self.ptr, object_layer_pattern, ignore_character, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &raycast_hit);
+        return if (has_hit) raycast_hit else null;
+    }
+
     pub fn shape_cast(
         self: Self,
         object_layer_pattern: ObjectLayer,

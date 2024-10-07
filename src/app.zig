@@ -100,13 +100,7 @@ pub const App = struct {
         self.game_world1.update(delta_time);
         self.game_world2.update(delta_time);
 
-        self.rendering_backend.clear_framebuffer();
-
         if (self.fire_ray) {
-            // if (self.get_active_world().ray_cast(.{ .dynamic = true }, scene_camera.transform.position, scene_camera.transform.get_forward().scale(1000.0))) |hit| {
-            //     std.log.info("Raycast Hit: {any:0.3}", .{hit});
-            // }
-
             const src_world = self.get_active_world();
             const dst_world = self.get_other_world();
 
@@ -125,17 +119,6 @@ pub const App = struct {
                             else => {},
                         }
                     }
-
-                    // switch (self.game_world1.get_ptr(hit.entity_handle).?) {
-                    //     .dynamic => |ptr| {
-                    //         ptr.transform.position = ptr.transform.position.add(za.Vec3.Y.scale(10.0));
-                    //     },
-                    //     .character => |ptr| {
-                    //         std.log.info("Char Move", .{});
-                    //         ptr.transform.position = ptr.transform.position.add(za.Vec3.Y.scale(10.0));
-                    //     },
-                    //     else => {},
-                    // }
                 }
             }
 
@@ -153,6 +136,7 @@ pub const App = struct {
             }
         }
 
+        self.rendering_backend.clear_framebuffer();
         const window_size = try self.platform.get_window_size();
         self.rendering_backend.render_scene(window_size, scene, &scene_camera);
 

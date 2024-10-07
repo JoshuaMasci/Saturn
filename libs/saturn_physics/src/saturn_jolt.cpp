@@ -426,6 +426,33 @@ GroundState get_character_ground_state(PhysicsWorld *ptr, CharacterHandle handle
     return ground_state;
 }
 
+void convert_ray_hit(RayCastHit *hit_result, JPH::RayCast &ray, JPH::RayCastResult &hit,
+                     const JPH::BodyLockInterfaceLocking &body_lock_interface) {
+    auto ray_distance = ray.mDirection * hit.mFraction;
+    auto ws_position = ray.mOrigin + ray_distance;
+
+    hit_result->body = hit.mBodyID.GetIndexAndSequenceNumber();
+    hit_result->shape_index = 0;//hit.mSubShapeID2.GetValue(); //TODO: figure this out once sub-shapes are supported
+    hit_result->distance = ray_distance.Length();
+    hit_result->ws_position[0] = ws_position.GetX();
+    hit_result->ws_position[1] = ws_position.GetY();
+    hit_result->ws_position[2] = ws_position.GetZ();
+
+    {
+        JPH::BodyLockRead lock(body_lock_interface, hit.mBodyID);
+        if (lock.Succeeded()) {
+            const JPH::Body &body = lock.GetBody();
+            auto ws_normal = body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, ws_position);
+            hit_result->ws_normal[0] = ws_normal.GetX();
+            hit_result->ws_normal[1] = ws_normal.GetY();
+            hit_result->ws_normal[2] = ws_normal.GetZ();
+            hit_result->body_user_data = body.GetUserData();
+            hit_result->shape_user_data = body.GetShape()->GetSubShapeUserData(hit.mSubShapeID2);
+        }
+    }
+}
+
+
 bool
 ray_cast_closest(PhysicsWorld *ptr, ObjectLayer object_layer_pattern,
                  const float origin[3], const float direction[3],
@@ -443,28 +470,7 @@ ray_cast_closest(PhysicsWorld *ptr, ObjectLayer object_layer_pattern,
                                                                                 body_filter);
 
     if (has_hit) {
-        auto ray_distance = ray.mDirection * hit.mFraction;
-        auto ws_position = ray.mOrigin + ray_distance;
-
-        hit_result->body = hit.mBodyID.GetIndexAndSequenceNumber();
-        hit_result->shape_index = 0;//hit.mSubShapeID2.GetValue(); //TODO: figure this out once sub-shapes are supported
-        hit_result->distance = ray_distance.Length();
-        hit_result->ws_position[0] = ws_position.GetX();
-        hit_result->ws_position[1] = ws_position.GetY();
-        hit_result->ws_position[2] = ws_position.GetZ();
-
-        {
-            JPH::BodyLockRead lock(physics_world->physics_system->GetBodyLockInterface(), hit.mBodyID);
-            if (lock.Succeeded()) {
-                const JPH::Body &body = lock.GetBody();
-                auto ws_normal = body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, ws_position);
-                hit_result->ws_normal[0] = ws_normal.GetX();
-                hit_result->ws_normal[1] = ws_normal.GetY();
-                hit_result->ws_normal[2] = ws_normal.GetZ();
-                hit_result->body_user_data = body.GetUserData();
-                hit_result->shape_user_data = body.GetShape()->GetSubShapeUserData(hit.mSubShapeID2);
-            }
-        }
+        convert_ray_hit(hit_result, ray, hit, physics_world->physics_system->GetBodyLockInterface());
     }
     return has_hit;
 }
@@ -486,28 +492,31 @@ ray_cast_closest_ignore(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, Bod
                                                                                 body_filter);
 
     if (has_hit) {
-        auto ray_distance = ray.mDirection * hit.mFraction;
-        auto ws_position = ray.mOrigin + ray_distance;
+        convert_ray_hit(hit_result, ray, hit, physics_world->physics_system->GetBodyLockInterface());
+    }
+    return has_hit;
+}
 
-        hit_result->body = hit.mBodyID.GetIndexAndSequenceNumber();
-        hit_result->shape_index = 0;//hit.mSubShapeID2.GetValue(); //TODO: figure this out once sub-shapes are supported
-        hit_result->distance = ray_distance.Length();
-        hit_result->ws_position[0] = ws_position.GetX();
-        hit_result->ws_position[1] = ws_position.GetY();
-        hit_result->ws_position[2] = ws_position.GetZ();
+bool
+ray_cast_closest_ignore_character(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, CharacterHandle ignore_character,
+                                  const float origin[3], const float direction[3],
+                                  RayCastHit *hit_result) {
+    auto physics_world = (PhysicsWorld *) ptr;
+    JPH::RayCast ray(load_vec3(origin), load_vec3(direction));
+    JPH::RayCastResult hit;
 
-        {
-            JPH::BodyLockRead lock(physics_world->physics_system->GetBodyLockInterface(), hit.mBodyID);
-            if (lock.Succeeded()) {
-                const JPH::Body &body = lock.GetBody();
-                auto ws_normal = body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, ws_position);
-                hit_result->ws_normal[0] = ws_normal.GetX();
-                hit_result->ws_normal[1] = ws_normal.GetY();
-                hit_result->ws_normal[2] = ws_normal.GetZ();
-                hit_result->body_user_data = body.GetUserData();
-                hit_result->shape_user_data = body.GetShape()->GetSubShapeUserData(hit.mSubShapeID2);
-            }
-        }
+    auto character = physics_world->characters[ignore_character];
+
+    JPH::BroadPhaseLayerFilter broad_phase_filter{};
+    AnyMatchObjectLayerFilter layer_filter(object_layer_pattern);
+    JPH::IgnoreSingleBodyFilter body_filter{character->character->GetInnerBodyID()};
+
+    bool has_hit = physics_world->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit,
+                                                                                broad_phase_filter, layer_filter,
+                                                                                body_filter);
+
+    if (has_hit) {
+        convert_ray_hit(hit_result, ray, hit, physics_world->physics_system->GetBodyLockInterface());
     }
     return has_hit;
 }
