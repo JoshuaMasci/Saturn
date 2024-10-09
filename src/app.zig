@@ -1,9 +1,8 @@
 const std = @import("std");
 const za = @import("zalgebra");
-const imgui = @import("zimgui");
 
-const saturn_options = @import("saturn_options");
-const sdl_platform = if (saturn_options.sdl3) @import("platform/sdl3.zig") else @import("platform/sdl2.zig");
+//const saturn_options = @import("saturn_options");
+const sdl_platform = @import("platform/sdl2.zig");
 
 const rendering_system = @import("rendering.zig");
 const physics_system = @import("physics");
@@ -114,6 +113,7 @@ pub const App = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
+        _ = mem_usage_opt; // autofix
         try self.platform.proccess_events(self);
 
         self.game_universe.update(delta_time);
@@ -163,23 +163,6 @@ pub const App = struct {
         const window_size = try self.platform.get_window_size();
         self.rendering_backend.render_scene(window_size, scene, &scene_camera);
 
-        {
-            imgui.backend.newFrame(try self.platform.get_window_size());
-
-            if (imgui.begin("Performance", .{})) {
-                imgui.text("Delta Time {d:.3} ms", .{delta_time * 1000});
-                imgui.text("FPS {d:.3}", .{1.0 / delta_time});
-                if (mem_usage_opt) |mem_usage| {
-                    if (@import("utils.zig").format_human_readable_bytes(self.allocator, mem_usage)) |mem_usage_string| {
-                        defer self.allocator.free(mem_usage_string);
-                        imgui.text("Memory Usage {s}", .{mem_usage_string});
-                    }
-                }
-            }
-            imgui.end();
-
-            imgui.backend.draw();
-        }
         self.platform.gl_swap_window();
     }
 

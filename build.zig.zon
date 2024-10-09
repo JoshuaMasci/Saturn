@@ -10,8 +10,8 @@
     },
     .dependencies = .{
         .zalgebra = .{
-            .url = "https://github.com/JoshuaMasci/zalgebra/archive/2ecb52.tar.gz",
-            .hash = "122030e04ec710fc1d3dd98bdd248135b9190495c1e63e361996623a3af31b7a5983",
+            .url = "https://github.com/JoshuaMasci/zalgebra/archive/8ee8402.tar.gz",
+            .hash = "12206f6e0c673d4fc52c5852434501b897b1f054cdf55442a53f793b9fd1fc31b6f1",
         },
         .zgltf = .{
             .url = "https://github.com/kooparse/zgltf/archive/17fb60b.tar.gz",
@@ -21,7 +21,6 @@
 
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
-        .zimgui = .{ .path = "libs/zig-gamedev/libs/zimgui" },
         .zmesh = .{ .path = "libs/zig-gamedev/libs/zmesh" },
         .zstbi = .{ .path = "libs/zig-gamedev/libs/zstbi" },
     },

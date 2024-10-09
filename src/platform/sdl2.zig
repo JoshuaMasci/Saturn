@@ -1,6 +1,5 @@
 const std = @import("std");
 const sdl = @import("zsdl2");
-const imgui = @import("zimgui");
 const opengl = @import("zopengl");
 const gl = opengl.bindings;
 
@@ -133,13 +132,13 @@ pub const Platform = struct {
             try keyboard.?.button_bindings.put(sdl.Scancode.t, .{ .button = .debug_camera_interact });
         }
 
-        imgui.init(allocator);
-        imgui.io.setConfigFlags(.{
-            .dock_enable = true,
-            .nav_enable_keyboard = true,
-            .nav_enable_gamepad = false,
-        });
-        imgui.backend.init(window, gl_context);
+        // imgui.init(allocator);
+        // imgui.io.setConfigFlags(.{
+        //     .dock_enable = true,
+        //     .nav_enable_keyboard = true,
+        //     .nav_enable_gamepad = false,
+        // });
+        // imgui.backend.init(window, gl_context);
 
         return .{
             .allocator = allocator,
@@ -162,8 +161,8 @@ pub const Platform = struct {
             mouse.deinit();
         }
 
-        imgui.backend.deinit();
-        imgui.deinit();
+        // imgui.backend.deinit();
+        // imgui.deinit();
 
         if (self.gl_context) |gl_context| {
             sdl.gl.deleteContext(gl_context);
@@ -186,7 +185,7 @@ pub const Platform = struct {
     pub fn proccess_events(self: *Self, app: *App) !void {
         var event: sdl.Event = undefined;
         while (sdl.pollEvent(&event)) {
-            _ = imgui.backend.processEvent(&event);
+            //_ = imgui.backend.processEvent(&event);
 
             switch (event.type) {
                 .quit => self.should_quit = true,

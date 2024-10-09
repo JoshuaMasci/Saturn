@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) !void {
 
     const exe = b.addExecutable(.{
         .name = "Saturn",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -27,23 +27,12 @@ pub fn build(b: *std.Build) !void {
 
     // zsdl
     const zsdl = b.dependency("zsdl", .{});
-    if (use_sdl3) {
-        exe.root_module.addImport("zsdl3", zsdl.module("zsdl3"));
-        @import("zsdl").link_SDL3(exe);
-    } else {
-        exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
-        @import("zsdl").link_SDL2(exe);
-    }
+    exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
+    @import("zsdl").link_SDL2(exe);
 
     // zopengl
     const zopengl = b.dependency("zopengl", .{});
     exe.root_module.addImport("zopengl", zopengl.module("root"));
-
-    // zimgui
-
-    const zimgui = if (use_sdl3) b.dependency("zimgui", .{ .backend = .sdl3_opengl3 }) else b.dependency("zimgui", .{ .backend = .sdl2_opengl3 });
-    exe.root_module.addImport("zimgui", zimgui.module("root"));
-    exe.linkLibrary(zimgui.artifact("imgui"));
 
     // zmesh
     const zmesh = b.dependency("zmesh", .{});
@@ -72,7 +61,7 @@ pub fn build(b: *std.Build) !void {
     run_step.dependOn(&run_cmd.step);
 
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
