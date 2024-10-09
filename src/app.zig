@@ -18,6 +18,8 @@ const debug_camera = @import("debug_camera.zig");
 
 const world_gen = @import("world_gen.zig");
 
+const universe = @import("universe.zig");
+
 pub const App = struct {
     const Self = @This();
 
@@ -37,6 +39,12 @@ pub const App = struct {
     game_character: ?world.CharacterPool.Handle,
 
     fire_ray: bool = false,
+
+    // New World System Test
+    game_universe: universe.Universe,
+    game_world_handle1: universe.WorldHandle,
+    game_world_handle2: universe.WorldHandle,
+    game_character_handle: universe.GlobalEntityHandle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
@@ -63,6 +71,12 @@ pub const App = struct {
             game_character = character_handle.character;
         }
 
+        var game_universe = universe.Universe.init(allocator);
+        const game_world_handle1 = try game_universe.create_world();
+        const game_world_handle2 = try game_universe.create_world();
+        const game_character_handle = try game_universe.create_entity(game_world_handle1);
+        std.debug.assert(game_universe.get_entity_world(game_character_handle) != null);
+
         return .{
             .should_quit = false,
             .allocator = allocator,
@@ -76,10 +90,17 @@ pub const App = struct {
             .game_camera = .{},
             .game_character = game_character,
             .game_cube = physics_system.Shape.init_box(.{1.0} ** 3, 1.0),
+
+            .game_universe = game_universe,
+            .game_world_handle1 = game_world_handle1,
+            .game_world_handle2 = game_world_handle2,
+            .game_character_handle = game_character_handle,
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.game_universe.deinit();
+
         self.game_world1.deinit();
         self.game_world2.deinit();
 
@@ -94,6 +115,8 @@ pub const App = struct {
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
         try self.platform.proccess_events(self);
+
+        self.game_universe.update(delta_time);
 
         self.game_camera.update(delta_time);
 
