@@ -170,6 +170,14 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
                 return result;
             }
 
+            pub fn next_value(it: *Iterator) ?*T {
+                if (it.next()) |entry| {
+                    return entry.value_ptr;
+                } else {
+                    return null;
+                }
+            }
+
             /// Reset the iterator to the initial index
             pub fn reset(it: *Iterator) void {
                 it.index = 0;

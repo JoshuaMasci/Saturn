@@ -71,8 +71,8 @@ pub const App = struct {
         }
 
         var game_universe = universe.Universe.init(allocator);
-        const game_world_handle1 = try game_universe.create_world();
-        const game_world_handle2 = try game_universe.create_world();
+        const game_world_handle1 = try game_universe.create_world(.{}, .{});
+        const game_world_handle2 = try game_universe.create_world(.{ .scene = rendering_backend.create_scene() }, .{ .rendering = universe.WorldRenderingSystem{} });
         const game_character_handle = try game_universe.create_entity(game_world_handle1);
         std.debug.assert(game_universe.get_entity_world(game_character_handle) != null);
 
