@@ -15,12 +15,7 @@ pub const StaticMeshComponent = struct {
 pub const NodeComponents = struct {
     static_mesh: ?StaticMeshComponent = null,
     collider: ?void = null,
-};
-pub const EntityComponents = struct {
-    rigid_body: ?void = null,
-};
-pub const WorldComponents = struct {
-    scene: ?rendering_system.Scene = null,
+    light: ?void = null,
 };
 
 // Systems
@@ -126,32 +121,59 @@ pub const Node = struct {
     local_transform: Transform,
     components: NodeComponents,
 
-    parent: ?NodeHandle,
-    childen: NodeList,
+    parent: ?NodeHandle = null,
+    childen: NodeList = .{},
 };
 
-pub const NodeSet = struct {
+// Entity
+pub const Entity = struct {
     const Self = @This();
 
-    root_nodes: NodeList,
-    pool: NodePool,
+    global_handle: ?GlobalEntityHandle = null,
+    local_handle: ?LocalEntityHandle = null,
 
-    pub fn init(allocator: std.mem.Allocator) Self {
+    name: ?std.ArrayList(u8) = null,
+    transform: Transform = .{},
+
+    root_nodes: NodeList = .{},
+    node_pool: NodePool,
+
+    systems: EntitySystems = .{},
+
+    pub fn init(allocator: std.mem.Allocator, systems: EntitySystems) Self {
         return .{
-            .root_nodes = NodeList{},
-            .pool = NodePool.init(allocator),
+            .global_handle = undefined,
+            .node_pool = NodePool.init(allocator),
+            .systems = systems,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.pool.deinit();
+        if (self.name) |name| {
+            name.deinit();
+        }
+
+        self.node_pool.deinit();
     }
 
-    pub fn add(self: *Self, node: Node) !NodeHandle {
-        const handle = try self.pool.insert(node);
-        if (node.parent) |parent_handle| {
-            if (self.pool.getPtr(parent_handle)) |parent| {
-                parent.childen.append(handle) catch return error.child_node_list_full;
+    //Node functions
+    pub fn add_node(
+        self: *Self,
+        parent: ?NodeHandle,
+        local_transform: Transform,
+        components: NodeComponents,
+    ) !NodeHandle {
+        const handle = try self.node_pool.insert(.{
+            .parent = parent,
+            .handle = undefined,
+            .local_transform = local_transform,
+            .components = components,
+        });
+        self.node_pool.getPtr(handle).?.handle = handle;
+
+        if (parent) |parent_handle| {
+            if (self.node_pool.getPtr(parent_handle)) |parent_node| {
+                parent_node.childen.append(handle) catch return error.child_node_list_full;
             } else {
                 return error.invalid_parent_node;
             }
@@ -162,17 +184,17 @@ pub const NodeSet = struct {
         return handle;
     }
 
-    pub fn remove(self: *Self, node_handle: Node) !void {
-        if (self.pool.remove(node_handle)) |node| {
+    pub fn remove_node(self: *Self, node_handle: NodeHandle) !void {
+        if (self.node_pool.remove(node_handle)) |node| {
             for (node.childen.slice()) |child_handle| {
-                try self.remove(child_handle);
+                try self.remove_node(child_handle);
             }
 
             if (node.parent) |parent_handle| {
-                if (self.pool.getPtr(parent_handle)) |parent| {
+                if (self.node_pool.getPtr(parent_handle)) |parent| {
                     _ = removeFromList(&parent.childen, node_handle);
                 } else {
-                    return error.invalid_parent_node;
+                    std.log.err("Node({}) had an invalid Parent({})", .{ node_handle, parent_handle });
                 }
             } else {
                 _ = removeFromList(&self.root_nodes, node_handle);
@@ -180,12 +202,12 @@ pub const NodeSet = struct {
         }
     }
 
-    pub fn get_entity_transform(self: Self, node_handle: NodeHandle) ?Transform {
+    pub fn get_node_root_transform(self: Self, node_handle: NodeHandle) ?Transform {
         var next_handle: ?NodeHandle = node_handle;
         var transform: ?Transform = null;
 
         while (next_handle) |handle| {
-            const node = self.pool.get(handle).?;
+            const node = self.node_pool.get(handle).?;
             const parent_transform: Transform = transform orelse .{};
             transform = parent_transform.transform_by(&node.local_transform);
             next_handle = node.parent;
@@ -193,37 +215,8 @@ pub const NodeSet = struct {
 
         return transform;
     }
-};
 
-// Entity
-pub const Entity = struct {
-    const Self = @This();
-
-    global_handle: GlobalEntityHandle,
-    local_handle: ?LocalEntityHandle = null,
-
-    name: ?std.ArrayList(u8) = null,
-    transform: Transform = .{},
-    nodes: NodeSet,
-
-    components: EntityComponents = .{},
-    systems: EntitySystems = .{},
-
-    pub fn init(allocator: std.mem.Allocator) Self {
-        return .{
-            .global_handle = undefined,
-            .nodes = NodeSet.init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        if (self.name) |name| {
-            name.deinit();
-        }
-
-        self.nodes.deinit();
-    }
-
+    //Update functions
     pub fn frame_start(self: *Self, delta_time: f32) void {
         self.systems.frame_start(self, delta_time);
     }
@@ -259,15 +252,12 @@ pub const World = struct {
 
     handle: WorldHandle,
     entities: LocalEntityPool,
-
-    components: WorldComponents = .{},
     systems: WorldSystems = .{},
 
-    pub fn init(allocator: std.mem.Allocator, components: WorldComponents, systems: WorldSystems) Self {
+    pub fn init(allocator: std.mem.Allocator, systems: WorldSystems) Self {
         return .{
             .handle = undefined,
             .entities = LocalEntityPool.init(allocator),
-            .components = components,
             .systems = systems,
         };
     }
@@ -367,8 +357,8 @@ pub const Universe = struct {
         }
     }
 
-    pub fn create_world(self: *Self, components: WorldComponents, systems: WorldSystems) !WorldHandle {
-        const handle = try self.worlds.insert(World.init(self.allocator, components, systems));
+    pub fn create_world(self: *Self, systems: WorldSystems) !WorldHandle {
+        const handle = try self.worlds.insert(World.init(self.allocator, systems));
         self.worlds.getPtr(handle).?.handle = handle;
         return handle;
     }
@@ -388,9 +378,9 @@ pub const Universe = struct {
         return error.invalid_world_handle;
     }
 
-    pub fn create_entity(self: *Self, world_handle: WorldHandle) !GlobalEntityHandle {
+    pub fn create_entity(self: *Self, world_handle: WorldHandle, systems: EntitySystems) !GlobalEntityHandle {
         if (self.worlds.getPtr(world_handle)) |world| {
-            const local_handle = try world.entities.insert(Entity.init(self.allocator));
+            const local_handle = try world.entities.insert(Entity.init(self.allocator, systems));
             const global_handle = try self.entites.insert(.{ .world_handle = world_handle, .local_handle = local_handle });
             const entity_ptr = world.entities.getPtr(local_handle).?;
             entity_ptr.local_handle = local_handle;
@@ -399,6 +389,16 @@ pub const Universe = struct {
         }
 
         return error.invalid_world_handle;
+    }
+
+    pub fn get_entity(self: *Self, entity_handle: GlobalEntityHandle) ?*Entity {
+        if (self.entites.get(entity_handle)) |entity| {
+            if (self.worlds.getPtr(entity.world_handle)) |world_ptr| {
+                return world_ptr.entities.getPtr(entity.local_handle);
+            }
+        }
+
+        return null;
     }
 
     pub fn get_entity_world(self: Self, entity_handle: GlobalEntityHandle) ?WorldHandle {
@@ -434,6 +434,8 @@ pub const EntityRenderingSystem = struct {
 pub const WorldRenderingSystem = struct {
     const Self = @This();
 
+    scene: rendering_system.Scene,
+
     pub fn frame_start(self: *Self, data: WorldUpdateData) void {
         _ = data; // autofix
         _ = self; // autofix
@@ -441,23 +443,17 @@ pub const WorldRenderingSystem = struct {
     }
 
     pub fn pre_render(self: *Self, world: *World) void {
-        _ = self; // autofix
-
-        //std.log.info("WorldRenderingSystem: pre_render", .{});
-
-        if (world.components.scene) |*scene| {
-            var iter = world.entities.iterator();
-            while (iter.next()) |entry| {
-                update_entity_instances(scene, entry.value_ptr);
-            }
+        var iter = world.entities.iterator();
+        while (iter.next_value()) |entity| {
+            update_entity_instances(&self.scene, entity);
         }
     }
 
     fn update_entity_instances(scene: *rendering_system.Scene, entity: *Entity) void {
-        var iter = entity.nodes.pool.iterator();
+        var iter = entity.node_pool.iterator();
         while (iter.next()) |entry| {
             if (entry.value_ptr.components.static_mesh) |*static_mesh_component| {
-                const world_transform = entity.transform.transform_by(&entity.nodes.get_entity_transform(entry.handle).?);
+                const world_transform = entity.transform.transform_by(&entity.get_node_root_transform(entry.handle).?);
                 if (static_mesh_component.instance) |instance| {
                     scene.update_instance(instance, &world_transform);
                 } else {
@@ -478,7 +474,7 @@ fn callMethodOnFieldsIfExists(
     args: Args,
 ) void {
     inline for (std.meta.fields(@TypeOf(self))) |struct_field| {
-        const field_type = unwrapOptionalType(struct_field.type) orelse struct_field.type;
+        const field_type = unwrapOptionalType(struct_field.type) orelse @compileError("Field must be an optional type");
 
         if (comptime std.meta.hasMethod(field_type, method_name)) {
             var field_opt = @field(self, struct_field.name);

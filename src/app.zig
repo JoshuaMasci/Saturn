@@ -41,8 +41,7 @@ pub const App = struct {
 
     // New World System Test
     game_universe: universe.Universe,
-    game_world_handle1: universe.WorldHandle,
-    game_world_handle2: universe.WorldHandle,
+    game_world_handle: universe.WorldHandle,
     game_character_handle: universe.GlobalEntityHandle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -71,9 +70,13 @@ pub const App = struct {
         }
 
         var game_universe = universe.Universe.init(allocator);
-        const game_world_handle1 = try game_universe.create_world(.{}, .{});
-        const game_world_handle2 = try game_universe.create_world(.{ .scene = rendering_backend.create_scene() }, .{ .rendering = universe.WorldRenderingSystem{} });
-        const game_character_handle = try game_universe.create_entity(game_world_handle1);
+        const game_world_handle = try game_universe.create_world(.{ .rendering = universe.WorldRenderingSystem{ .scene = rendering_backend.create_scene() } });
+        const game_character_handle = try game_universe.create_entity(game_world_handle, .{});
+
+        const cube_entity_handle = try game_universe.create_entity(game_world_handle, .{});
+        var cube_entity = game_universe.get_entity(cube_entity_handle).?;
+        _ = try cube_entity.add_node(null, .{}, .{});
+
         std.debug.assert(game_universe.get_entity_world(game_character_handle) != null);
 
         return .{
@@ -91,8 +94,7 @@ pub const App = struct {
             .game_cube = physics_system.Shape.init_box(.{1.0} ** 3, 1.0),
 
             .game_universe = game_universe,
-            .game_world_handle1 = game_world_handle1,
-            .game_world_handle2 = game_world_handle2,
+            .game_world_handle = game_world_handle,
             .game_character_handle = game_character_handle,
         };
     }
@@ -148,7 +150,7 @@ pub const App = struct {
             self.fire_ray = false;
         }
 
-        const scene = &self.get_active_world().rendering_world;
+        var scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
         var scene_camera = camera.Camera{
             .data = self.game_camera.camera,
             .transform = self.game_camera.transform,
@@ -156,6 +158,12 @@ pub const App = struct {
         if (self.game_character) |character_handle| {
             if (self.get_active_world().characters.getPtr(character_handle)) |character| {
                 scene_camera.transform = character.get_camera_transform().to_scaled(za.Vec3.ONE);
+            }
+        }
+
+        if (self.game_universe.worlds.getPtr(self.game_world_handle)) |world_ptr| {
+            if (world_ptr.systems.rendering) |rendering| {
+                scene = &rendering.scene;
             }
         }
 

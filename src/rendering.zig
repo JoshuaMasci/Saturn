@@ -133,7 +133,7 @@ pub const Backend = struct {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
-    pub fn render_scene(self: Self, window_size: [2]u32, scene: *Scene, scene_camera: *const Camera) void {
+    pub fn render_scene(self: Self, window_size: [2]u32, scene: *const Scene, scene_camera: *const Camera) void {
         var err: gl.Enum = gl.getError();
         while (err != gl.NO_ERROR) {
             std.log.err("GL Error: {}", .{err});
