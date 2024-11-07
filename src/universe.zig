@@ -1,13 +1,14 @@
 const std = @import("std");
 const Transform = @import("transform.zig");
-const ObjectPool = @import("object_pool.zig").ObjectPool;
+const StableObjectPool = @import("stable_object_pool.zig").StableObjectPool;
 
 const rendering_system = @import("rendering.zig");
 //const render_scene = @import("render_scene.zig");
 
 pub const StaticMeshComponent = struct {
+    visable: bool = true,
     mesh: rendering_system.StaticMeshHandle,
-    material: std.BoundedArray(rendering_system.MaterialHandle, 8),
+    material: rendering_system.MaterialHandle,
     instance: ?rendering_system.SceneInstanceHandle = null,
 };
 
@@ -81,24 +82,24 @@ pub const WorldSystems = struct {
 
     pub fn add_to_world(self: *Self, world: *World, entity: *Entity) void {
         callMethodOnFieldsIfExists("add_to_world", EntityEventData, self.*, .{ .world = world, .entity = entity });
+        entity.systems.add_to_world(world, entity);
     }
 
     pub fn remove_from_world(self: *Self, world: *World, entity: *Entity) void {
+        entity.systems.remove_from_world(world, entity);
         callMethodOnFieldsIfExists("remove_from_world", EntityEventData, self.*, .{ .world = world, .entity = entity });
     }
 };
 
 // Handles
 pub const NodeHandle = NodePool.Handle;
-pub const LocalEntityHandle = LocalEntityPool.Handle;
-pub const GlobalEntityHandle = LocalEntityPool.Handle;
+pub const EntityHandle = EntityPool.Handle;
 pub const WorldHandle = WorldPool.Handle;
 
 // Containers
-pub const NodePool = ObjectPool(u16, Node);
-pub const LocalEntityPool = ObjectPool(u16, Entity);
-pub const GlobalEntityPool = ObjectPool(u16, GlobalEntity);
-pub const WorldPool = ObjectPool(u16, World);
+pub const NodePool = StableObjectPool(Node);
+pub const EntityPool = StableObjectPool(Entity);
+pub const WorldPool = StableObjectPool(World);
 
 pub const NodeList = std.BoundedArray(NodeHandle, 16);
 fn removeFromList(list: *NodeList, node_handle: NodeHandle) bool {
@@ -129,8 +130,8 @@ pub const Node = struct {
 pub const Entity = struct {
     const Self = @This();
 
-    global_handle: ?GlobalEntityHandle = null,
-    local_handle: ?LocalEntityHandle = null,
+    handle: EntityHandle,
+    world_handle: ?WorldHandle = null,
 
     name: ?std.ArrayList(u8) = null,
     transform: Transform = .{},
@@ -140,10 +141,10 @@ pub const Entity = struct {
 
     systems: EntitySystems = .{},
 
-    pub fn init(allocator: std.mem.Allocator, systems: EntitySystems) Self {
+    pub fn init(allocator: std.mem.Allocator, systems: EntitySystems) !Self {
         return .{
-            .global_handle = undefined,
-            .node_pool = NodePool.init(allocator),
+            .handle = undefined,
+            .node_pool = try NodePool.init(allocator),
             .systems = systems,
         };
     }
@@ -169,10 +170,10 @@ pub const Entity = struct {
             .local_transform = local_transform,
             .components = components,
         });
-        self.node_pool.getPtr(handle).?.handle = handle;
+        self.node_pool.get(handle).?.handle = handle;
 
         if (parent) |parent_handle| {
-            if (self.node_pool.getPtr(parent_handle)) |parent_node| {
+            if (self.node_pool.get(parent_handle)) |parent_node| {
                 parent_node.childen.append(handle) catch return error.child_node_list_full;
             } else {
                 return error.invalid_parent_node;
@@ -251,19 +252,19 @@ pub const World = struct {
     const Self = @This();
 
     handle: WorldHandle,
-    entities: LocalEntityPool,
+    entities: std.AutoArrayHashMap(EntityHandle, *Entity),
     systems: WorldSystems = .{},
 
     pub fn init(allocator: std.mem.Allocator, systems: WorldSystems) Self {
         return .{
             .handle = undefined,
-            .entities = LocalEntityPool.init(allocator),
+            .entities = std.AutoArrayHashMap(EntityHandle, *Entity).init(allocator),
             .systems = systems,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.entities.deinit_with_entries();
+        self.entities.deinit();
     }
 
     pub fn update(self: *Self, delta_time: f32) void {
@@ -271,19 +272,18 @@ pub const World = struct {
         // Frame Start
         {
             //TODO: run in parallel
-            var iter = self.entities.iterator();
-            while (iter.next_value()) |entity|
-                entity.frame_start(delta_time);
-
+            for (self.entities.values()) |entity| {
+                entity.systems.frame_start(entity, delta_time);
+            }
             self.systems.frame_start(self, delta_time);
         }
 
         // Pre Physics
         {
             //TODO: run in parallel
-            var iter = self.entities.iterator();
-            while (iter.next_value()) |entity|
-                entity.pre_physics(delta_time);
+            for (self.entities.values()) |entity| {
+                entity.systems.pre_physics(entity, delta_time);
+            }
 
             self.systems.pre_physics(self, delta_time);
         }
@@ -293,20 +293,18 @@ pub const World = struct {
         // Post Physics
         {
             //TODO: run in parallel
-            var iter = self.entities.iterator();
-            while (iter.next_value()) |entity|
-                entity.post_physics(delta_time);
-
+            for (self.entities.values()) |entity| {
+                entity.systems.post_physics(entity, delta_time);
+            }
             self.systems.post_physics(self, delta_time);
         }
 
         // Pre Render
         {
             //TODO: run in parallel
-            var iter = self.entities.iterator();
-            while (iter.next_value()) |entity|
-                entity.pre_render();
-
+            for (self.entities.values()) |entity| {
+                entity.systems.pre_render(entity);
+            }
             self.systems.pre_render(self);
         }
 
@@ -315,51 +313,45 @@ pub const World = struct {
         // Frame End
         {
             //TODO: run in parallel
-            var iter = self.entities.iterator();
-            while (iter.next_value()) |entity|
-                entity.frame_end();
-
+            for (self.entities.values()) |entity| {
+                entity.systems.frame_end(entity);
+            }
             self.systems.frame_end(self);
         }
     }
 };
 
 // Universe
-pub const GlobalEntity = struct {
-    world_handle: WorldHandle,
-    local_handle: LocalEntityHandle,
-};
-
 pub const Universe = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    entites: GlobalEntityPool,
+    entites: EntityPool,
     worlds: WorldPool,
 
-    pub fn init(allocator: std.mem.Allocator) Self {
+    pub fn init(allocator: std.mem.Allocator) !Self {
         return .{
             .allocator = allocator,
-            .entites = GlobalEntityPool.init(allocator),
-            .worlds = WorldPool.init(allocator),
+            .entites = try EntityPool.init(allocator),
+            .worlds = try WorldPool.init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.entites.deinit();
-        self.worlds.deinit_with_entries();
+        self.worlds.deinit();
     }
 
     pub fn update(self: *Self, delta_time: f32) void {
         var iter = self.worlds.iterator();
         while (iter.next()) |world| {
-            world.value_ptr.update(delta_time);
+            world.update(delta_time);
         }
     }
 
     pub fn create_world(self: *Self, systems: WorldSystems) !WorldHandle {
         const handle = try self.worlds.insert(World.init(self.allocator, systems));
-        self.worlds.getPtr(handle).?.handle = handle;
+        self.worlds.get(handle).?.handle = handle;
         return handle;
     }
 
@@ -378,57 +370,49 @@ pub const Universe = struct {
         return error.invalid_world_handle;
     }
 
-    pub fn create_entity(self: *Self, world_handle: WorldHandle, systems: EntitySystems) !GlobalEntityHandle {
-        if (self.worlds.getPtr(world_handle)) |world| {
-            const local_handle = try world.entities.insert(Entity.init(self.allocator, systems));
-            const global_handle = try self.entites.insert(.{ .world_handle = world_handle, .local_handle = local_handle });
-            const entity_ptr = world.entities.getPtr(local_handle).?;
-            entity_ptr.local_handle = local_handle;
-            entity_ptr.global_handle = global_handle;
-            return global_handle;
-        }
-
-        return error.invalid_world_handle;
+    pub fn create_entity(self: *Self, systems: EntitySystems) !EntityHandle {
+        const handle = try self.entites.insert(try Entity.init(self.allocator, systems));
+        self.entites.get(handle).?.handle = handle;
+        return handle;
     }
 
-    pub fn get_entity(self: *Self, entity_handle: GlobalEntityHandle) ?*Entity {
-        if (self.entites.get(entity_handle)) |entity| {
-            if (self.worlds.getPtr(entity.world_handle)) |world_ptr| {
-                return world_ptr.entities.getPtr(entity.local_handle);
+    pub fn destroy_entity(self: *Self, entity_handle: EntityHandle) void {
+        if (self.entites.remove(entity_handle)) |entity| {
+            entity.deinit();
+            self.allocator.destroy(entity);
+        }
+    }
+
+    pub fn add_to_world(self: *Self, world_handle: WorldHandle, entity_handle: EntityHandle) !void {
+        if (self.worlds.get(world_handle)) |world| {
+            if (self.entites.get(entity_handle)) |entity| {
+                std.debug.assert(entity.world_handle == null);
+                try world.entities.put(entity_handle, entity);
+                world.systems.add_to_world(world, entity);
             }
         }
-
-        return null;
-    }
-
-    pub fn get_entity_world(self: Self, entity_handle: GlobalEntityHandle) ?WorldHandle {
-        if (self.entites.get(entity_handle)) |entity| {
-            return entity.world_handle;
-        }
-
-        return null;
     }
 };
 
 pub const EntityRenderingSystem = struct {
-    const Self = @This();
+    // const Self = @This();
 
-    scene: ?*rendering_system.Scene = null,
+    // scene: ?*rendering_system.Scene = null,
 
-    pub fn pre_render(self: *Self, entity: *Entity) void {
-        if (self.scene) |scene| {
-            var iter = entity.nodes.pool.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.components.static_mesh) |*static_mesh_component| {
-                    const world_transform = entity.transform.transform_by(&entity.nodes.get_entity_transform(entry.handle).?);
-                    if (static_mesh_component.instance) |instance| {
-                        // Parallel updates won't cause race condition, only adding and removing can cause race conditions
-                        scene.update_instance(instance, &world_transform);
-                    }
-                }
-            }
-        }
-    }
+    // pub fn pre_render(self: *Self, entity: *Entity) void {
+    //     if (self.scene) |scene| {
+    //         var iter = entity.nodes.pool.iterator();
+    //         while (iter.next()) |entry| {
+    //             if (entry.value_ptr.components.static_mesh) |*static_mesh_component| {
+    //                 const world_transform = entity.transform.transform_by(&entity.nodes.get_entity_transform(entry.handle).?);
+    //                 if (static_mesh_component.instance) |instance| {
+    //                     // Parallel updates won't cause race condition, only adding and removing can cause race conditions
+    //                     scene.update_instance(instance, &world_transform);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 };
 
 pub const WorldRenderingSystem = struct {
@@ -443,10 +427,12 @@ pub const WorldRenderingSystem = struct {
     }
 
     pub fn pre_render(self: *Self, world: *World) void {
-        var iter = world.entities.iterator();
-        while (iter.next_value()) |entity| {
-            update_entity_instances(&self.scene, entity);
-        }
+        _ = self; // autofix
+        _ = world; // autofix
+        // var iter = world.entities.iterator();
+        // while (iter.next_value()) |entity| {
+        //     update_entity_instances(&self.scene, entity);
+        // }
     }
 
     fn update_entity_instances(scene: *rendering_system.Scene, entity: *Entity) void {
@@ -457,10 +443,11 @@ pub const WorldRenderingSystem = struct {
                 if (static_mesh_component.instance) |instance| {
                     scene.update_instance(instance, &world_transform);
                 } else {
-                    static_mesh_component.instance = scene.add_instace(static_mesh_component.mesh, static_mesh_component.material.get(0), &world_transform) catch |err| {
+                    static_mesh_component.instance = scene.add_instace(static_mesh_component.mesh, static_mesh_component.material, &world_transform) catch |err| {
                         std.log.info("Failed to add scene instance {}", .{err});
                         return;
                     };
+                    std.log.info("Added mesh to scene: {}", .{static_mesh_component.instance.?});
                 }
             }
         }

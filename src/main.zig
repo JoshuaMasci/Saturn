@@ -1,16 +1,4 @@
-// Library Plans
-// 1. Windowing/Input/Networking/FileSys/FileDiag: SDL3 zig
-// 2. Other Inputs: DuelSenseLib + steam-input (Both much later down the line)
-// 3. Rendering: Vulkan (zig wrapper) / Opengl (using zopengl)
-// 4. Audio: steam-audio (use c api)
-// 5. Physics: zjolt
-// 6. UI: zimgui
-// 7: Mesh Loading: zmesh
-// 8. Texture Loading: stb_image
-// 9. Linear Math: zalgabra
-
 const std = @import("std");
-const log = std.log;
 
 const App = @import("app.zig").App;
 
@@ -18,7 +6,7 @@ pub fn main() !void {
     const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
     var general_purpose_allocator = GeneralPurposeAllocator{};
     defer if (general_purpose_allocator.deinit() == .leak) {
-        log.err("GeneralPurposeAllocator has a memory leak!", .{});
+        std.log.err("GeneralPurposeAllocator has a memory leak!", .{});
     };
     const allocator = general_purpose_allocator.allocator();
 

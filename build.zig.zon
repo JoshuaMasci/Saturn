@@ -9,6 +9,7 @@
         "README.md",
     },
     .dependencies = .{
+        .saturn_physics = .{ .path = "libs/saturn_physics" },
         .zalgebra = .{
             .url = "https://github.com/JoshuaMasci/zalgebra/archive/8ee8402.tar.gz",
             .hash = "12206f6e0c673d4fc52c5852434501b897b1f054cdf55442a53f793b9fd1fc31b6f1",
@@ -17,7 +18,6 @@
             .url = "https://github.com/kooparse/zgltf/archive/17fb60b.tar.gz",
             .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
         },
-        .saturn_physics = .{ .path = "libs/saturn_physics" },
 
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },

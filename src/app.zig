@@ -42,7 +42,7 @@ pub const App = struct {
     // New World System Test
     game_universe: universe.Universe,
     game_world_handle: universe.WorldHandle,
-    game_character_handle: universe.GlobalEntityHandle,
+    game_character_handle: universe.EntityHandle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
@@ -69,15 +69,23 @@ pub const App = struct {
             game_character = character_handle.character;
         }
 
-        var game_universe = universe.Universe.init(allocator);
-        const game_world_handle = try game_universe.create_world(.{ .rendering = universe.WorldRenderingSystem{ .scene = rendering_backend.create_scene() } });
-        const game_character_handle = try game_universe.create_entity(game_world_handle, .{});
+        var game_universe = try universe.Universe.init(allocator);
+        //const game_world_handle = try game_universe.create_world(.{ .rendering = universe.WorldRenderingSystem{ .scene = rendering_backend.create_scene() } });
+        const game_world_handle = try game_universe.create_world(.{});
+        const game_character_handle = try game_universe.create_entity(.{});
 
-        const cube_entity_handle = try game_universe.create_entity(game_world_handle, .{});
-        var cube_entity = game_universe.get_entity(cube_entity_handle).?;
-        _ = try cube_entity.add_node(null, .{}, .{});
+        const cube_entity_handle = try game_universe.create_entity(.{});
+        var cube_entity = game_universe.entites.get(cube_entity_handle).?;
 
-        std.debug.assert(game_universe.get_entity_world(game_character_handle) != null);
+        const mesh_handle = try @import("procedural.zig").create_cube_mesh(allocator, &rendering_backend, .{1.0} ** 3);
+        const material_handle = try rendering_backend.load_material(.{ .base_color_factor = .{ 1.0, 0.0, 0.0, 1.0 } });
+        _ = try cube_entity.add_node(null, .{}, .{
+            .static_mesh = .{
+                .mesh = mesh_handle,
+                .material = material_handle,
+            },
+        });
+        try game_universe.add_to_world(game_world_handle, cube_entity_handle);
 
         return .{
             .should_quit = false,
@@ -150,7 +158,7 @@ pub const App = struct {
             self.fire_ray = false;
         }
 
-        var scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
+        const scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
         var scene_camera = camera.Camera{
             .data = self.game_camera.camera,
             .transform = self.game_camera.transform,
@@ -161,11 +169,11 @@ pub const App = struct {
             }
         }
 
-        if (self.game_universe.worlds.getPtr(self.game_world_handle)) |world_ptr| {
-            if (world_ptr.systems.rendering) |rendering| {
-                scene = &rendering.scene;
-            }
-        }
+        // if (self.game_universe.worlds.getPtr(self.game_world_handle)) |world_ptr| {
+        //     if (world_ptr.systems.rendering) |rendering| {
+        //         scene = &rendering.scene;
+        //     }
+        // }
 
         self.rendering_backend.clear_framebuffer();
         const window_size = try self.platform.get_window_size();
