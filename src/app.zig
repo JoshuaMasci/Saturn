@@ -41,8 +41,8 @@ pub const App = struct {
 
     // New World System Test
     game_universe: universe.Universe,
-    game_world_handle: universe.WorldHandle,
-    game_character_handle: universe.EntityHandle,
+    game_world_handle: universe.World.Handle,
+    game_character_handle: universe.Entity.Handle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
@@ -70,22 +70,35 @@ pub const App = struct {
         }
 
         var game_universe = try universe.Universe.init(allocator);
-        //const game_world_handle = try game_universe.create_world(.{ .rendering = universe.WorldRenderingSystem{ .scene = rendering_backend.create_scene() } });
-        const game_world_handle = try game_universe.create_world(.{});
-        const game_character_handle = try game_universe.create_entity(.{});
+        var game_world = try universe.World.init(allocator, .{ .render = .{ .scene = rendering_backend.create_scene() } });
+        var game_entity = universe.Entity.init(allocator, .{});
+        {
+            const proc = @import("procedural.zig");
+            const mesh = try proc.create_cube_mesh(allocator, &rendering_backend, .{1.0} ** 3);
+            const materials = [_]rendering_system.MaterialHandle{
+                try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 }),
+                try proc.create_color_material(&rendering_backend, .{ 0.0, 1.0, 1.0, 1.0 }),
+                try proc.create_color_material(&rendering_backend, .{ 1.0, 1.0, 0.0, 1.0 }),
+            };
 
-        const cube_entity_handle = try game_universe.create_entity(.{});
-        var cube_entity = game_universe.entites.get(cube_entity_handle).?;
+            var last_node: ?universe.NodeHandle = null;
+            for (1..4) |i| {
+                const index: usize = i % materials.len;
+                const material = materials[index];
+                var scale: f32 = 1.0;
+                if (i == 2) {
+                    scale = 0.5;
+                }
+                last_node = try game_entity.add_node(
+                    last_node,
+                    .{ .position = za.Vec3.Y, .scale = za.Vec3.set(scale) },
+                    .{ .static_mesh = .{ .mesh = mesh, .material = material } },
+                );
+            }
+        }
 
-        const mesh_handle = try @import("procedural.zig").create_cube_mesh(allocator, &rendering_backend, .{1.0} ** 3);
-        const material_handle = try rendering_backend.load_material(.{ .base_color_factor = .{ 1.0, 0.0, 0.0, 1.0 } });
-        _ = try cube_entity.add_node(null, .{}, .{
-            .static_mesh = .{
-                .mesh = mesh_handle,
-                .material = material_handle,
-            },
-        });
-        try game_universe.add_to_world(game_world_handle, cube_entity_handle);
+        game_world.add_entity(game_entity);
+        const game_world_handle = try game_universe.add_world(game_world);
 
         return .{
             .should_quit = false,
@@ -103,7 +116,7 @@ pub const App = struct {
 
             .game_universe = game_universe,
             .game_world_handle = game_world_handle,
-            .game_character_handle = game_character_handle,
+            .game_character_handle = game_entity.handle,
         };
     }
 
@@ -158,7 +171,7 @@ pub const App = struct {
             self.fire_ray = false;
         }
 
-        const scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
+        var scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
         var scene_camera = camera.Camera{
             .data = self.game_camera.camera,
             .transform = self.game_camera.transform,
@@ -174,6 +187,10 @@ pub const App = struct {
         //         scene = &rendering.scene;
         //     }
         // }
+
+        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
+            scene = &game_world.systems.render.?.scene;
+        }
 
         self.rendering_backend.clear_framebuffer();
         const window_size = try self.platform.get_window_size();

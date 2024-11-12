@@ -52,10 +52,7 @@ pub fn to_unscaled(self: Self) UnscaledTransform {
 }
 
 pub fn get_model_matrix(self: Self) za.Mat4 {
-    const translation = za.Mat4.fromTranslate(self.position);
-    const rotation = self.rotation.toMat4();
-    const scale = za.Mat4.fromScale(self.scale);
-    return scale.mul(translation).mul(rotation);
+    return za.Mat4.recompose(self.position, self.rotation, self.scale);
 }
 
 pub fn get_view_matrix(self: Self) za.Mat4 {
