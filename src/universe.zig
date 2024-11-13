@@ -3,18 +3,22 @@ const Transform = @import("transform.zig");
 const ObjectPool = @import("object_pool.zig").ObjectPool;
 
 const rendering_system = @import("rendering.zig");
-
 pub const StaticMeshComponent = struct {
     visable: bool = true,
     mesh: rendering_system.StaticMeshHandle,
     material: rendering_system.MaterialHandle,
     instance: ?rendering_system.SceneInstanceHandle = null,
 };
-
 pub const RenderWorldSystem = struct {
     const Self = @This();
 
     scene: rendering_system.Scene,
+
+    pub fn init(rendering_backend: *rendering_system.Backend) Self {
+        return .{
+            .scene = rendering_backend.create_scene(),
+        };
+    }
 
     pub fn deinit(self: *Self) void {
         self.scene.deinit();
@@ -51,25 +55,141 @@ pub const RenderWorldSystem = struct {
     }
 };
 
+const physics = @import("physics");
+pub const PhysicsEntitySystem = struct {
+    rigidbody_handle: ?physics.BodyHandle = null,
+    character_handle: ?physics.CharacterHandle = null,
+};
+pub const PhysicsWorldSystem = struct {
+    const Self = @This();
+
+    physics_world: physics.World,
+
+    pub fn init() Self {
+        return .{
+            .physics_world = physics.World.init(.{}),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.physics_world.deinit();
+    }
+
+    pub fn register_entity(self: *Self, data: EntityRegisterData) void {
+        _ = self;
+        _ = data;
+    }
+
+    pub fn simulate_physics(self: *Self, data: WorldUpdateData) void {
+        self.physics_world.update(data.delta_time, 1);
+    }
+};
+
 // Components
 pub const NodeComponents = struct {
     static_mesh: ?StaticMeshComponent = null,
-    collider: ?void = null,
-    light: ?void = null,
 };
-pub const NodeHandle = NodePool.Handle;
-pub const NodePool = ObjectPool(u16, Node);
 
-pub const NodeList = std.BoundedArray(NodeHandle, 16);
-fn removeFromList(list: *NodeList, node_handle: NodeHandle) bool {
-    for (list.constSlice(), 0..) |list_handle, i| {
-        if (list_handle == node_handle) {
-            _ = list.swapRemove(i);
-            return true;
+// Systems
+pub const EntityUpdateData = struct { entity: *Entity, delta_time: f32 };
+pub const EntityEventData = struct { world: *World, entity: *Entity };
+pub const EntitySystems = struct {
+    const Self = @This();
+
+    pub fn deinit(self: *Self) void {
+        _ = self;
+    }
+
+    pub fn frame_start(self: *Self, entity: *Entity, delta_time: f32) void {
+        callMethodOnFieldsIfExists("frame_start", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
+    }
+
+    pub fn pre_physics(self: *Self, entity: *Entity, delta_time: f32) void {
+        callMethodOnFieldsIfExists("pre_physics", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
+    }
+
+    pub fn post_physics(self: *Self, entity: *Entity, delta_time: f32) void {
+        callMethodOnFieldsIfExists("post_physics", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
+    }
+
+    pub fn pre_render(self: *Self, entity: *Entity) void {
+        callMethodOnFieldsIfExists("pre_render", *Entity, self, entity);
+    }
+
+    pub fn frame_end(self: *Self, entity: *Entity) void {
+        callMethodOnFieldsIfExists("frame_end", *Entity, self, entity);
+    }
+};
+
+pub const WorldUpdateData = struct { world: *World, delta_time: f32 };
+pub const EntityRegisterData = struct { world: *World, entity: *Entity };
+pub const WorldSystems = struct {
+    const Self = @This();
+
+    render: ?RenderWorldSystem = null,
+    physics: ?PhysicsWorldSystem = null,
+
+    pub fn deinit(self: *Self) void {
+        if (self.render) |*render| {
+            render.deinit();
+        }
+
+        if (self.physics) |*physics_system| {
+            physics_system.deinit();
         }
     }
 
-    return false;
+    pub fn register_entity(self: *Self, world: *World, entity: *Entity) void {
+        callMethodOnFieldsIfExists("register_entity", EntityRegisterData, self, .{ .world = world, .entity = entity });
+    }
+
+    pub fn frame_start(self: *Self, world: *World, delta_time: f32) void {
+        callMethodOnFieldsIfExists("frame_start", WorldUpdateData, self, .{ .world = world, .delta_time = delta_time });
+    }
+
+    pub fn pre_physics(self: *Self, world: *World, delta_time: f32) void {
+        callMethodOnFieldsIfExists("pre_physics", WorldUpdateData, self, .{ .world = world, .delta_time = delta_time });
+    }
+
+    pub fn simulate_physics(self: *Self, world: *World, delta_time: f32) void {
+        callMethodOnFieldsIfExists("simulate_physics", WorldUpdateData, self, .{ .world = world, .delta_time = delta_time });
+    }
+
+    pub fn post_physics(self: *Self, world: *World, delta_time: f32) void {
+        callMethodOnFieldsIfExists("post_physics", WorldUpdateData, self, .{ .world = world, .delta_time = delta_time });
+    }
+
+    pub fn pre_render(self: *Self, world: *World) void {
+        callMethodOnFieldsIfExists("pre_render", *World, self, world);
+    }
+
+    pub fn frame_end(self: *Self, world: *World) void {
+        callMethodOnFieldsIfExists("frame_end", *World, self, world);
+    }
+};
+
+fn callMethodOnFieldsIfExists(
+    comptime method_name: []const u8,
+    comptime Args: type,
+    self: anytype,
+    args: Args,
+) void {
+    const self_type = unwrapPointerType(@TypeOf(self)) orelse @compileError("self must be an ptr type");
+    inline for (std.meta.fields(self_type)) |struct_field| {
+        const field_type = unwrapOptionalType(struct_field.type) orelse @compileError("Field must be an optional type");
+        if (comptime std.meta.hasMethod(field_type, method_name)) {
+            const field_opt: *struct_field.type = &@field(self, struct_field.name);
+            if (field_opt.*) |*field| {
+                if (unwrapPointerType(field_type)) |base_field_type| {
+                    const function = @field(base_field_type, method_name);
+                    function(field.*, args);
+                } else {
+                    const function = @field(field_type, method_name);
+                    function(field, args);
+                }
+            }
+        }
+    }
 }
 
 // Nodes
@@ -84,6 +204,21 @@ pub const Node = struct {
     parent: ?NodeHandle = null,
     childen: NodeList = .{},
 };
+
+pub const NodeHandle = NodePool.Handle;
+pub const NodePool = ObjectPool(u16, Node);
+
+pub const NodeList = std.BoundedArray(NodeHandle, 16);
+fn removeFromList(list: *NodeList, node_handle: NodeHandle) bool {
+    for (list.constSlice(), 0..) |list_handle, i| {
+        if (list_handle == node_handle) {
+            _ = list.swapRemove(i);
+            return true;
+        }
+    }
+
+    return false;
+}
 
 // Entity
 pub const Entity = struct {
@@ -268,7 +403,7 @@ pub const World = struct {
             self.systems.pre_physics(self, delta_time);
         }
 
-        //TODO: simulate physics here
+        self.systems.simulate_physics(self, delta_time);
 
         // Post Physics
         {
@@ -352,99 +487,6 @@ pub const Universe = struct {
         return null;
     }
 };
-
-// Systems
-pub const EntityUpdateData = struct { entity: *Entity, delta_time: f32 };
-pub const EntityEventData = struct { world: *World, entity: *Entity };
-pub const EntitySystems = struct {
-    const Self = @This();
-
-    pub fn deinit(self: *Self) void {
-        _ = self;
-    }
-
-    pub fn frame_start(self: *Self, entity: *Entity, delta_time: f32) void {
-        callMethodOnFieldsIfExists("frame_start", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
-    }
-
-    pub fn pre_physics(self: *Self, entity: *Entity, delta_time: f32) void {
-        callMethodOnFieldsIfExists("pre_physics", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
-    }
-
-    pub fn post_physics(self: *Self, entity: *Entity, delta_time: f32) void {
-        callMethodOnFieldsIfExists("post_physics", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
-    }
-
-    pub fn pre_render(self: *Self, entity: *Entity) void {
-        callMethodOnFieldsIfExists("pre_render", *Entity, self, entity);
-    }
-
-    pub fn frame_end(self: *Self, entity: *Entity) void {
-        callMethodOnFieldsIfExists("frame_end", *Entity, self, entity);
-    }
-};
-
-pub const WorldUpdateData = struct { world: *World, delta_time: f32 };
-pub const EntityRegisterData = struct { world: *World, entity: *Entity };
-pub const WorldSystems = struct {
-    const Self = @This();
-
-    render: ?RenderWorldSystem = null,
-
-    pub fn deinit(self: *Self) void {
-        if (self.render) |*render| {
-            render.deinit();
-        }
-    }
-
-    pub fn register_entity(self: *Self, world: *World, entity: *Entity) void {
-        callMethodOnFieldsIfExists("register_entity", EntityRegisterData, self, .{ .world = world, .entity = entity });
-    }
-
-    pub fn frame_start(self: *Self, world: *World, delta_time: f32) void {
-        callMethodOnFieldsIfExists("frame_start", WorldUpdateData, self, .{ .world = world, .delta_time = delta_time });
-    }
-
-    pub fn pre_physics(self: *Self, world: *World, delta_time: f32) void {
-        callMethodOnFieldsIfExists("pre_physics", WorldUpdateData, self, .{ .world = world, .delta_time = delta_time });
-    }
-
-    pub fn post_physics(self: *Self, world: *World, delta_time: f32) void {
-        callMethodOnFieldsIfExists("post_physics", WorldUpdateData, self, .{ .world = world, .delta_time = delta_time });
-    }
-
-    pub fn pre_render(self: *Self, world: *World) void {
-        callMethodOnFieldsIfExists("pre_render", *World, self, world);
-    }
-
-    pub fn frame_end(self: *Self, world: *World) void {
-        callMethodOnFieldsIfExists("frame_end", *World, self, world);
-    }
-};
-
-fn callMethodOnFieldsIfExists(
-    comptime method_name: []const u8,
-    comptime Args: type,
-    self: anytype,
-    args: Args,
-) void {
-    const self_type = unwrapPointerType(@TypeOf(self)) orelse @compileError("self must be an ptr type");
-    inline for (std.meta.fields(self_type)) |struct_field| {
-        const field_type = unwrapOptionalType(struct_field.type) orelse @compileError("Field must be an optional type");
-        if (comptime std.meta.hasMethod(field_type, method_name)) {
-            const field_opt: *struct_field.type = &@field(self, struct_field.name);
-            if (field_opt.*) |*field| {
-                if (unwrapPointerType(field_type)) |base_field_type| {
-                    const function = @field(base_field_type, method_name);
-                    function(field.*, args);
-                } else {
-                    const function = @field(field_type, method_name);
-                    function(field, args);
-                }
-            }
-        }
-    }
-}
 
 fn unwrapOptionalType(comptime T: type) ?type {
     switch (@typeInfo(T)) {

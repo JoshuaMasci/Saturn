@@ -1,5 +1,6 @@
 #pragma once
 
+//Needed for C interface
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

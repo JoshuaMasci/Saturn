@@ -18,7 +18,6 @@
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
-#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 
 #include "collision_collector.hpp"
 #include "character.hpp"
@@ -26,17 +25,9 @@
 #include "math.hpp"
 #include "memory.hpp"
 #include "physics_world.hpp"
+#include "shape_pool.hpp"
 
-typedef JoltVector<JPH::ShapeRefC> ShapePool;
 ShapePool *shape_pool = nullptr;
-
-JPH::ShapeRefC get_shape(ShapeHandle handle) {
-    if (handle == INVALID_SHAPE_HANDLE) {
-        return nullptr;
-    }
-    return (*shape_pool)[handle];
-}
-
 
 void init(const AllocationFunctions *functions) {
     if (functions != nullptr) {
@@ -57,8 +48,6 @@ void init(const AllocationFunctions *functions) {
 
     shape_pool = alloc_t<ShapePool>();
     ::new(shape_pool) ShapePool();
-    //Zero slot will be used for invalid
-    shape_pool->emplace_back(nullptr);
 }
 
 void deinit() {
@@ -81,9 +70,7 @@ ShapeHandle create_sphere_shape(float radius, float density) {
     settings.mRadius = radius;
     settings.mDensity = density;
     auto shape = settings.Create().Get();
-    auto index = shape_pool->size();
-    shape_pool->emplace_back(shape);
-    return index;
+    return shape_pool->insert(shape);
 }
 
 ShapeHandle create_box_shape(const float half_extent[3], float density) {
@@ -91,9 +78,8 @@ ShapeHandle create_box_shape(const float half_extent[3], float density) {
     settings.mHalfExtent = load_vec3(half_extent);
     settings.mDensity = density;
     auto shape = settings.Create().Get();
-    auto index = shape_pool->size();
-    shape_pool->emplace_back(shape);
-    return index;
+    return shape_pool->insert(shape);
+
 }
 
 ShapeHandle create_cylinder_shape(float half_height, float radius, float density) {
@@ -102,9 +88,8 @@ ShapeHandle create_cylinder_shape(float half_height, float radius, float density
     settings.mRadius = radius;
     settings.mDensity = density;
     auto shape = settings.Create().Get();
-    auto index = shape_pool->size();
-    shape_pool->emplace_back(shape);
-    return index;
+    return shape_pool->insert(shape);
+
 }
 
 ShapeHandle create_capsule_shape(float half_height, float radius, float density) {
@@ -113,9 +98,8 @@ ShapeHandle create_capsule_shape(float half_height, float radius, float density)
     settings.mRadius = radius;
     settings.mDensity = density;
     auto shape = settings.Create().Get();
-    auto index = shape_pool->size();
-    shape_pool->emplace_back(shape);
-    return index;
+    return shape_pool->insert(shape);
+
 }
 
 ShapeHandle
@@ -134,13 +118,12 @@ create_mesh_shape(const float positions[][3], size_t position_count, const uint3
     }
     auto settings = JPH::MeshShapeSettings(vertex_list, triangle_list);
     auto shape = settings.Create().Get();
-    auto index = shape_pool->size();
-    shape_pool->emplace_back(shape);
-    return index;
+    return shape_pool->insert(shape);
+
 }
 
 void destroy_shape(ShapeHandle handle) {
-    // shape_pool->remove(ShapePool::Handle::from_u64(handle));
+    shape_pool->remove(handle);
 }
 
 PhysicsWorld *create_physics_world(const PhysicsWorldSettings *settings) {
@@ -162,7 +145,7 @@ void update_physics_world(PhysicsWorld *ptr, float delta_time, int collision_ste
 
 BodyHandle create_body(PhysicsWorld *ptr, const BodySettings *body_settings) {
     auto physics_world = (PhysicsWorld *) ptr;
-    auto shape_ref = get_shape(body_settings->shape);
+    auto shape_ref = shape_pool->get(body_settings->shape);
     auto position = load_vec3(body_settings->position);
     auto rotation = load_quat(body_settings->rotation);
     auto linear_velocity = load_vec3(body_settings->linear_velocity);
@@ -332,8 +315,8 @@ void clear_body_gravity_mode(PhysicsWorld *ptr, BodyHandle handle) {
 
 CharacterHandle add_character(PhysicsWorld *ptr, const CharacterSettings *character_settings) {
     auto physics_world = (PhysicsWorld *) ptr;
-    auto shape_ref = get_shape(character_settings->shape);
-    auto inner_shape_ref = get_shape(character_settings->inner_body_shape);
+    auto shape_ref = shape_pool->get(character_settings->shape);
+    auto inner_shape_ref = shape_pool->get(character_settings->inner_body_shape);
     auto position = load_vec3(character_settings->position);
     auto rotation = load_quat(character_settings->rotation);
     return physics_world->add_character(shape_ref, position, rotation, character_settings->user_data, inner_shape_ref,
@@ -525,7 +508,7 @@ ray_cast_closest_ignore_character(PhysicsWorld *ptr, ObjectLayer object_layer_pa
 void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle shape, const Transform *transform,
                 ShapeCastCallback callback, void *callback_data) {
     auto physics_world = (PhysicsWorld *) ptr;
-    const auto &shape_ref = (*shape_pool)[shape];
+    const auto &shape_ref = shape_pool->get(shape);
     auto position = load_rvec3(transform->position);
     auto rotation = load_quat(transform->rotation);
     auto center_of_mass_transform = JPH::RMat44::sRotationTranslation(rotation, position);
@@ -533,7 +516,7 @@ void shape_cast(PhysicsWorld *ptr, ObjectLayer object_layer_pattern, ShapeHandle
     JPH::CollideShapeSettings settings = JPH::CollideShapeSettings();
     ShapeCastCallbackCollisionCollector collector(callback, callback_data,
                                                   physics_world->physics_system->GetBodyInterface());
-    \
+
     physics_world->physics_system->GetNarrowPhaseQuery().CollideShape(shape_ref, JPH::Vec3::sReplicate(1.0f),
                                                                       center_of_mass_transform, settings, position,
                                                                       collector, {}, AnyMatchObjectLayerFilter(
