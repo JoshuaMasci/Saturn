@@ -19,6 +19,11 @@
             .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
         },
 
+        .zobj = .{
+            .url = "git+https://github.com/chip2n/zig-obj.git#4ce054733812eb0b28d97adb0ea1f66f21fd41c8",
+            .hash = "12205e75ae77fad4d4d2e1b6489270612d8e44c8b9268580f0c9123f0f2fc7175a74",
+        },
+
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
         .zmesh = .{ .path = "libs/zig-gamedev/libs/zmesh" },

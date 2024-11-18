@@ -56,6 +56,10 @@ pub const RenderWorldSystem = struct {
 };
 
 const physics = @import("physics");
+pub const PhysicsColliderComponent = struct {
+    shape: physics.Shape,
+};
+
 pub const PhysicsEntitySystem = struct {
     rigidbody_handle: ?physics.BodyHandle = null,
     character_handle: ?physics.CharacterHandle = null,
@@ -88,6 +92,7 @@ pub const PhysicsWorldSystem = struct {
 // Components
 pub const NodeComponents = struct {
     static_mesh: ?StaticMeshComponent = null,
+    collider: ?PhysicsColliderComponent = null,
 };
 
 // Systems

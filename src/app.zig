@@ -70,7 +70,7 @@ pub const App = struct {
         }
 
         var game_universe = try universe.Universe.init(allocator);
-        var game_world = try universe.World.init(allocator, .{ .render = universe.RenderWorldSystem.init(&rendering_backend), .physics = universe.PhysicsWorldSystem.init() });
+        var game_world = try @import("world_gen2.zig").create_ship_inside(allocator, &rendering_backend);
         var game_entity = universe.Entity.init(allocator, .{});
         {
             const proc = @import("procedural.zig");
@@ -87,12 +87,13 @@ pub const App = struct {
                 const material = materials[index];
                 last_node = try game_entity.add_node(
                     last_node,
-                    .{ .position = za.Vec3.Y, .scale = za.Vec3.ONE },
+                    .{
+                        .position = za.Vec3.Y,
+                    },
                     .{ .static_mesh = .{ .mesh = mesh, .material = material } },
                 );
             }
         }
-
         game_world.add_entity(game_entity);
         const game_world_handle = try game_universe.add_world(game_world);
 

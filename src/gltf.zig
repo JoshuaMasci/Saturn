@@ -263,7 +263,7 @@ fn load_gltf_image(allocator: std.mem.Allocator, parent_path: []const u8, gltf_i
         try full_path.append('/');
         try full_path.appendSlice(uri);
         try full_path.append(0);
-        return try zstbi.Image.loadFromFile(full_path.items[0..(full_path.items.len - 1) :0], 4);
+        return try zstbi.Image.loadFromFile(full_path.items[0..(full_path.items.len - 1) :0], 0);
     }
     return error.NoImageSource;
 }

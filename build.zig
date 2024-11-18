@@ -25,6 +25,10 @@ pub fn build(b: *std.Build) !void {
     const zgltf = b.dependency("zgltf", .{});
     exe.root_module.addImport("zgltf", zgltf.module("zgltf"));
 
+    // zobj
+    const zobj = b.dependency("zobj", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("zobj", zobj.module("obj"));
+
     // zsdl
     const zsdl = b.dependency("zsdl", .{});
     exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
