@@ -142,7 +142,7 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
     }
 
     const shape = physics_system.Shape.init_box(za.Vec3.fromSlice(&size).scale(0.5).toArray(), 1.0);
-    defer shape.deinit();
+    //defer shape.deinit();
 
     return switch (dynamic) {
         true => try game_world.add(entities.DynamicEntity, .{
@@ -170,7 +170,7 @@ fn add_sphere(allocator: std.mem.Allocator, rendering_backend: *rendering_system
     }
 
     const shape = physics_system.Shape.init_sphere(radius, 1.0);
-    defer shape.deinit();
+    //defer shape.deinit();
 
     return switch (dynamic) {
         true => try game_world.add(entities.DynamicEntity, .{
