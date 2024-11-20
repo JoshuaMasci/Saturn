@@ -42,7 +42,6 @@ pub const App = struct {
     // New World System Test
     game_universe: universe.Universe,
     game_world_handle: universe.World.Handle,
-    game_character_handle: universe.Entity.Handle,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
@@ -62,7 +61,7 @@ pub const App = struct {
             const shape2 = physics_system.Shape.init_capsule(CharacterHeight - 0.05, CharacterRadius - 0.05, 1.0);
 
             const character_handle = try game_world1.add(entities.Character, .{
-                .transform = .{ .position = za.Vec3.new(0.0, 10.0, 10.0), .rotation = za.Quat.fromAxis(std.math.degreesToRadians(180.0), za.Vec3.Y) },
+                .transform = .{ .position = za.Vec3.new(0.0, 5.0, 10.0), .rotation = za.Quat.fromAxis(std.math.degreesToRadians(180.0), za.Vec3.Y) },
                 .character_shape = shape,
                 .body_shape = shape2,
             });
@@ -70,31 +69,10 @@ pub const App = struct {
         }
 
         var game_universe = try universe.Universe.init(allocator);
-        var game_world = try @import("world_gen2.zig").create_ship_inside(allocator, &rendering_backend);
-        var game_entity = universe.Entity.init(allocator, .{});
-        {
-            const proc = @import("procedural.zig");
-            const mesh = try proc.create_cube_mesh(allocator, &rendering_backend, .{1.0} ** 3);
-            const materials = [_]rendering_system.MaterialHandle{
-                try proc.create_color_material(&rendering_backend, .{ 1.0, 0.0, 1.0, 1.0 }),
-                try proc.create_color_material(&rendering_backend, .{ 0.0, 1.0, 1.0, 1.0 }),
-                try proc.create_color_material(&rendering_backend, .{ 1.0, 1.0, 0.0, 1.0 }),
-            };
+        const game_world = try @import("world_gen2.zig").create_ship_inside(allocator, &rendering_backend);
+        const debug_camera_entity = game_world.add_entity(try @import("world_gen2.zig").create_debug_camera(allocator));
+        _ = debug_camera_entity; // autofix
 
-            var last_node: ?universe.NodeHandle = null;
-            for (0..10) |i| {
-                const index: usize = i % materials.len;
-                const material = materials[index];
-                last_node = try game_entity.add_node(
-                    last_node,
-                    .{
-                        .position = za.Vec3.Y,
-                    },
-                    .{ .static_mesh = .{ .mesh = mesh, .material = material } },
-                );
-            }
-        }
-        game_world.add_entity(game_entity);
         const game_world_handle = try game_universe.add_world(game_world);
 
         return .{
@@ -113,7 +91,6 @@ pub const App = struct {
 
             .game_universe = game_universe,
             .game_world_handle = game_world_handle,
-            .game_character_handle = game_entity.handle,
         };
     }
 

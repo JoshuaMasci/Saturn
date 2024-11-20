@@ -5,17 +5,17 @@
 
 class ShapePool {
 private:
-    JPH::UnorderedMap<ShapeHandle, JPH::ShapeRefC> pool;
+    JPH::UnorderedMap<ShapeHandle, JPH::Ref<JPH::Shape>> pool;
     ShapeHandle next_handle = 1;
 
 public:
-    ShapeHandle insert(const JPH::ShapeRefC &shape) {
+    ShapeHandle insert(const JPH::Ref<JPH::Shape> &shape) {
         ShapeHandle handle = this->next_handle++;
         this->pool.emplace(handle, shape);
         return handle;
     }
 
-    JPH::ShapeRefC get(ShapeHandle handle) {
+    JPH::Ref<JPH::Shape> get(ShapeHandle handle) {
         return this->pool[handle];
     }
 

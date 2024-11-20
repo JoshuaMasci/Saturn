@@ -116,15 +116,53 @@ create_mesh_shape(const float positions[][3], size_t position_count, const uint3
         triangle_list.push_back(JPH::IndexedTriangle(
                 indices[offset + 0], indices[offset + 1], indices[offset + 2], 0));
     }
-    auto settings = JPH::MeshShapeSettings(vertex_list, triangle_list);
-    auto shape = settings.Create().Get();
+    auto shape = JPH::MeshShapeSettings(vertex_list, triangle_list).Create().Get();
     return shape_pool->insert(shape);
 
+}
+
+ShapeHandle create_mut_compound_shape() {
+    auto shape = JPH::MutableCompoundShapeSettings().Create().Get();
+    return shape_pool->insert(shape);
 }
 
 void destroy_shape(ShapeHandle handle) {
     shape_pool->remove(handle);
 }
+
+ChildShapeHandle
+add_child_shape(ShapeHandle compound_shape_handle, const Transform *child_transform, ShapeHandle child_shape_handle,
+                uint32_t user_data) {
+    auto position = load_vec3(child_transform->position);
+    auto rotation = load_quat(child_transform->rotation);
+    auto child_shape_ref = shape_pool->get(child_shape_handle);
+    JPH::MutableCompoundShape *compound_shape = dynamic_cast<JPH::MutableCompoundShape *>(shape_pool->get(
+            compound_shape_handle).GetPtr());
+    return compound_shape->AddShape(position, rotation, child_shape_ref, user_data);
+}
+
+void remove_child_shape(ShapeHandle compound_shape_handle, ChildShapeHandle child_shape_handle) {
+    JPH::MutableCompoundShape *compound_shape = dynamic_cast<JPH::MutableCompoundShape *>(shape_pool->get(
+            compound_shape_handle).GetPtr());
+    compound_shape->RemoveShape(child_shape_handle);
+}
+
+void
+modify_child_shape(ShapeHandle compound_shape_handle, ChildShapeHandle child_shape_handle,
+                   const Transform *child_transform) {
+    auto position = load_vec3(child_transform->position);
+    auto rotation = load_quat(child_transform->rotation);
+    JPH::MutableCompoundShape *compound_shape = dynamic_cast<JPH::MutableCompoundShape *>(shape_pool->get(
+            compound_shape_handle).GetPtr());
+    compound_shape->ModifyShape(child_shape_handle, position, rotation);
+}
+
+void recalculate_center_of_mass(ShapeHandle compound_shape_handle) {
+    JPH::MutableCompoundShape *compound_shape = dynamic_cast<JPH::MutableCompoundShape *>(shape_pool->get(
+            compound_shape_handle).GetPtr());
+    compound_shape->AdjustCenterOfMass();
+}
+
 
 PhysicsWorld *create_physics_world(const PhysicsWorldSettings *settings) {
     auto physics_world = alloc_t<PhysicsWorld>();
@@ -221,7 +259,7 @@ void set_body_transform(PhysicsWorld *ptr, BodyHandle handle, const Transform *t
     JPH::BodyInterface &body_interface =
             physics_world->physics_system->GetBodyInterface();
 
-    auto position = load_vec3(transform->position);
+    auto position = load_rvec3(transform->position);
     auto rotation = load_quat(transform->rotation);
     body_interface.SetPositionAndRotationWhenChanged(body_id, position, rotation, JPH::EActivation::Activate);
 }

@@ -69,8 +69,29 @@ pub const Shape = struct {
         };
     }
 
+    pub fn init_compound_shape() Self {
+        return .{
+            .handle = c.create_mut_compound_shape(),
+        };
+    }
+
     pub fn deinit(self: Self) void {
         c.destroy_shape(self.handle);
+    }
+
+    // Will crash if not given compound shape handle
+    //TODO: move compound shape functions elsewhere?
+    pub fn add_child_shape(self: Self, transform: *const Transform, child_shape: Shape, user_data: u32) ChildHandle {
+        return c.add_child_shape(self.handle, transform, child_shape.handle, user_data);
+    }
+    pub fn remove_child_shape(self: Self, child_handle: ChildHandle) void {
+        return c.remove_child_shape(self.handle, child_handle);
+    }
+    pub fn modify_child_shape(self: Self, child_handle: ChildHandle, transform: *const Transform) ChildHandle {
+        return c.remove_child_shape(self.handle, child_handle, transform);
+    }
+    pub fn recalculate_center_of_mass(self: Self) void {
+        c.recalculate_center_of_mass(self.handle);
     }
 };
 
@@ -82,6 +103,7 @@ pub const MotionType = enum(u32) {
     kinematic = 1,
     dynamic = 2,
 };
+pub const ChildHandle = c.ChildShapeHandle;
 
 pub const BodySettings = struct {
     shape: Shape,

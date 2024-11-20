@@ -6,14 +6,20 @@ const universe = @import("universe.zig");
 
 const obj = @import("obj.zig");
 
+pub fn create_debug_camera(allocator: std.mem.Allocator) !universe.Entity {
+    var entity = universe.Entity.init(allocator, .{ .debug_camera = .{} });
+    entity.systems.debug_camera.?.camera_node = try entity.add_node(null, .{}, .{ .camera = .{} });
+    return entity;
+}
+
 pub fn create_ship_inside(allocator: std.mem.Allocator, rendering_backend: *rendering_system.Backend) !*universe.World {
     const grid_material = try load_texture_material(rendering_backend, "res/textures/grid.png");
     const bridge_mesh = try LoadedMesh.from_obj(allocator, rendering_backend, "res/models/bridge.obj");
     const hull_mesh = try LoadedMesh.from_obj(allocator, rendering_backend, "res/models/hull.obj");
     const engine_mesh = try LoadedMesh.from_obj(allocator, rendering_backend, "res/models/engine.obj");
 
-    var bridge_entity = universe.Entity.init(allocator, .{});
-    _ = try bridge_entity.add_node(
+    var ship_entity = universe.Entity.init(allocator, .{ .render = .{}, .physics = .{} });
+    _ = try ship_entity.add_node(
         null,
         .{},
         .{
@@ -21,7 +27,7 @@ pub fn create_ship_inside(allocator: std.mem.Allocator, rendering_backend: *rend
             .collider = .{ .shape = bridge_mesh.physics },
         },
     );
-    _ = try bridge_entity.add_node(
+    _ = try ship_entity.add_node(
         null,
         .{ .position = za.Vec3.NEG_Z.scale(5.0) },
         .{
@@ -29,7 +35,7 @@ pub fn create_ship_inside(allocator: std.mem.Allocator, rendering_backend: *rend
             .collider = .{ .shape = hull_mesh.physics },
         },
     );
-    _ = try bridge_entity.add_node(
+    _ = try ship_entity.add_node(
         null,
         .{ .position = za.Vec3.NEG_Z.scale(15.0) },
         .{
@@ -39,7 +45,37 @@ pub fn create_ship_inside(allocator: std.mem.Allocator, rendering_backend: *rend
     );
 
     var world = try universe.World.init(allocator, .{ .render = universe.RenderWorldSystem.init(rendering_backend), .physics = universe.PhysicsWorldSystem.init() });
-    world.add_entity(bridge_entity);
+    _ = world.add_entity(ship_entity);
+
+    {
+        const proc = @import("procedural.zig");
+        const materials = [_]rendering_system.MaterialHandle{
+            try proc.create_color_material(rendering_backend, .{ 0.5, 0.0, 0.5, 1.0 }),
+            try proc.create_color_material(rendering_backend, .{ 0.0, 0.5, 0.5, 1.0 }),
+            try proc.create_color_material(rendering_backend, .{ 0.5, 0.5, 0.0, 1.0 }),
+        };
+        const cube_scale = .{0.25} ** 3;
+        const cube_mesh = try proc.create_cube_mesh(allocator, rendering_backend, cube_scale);
+        const cube_shape = physics_system.Shape.init_box(cube_scale, 1.0);
+
+        for (0..15) |i| {
+            const index: usize = i % materials.len;
+            const material = materials[index];
+
+            const cube_velocity = za.Vec3.NEG_Z.scale(5.0).add(za.Vec3.NEG_Y.scale(0.5));
+            var cube_entity = universe.Entity.init(allocator, .{ .render = .{}, .physics = .{ .motion_type = .dynamic, .linear_velocity = cube_velocity } });
+            _ = try cube_entity.add_node(
+                null,
+                .{},
+                .{
+                    .static_mesh = .{ .mesh = cube_mesh, .material = material },
+                    .collider = .{ .shape = cube_shape },
+                },
+            );
+            _ = world.add_entity(cube_entity);
+        }
+    }
+
     return world;
 }
 

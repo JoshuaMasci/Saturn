@@ -41,7 +41,7 @@ pub fn create_cube_mesh(
     defer shape.deinit();
 
     shape.translate(-0.5, -0.5, -0.5);
-    shape.scale(scale[0], scale[1], scale[2]);
+    shape.scale(scale[0] * 2.0, scale[1] * 2.0, scale[2] * 2.0);
     shape.unweld();
     shape.computeNormals();
 

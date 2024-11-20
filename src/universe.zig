@@ -1,6 +1,42 @@
 const std = @import("std");
+const za = @import("zalgebra");
 const Transform = @import("transform.zig");
 const ObjectPool = @import("object_pool.zig").ObjectPool;
+const PerspectiveCamera = @import("camera.zig").PerspectiveCamera;
+
+pub const DebugCameraEntitySystem = struct {
+    const Self = @This();
+
+    linear_speed: za.Vec3 = za.Vec3.set(5.0),
+    angular_speed: za.Vec3 = za.Vec3.set(std.math.pi),
+
+    pitch_yaw: za.Vec2 = za.Vec2.ZERO,
+    linear_input: za.Vec3 = za.Vec3.ZERO,
+    angular_input: za.Vec3 = za.Vec3.ZERO,
+
+    camera_node: ?NodeHandle = null,
+
+    pub fn frame_start(self: *Self, data: EntityUpdateData) void {
+        const linear_movement = data.entity.transform.rotation.rotateVec(self.linear_input.mul(self.linear_speed).scale(data.delta_time));
+        data.entity.transform.position = data.entity.transform.position.add(linear_movement);
+
+        const angular_rotation = self.angular_input.mul(self.angular_speed).scale(data.delta_time);
+
+        self.pitch_yaw = self.pitch_yaw.add(angular_rotation.toVec2());
+
+        // Clamp pitch and keep roation between 0->360 degrees
+        const pi_half = std.math.pi / 2.0;
+        const pi_2 = std.math.pi * 2.0;
+        self.pitch_yaw = za.Vec2.new(std.math.clamp(self.pitch_yaw.x(), -pi_half, pi_half), @mod(self.pitch_yaw.y(), pi_2));
+
+        const pitch_quat = za.Quat.fromAxis(self.pitch_yaw.x(), za.Vec3.X);
+        const yaw_quat = za.Quat.fromAxis(self.pitch_yaw.y(), za.Vec3.Y);
+        data.entity.transform.rotation = yaw_quat.mul(pitch_quat).norm();
+
+        // Axis events should fire each frame they are active, so the input is reset each update
+        self.angular_input = za.Vec3.set(0.0);
+    }
+};
 
 const rendering_system = @import("rendering.zig");
 pub const StaticMeshComponent = struct {
@@ -9,6 +45,7 @@ pub const StaticMeshComponent = struct {
     material: rendering_system.MaterialHandle,
     instance: ?rendering_system.SceneInstanceHandle = null,
 };
+pub const RenderEntitySystem = struct {};
 pub const RenderWorldSystem = struct {
     const Self = @This();
 
@@ -25,12 +62,15 @@ pub const RenderWorldSystem = struct {
     }
 
     pub fn register_entity(self: *Self, data: EntityRegisterData) void {
-        var iter = data.entity.node_pool.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.components.static_mesh) |*static_mesh_component| {
-                const world_transform = data.entity.get_node_world_transform(entry.handle).?;
-                const instance = self.scene.add_instace(static_mesh_component.mesh, static_mesh_component.material, &world_transform) catch std.debug.panic("Failed to add instance to scene", .{});
-                static_mesh_component.instance = instance;
+        if (data.entity.systems.render) |render_system| {
+            _ = render_system; // autofix
+            var iter = data.entity.node_pool.iterator();
+            while (iter.next()) |entry| {
+                if (entry.value_ptr.components.static_mesh) |*static_mesh_component| {
+                    const world_transform = data.entity.get_node_world_transform(entry.handle).?;
+                    const instance = self.scene.add_instace(static_mesh_component.mesh, static_mesh_component.material, &world_transform) catch std.debug.panic("Failed to add instance to scene", .{});
+                    static_mesh_component.instance = instance; //TODO: store instance in entity render system
+                }
             }
         }
     }
@@ -61,8 +101,13 @@ pub const PhysicsColliderComponent = struct {
 };
 
 pub const PhysicsEntitySystem = struct {
-    rigidbody_handle: ?physics.BodyHandle = null,
-    character_handle: ?physics.CharacterHandle = null,
+    motion_type: physics.MotionType = .static,
+    object_layer: u16 = 1,
+    compund_shape: ?physics.Shape = null,
+    body_handle: ?physics.BodyHandle = null,
+
+    linear_velocity: za.Vec3 = za.Vec3.ZERO,
+    angular_velocity: za.Vec3 = za.Vec3.ZERO,
 };
 pub const PhysicsWorldSystem = struct {
     const Self = @This();
@@ -71,7 +116,12 @@ pub const PhysicsWorldSystem = struct {
 
     pub fn init() Self {
         return .{
-            .physics_world = physics.World.init(.{}),
+            .physics_world = physics.World.init(.{
+                .max_bodies = 65536,
+                .max_body_pairs = 65536,
+                .max_contact_constraints = 65536,
+                .temp_allocation_size = 1024 * 1024 * 128, //128mb
+            }),
         };
     }
 
@@ -80,18 +130,71 @@ pub const PhysicsWorldSystem = struct {
     }
 
     pub fn register_entity(self: *Self, data: EntityRegisterData) void {
-        _ = self;
-        _ = data;
+        if (data.entity.systems.physics) |*entity_physics| {
+            var compound_shape = physics.Shape.init_compound_shape();
+            var iter = data.entity.node_pool.iterator();
+            while (iter.next()) |entry| {
+                if (entry.value_ptr.components.collider) |collider| {
+                    const child_transform = data.entity.get_node_root_transform(entry.handle).?;
+                    _ = compound_shape.add_child_shape(&.{
+                        .position = child_transform.position.toArray(),
+                        .rotation = child_transform.rotation.toArray(),
+                    }, collider.shape, 0);
+                }
+            }
+
+            entity_physics.compund_shape = compound_shape;
+            entity_physics.body_handle = self.physics_world.add_body(&.{
+                .shape = compound_shape,
+                .position = data.entity.transform.position.toArray(),
+                .rotation = data.entity.transform.rotation.toArray(),
+                .linear_velocity = entity_physics.linear_velocity.toArray(),
+                .angular_velocity = entity_physics.angular_velocity.toArray(),
+                .user_data = @intCast(data.entity.handle),
+                .object_layer = entity_physics.object_layer,
+                .motion_type = entity_physics.motion_type,
+                .is_sensor = false,
+                .friction = 0.2,
+                .linear_damping = 0.0,
+            });
+        }
+    }
+
+    pub fn pre_physics(self: *Self, data: WorldUpdateData) void {
+        for (data.world.entities.values()) |entity| {
+            if (entity.systems.physics) |entity_physics| {
+                if (entity_physics.body_handle) |body_handle| {
+                    self.physics_world.set_body_transform(body_handle, &.{ .position = entity.transform.position.toArray(), .rotation = entity.transform.rotation.toArray() });
+                    self.physics_world.set_body_linear_velocity(body_handle, entity_physics.linear_velocity.toArray());
+                    self.physics_world.set_body_angular_velocity(body_handle, entity_physics.angular_velocity.toArray());
+                }
+            }
+        }
     }
 
     pub fn simulate_physics(self: *Self, data: WorldUpdateData) void {
         self.physics_world.update(data.delta_time, 1);
+    }
+
+    pub fn post_physics(self: *Self, data: WorldUpdateData) void {
+        for (data.world.entities.values()) |*entity| {
+            if (entity.systems.physics) |*entity_physics| {
+                if (entity_physics.body_handle) |body_handle| {
+                    const body_transform = self.physics_world.get_body_transform(body_handle);
+                    entity.transform.position = za.Vec3.fromArray(body_transform.position);
+                    entity.transform.rotation = za.Quat.fromArray(body_transform.rotation);
+                    entity_physics.linear_velocity = za.Vec3.fromArray(self.physics_world.get_body_linear_velocity(body_handle));
+                    entity_physics.angular_velocity = za.Vec3.fromArray(self.physics_world.get_body_angular_velocity(body_handle));
+                }
+            }
+        }
     }
 };
 
 // Components
 pub const NodeComponents = struct {
     static_mesh: ?StaticMeshComponent = null,
+    camera: ?PerspectiveCamera = null,
     collider: ?PhysicsColliderComponent = null,
 };
 
@@ -100,6 +203,10 @@ pub const EntityUpdateData = struct { entity: *Entity, delta_time: f32 };
 pub const EntityEventData = struct { world: *World, entity: *Entity };
 pub const EntitySystems = struct {
     const Self = @This();
+
+    render: ?RenderEntitySystem = null,
+    physics: ?PhysicsEntitySystem = null,
+    debug_camera: ?DebugCameraEntitySystem = null,
 
     pub fn deinit(self: *Self) void {
         _ = self;
@@ -437,9 +544,10 @@ pub const World = struct {
         }
     }
 
-    pub fn add_entity(self: *Self, entity: Entity) void {
+    pub fn add_entity(self: *Self, entity: Entity) Entity.Handle {
         self.entities.put(entity.handle, entity) catch std.debug.panic("Failed to push entity to entity list", .{});
         self.systems.register_entity(self, self.entities.getPtr(entity.handle).?);
+        return entity.handle;
     }
 };
 

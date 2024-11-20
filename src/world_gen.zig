@@ -70,7 +70,7 @@ pub fn create_planet_world(allocator: std.mem.Allocator, rendering_backend: *ren
         }
     }
 
-    _ = try add_cube(allocator, rendering_backend, &game_world, .{ 0.0, 1.0, 0.5, 1.0 }, .{0.5} ** 3, &.{ .position = za.Vec3.new(0.0, 1.5, 0.0) }, true, false, .{ .static = true, .dynamic = true, .gravity = true });
+    _ = try add_cube(allocator, rendering_backend, &game_world, .{ 0.0, 1.0, 0.5, 1.0 }, .{0.25} ** 3, &.{ .position = za.Vec3.new(0.0, 1.5, 0.0) }, true, false, .{ .static = true, .dynamic = true, .gravity = true });
     _ = try add_sphere(allocator, rendering_backend, &game_world, .{ 0.5, 1.0, 0.0, 1.0 }, 0.25, &.{ .position = za.Vec3.new(0.5, 1.5, 0.0) }, true, false, .{ .static = true, .dynamic = true, .gravity = true });
 
     return game_world;
@@ -125,7 +125,7 @@ pub fn create_flat_world(allocator: std.mem.Allocator, rendering_backend: *rende
         }
     }
 
-    _ = try add_cube(allocator, rendering_backend, &game_world, .{ 1.0, 0.0, 0.5, 1.0 }, .{0.5} ** 3, &.{ .position = za.Vec3.new(0.0, 1.5, 0.0) }, true, false, .{ .static = true, .dynamic = true, .gravity = true });
+    _ = try add_cube(allocator, rendering_backend, &game_world, .{ 1.0, 0.0, 0.5, 1.0 }, .{0.25} ** 3, &.{ .position = za.Vec3.new(0.0, 1.5, 0.0) }, true, false, .{ .static = true, .dynamic = true, .gravity = true });
 
     return game_world;
 }
@@ -141,7 +141,7 @@ fn add_cube(allocator: std.mem.Allocator, rendering_backend: *rendering_system.B
         };
     }
 
-    const shape = physics_system.Shape.init_box(za.Vec3.fromSlice(&size).scale(0.5).toArray(), 1.0);
+    const shape = physics_system.Shape.init_box(size, 1.0);
     //defer shape.deinit();
 
     return switch (dynamic) {

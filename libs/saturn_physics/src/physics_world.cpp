@@ -105,7 +105,10 @@ PhysicsWorld::~PhysicsWorld() {
 }
 
 void PhysicsWorld::update(float delta_time, int collision_steps) {
-    this->physics_system->Update(delta_time, collision_steps, &this->temp_allocator, &this->job_system);
+    auto error = this->physics_system->Update(delta_time, collision_steps, &this->temp_allocator, &this->job_system);
+    if (error != JPH::EPhysicsUpdateError::None) {
+        printf("Physics Update Error: %d", error);
+    }
 
     for (auto pair: this->characters) {
         pair.second->update(this, delta_time);

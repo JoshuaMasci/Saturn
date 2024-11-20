@@ -35,6 +35,11 @@ typedef uint32_t MotionType;
 void init(const AllocationFunctions *functions);
 void deinit();
 
+typedef struct Transform {
+    float position[3];
+    float rotation[4];
+} Transform;
+
 // Shape functions
 ShapeHandle create_sphere_shape(float radius, float density);
 ShapeHandle create_box_shape(const float half_extent[3], float density);
@@ -42,7 +47,17 @@ ShapeHandle create_cylinder_shape(float half_height, float radius, float density
 ShapeHandle create_capsule_shape(float half_height, float radius, float density);
 ShapeHandle
 create_mesh_shape(const float positions[][3], size_t position_count, const uint32_t *indices, size_t indices_count);
+ShapeHandle create_mut_compound_shape();
 void destroy_shape(ShapeHandle handle);
+
+//MutCompoundShape functions
+typedef uint32_t ChildShapeHandle;
+ChildShapeHandle
+add_child_shape(ShapeHandle compound_shape, const Transform *child_transform, ShapeHandle child_shape,
+                uint32_t user_data);
+void remove_child_shape(ShapeHandle compound_shape, ChildShapeHandle child_shape);
+void modify_child_shape(ShapeHandle compound_shape, ChildShapeHandle child_shape, const Transform *child_transform);
+void recalculate_center_of_mass(ShapeHandle compound_shape);
 
 // World Structs and functions
 typedef struct PhysicsWorldSettings {
@@ -53,10 +68,6 @@ typedef struct PhysicsWorldSettings {
     uint32_t temp_allocation_size;
 } PhysicsWorldSettings;
 
-typedef struct Transform {
-    float position[3];
-    float rotation[4];
-} Transform;
 
 typedef struct PhysicsWorld PhysicsWorld;
 
