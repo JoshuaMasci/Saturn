@@ -345,10 +345,10 @@ const SizeAndAlignment = packed struct(u64) {
 var mem_allocator: ?std.mem.Allocator = null;
 var mem_allocations: ?std.AutoHashMap(usize, SizeAndAlignment) = null;
 var mem_mutex: std.Thread.Mutex = .{};
-const mem_alignment = 16;
+const default_mem_alignment = 16;
 
 fn zjoltAlloc(size: usize) callconv(.C) ?*anyopaque {
-    return zjoltAlignedAlloc(size, mem_alignment);
+    return zjoltAlignedAlloc(size, default_mem_alignment);
 }
 
 fn zjoltAlignedAlloc(size: usize, alignment: usize) callconv(.C) ?*anyopaque {
@@ -361,31 +361,40 @@ fn zjoltAlignedAlloc(size: usize, alignment: usize) callconv(.C) ?*anyopaque {
         @returnAddress(),
     );
     if (ptr == null)
-        @panic("zjolt: out of memory");
+        @panic("saturn_jolt: out of memory");
 
     mem_allocations.?.put(
         @intFromPtr(ptr),
         .{ .size = @as(u32, @intCast(size)), .alignment = @as(u16, @intCast(alignment)) },
-    ) catch @panic("zjolt: out of memory");
+    ) catch @panic("saturn_jolt: out of memory");
 
     return ptr;
 }
 
-fn zjoltReallocate(maybe_ptr: ?*anyopaque, old_size: usize, new_size: usize) callconv(.C) ?*anyopaque {
-    if (maybe_ptr) |old_ptr| {
-        const alignment = mem_allocations.?.get(@intFromPtr(old_ptr)).?.alignment;
-        const new_ptr = zjoltAlignedAlloc(new_size, alignment);
+fn zjoltReallocate(maybe_ptr: ?*anyopaque, reported_old_size: usize, new_size: usize) callconv(.C) ?*anyopaque {
+    mem_mutex.lock();
+    defer mem_mutex.unlock();
 
-        const copy_len = @min(old_size, new_size);
-        const new_slice = @as([*]u8, @ptrCast(new_ptr))[0..copy_len];
-        const old_slice = @as([*]u8, @ptrCast(old_ptr))[0..copy_len];
-        @memcpy(new_slice, old_slice);
+    const old_size = if (maybe_ptr != null) reported_old_size else 0;
 
-        zjoltFree(old_ptr);
+    const old_mem = if (old_size > 0)
+        @as([*]align(default_mem_alignment) u8, @ptrCast(@alignCast(maybe_ptr)))[0..old_size]
+    else
+        @as([*]align(default_mem_alignment) u8, undefined)[0..0];
 
-        return new_ptr;
+    const mem = mem_allocator.?.realloc(old_mem, new_size) catch @panic("saturn_jolt: out of memory");
+
+    if (maybe_ptr != null) {
+        const removed = mem_allocations.?.remove(@intFromPtr(maybe_ptr.?));
+        std.debug.assert(removed);
     }
-    return zjoltAlloc(new_size);
+
+    mem_allocations.?.put(
+        @intFromPtr(mem.ptr),
+        .{ .size = @as(u48, @intCast(new_size)), .alignment = default_mem_alignment },
+    ) catch @panic("saturn_jolt: out of memory");
+
+    return mem.ptr;
 }
 
 fn zjoltFree(maybe_ptr: ?*anyopaque) callconv(.C) void {

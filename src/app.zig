@@ -42,6 +42,7 @@ pub const App = struct {
     // New World System Test
     game_universe: universe.Universe,
     game_world_handle: universe.World.Handle,
+    game_debug_camera: universe.Entity.Handle,
 
     timer: f32 = 0.0,
     frames: f32 = 0,
@@ -74,8 +75,7 @@ pub const App = struct {
         var game_universe = try universe.Universe.init(allocator);
         var game_world = try @import("world_gen2.zig").create_ship_inside(allocator, &rendering_backend);
         game_world.systems.render.?.scene.skybox = game_world1.rendering_world.skybox;
-        const debug_camera_entity = game_world.add_entity(try @import("world_gen2.zig").create_debug_camera(allocator));
-        _ = debug_camera_entity; // autofix
+        const game_debug_camera = game_world.add_entity(try @import("world_gen2.zig").create_debug_camera(allocator));
 
         const game_world_handle = try game_universe.add_world(game_world);
 
@@ -95,6 +95,7 @@ pub const App = struct {
 
             .game_universe = game_universe,
             .game_world_handle = game_world_handle,
+            .game_debug_camera = game_debug_camera,
         };
     }
 
@@ -116,7 +117,7 @@ pub const App = struct {
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
         self.timer += delta_time;
         self.frames += 1;
-        if (self.timer > 5.0) {
+        if (self.timer > 20.0) {
             const avr_delta_time = self.timer / self.frames;
             std.log.info("DT: {d:.3} ms FPS: {d:.3}", .{ avr_delta_time * 1000, 1.0 / avr_delta_time });
             if (mem_usage_opt) |mem_usage| {
@@ -163,7 +164,7 @@ pub const App = struct {
             self.fire_ray = false;
         }
 
-        const scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
+        var scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
         var scene_camera = camera.Camera{
             .data = self.game_camera.camera,
             .transform = self.game_camera.transform,
@@ -174,9 +175,15 @@ pub const App = struct {
             }
         }
 
-        // if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
-        //     scene = &game_world.systems.render.?.scene;
-        // }
+        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
+            scene = &game_world.systems.render.?.scene;
+            if (game_world.entities.getPtr(self.game_debug_camera)) |game_debug_entity| {
+                if (game_debug_entity.systems.debug_camera) |debug_camera_system| {
+                    scene_camera.transform = game_debug_entity.get_node_world_transform(debug_camera_system.camera_node.?).?;
+                    scene_camera.data = game_debug_entity.node_pool.get(debug_camera_system.camera_node.?).?.components.camera.?;
+                }
+            }
+        }
 
         self.rendering_backend.clear_framebuffer();
         const window_size = try self.platform.get_window_size();
@@ -194,6 +201,14 @@ pub const App = struct {
             character.on_button_event(event);
         }
 
+        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
+            if (game_world.entities.getPtr(self.game_debug_camera)) |game_debug_entity| {
+                if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
+                    debug_camera_system.on_button_event(event);
+                }
+            }
+        }
+
         if (event.button == .debug_camera_interact and event.state == .pressed) {
             self.fire_ray = true;
         }
@@ -206,6 +221,14 @@ pub const App = struct {
         if (self.game_character) |character_handle| {
             var character = self.get_active_world().characters.getPtr(character_handle).?;
             character.on_axis_event(event);
+        }
+
+        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
+            if (game_world.entities.getPtr(self.game_debug_camera)) |game_debug_entity| {
+                if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
+                    debug_camera_system.on_axis_event(event);
+                }
+            }
         }
     }
 

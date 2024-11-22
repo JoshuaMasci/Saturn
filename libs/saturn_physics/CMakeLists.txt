@@ -67,11 +67,9 @@ add_library(saturn_physics
         JoltPhysics/Jolt/Physics/Body/BodyManager.cpp
         JoltPhysics/Jolt/Physics/Body/Body.cpp
         JoltPhysics/Jolt/Physics/Body/BodyInterface.cpp
-        JoltPhysics/Jolt/Physics/Body/BodyAccess.cpp
         JoltPhysics/Jolt/Physics/Body/MotionProperties.cpp
         JoltPhysics/Jolt/Physics/Body/MassProperties.cpp
         JoltPhysics/Jolt/Physics/Body/BodyCreationSettings.cpp
-        JoltPhysics/Jolt/Physics/PhysicsLock.cpp
         JoltPhysics/Jolt/Physics/LargeIslandSplitter.cpp
         JoltPhysics/Jolt/Physics/Constraints/Constraint.cpp
         JoltPhysics/Jolt/Physics/Constraints/PulleyConstraint.cpp
@@ -109,13 +107,16 @@ add_library(saturn_physics
         JoltPhysics/Jolt/Physics/Collision/Shape/ConvexShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/BoxShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/MeshShape.cpp
+        JoltPhysics/Jolt/Physics/Collision/Shape/TaperedCylinderShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/ConvexHullShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/ScaledShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/CompoundShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/CapsuleShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/TaperedCapsuleShape.cpp
+        JoltPhysics/Jolt/Physics/Collision/Shape/EmptyShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/DecoratedShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/Shape.cpp
+        JoltPhysics/Jolt/Physics/Collision/Shape/PlaneShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/CylinderShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/SphereShape.cpp
         JoltPhysics/Jolt/Physics/Collision/Shape/StaticCompoundShape.cpp

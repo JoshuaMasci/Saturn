@@ -24,26 +24,15 @@ pub const DebugCamera = struct {
     angular_input: za.Vec3 = za.Vec3.ZERO,
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
+        _ = self; // autofix
+        _ = event; // autofix
         //std.log.info("Button {} -> {}", .{ event.button, event.state });
-
-        switch (event.button) {
-            .debug_camera_fast_move => self.linear_move_fast = event.state == .pressed,
-            else => {},
-        }
     }
 
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
+        _ = self; // autofix
+        _ = event; // autofix
         //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
-
-        switch (event.axis) {
-            .debug_camera_left_right => self.linear_input.data[0] = event.get_value(true),
-            .debug_camera_up_down => self.linear_input.data[1] = event.get_value(true),
-            .debug_camera_forward_backward => self.linear_input.data[2] = event.get_value(true),
-
-            .debug_camera_pitch => self.angular_input.data[0] = event.get_value(false),
-            .debug_camera_yaw => self.angular_input.data[1] = event.get_value(false),
-            else => {},
-        }
     }
 
     pub fn update(self: *Self, delta_time: f32) void {

@@ -7,8 +7,8 @@ GravityStepListener::GravityStepListener(PhysicsWorld *physics_world) {
     this->physics_world = physics_world;
 }
 
-void GravityStepListener::OnStep(float delta_time, JPH::PhysicsSystem &physics_system) {
-    JPH::BodyInterface &body_interface = physics_system.GetBodyInterfaceNoLock();
+void GravityStepListener::OnStep(const JPH::PhysicsStepListenerContext &inContext) {
+    JPH::BodyInterface &body_interface = inContext.mPhysicsSystem->GetBodyInterfaceNoLock();
 
     for (auto volume_body: this->physics_world->volume_bodies) {
         if (volume_body.second.gravity) {
@@ -24,7 +24,7 @@ void GravityStepListener::OnStep(float delta_time, JPH::PhysicsSystem &physics_s
                                                                            body_position);
                     float body_gravity_factor = body_interface.GetGravityFactor(bodyId);
                     gravity_velocity *= body_gravity_factor;
-                    gravity_velocity *= delta_time;
+                    gravity_velocity *= inContext.mDeltaTime;
                     body_interface.AddLinearVelocity(bodyId, gravity_velocity);
                 }
             }

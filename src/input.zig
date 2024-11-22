@@ -8,16 +8,9 @@ pub const Button = enum {
 };
 
 pub const Axis = enum {
-    debug_camera_forward_backward,
-    debug_camera_left_right,
-    debug_camera_up_down,
-
-    debug_camera_pitch,
-    debug_camera_yaw,
-    debug_camera_roll,
-
-    player_move_forward_backward,
     player_move_left_right,
+    player_move_up_down,
+    player_move_forward_backward,
 
     player_rotate_yaw,
     player_rotate_pitch,

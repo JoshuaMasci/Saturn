@@ -1,16 +1,52 @@
 const std = @import("std");
 
+const Options = struct {
+    use_double_precision: bool,
+    enable_asserts: bool,
+    enable_cross_platform_determinism: bool,
+    enable_debug_renderer: bool,
+};
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const options: Options = .{
+        .use_double_precision = b.option(
+            bool,
+            "use_double_precision",
+            "Enable double precision",
+        ) orelse false,
+        .enable_asserts = b.option(
+            bool,
+            "enable_asserts",
+            "Enable assertions",
+        ) orelse (optimize == .Debug),
+        .enable_cross_platform_determinism = b.option(
+            bool,
+            "enable_cross_platform_determinism",
+            "Enables cross-platform determinism",
+        ) orelse true,
+        .enable_debug_renderer = b.option(
+            bool,
+            "enable_debug_renderer",
+            "Enable debug renderer",
+        ) orelse false,
+    };
+
+    const options_step = b.addOptions();
+    inline for (std.meta.fields(@TypeOf(options))) |field| {
+        options_step.addOption(field.type, field.name, @field(options, field.name));
+    }
+    const options_module = options_step.createModule();
+
     const zig_module = b.addModule("root", .{
         .root_source_file = b.path("src/saturn_jolt.zig"),
-        .imports = &.{},
+        .imports = &.{.{ .name = "options", .module = options_module }},
     });
     zig_module.addIncludePath(b.path("src/"));
 
-    const saturn_physics_lib = build_cpp_lib(b, target, optimize);
+    const saturn_physics_lib = build_cpp_lib(b, target, optimize, options);
 
     const lib_unit_tests = b.addTest(.{
         .root_source_file = b.path("src/saturn_jolt.zig"),
@@ -25,13 +61,15 @@ pub fn build(b: *std.Build) void {
     lib.dependOn(&saturn_physics_lib.step);
 }
 
-fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
+fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, options: Options) *std.Build.Step.Compile {
     const library = b.addStaticLibrary(.{
         .name = "saturn_jolt",
         .target = target,
         .optimize = optimize,
     });
     b.installArtifact(library);
+
+    //JPH_DEBUG_RENDERER
 
     library.linkLibC();
     library.linkLibCpp();
@@ -109,11 +147,9 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
             jolt_src_path ++ "Physics/Body/BodyManager.cpp",
             jolt_src_path ++ "Physics/Body/Body.cpp",
             jolt_src_path ++ "Physics/Body/BodyInterface.cpp",
-            jolt_src_path ++ "Physics/Body/BodyAccess.cpp",
             jolt_src_path ++ "Physics/Body/MotionProperties.cpp",
             jolt_src_path ++ "Physics/Body/MassProperties.cpp",
             jolt_src_path ++ "Physics/Body/BodyCreationSettings.cpp",
-            jolt_src_path ++ "Physics/PhysicsLock.cpp",
             jolt_src_path ++ "Physics/LargeIslandSplitter.cpp",
             jolt_src_path ++ "Physics/Constraints/Constraint.cpp",
             jolt_src_path ++ "Physics/Constraints/PulleyConstraint.cpp",
@@ -151,13 +187,16 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
             jolt_src_path ++ "Physics/Collision/Shape/ConvexShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/BoxShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/MeshShape.cpp",
+            jolt_src_path ++ "Physics/Collision/Shape/TaperedCylinderShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/ConvexHullShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/ScaledShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/CompoundShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/CapsuleShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/TaperedCapsuleShape.cpp",
+            jolt_src_path ++ "Physics/Collision/Shape/EmptyShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/DecoratedShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/Shape.cpp",
+            jolt_src_path ++ "Physics/Collision/Shape/PlaneShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/CylinderShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/SphereShape.cpp",
             jolt_src_path ++ "Physics/Collision/Shape/StaticCompoundShape.cpp",
@@ -194,6 +233,10 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
             "-std=c++17",
             "-fno-access-control",
             "-fno-sanitize=undefined",
+            if (options.use_double_precision) "-DJPH_DOUBLE_PRECISION" else "",
+            if (options.enable_asserts) "-DJPH_ENABLE_ASSERTS" else "",
+            if (options.enable_cross_platform_determinism) "-DJPH_CROSS_PLATFORM_DETERMINISTIC" else "",
+            if (options.enable_debug_renderer) "-DJPH_DEBUG_RENDERER" else "",
         },
     });
 

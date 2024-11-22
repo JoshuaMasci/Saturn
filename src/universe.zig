@@ -6,6 +6,7 @@ const PerspectiveCamera = @import("camera.zig").PerspectiveCamera;
 
 pub const DebugCameraEntitySystem = struct {
     const Self = @This();
+    const input = @import("input.zig");
 
     linear_speed: za.Vec3 = za.Vec3.set(5.0),
     angular_speed: za.Vec3 = za.Vec3.set(std.math.pi),
@@ -16,7 +17,7 @@ pub const DebugCameraEntitySystem = struct {
 
     camera_node: ?NodeHandle = null,
 
-    pub fn frame_start(self: *Self, data: EntityUpdateData) void {
+    pub fn pre_physics(self: *Self, data: EntityUpdateData) void {
         const linear_movement = data.entity.transform.rotation.rotateVec(self.linear_input.mul(self.linear_speed).scale(data.delta_time));
         data.entity.transform.position = data.entity.transform.position.add(linear_movement);
 
@@ -35,6 +36,27 @@ pub const DebugCameraEntitySystem = struct {
 
         // Axis events should fire each frame they are active, so the input is reset each update
         self.angular_input = za.Vec3.set(0.0);
+    }
+
+    pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
+        _ = self; // autofix
+        _ = event; // autofix
+        //std.log.info("Button {} -> {}", .{ event.button, event.state });
+    }
+
+    pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
+        //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
+
+        switch (event.axis) {
+            .player_move_left_right => self.linear_input.data[0] = event.get_value(true),
+            .player_move_up_down => self.linear_input.data[1] = event.get_value(true),
+            .player_move_forward_backward => self.linear_input.data[2] = event.get_value(true),
+
+            .player_rotate_pitch => self.angular_input.data[0] = event.get_value(false),
+            .player_rotate_yaw => self.angular_input.data[1] = event.get_value(false),
+
+            //else => {},
+        }
     }
 };
 
