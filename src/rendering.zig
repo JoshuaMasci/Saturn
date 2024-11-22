@@ -141,6 +141,7 @@ pub const Backend = struct {
         }
 
         gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.CULL_FACE);
         gl.depthFunc(gl.LESS);
         gl.frontFace(gl.CCW);
         gl.cullFace(gl.BACK);
