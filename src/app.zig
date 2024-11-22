@@ -43,6 +43,9 @@ pub const App = struct {
     game_universe: universe.Universe,
     game_world_handle: universe.World.Handle,
 
+    timer: f32 = 0.0,
+    frames: f32 = 0,
+
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
 
@@ -69,7 +72,8 @@ pub const App = struct {
         }
 
         var game_universe = try universe.Universe.init(allocator);
-        const game_world = try @import("world_gen2.zig").create_ship_inside(allocator, &rendering_backend);
+        var game_world = try @import("world_gen2.zig").create_ship_inside(allocator, &rendering_backend);
+        game_world.systems.render.?.scene.skybox = game_world1.rendering_world.skybox;
         const debug_camera_entity = game_world.add_entity(try @import("world_gen2.zig").create_debug_camera(allocator));
         _ = debug_camera_entity; // autofix
 
@@ -110,7 +114,21 @@ pub const App = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
-        _ = mem_usage_opt; // autofix
+        self.timer += delta_time;
+        self.frames += 1;
+        if (self.timer > 5.0) {
+            const avr_delta_time = self.timer / self.frames;
+            std.log.info("DT: {d:.3} ms FPS: {d:.3}", .{ avr_delta_time * 1000, 1.0 / avr_delta_time });
+            if (mem_usage_opt) |mem_usage| {
+                if (@import("utils.zig").format_human_readable_bytes(self.allocator, mem_usage)) |mem_usage_string| {
+                    defer self.allocator.free(mem_usage_string);
+                    std.log.info("Mem Usage: {s}", .{mem_usage_string});
+                }
+            }
+            self.timer = 0.0;
+            self.frames = 0;
+        }
+
         try self.platform.proccess_events(self);
 
         self.game_universe.update(delta_time);
@@ -145,7 +163,7 @@ pub const App = struct {
             self.fire_ray = false;
         }
 
-        var scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
+        const scene: *const rendering_system.Scene = &self.get_active_world().rendering_world;
         var scene_camera = camera.Camera{
             .data = self.game_camera.camera,
             .transform = self.game_camera.transform,
@@ -156,15 +174,9 @@ pub const App = struct {
             }
         }
 
-        // if (self.game_universe.worlds.getPtr(self.game_world_handle)) |world_ptr| {
-        //     if (world_ptr.systems.rendering) |rendering| {
-        //         scene = &rendering.scene;
-        //     }
+        // if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
+        //     scene = &game_world.systems.render.?.scene;
         // }
-
-        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
-            scene = &game_world.systems.render.?.scene;
-        }
 
         self.rendering_backend.clear_framebuffer();
         const window_size = try self.platform.get_window_size();
