@@ -18,8 +18,13 @@ pub const DebugCameraEntitySystem = struct {
     camera_node: ?NodeHandle = null,
 
     pub fn pre_physics(self: *Self, data: EntityUpdateData) void {
-        const linear_movement = data.entity.transform.rotation.rotateVec(self.linear_input.mul(self.linear_speed).scale(data.delta_time));
-        data.entity.transform.position = data.entity.transform.position.add(linear_movement);
+        const linear_speed = data.entity.transform.rotation.rotateVec(self.linear_input.mul(self.linear_speed));
+        if (data.entity.systems.physics) |*entity_physics| {
+            entity_physics.linear_velocity = linear_speed;
+            entity_physics.angular_velocity = za.Vec3.ZERO;
+        } else {
+            data.entity.transform.position = data.entity.transform.position.add(linear_speed.scale(data.delta_time));
+        }
 
         const angular_rotation = self.angular_input.mul(self.angular_speed).scale(data.delta_time);
 
@@ -358,7 +363,7 @@ fn removeFromList(list: *NodeList, node_handle: NodeHandle) bool {
 pub const Entity = struct {
     const Self = @This();
 
-    pub const Handle = u32;
+    pub const Handle = u64;
     var next_handle = std.atomic.Value(Handle).init(1);
 
     handle: Handle,

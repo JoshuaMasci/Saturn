@@ -8,8 +8,10 @@ const obj = @import("obj.zig");
 const zstbi = @import("zstbi");
 
 pub fn create_debug_camera(allocator: std.mem.Allocator) !universe.Entity {
-    var entity = universe.Entity.init(allocator, .{ .debug_camera = .{} });
-    entity.systems.debug_camera.?.camera_node = try entity.add_node(null, .{}, .{ .camera = .{} });
+    var entity = universe.Entity.init(allocator, .{});
+    entity.systems.debug_camera = .{};
+    entity.systems.physics = universe.PhysicsEntitySystem{ .motion_type = .dynamic };
+    entity.systems.debug_camera.?.camera_node = try entity.add_node(null, .{}, .{ .camera = .{}, .collider = .{ .shape = physics_system.Shape.init_sphere(0.25, 1.0) } });
     return entity;
 }
 
@@ -65,6 +67,7 @@ pub fn create_ship_inside(allocator: std.mem.Allocator, rendering_backend: *rend
 
             const cube_velocity = za.Vec3.NEG_Z.scale(5.0).add(za.Vec3.NEG_Y.scale(0.5));
             var cube_entity = universe.Entity.init(allocator, .{ .render = .{}, .physics = .{ .motion_type = .dynamic, .linear_velocity = cube_velocity } });
+            cube_entity.transform.position = za.Vec3.NEG_Z;
             _ = try cube_entity.add_node(
                 null,
                 .{},
