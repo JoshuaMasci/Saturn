@@ -5,6 +5,7 @@ const physics_system = @import("physics");
 const universe = @import("universe.zig");
 
 const obj = @import("obj.zig");
+const zstbi = @import("zstbi");
 
 pub fn create_debug_camera(allocator: std.mem.Allocator) !universe.Entity {
     var entity = universe.Entity.init(allocator, .{ .debug_camera = .{} });
@@ -112,8 +113,6 @@ const LoadedMesh = struct {
 const OpenglTexture = @import("platform/opengl/texture.zig");
 
 fn load_texture_material(rendering_backend: *rendering_system.Backend, file_path: [:0]const u8) !rendering_system.MaterialHandle {
-    const zstbi = @import("zstbi");
-
     var image = try zstbi.Image.loadFromFile(file_path, 4);
     defer image.deinit();
 
@@ -132,4 +131,58 @@ fn load_texture_material(rendering_backend: *rendering_system.Backend, file_path
     return try rendering_backend.load_material(.{
         .base_color_texture = texture,
     });
+}
+
+pub fn load_skybox(rendering_backend: *rendering_system.Backend, file_paths: [6][:0]const u8) !rendering_system.TextureHandle {
+    var images: [6]zstbi.Image = undefined;
+    var face_data: [6][]u8 = undefined;
+    for (file_paths, 0..) |file_path, i| {
+        images[i] = try zstbi.Image.loadFromFile(file_path, 4);
+        face_data[i] = images[i].data;
+    }
+    defer for (&images) |*image| {
+        image.deinit();
+    };
+
+    if (images[0].width != images[0].height) {
+        return error.image_not_square;
+    }
+
+    const size = images[0].width;
+    const pixel_format: OpenglTexture.PixelFormat = switch (images[0].num_components) {
+        1 => .r,
+        2 => .rg,
+        3 => .rgb,
+        4 => .rgba,
+        else => unreachable,
+    };
+    const pixel_type: OpenglTexture.PixelType = .u8;
+
+    for (images[1..]) |image| {
+        if (images[0].num_components != image.num_components) {
+            return error.inconsistent_image_component_count;
+        }
+
+        if (image.bytes_per_component != 1) {
+            return error.image_not_8_bit;
+        }
+
+        if (image.width != size or image.height != size) {
+            return error.inconsistent_image_size;
+        }
+    }
+
+    const texture = OpenglTexture.init_cube(
+        size,
+        face_data,
+        .{
+            .load = pixel_format,
+            .store = pixel_format,
+            .layout = pixel_type,
+            .mips = true,
+        },
+        OpenglTexture.Filtering.linear,
+        OpenglTexture.AddressMode.clamp_to_edge,
+    );
+    return try rendering_backend.load_texture(texture);
 }

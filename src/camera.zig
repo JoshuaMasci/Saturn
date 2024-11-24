@@ -38,6 +38,6 @@ pub const PerspectiveCamera = struct {
 pub const Camera = struct {
     const Self = @This();
 
-    data: PerspectiveCamera,
-    transform: Transform,
+    data: PerspectiveCamera = .{},
+    transform: Transform = .{},
 };
