@@ -63,6 +63,12 @@ pub const Shape = struct {
         };
     }
 
+    pub fn init_convex_hull(positions: [][3]f32, density: f32) Self {
+        return .{
+            .handle = c.create_convex_hull_shape(@alignCast(@ptrCast(positions.ptr)), positions.len, density),
+        };
+    }
+
     pub fn init_mesh(positions: [][3]f32, indices: []u32) Self {
         return .{
             .handle = c.create_mesh_shape(@alignCast(@ptrCast(positions.ptr)), positions.len, @alignCast(@ptrCast(indices.ptr)), indices.len),

@@ -2,8 +2,7 @@ const std = @import("std");
 const StringHash = @import("string_hash.zig");
 
 pub const Button = enum {
-    debug_camera_interact,
-    debug_camera_fast_move,
+    player_interact,
     player_move_jump,
 };
 

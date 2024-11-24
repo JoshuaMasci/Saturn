@@ -13,6 +13,7 @@
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
@@ -100,6 +101,19 @@ ShapeHandle create_capsule_shape(float half_height, float radius, float density)
     auto shape = settings.Create().Get();
     return shape_pool->insert(shape);
 
+}
+
+ShapeHandle
+create_convex_hull_shape(const float positions[][3], size_t position_count, float density) {
+    JPH::Array<JPH::Vec3> point_list(position_count);
+    for (size_t i = 0; i < position_count; i++) {
+        point_list[i] = load_vec3(positions[i]);
+    }
+    auto settings = JPH::ConvexHullShapeSettings();
+    settings.mPoints = point_list;
+    settings.mDensity = density;
+    auto shape = settings.Create().Get();
+    return shape_pool->insert(shape);
 }
 
 ShapeHandle

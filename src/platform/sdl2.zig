@@ -93,9 +93,7 @@ pub const Platform = struct {
         var mouse: ?Mouse = null;
         {
             mouse = Mouse.init();
-            mouse.?.button_bindings.set(MouseButton.left, .{ .button = .debug_camera_interact });
-            // mouse.?.axis_bindings[0] = .{ .axis = .debug_camera_yaw, .sensitivity = 0.2, .invert = true };
-            // mouse.?.axis_bindings[1] = .{ .axis = .debug_camera_pitch, .sensitivity = 0.2, .invert = false };
+            mouse.?.button_bindings.set(MouseButton.left, .{ .button = .player_interact });
 
             mouse.?.axis_bindings[0] = .{ .axis = .player_rotate_yaw, .sensitivity = 1.0, .invert = true };
             mouse.?.axis_bindings[1] = .{ .axis = .player_rotate_pitch, .sensitivity = 1.0, .invert = false };
@@ -118,7 +116,7 @@ pub const Platform = struct {
             try keyboard.?.button_bindings.put(sdl.Scancode.space, .{ .axis = .{ .axis = .player_move_up_down, .dir = .positve } });
             try keyboard.?.button_bindings.put(sdl.Scancode.lshift, .{ .axis = .{ .axis = .player_move_up_down, .dir = .negitive } });
 
-            try keyboard.?.button_bindings.put(sdl.Scancode.t, .{ .button = .debug_camera_interact });
+            try keyboard.?.button_bindings.put(sdl.Scancode.e, .{ .button = .player_interact });
         }
 
         // imgui.init(allocator);

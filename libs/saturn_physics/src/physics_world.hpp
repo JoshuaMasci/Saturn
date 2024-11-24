@@ -121,6 +121,6 @@ public:
 
     JPH::UnorderedMap<JPH::BodyID, VolumeBody> volume_bodies;
 
-    JPH::TempAllocatorImpl temp_allocator;
+    JPH::TempAllocatorImplWithMallocFallback temp_allocator;
     JPH::JobSystemSingleThreaded job_system;
 };

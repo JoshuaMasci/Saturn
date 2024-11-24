@@ -46,7 +46,10 @@ ShapeHandle create_box_shape(const float half_extent[3], float density);
 ShapeHandle create_cylinder_shape(float half_height, float radius, float density);
 ShapeHandle create_capsule_shape(float half_height, float radius, float density);
 ShapeHandle
+create_convex_hull_shape(const float positions[][3], size_t position_count, float density);
+ShapeHandle
 create_mesh_shape(const float positions[][3], size_t position_count, const uint32_t *indices, size_t indices_count);
+
 ShapeHandle create_mut_compound_shape();
 void destroy_shape(ShapeHandle handle);
 

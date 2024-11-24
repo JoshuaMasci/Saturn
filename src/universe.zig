@@ -17,6 +17,8 @@ pub const DebugCameraEntitySystem = struct {
 
     camera_node: ?NodeHandle = null,
 
+    cast_ray: bool = false,
+
     pub fn pre_physics(self: *Self, data: EntityUpdateData) void {
         const linear_speed = data.entity.transform.rotation.rotateVec(self.linear_input.mul(self.linear_speed));
         if (data.entity.systems.physics) |*entity_physics| {
@@ -44,14 +46,12 @@ pub const DebugCameraEntitySystem = struct {
     }
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
-        _ = self; // autofix
-        _ = event; // autofix
-        //std.log.info("Button {} -> {}", .{ event.button, event.state });
+        if (event.button == .player_interact and event.state == .pressed) {
+            self.cast_ray = true;
+        }
     }
 
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
-        //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
-
         switch (event.axis) {
             .player_move_left_right => self.linear_input.data[0] = event.get_value(true),
             .player_move_up_down => self.linear_input.data[1] = event.get_value(true),
@@ -147,7 +147,7 @@ pub const PhysicsWorldSystem = struct {
                 .max_bodies = 65536,
                 .max_body_pairs = 65536,
                 .max_contact_constraints = 65536,
-                .temp_allocation_size = 1024 * 1024 * 128, //128mb
+                .temp_allocation_size = 1024 * 1024 * 16, //16mb
             }),
         };
     }
@@ -506,7 +506,7 @@ pub const World = struct {
         const self_ptr = try allocator.create(World);
         self_ptr.* = .{
             .allocator = allocator,
-            .handle = undefined,
+            .handle = next_handle.fetchAdd(1, .monotonic), //TODO: is this the correct atomic order?,
             .entities = std.AutoArrayHashMap(Entity.Handle, Entity).init(allocator),
             .systems = systems,
         };
@@ -584,13 +584,11 @@ pub const Universe = struct {
 
     allocator: std.mem.Allocator,
     worlds: std.AutoHashMap(World.Handle, *World),
-    entity_locations: std.AutoHashMap(Entity.Handle, World.Handle),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         return .{
             .allocator = allocator,
             .worlds = std.AutoHashMap(World.Handle, *World).init(allocator),
-            .entity_locations = std.AutoHashMap(Entity.Handle, World.Handle).init(allocator),
         };
     }
 
@@ -600,7 +598,6 @@ pub const Universe = struct {
             world.*.deinit();
         }
         self.worlds.deinit();
-        self.entity_locations.deinit();
     }
 
     pub fn update(self: *Self, delta_time: f32) void {
@@ -619,9 +616,6 @@ pub const Universe = struct {
     pub fn remove_world(self: *Self, world_handle: World.Handle) ?World {
         std.debug.assert(self.worlds.contains(world_handle));
         if (self.worlds.fetchRemove(world_handle)) |entry| {
-            for (entry.value.entities.values()) |entity| {
-                _ = self.entity_locations.remove(entity.handle);
-            }
             return entry.value;
         }
         return null;

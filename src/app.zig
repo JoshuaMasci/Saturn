@@ -43,7 +43,7 @@ pub const App = struct {
         physics_system.init(allocator);
 
         var game_universe = try universe.Universe.init(allocator);
-        var game_world = try world_gen.create_ship_inside(allocator, &rendering_backend);
+        var game_worlds = try world_gen.create_ship_worlds(allocator, &rendering_backend);
 
         {
             const skybox_base_path = "res/textures/space_skybox_1e1r04uzdb7k/";
@@ -58,13 +58,17 @@ pub const App = struct {
             };
 
             if (world_gen.load_skybox(&rendering_backend, skybox_paths)) |skybox_handle| {
-                game_world.systems.render.?.scene.skybox = skybox_handle;
+                game_worlds.outside.systems.render.?.scene.skybox = skybox_handle;
+                game_worlds.inside.systems.render.?.scene.skybox = skybox_handle;
             } else |err| {
                 std.log.warn("Loading skybox {s} failed with {}", .{ skybox_base_path, err });
             }
         }
-        const game_debug_camera = game_world.add_entity(try world_gen.create_debug_camera(allocator));
-        const game_world_handle = try game_universe.add_world(game_world);
+        const game_debug_camera = game_worlds.outside.add_entity(try world_gen.create_debug_camera(allocator));
+
+        const outside_world_handle = try game_universe.add_world(game_worlds.outside);
+        const inside_world_handle = try game_universe.add_world(game_worlds.inside);
+        _ = inside_world_handle; // autofix
 
         return .{
             .should_quit = false,
@@ -73,7 +77,7 @@ pub const App = struct {
             .rendering_backend = rendering_backend,
 
             .game_universe = game_universe,
-            .game_world_handle = game_world_handle,
+            .game_world_handle = outside_world_handle,
             .game_debug_camera = game_debug_camera,
         };
     }
