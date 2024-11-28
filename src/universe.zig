@@ -43,6 +43,10 @@ pub const DebugCameraEntitySystem = struct {
 
         // Axis events should fire each frame they are active, so the input is reset each update
         self.angular_input = za.Vec3.set(0.0);
+
+        if (self.cast_ray) {
+            self.cast_ray = false;
+        }
     }
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
@@ -226,7 +230,7 @@ pub const NodeComponents = struct {
 };
 
 // Systems
-pub const EntityUpdateData = struct { entity: *Entity, delta_time: f32 };
+pub const EntityUpdateData = struct { world: *const World, entity: *Entity, delta_time: f32 };
 pub const EntityEventData = struct { world: *World, entity: *Entity };
 pub const EntitySystems = struct {
     const Self = @This();
@@ -239,24 +243,24 @@ pub const EntitySystems = struct {
         _ = self;
     }
 
-    pub fn frame_start(self: *Self, entity: *Entity, delta_time: f32) void {
-        callMethodOnFieldsIfExists("frame_start", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
+    pub fn frame_start(self: *Self, world: *const World, entity: *Entity, delta_time: f32) void {
+        callMethodOnFieldsIfExists("frame_start", EntityUpdateData, self, .{ .world = world, .entity = entity, .delta_time = delta_time });
     }
 
-    pub fn pre_physics(self: *Self, entity: *Entity, delta_time: f32) void {
-        callMethodOnFieldsIfExists("pre_physics", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
+    pub fn pre_physics(self: *Self, world: *const World, entity: *Entity, delta_time: f32) void {
+        callMethodOnFieldsIfExists("pre_physics", EntityUpdateData, self, .{ .world = world, .entity = entity, .delta_time = delta_time });
     }
 
-    pub fn post_physics(self: *Self, entity: *Entity, delta_time: f32) void {
-        callMethodOnFieldsIfExists("post_physics", EntityUpdateData, self, .{ .entity = entity, .delta_time = delta_time });
+    pub fn post_physics(self: *Self, world: *const World, entity: *Entity, delta_time: f32) void {
+        callMethodOnFieldsIfExists("post_physics", EntityUpdateData, self, .{ .world = world, .entity = entity, .delta_time = delta_time });
     }
 
-    pub fn pre_render(self: *Self, entity: *Entity) void {
-        callMethodOnFieldsIfExists("pre_render", *Entity, self, entity);
+    pub fn pre_render(self: *Self, world: *const World, entity: *Entity, delta_time: f32) void {
+        callMethodOnFieldsIfExists("pre_render", EntityUpdateData, self, .{ .world = world, .entity = entity, .delta_time = delta_time });
     }
 
-    pub fn frame_end(self: *Self, entity: *Entity) void {
-        callMethodOnFieldsIfExists("frame_end", *Entity, self, entity);
+    pub fn frame_end(self: *Self, world: *const World, entity: *Entity, delta_time: f32) void {
+        callMethodOnFieldsIfExists("frame_end", EntityUpdateData, self, .{ .world = world, .entity = entity, .delta_time = delta_time });
     }
 };
 
@@ -528,7 +532,7 @@ pub const World = struct {
         {
             //TODO: run in parallel
             for (self.entities.values()) |*entity| {
-                entity.systems.frame_start(entity, delta_time);
+                entity.systems.frame_start(self, entity, delta_time);
             }
             self.systems.frame_start(self, delta_time);
         }
@@ -536,7 +540,7 @@ pub const World = struct {
         // Pre Physics
         {
             for (self.entities.values()) |*entity| {
-                entity.systems.pre_physics(entity, delta_time);
+                entity.systems.pre_physics(self, entity, delta_time);
             }
 
             self.systems.pre_physics(self, delta_time);
@@ -547,7 +551,7 @@ pub const World = struct {
         // Post Physics
         {
             for (self.entities.values()) |*entity| {
-                entity.systems.post_physics(entity, delta_time);
+                entity.systems.post_physics(self, entity, delta_time);
             }
             self.systems.post_physics(self, delta_time);
         }
@@ -555,7 +559,7 @@ pub const World = struct {
         // Pre Render
         {
             for (self.entities.values()) |*entity| {
-                entity.systems.pre_render(entity);
+                entity.systems.pre_render(self, entity, delta_time);
             }
             self.systems.pre_render(self);
         }
@@ -565,7 +569,7 @@ pub const World = struct {
         // Frame End
         {
             for (self.entities.values()) |*entity| {
-                entity.systems.frame_end(entity);
+                entity.systems.frame_end(self, entity, delta_time);
             }
             self.systems.frame_end(self);
         }
