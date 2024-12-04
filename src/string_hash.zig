@@ -1,8 +1,5 @@
 const std = @import("std");
 
-// No need for child types, the @inclue will be the StringHash struct
-// Use it like the following: const StringHash = @import("string_hash.zig");
-
 const Self = @This();
 pub const HashType = u32;
 

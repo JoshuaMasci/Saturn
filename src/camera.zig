@@ -41,3 +41,7 @@ pub const Camera = struct {
     data: PerspectiveCamera = .{},
     transform: Transform = .{},
 };
+
+pub const Camera2 = union(enum) {
+    perspective: PerspectiveCamera,
+};

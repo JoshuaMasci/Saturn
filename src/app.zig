@@ -19,6 +19,9 @@ const world_gen = @import("world_gen2.zig");
 
 const universe = @import("universe.zig");
 
+//TODO: rename to render system?
+const RenderThread = @import("rendering/render_thread.zig").RenderThread;
+
 pub const App = struct {
     const Self = @This();
 
@@ -26,7 +29,7 @@ pub const App = struct {
     allocator: std.mem.Allocator,
 
     platform: sdl_platform.Platform,
-    rendering_backend: rendering_system.Backend,
+    render_thread: RenderThread,
 
     // New World System Test
     game_universe: universe.Universe,
@@ -37,47 +40,33 @@ pub const App = struct {
     frames: f32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const platform = try sdl_platform.Platform.init_window(allocator, "Saturn Engine", .{ .windowed = .{ 1920, 1080 } }, .on);
+        var asset_registry = try @import("asset.zig").FileAssetRegistry.initFromDir(allocator, "res/");
+        defer asset_registry.deinit();
 
-        var rendering_backend = try rendering_system.Backend.init(allocator);
+        std.log.info("Avalible Assets: {}", .{asset_registry.map.count()});
+        var iter = asset_registry.map.iterator();
+        while (iter.next()) |entry| {
+            std.debug.print("\t0x{X:0>8} -> {s}\n", .{ entry.key_ptr.*, entry.value_ptr.items });
+        }
+
+        const platform = try sdl_platform.Platform.init(allocator);
+        const render_thread = try RenderThread.init(allocator, .{ .window_name = "Saturn Engine", .size = .{ .windowed = .{ 1920, 1080 } }, .vsync = .on });
+
         physics_system.init(allocator);
 
         var game_universe = try universe.Universe.init(allocator);
-        var game_worlds = try world_gen.create_ship_worlds(allocator, &rendering_backend);
-
-        {
-            const skybox_base_path = "res/textures/space_skybox_1e1r04uzdb7k/";
-            const skybox_paths: [6][:0]const u8 = .{
-                skybox_base_path ++ "right.png",
-
-                skybox_base_path ++ "left.png",
-                skybox_base_path ++ "top.png",
-                skybox_base_path ++ "bottom.png",
-                skybox_base_path ++ "front.png",
-                skybox_base_path ++ "back.png",
-            };
-
-            if (world_gen.load_skybox(&rendering_backend, skybox_paths)) |skybox_handle| {
-                game_worlds.outside.systems.render.?.scene.skybox = skybox_handle;
-                game_worlds.inside.systems.render.?.scene.skybox = skybox_handle;
-            } else |err| {
-                std.log.warn("Loading skybox {s} failed with {}", .{ skybox_base_path, err });
-            }
-        }
-        const game_debug_camera = game_worlds.outside.add_entity(try world_gen.create_debug_camera(allocator));
-
-        const outside_world_handle = try game_universe.add_world(game_worlds.outside);
-        const inside_world_handle = try game_universe.add_world(game_worlds.inside);
-        _ = inside_world_handle; // autofix
+        var test_world = try universe.World.init(allocator, .{ .physics = universe.PhysicsWorldSystem.init() });
+        const game_debug_camera = test_world.add_entity(try world_gen.create_debug_camera(allocator));
+        const test_world_handle = try game_universe.add_world(test_world);
 
         return .{
             .should_quit = false,
             .allocator = allocator,
             .platform = platform,
-            .rendering_backend = rendering_backend,
+            .render_thread = render_thread,
 
             .game_universe = game_universe,
-            .game_world_handle = outside_world_handle,
+            .game_world_handle = test_world_handle,
             .game_debug_camera = game_debug_camera,
         };
     }
@@ -86,7 +75,8 @@ pub const App = struct {
         self.game_universe.deinit();
 
         physics_system.deinit();
-        self.rendering_backend.deinit();
+
+        self.render_thread.deinit();
         self.platform.deinit();
     }
 
@@ -114,27 +104,9 @@ pub const App = struct {
 
         self.game_universe.update(delta_time);
 
-        var scene: ?*const rendering_system.Scene = null;
-        var scene_camera: camera.Camera = .{};
-
-        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
-            scene = &game_world.systems.render.?.scene;
-            if (game_world.entities.getPtr(self.game_debug_camera)) |game_debug_entity| {
-                if (game_debug_entity.systems.debug_camera) |debug_camera_system| {
-                    scene_camera.transform = game_debug_entity.get_node_world_transform(debug_camera_system.camera_node.?).?;
-                    scene_camera.data = game_debug_entity.node_pool.get(debug_camera_system.camera_node.?).?.components.camera.?;
-                }
-            }
-        }
-
-        self.rendering_backend.clear_framebuffer();
-        const window_size = try self.platform.get_window_size();
-
-        if (scene) |scene_ptr| {
-            self.rendering_backend.render_scene(window_size, scene_ptr, &scene_camera);
-        }
-
-        self.platform.gl_swap_window();
+        self.render_thread.beginFrame();
+        //TODO: setup render state here;
+        self.render_thread.submitFrame();
     }
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
