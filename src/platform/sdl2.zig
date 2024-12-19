@@ -1,7 +1,5 @@
 const std = @import("std");
 const sdl = @import("zsdl2");
-const opengl = @import("zopengl");
-const gl = opengl.bindings;
 
 const input = @import("../input.zig");
 const App = @import("../app.zig").App;

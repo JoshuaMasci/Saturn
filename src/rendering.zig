@@ -13,10 +13,10 @@ const Mesh = @import("platform/opengl/mesh.zig");
 const Texture = @import("platform/opengl/texture.zig");
 const Shader = @import("platform/opengl/shader.zig");
 
-const StaticMeshPool = object_pool.ObjectPool(u16, Mesh);
+const StaticMeshPool = object_pool.HandlePool(u16, Mesh);
 pub const StaticMeshHandle = StaticMeshPool.Handle;
 
-const TexturePool = object_pool.ObjectPool(u16, Texture);
+const TexturePool = object_pool.HandlePool(u16, Texture);
 pub const TextureHandle = TexturePool.Handle;
 
 pub const Material = struct {
@@ -32,7 +32,7 @@ pub const Material = struct {
     occlusion_texture: ?TextureHandle = null,
     normal_texture: ?TextureHandle = null,
 };
-const MaterialPool = object_pool.ObjectPool(u16, Material);
+const MaterialPool = object_pool.HandlePool(u16, Material);
 pub const MaterialHandle = MaterialPool.Handle;
 
 fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u8 {
@@ -208,7 +208,7 @@ pub const Backend = struct {
     }
 };
 
-const SceneInstanceMap = object_pool.ObjectPool(u16, struct { mesh: StaticMeshHandle, material: MaterialHandle, transform: Transform });
+const SceneInstanceMap = object_pool.HandlePool(u16, struct { mesh: StaticMeshHandle, material: MaterialHandle, transform: Transform });
 pub const SceneInstanceHandle = SceneInstanceMap.Handle;
 
 pub const Scene = struct {

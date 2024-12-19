@@ -40,14 +40,8 @@ pub const App = struct {
     frames: f32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        var asset_registry = try @import("asset.zig").FileAssetRegistry.initFromDir(allocator, "res/");
-        defer asset_registry.deinit();
-
-        std.log.info("Avalible Assets: {}", .{asset_registry.map.count()});
-        var iter = asset_registry.map.iterator();
-        while (iter.next()) |entry| {
-            std.debug.print("\t0x{X:0>8} -> {s}\n", .{ entry.key_ptr.*, entry.value_ptr.items });
-        }
+        const asset_registry = @import("global.zig").asset_registry;
+        try asset_registry.addDirectorySource("engine", "res");
 
         const platform = try sdl_platform.Platform.init(allocator);
         const render_thread = try RenderThread.init(allocator, .{ .window_name = "Saturn Engine", .size = .{ .windowed = .{ 1920, 1080 } }, .vsync = .on });
@@ -55,9 +49,12 @@ pub const App = struct {
         physics_system.init(allocator);
 
         var game_universe = try universe.Universe.init(allocator);
-        var test_world = try universe.World.init(allocator, .{ .physics = universe.PhysicsWorldSystem.init() });
-        const game_debug_camera = test_world.add_entity(try world_gen.create_debug_camera(allocator));
-        const test_world_handle = try game_universe.add_world(test_world);
+
+        var game_worlds = try world_gen.create_ship_worlds(allocator);
+        const debug_entity = game_worlds.inside.add_entity(try world_gen.create_debug_camera(allocator));
+        const inside_world = try game_universe.add_world(game_worlds.inside);
+        const outside_world = try game_universe.add_world(game_worlds.outside);
+        _ = outside_world; // autofix
 
         return .{
             .should_quit = false,
@@ -66,8 +63,8 @@ pub const App = struct {
             .render_thread = render_thread,
 
             .game_universe = game_universe,
-            .game_world_handle = test_world_handle,
-            .game_debug_camera = game_debug_camera,
+            .game_world_handle = inside_world,
+            .game_debug_camera = debug_entity,
         };
     }
 
@@ -102,11 +99,24 @@ pub const App = struct {
 
         try self.platform.proccess_events(self);
 
-        self.game_universe.update(delta_time);
+        self.game_universe.update(.frame_start, delta_time);
+        self.game_universe.update(.pre_physics, delta_time);
+        self.game_universe.update(.physics, delta_time);
+        self.game_universe.update(.post_physics, delta_time);
+        self.game_universe.update(.pre_render, delta_time);
 
         self.render_thread.beginFrame();
-        //TODO: setup render state here;
+
+        self.render_thread.render_state.scene = null;
+        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
+            if (game_world.systems.render) |render_world| {
+                self.render_thread.render_state.scene = &render_world.scene;
+            }
+        }
+
         self.render_thread.submitFrame();
+
+        self.game_universe.update(.frame_end, delta_time);
     }
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {

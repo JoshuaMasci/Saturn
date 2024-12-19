@@ -2,6 +2,8 @@ const std = @import("std");
 
 const App = @import("app.zig").App;
 
+const global = @import("global.zig");
+
 pub fn main() !void {
     const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true });
     var general_purpose_allocator = GeneralPurposeAllocator{};
@@ -9,6 +11,9 @@ pub fn main() !void {
         std.log.err("GeneralPurposeAllocator has a memory leak!", .{});
     };
     const allocator = general_purpose_allocator.allocator();
+
+    try global.init(allocator);
+    defer global.deinit();
 
     const zstbi = @import("zstbi");
     zstbi.init(allocator);

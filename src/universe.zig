@@ -1,7 +1,7 @@
 const std = @import("std");
 const za = @import("zalgebra");
 const Transform = @import("transform.zig");
-const ObjectPool = @import("object_pool.zig").ObjectPool;
+const ObjectPool = @import("object_pool.zig").HandlePool;
 const PerspectiveCamera = @import("camera.zig").PerspectiveCamera;
 
 pub const DebugCameraEntitySystem = struct {
@@ -527,51 +527,43 @@ pub const World = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn update(self: *Self, delta_time: f32) void {
-        // Frame Start
-        {
-            //TODO: run in parallel
-            for (self.entities.values()) |*entity| {
-                entity.systems.frame_start(self, entity, delta_time);
-            }
-            self.systems.frame_start(self, delta_time);
-        }
+    pub fn update(self: *Self, stage: UpdateStage, delta_time: f32) void {
+        switch (stage) {
+            .frame_start => {
+                //TODO: run in parallel
+                for (self.entities.values()) |*entity| {
+                    entity.systems.frame_start(self, entity, delta_time);
+                }
+                self.systems.frame_start(self, delta_time);
+            },
+            .pre_physics => {
+                for (self.entities.values()) |*entity| {
+                    entity.systems.pre_physics(self, entity, delta_time);
+                }
 
-        // Pre Physics
-        {
-            for (self.entities.values()) |*entity| {
-                entity.systems.pre_physics(self, entity, delta_time);
-            }
-
-            self.systems.pre_physics(self, delta_time);
-        }
-
-        self.systems.simulate_physics(self, delta_time);
-
-        // Post Physics
-        {
-            for (self.entities.values()) |*entity| {
-                entity.systems.post_physics(self, entity, delta_time);
-            }
-            self.systems.post_physics(self, delta_time);
-        }
-
-        // Pre Render
-        {
-            for (self.entities.values()) |*entity| {
-                entity.systems.pre_render(self, entity, delta_time);
-            }
-            self.systems.pre_render(self);
-        }
-
-        //TODO: Submit Render Here???????
-
-        // Frame End
-        {
-            for (self.entities.values()) |*entity| {
-                entity.systems.frame_end(self, entity, delta_time);
-            }
-            self.systems.frame_end(self);
+                self.systems.pre_physics(self, delta_time);
+            },
+            .physics => {
+                self.systems.simulate_physics(self, delta_time);
+            },
+            .post_physics => {
+                for (self.entities.values()) |*entity| {
+                    entity.systems.post_physics(self, entity, delta_time);
+                }
+                self.systems.post_physics(self, delta_time);
+            },
+            .pre_render => {
+                for (self.entities.values()) |*entity| {
+                    entity.systems.pre_render(self, entity, delta_time);
+                }
+                self.systems.pre_render(self);
+            },
+            .frame_end => {
+                for (self.entities.values()) |*entity| {
+                    entity.systems.frame_end(self, entity, delta_time);
+                }
+                self.systems.frame_end(self);
+            },
         }
     }
 
@@ -580,6 +572,15 @@ pub const World = struct {
         self.systems.register_entity(self, self.entities.getPtr(entity.handle).?);
         return entity.handle;
     }
+};
+
+pub const UpdateStage = enum {
+    frame_start,
+    pre_physics,
+    physics,
+    post_physics,
+    pre_render,
+    frame_end,
 };
 
 // Universe
@@ -604,10 +605,10 @@ pub const Universe = struct {
         self.worlds.deinit();
     }
 
-    pub fn update(self: *Self, delta_time: f32) void {
+    pub fn update(self: *Self, stage: UpdateStage, delta_time: f32) void {
         var iter = self.worlds.valueIterator();
         while (iter.next()) |world| {
-            world.*.update(delta_time);
+            world.*.update(stage, delta_time);
         }
     }
 

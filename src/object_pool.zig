@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
+pub fn HandlePool(comptime IndexType: type, comptime T: type) type {
     switch (@typeInfo(IndexType)) {
         .Int => |info| {
             if (info.signedness == .signed) {
@@ -183,5 +183,35 @@ pub fn ObjectPool(comptime IndexType: type, comptime T: type) type {
                 it.index = 0;
             }
         };
+    };
+}
+
+pub fn ObjectPool(comptime T: type) type {
+    return struct {
+        const List = std.TailQueue(T);
+
+        arena: std.heap.ArenaAllocator,
+        free: List = .{},
+
+        pub fn init(allocator: std.mem.Allocator) @This() {
+            return .{ .arena = std.heap.ArenaAllocator.init(allocator) };
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.arena.deinit();
+        }
+
+        pub fn new(self: *@This()) !*T {
+            const obj = if (self.free.popFirst()) |item|
+                item
+            else
+                try self.arena.allocator().create(List.Node);
+            return &obj.data;
+        }
+
+        pub fn delete(self: *@This(), obj: *T) void {
+            const node: *List.Node = @fieldParentPtr("data", obj);
+            self.free.append(node);
+        }
     };
 }
