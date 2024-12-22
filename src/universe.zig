@@ -4,6 +4,9 @@ const Transform = @import("transform.zig");
 const ObjectPool = @import("object_pool.zig").HandlePool;
 const PerspectiveCamera = @import("camera.zig").PerspectiveCamera;
 
+const asset = @import("asset.zig");
+const rendering_scene = @import("rendering/scene.zig");
+
 pub const DebugCameraEntitySystem = struct {
     const Self = @This();
     const input = @import("input.zig");
@@ -225,6 +228,7 @@ pub const PhysicsWorldSystem = struct {
 // Components
 pub const NodeComponents = struct {
     static_mesh: ?StaticMeshComponent = null,
+    static_mesh2: ?rendering_scene.StaticMeshComponent = null,
     camera: ?PerspectiveCamera = null,
     collider: ?PhysicsColliderComponent = null,
 };

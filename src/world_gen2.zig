@@ -8,6 +8,7 @@ const universe = @import("universe.zig");
 
 const obj = @import("obj.zig");
 const zstbi = @import("zstbi");
+const asset = @import("asset.zig");
 
 pub fn create_debug_camera(allocator: std.mem.Allocator) !universe.Entity {
     var entity = universe.Entity.init(allocator, .{});
@@ -22,16 +23,16 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
     outside: *universe.World,
     inside: *universe.World,
 } {
-    const bridge_mesh_handle = global.asset_registry.getAssetHandle("engine:models/bridge.obj").?;
-    _ = bridge_mesh_handle; // autofix
-    const bridge_glass_mesh_handle = global.asset_registry.getAssetHandle("engine:models/bridge_glass.obj").?;
-    _ = bridge_glass_mesh_handle; // autofix
-    const hull_mesh_handle = global.asset_registry.getAssetHandle("engine:models/hull.obj").?;
-    _ = hull_mesh_handle; // autofix
-    const engine_mesh_handle = global.asset_registry.getAssetHandle("engine:models/engine.obj").?;
-    _ = engine_mesh_handle; // autofix
-    const grid_material_handle = global.asset_registry.getAssetHandle("engine:textures/grid.png").?;
-    _ = grid_material_handle; // autofix
+    const bridge_mesh_handle = asset.MeshAssetHandle.fromSourcePath("engine:models/bridge.obj").?;
+    const bridge_glass_mesh_handle = asset.MeshAssetHandle.fromSourcePath("engine:models/bridge_glass.obj").?;
+    const hull_mesh_handle = asset.MeshAssetHandle.fromSourcePath("engine:models/hull.obj").?;
+    const engine_mesh_handle = asset.MeshAssetHandle.fromSourcePath("engine:models/engine.obj").?;
+    const grid_material_handle = asset.MaterialAssetHandle.fromSourcePath("engine:materials/grid.mat").?;
+    std.debug.assert(global.asset_registry.isAssetHandleValid(bridge_mesh_handle.handle));
+    std.debug.assert(global.asset_registry.isAssetHandleValid(bridge_glass_mesh_handle.handle));
+    std.debug.assert(global.asset_registry.isAssetHandleValid(hull_mesh_handle.handle));
+    std.debug.assert(global.asset_registry.isAssetHandleValid(engine_mesh_handle.handle));
+    std.debug.assert(global.asset_registry.isAssetHandleValid(grid_material_handle.handle));
 
     //TODO: load from assest system?
     const bridge_mesh = try LoadedMesh.from_obj(allocator, "res/models/bridge.obj");
@@ -49,7 +50,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
             null,
             .{},
             .{
-                //.static_mesh = .{ .mesh = bridge_mesh.static_mesh, .material = grid_material },
+                .static_mesh2 = .{ .mesh = bridge_mesh_handle, .material = grid_material_handle },
                 .collider = .{ .shape = bridge_mesh.convex_shape },
             },
         );
@@ -57,7 +58,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
             null,
             .{ .position = za.Vec3.NEG_Z.scale(5.0) },
             .{
-                //.static_mesh = .{ .mesh = hull_mesh.static_mesh, .material = grid_material },
+                .static_mesh2 = .{ .mesh = hull_mesh_handle, .material = grid_material_handle },
                 .collider = .{ .shape = hull_mesh.convex_shape },
             },
         );
@@ -65,7 +66,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
             null,
             .{ .position = za.Vec3.NEG_Z.scale(15.0) },
             .{
-                //.static_mesh = .{ .mesh = engine_mesh.static_mesh, .material = grid_material },
+                .static_mesh2 = .{ .mesh = engine_mesh_handle, .material = grid_material_handle },
                 .collider = .{ .shape = engine_mesh.convex_shape },
             },
         );
@@ -79,7 +80,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
             null,
             .{},
             .{
-                //.static_mesh = .{ .mesh = bridge_mesh.static_mesh, .material = grid_material },
+                .static_mesh2 = .{ .mesh = bridge_mesh_handle, .material = grid_material_handle },
                 .collider = .{ .shape = bridge_mesh.mesh_shape },
             },
         );
@@ -87,7 +88,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
             null,
             .{},
             .{
-                //.static_mesh = .{ .mesh = bridge_glass_mesh.static_mesh, .material = grid_material },
+                //.static_mesh2 = .{ .mesh = bridge_glass_mesh_handle, .material = grid_material_handle },
                 .collider = .{ .shape = bridge_glass_mesh.mesh_shape },
             },
         );
@@ -95,7 +96,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
             null,
             .{ .position = za.Vec3.NEG_Z.scale(5.0) },
             .{
-                //.static_mesh = .{ .mesh = hull_mesh.static_mesh, .material = grid_material },
+                .static_mesh2 = .{ .mesh = hull_mesh_handle, .material = grid_material_handle },
                 .collider = .{ .shape = hull_mesh.mesh_shape },
             },
         );
@@ -103,7 +104,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
             null,
             .{ .position = za.Vec3.NEG_Z.scale(15.0) },
             .{
-                //.static_mesh = .{ .mesh = engine_mesh.static_mesh, .material = grid_material },
+                .static_mesh2 = .{ .mesh = engine_mesh_handle, .material = grid_material_handle },
                 .collider = .{ .shape = engine_mesh.mesh_shape },
             },
         );
