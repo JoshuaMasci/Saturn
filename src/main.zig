@@ -1,7 +1,5 @@
 const std = @import("std");
-
 const App = @import("app.zig").App;
-
 const global = @import("global.zig");
 
 pub fn main() !void {

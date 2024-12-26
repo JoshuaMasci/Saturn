@@ -358,6 +358,8 @@ fn zjoltAlloc(size: usize) callconv(.C) ?*anyopaque {
 }
 
 fn zjoltAlignedAlloc(size: usize, alignment: usize) callconv(.C) ?*anyopaque {
+    std.debug.assert(alignment == 64 or alignment == 16);
+
     mem_mutex.lock();
     defer mem_mutex.unlock();
 

@@ -72,22 +72,14 @@ pub const DebugCameraEntitySystem = struct {
     }
 };
 
-const rendering_system = @import("rendering.zig");
-pub const StaticMeshComponent = struct {
-    visable: bool = true,
-    mesh: rendering_system.StaticMeshHandle,
-    material: rendering_system.MaterialHandle,
-    instance: ?rendering_system.SceneInstanceHandle = null,
-};
-pub const RenderEntitySystem = struct {};
 pub const RenderWorldSystem = struct {
     const Self = @This();
 
-    scene: rendering_system.Scene,
+    scene: rendering_scene.RenderScene,
 
-    pub fn init(rendering_backend: *rendering_system.Backend) Self {
+    pub fn init(allocator: std.mem.Allocator) Self {
         return .{
-            .scene = rendering_backend.create_scene(),
+            .scene = rendering_scene.RenderScene.init(allocator),
         };
     }
 
@@ -96,34 +88,28 @@ pub const RenderWorldSystem = struct {
     }
 
     pub fn register_entity(self: *Self, data: EntityRegisterData) void {
-        if (data.entity.systems.render) |render_system| {
-            _ = render_system; // autofix
-            var iter = data.entity.node_pool.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.components.static_mesh) |*static_mesh_component| {
-                    const world_transform = data.entity.get_node_world_transform(entry.handle).?;
-                    const instance = self.scene.add_instace(static_mesh_component.mesh, static_mesh_component.material, &world_transform) catch std.debug.panic("Failed to add instance to scene", .{});
-                    static_mesh_component.instance = instance; //TODO: store instance in entity render system
-                }
-            }
-        }
+        _ = self; // autofix
+        _ = data; // autofix
     }
 
     pub fn pre_render(self: *Self, world: *World) void {
+        self.scene.clear();
+
         for (world.entities.values()) |*entity| {
-            update_entity_instances(&self.scene, entity);
+            update_entity_instances(&self.scene, entity) catch |err| std.debug.panic("Failed to update scene entity: {}", .{err});
         }
     }
 
-    fn update_entity_instances(scene: *rendering_system.Scene, entity: *const Entity) void {
+    fn update_entity_instances(scene: *rendering_scene.RenderScene, entity: *const Entity) !void {
         var iter = entity.node_pool.iterator();
         while (iter.next()) |entry| {
             if (entry.value_ptr.components.static_mesh) |*static_mesh_component| {
-                if (static_mesh_component.instance) |instance| {
-                    const root_transform = entity.get_node_root_transform(entry.handle).?;
-                    const world_transform = entity.transform.transform_by(&root_transform);
-                    scene.update_instance(instance, &world_transform);
-                }
+                const root_transform = entity.get_node_root_transform(entry.handle).?;
+                const world_transform = entity.transform.transform_by(&root_transform);
+                try scene.static_meshes.append(.{
+                    .transform = world_transform,
+                    .component = static_mesh_component.*,
+                });
             }
         }
     }
@@ -227,8 +213,7 @@ pub const PhysicsWorldSystem = struct {
 
 // Components
 pub const NodeComponents = struct {
-    static_mesh: ?StaticMeshComponent = null,
-    static_mesh2: ?rendering_scene.StaticMeshComponent = null,
+    static_mesh: ?rendering_scene.StaticMeshComponent = null,
     camera: ?PerspectiveCamera = null,
     collider: ?PhysicsColliderComponent = null,
 };
@@ -239,7 +224,6 @@ pub const EntityEventData = struct { world: *World, entity: *Entity };
 pub const EntitySystems = struct {
     const Self = @This();
 
-    render: ?RenderEntitySystem = null,
     physics: ?PhysicsEntitySystem = null,
     debug_camera: ?DebugCameraEntitySystem = null,
 

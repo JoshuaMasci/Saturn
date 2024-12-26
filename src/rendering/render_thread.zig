@@ -6,12 +6,13 @@ const Camera = @import("../camera.zig").Camera;
 
 const RenderSettings = @import("settings.zig").RenderSettings;
 
-const rendering = @import("../rendering.zig");
+const Renderer = @import("renderer.zig").Renderer;
+const rendering_scene = @import("scene.zig");
 
 pub const RenderState = struct {
     const Self = @This();
     temp_allocator: std.heap.ArenaAllocator,
-    scene: ?*const rendering.Scene = null,
+    scene: ?rendering_scene.RenderScene = null,
     camera_transform: ?Transform = null,
     camera: ?Camera = null,
 
@@ -66,6 +67,7 @@ pub const RenderThread = struct {
 
     pub fn beginFrame(self: *Self) void {
         self.render_signals.render_done_semaphore.wait();
+        _ = self.render_state.temp_allocator.reset(.retain_capacity);
     }
 
     pub fn submitFrame(self: *Self) void {
@@ -86,10 +88,10 @@ fn renderThreadMain(
     var context = OpenglContext.init_window(render_settings.window_name, render_settings.size, render_settings.vsync) catch |err| std.debug.panic("Failed to init opengl context: {}", .{err});
     defer context.deinit();
 
-    var renderer = global.global_allocator.create(rendering.Backend) catch |err| std.debug.panic("Failed to allocate rendering backend: {}", .{err});
+    var renderer = global.global_allocator.create(Renderer) catch |err| std.debug.panic("Failed to allocate renderer: {}", .{err});
     defer global.global_allocator.destroy(renderer);
 
-    renderer.* = rendering.Backend.init(global.global_allocator) catch |err| std.debug.panic("Failed to init rendering backend: {}", .{err});
+    renderer.* = Renderer.init(global.global_allocator) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
     defer renderer.deinit();
 
     //Prepare for first render call
@@ -101,11 +103,11 @@ fn renderThreadMain(
             return; //TODO: deinit
         }
 
-        renderer.clear_framebuffer();
+        renderer.clearFramebuffer();
 
         const DefaultCamera: Camera = .{};
-        if (render_state.scene) |scene| {
-            renderer.render_scene(context.getWindowSize() catch |err| std.debug.panic("Failed to get window size: {}", .{err}), scene, if (render_state.camera) |camera| &camera else &DefaultCamera);
+        if (render_state.scene) |*scene| {
+            renderer.renderScene(context.getWindowSize() catch |err| std.debug.panic("Failed to get window size: {}", .{err}), scene, if (render_state.camera) |camera| &camera else &DefaultCamera);
         }
 
         //TODO: render here
@@ -117,65 +119,3 @@ fn renderThreadMain(
         }
     }
 }
-
-// const asset = @import("../asset.zig");
-
-// const StaticMeshInstance = struct {
-//     transform: Transform,
-//     mesh: asset.MeshAssetHandle,
-//     materials: std.BoundedArray(asset.MaterialAssetHandle, 16),
-// };
-
-// const Scene = struct {
-//     instances: std.ArrayList(StaticMeshInstance),
-//     skybox: ?asset.TextureAssetHandle = null,
-// };
-
-// const Mesh = @import("../platform/opengl/mesh.zig");
-// const Texture = @import("../platform/opengl/texture.zig");
-
-// pub const Material = struct {
-//     base_color_texture: ?asset.AssetHandle = null,
-//     base_color_factor: [4]f32 = [_]f32{1.0} ** 4,
-
-//     metallic_roughness_texture: ?asset.AssetHandle = null,
-//     metallic_roughness_factor: [2]f32 = .{ 0.0, 1.0 },
-
-//     emissive_texture: ?asset.AssetHandle = null,
-//     emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
-
-//     occlusion_texture: ?asset.AssetHandle = null,
-//     normal_texture: ?asset.AssetHandle = null,
-// };
-
-// const LoadedAsset = struct {
-//     const Self = @This();
-
-//     static_meshes: std.AutoArrayHashMap(asset.AssetHandle, Mesh),
-//     textures: std.AutoArrayHashMap(asset.AssetHandle, Texture),
-//     materials: std.AutoArrayHashMap(asset.AssetHandle, Material),
-
-//     pub fn init(allocator: std.mem.Allocator) Self {
-//         return .{
-//             .static_meshes = std.AutoArrayHashMap(asset.AssetHandle, Mesh).init(allocator),
-//             .textures = std.AutoArrayHashMap(asset.AssetHandle, Texture).init(allocator),
-//             .materials = std.AutoArrayHashMap(asset.AssetHandle, Material).init(allocator),
-//         };
-//     }
-
-//     fn deinit(self: *Self) void {
-//         var mesh_iter = self.static_meshes.iterator();
-//         while (mesh_iter.next()) |entry| {
-//             entry.value_ptr.deinit();
-//         }
-
-//         var texture_iter = self.textures.iterator();
-//         while (texture_iter.next()) |entry| {
-//             entry.value_ptr.deinit();
-//         }
-
-//         self.static_meshes.deinit();
-//         self.textures.deinit();
-//         self.materials.deinit();
-//     }
-// };

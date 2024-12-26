@@ -66,7 +66,7 @@ pub const AssetType = enum(u8) {
     scene,
 
     pub fn getAssetTypesFromExt(ext: []const u8) []const Self {
-        if (std.mem.eql(u8, ext, ".obj")) {
+        if (std.mem.eql(u8, ext, ".mesh")) {
             return &.{ .rendering_mesh, .phyiscs_mesh };
         } else if (std.mem.eql(u8, ext, ".png")) {
             return &.{.rendering_texture};

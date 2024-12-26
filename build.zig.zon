@@ -26,7 +26,6 @@
 
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
-        .zmesh = .{ .path = "libs/zig-gamedev/libs/zmesh" },
         .zstbi = .{ .path = "libs/zig-gamedev/libs/zstbi" },
     },
 }

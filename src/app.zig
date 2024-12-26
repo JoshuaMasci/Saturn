@@ -4,22 +4,17 @@ const za = @import("zalgebra");
 //const saturn_options = @import("saturn_options");
 const sdl_platform = @import("platform/sdl2.zig");
 
-const rendering_system = @import("rendering.zig");
 const physics_system = @import("physics");
 
 const input = @import("input.zig");
 
-const entities = @import("entity.zig");
-const world = @import("world.zig");
-
 const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
-const world_gen = @import("world_gen2.zig");
+const world_gen = @import("world_gen.zig");
 
 const universe = @import("universe.zig");
 
-//TODO: rename to render system?
 const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 
 pub const App = struct {
@@ -36,12 +31,12 @@ pub const App = struct {
     game_world_handle: universe.World.Handle,
     game_debug_camera: universe.Entity.Handle,
 
-    timer: f32 = 0.0,
+    timer: f32 = 15.0,
     frames: f32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const asset_registry = @import("global.zig").asset_registry;
-        try asset_registry.addDirectorySource("engine", "res");
+        try asset_registry.addDirectorySource("engine", "zig-out/assets"); //TODO: allow this path to be configured for project builds
 
         const platform = try sdl_platform.Platform.init(allocator);
         const render_thread = try RenderThread.init(allocator, .{ .window_name = "Saturn Engine", .size = .{ .windowed = .{ 1920, 1080 } }, .vsync = .on });
@@ -110,7 +105,7 @@ pub const App = struct {
         self.render_thread.render_state.scene = null;
         if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
             if (game_world.systems.render) |render_world| {
-                self.render_thread.render_state.scene = &render_world.scene;
+                self.render_thread.render_state.scene = try render_world.scene.dupe(self.render_thread.render_state.temp_allocator.allocator());
             }
         }
 
