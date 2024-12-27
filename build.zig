@@ -75,6 +75,8 @@ pub fn build(b: *std.Build) !void {
         });
 
         assets_exe.root_module.addImport("zobj", zobj.module("obj"));
+        assets_exe.root_module.addImport("zstbi", zstbi.module("root"));
+        assets_exe.linkLibrary(zstbi.artifact("zstbi"));
 
         b.installArtifact(assets_exe);
         const run_assets_cmd = b.addRunArtifact(assets_exe);

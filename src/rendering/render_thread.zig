@@ -94,6 +94,8 @@ fn renderThreadMain(
     renderer.* = Renderer.init(global.global_allocator) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
     defer renderer.deinit();
 
+    renderer.loadResourceFromSource("engine");
+
     //Prepare for first render call
     render_signals.render_done_semaphore.post();
 
@@ -105,9 +107,17 @@ fn renderThreadMain(
 
         renderer.clearFramebuffer();
 
-        const DefaultCamera: Camera = .{};
+        //TODO: default camera fov should be set by render settings
+        const DefaultCamera = Camera.Default;
         if (render_state.scene) |*scene| {
-            renderer.renderScene(context.getWindowSize() catch |err| std.debug.panic("Failed to get window size: {}", .{err}), scene, if (render_state.camera) |camera| &camera else &DefaultCamera);
+            renderer.renderScene(
+                context.getWindowSize() catch |err| std.debug.panic("Failed to get window size: {}", .{err}),
+                scene,
+                .{
+                    .transform = render_state.camera_transform orelse .{},
+                    .camera = render_state.camera orelse DefaultCamera,
+                },
+            );
         }
 
         //TODO: render here

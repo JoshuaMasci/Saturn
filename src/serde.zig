@@ -6,7 +6,7 @@ pub fn serialzieSlice(comptime T: type, writer: anytype, slice: []const T) !void
     try writer.writeAll(u8_slice);
 }
 
-pub fn deserialzieSlice(comptime T: type, reader: anytype, allocator: std.mem.Allocator) ![]T {
+pub fn deserialzieSlice(allocator: std.mem.Allocator, comptime T: type, reader: anytype) ![]T {
     const len = try reader.readInt(u32, .little);
     const slice = try allocator.alloc(T, len);
     const u8_slice: []u8 = std.mem.sliceAsBytes(slice);

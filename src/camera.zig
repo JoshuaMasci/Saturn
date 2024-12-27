@@ -35,13 +35,13 @@ pub const PerspectiveCamera = struct {
     }
 };
 
-pub const Camera = struct {
+pub const Camera = union(enum) {
     const Self = @This();
 
-    data: PerspectiveCamera = .{},
-    transform: Transform = .{},
-};
-
-pub const Camera2 = union(enum) {
+    pub const Default: Self = .{ .perspective = .{} };
     perspective: PerspectiveCamera,
+
+    pub fn projection_gl(self: Self, aspect_ratio: f32) za.Mat4 {
+        return self.perspective.perspective_gl(aspect_ratio);
+    }
 };

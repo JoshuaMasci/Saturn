@@ -15,39 +15,49 @@ pub fn loadObjMesh(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []c
         index_count += obj_mesh.indices.len;
     }
 
+    std.log.info("Index Count: {}", .{index_count});
+
     const primitives = try allocator.alloc(Mesh.Primitive, primitive_count);
     errdefer allocator.free(primitives);
 
     const positions = try allocator.alloc(Mesh.VertexPositions, index_count);
     errdefer allocator.free(positions);
 
-    const data = try allocator.alloc(Mesh.VertexData, index_count);
-    errdefer allocator.free(data);
+    const attributes = try allocator.alloc(Mesh.VertexAttributes, index_count);
+    errdefer allocator.free(attributes);
 
     const mesh: Mesh = .{
         .name = &.{},
         .primitives = primitives,
         .positions = positions,
-        .data = data,
+        .attributes = attributes,
         .indices = &.{},
     };
 
     var global_index: u32 = 0;
     for (model.meshes, 0..) |obj_mesh, primitive_index| {
+        for (obj_mesh.num_vertices) |num_vertices| {
+            std.debug.assert(num_vertices == 3);
+        }
+
         mesh.primitives[primitive_index] = .{
             .index_offset = global_index,
             .index_count = @intCast(obj_mesh.indices.len),
         };
         for (obj_mesh.indices) |index| {
             mesh.positions[global_index] = try extract3f(model.vertices, index.vertex.?);
-            mesh.data[global_index] = .{
-                .normals = try extract3f(model.normals, index.normal.?),
-                .tangents = .{ 0.0, 0.0, 0.0, 1.0 },
+            mesh.attributes[global_index] = .{
+                .normal = try extract3f(model.normals, index.normal.?),
+                .tangent = .{ 0.0, 0.0, 0.0, 1.0 },
                 .uv0 = try extract2f(model.tex_coords, index.tex_coord.?),
             };
             global_index += 1;
         }
     }
+
+    std.debug.assert(global_index == index_count);
+
+    std.log.info("global_index: {}", .{global_index});
 
     return mesh;
 }

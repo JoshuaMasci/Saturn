@@ -37,6 +37,12 @@ pub fn main() !void {
                 } else |err| {
                     std.log.err("Failed to processed Obj Mesh {s} -> {}", .{ entry.path, err });
                 }
+            } else if (std.mem.eql(u8, file_ext, ".png")) {
+                if (processStb(arena_allocator, entry.path)) {
+                    std.log.info("Processed Texture {s}", .{entry.path});
+                } else |err| {
+                    std.log.err("Failed to processed Texture {s} -> {}", .{ entry.path, err });
+                }
             } else if (std.mem.eql(u8, file_ext, ".mat")) {
                 if (processMaterial(arena_allocator, entry.path)) {
                     std.log.info("Processed Material {s}", .{entry.path});
@@ -80,6 +86,20 @@ pub fn processObj(allocator: std.mem.Allocator, file_path: []const u8) !void {
     defer output_file.close();
 
     try processed_mesh.serialize(output_file.writer());
+}
+
+pub fn processStb(allocator: std.mem.Allocator, file_path: []const u8) !void {
+    const stbi = @import("asset/stbi.zig");
+    const texture = try stbi.loadTexture2d(allocator, input_dir, file_path);
+
+    const new_path = try replaceExt(allocator, file_path, ".tex2d");
+    defer allocator.free(new_path);
+
+    makePath(output_dir, new_path);
+    const output_file = try output_dir.createFile(new_path, .{});
+    defer output_file.close();
+
+    try texture.serialize(output_file.writer());
 }
 
 pub fn processMaterial(allocator: std.mem.Allocator, file_path: []const u8) !void {

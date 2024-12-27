@@ -107,6 +107,10 @@ pub const App = struct {
             if (game_world.systems.render) |render_world| {
                 self.render_thread.render_state.scene = try render_world.scene.dupe(self.render_thread.render_state.temp_allocator.allocator());
             }
+
+            if (game_world.entities.getPtr(self.game_debug_camera)) |debug_camera_entity| {
+                self.render_thread.render_state.camera_transform = debug_camera_entity.transform;
+            }
         }
 
         self.render_thread.submitFrame();

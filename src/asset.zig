@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const HashType = u32;
-const HashMethod = std.hash.Fnv1a_32;
+pub const HashMethod = std.hash.Fnv1a_32;
 
 //TODO: this whole system is a little naive
 // Meshes can represent  Render, Physics, or even Audio meshes
@@ -78,8 +78,24 @@ pub const AssetType = enum(u8) {
     }
 };
 
+pub const RepositorySource = union(enum) {
+    directory: std.fs.Dir,
+
+    pub fn deinit(self: *@This()) void {
+        switch (self.*) {
+            .directory => |*dir| dir.close(),
+        }
+    }
+};
+
 pub const AssetSource = union(enum) {
     source_path: []const u8,
+
+    pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+        switch (self) {
+            .source_path => |path| allocator.free(path),
+        }
+    }
 };
 
 pub const AssetInfo = struct {
@@ -94,6 +110,7 @@ pub const AssetRepository = struct {
 
     allocator: std.mem.Allocator,
     source_hash: HashType,
+    source: RepositorySource,
     map: AssetMap,
 
     pub fn initFromDir(allocator: std.mem.Allocator, source_hash: HashType, dir_path: []const u8) !Self {
@@ -120,19 +137,32 @@ pub const AssetRepository = struct {
             }
         }
 
-        return .{ .allocator = allocator, .source_hash = source_hash, .map = map };
+        return .{
+            .allocator = allocator,
+            .source_hash = source_hash,
+            .source = .{ .directory = asset_dir },
+            .map = map,
+        };
     }
 
     pub fn deinit(self: *Self) void {
         var iter = self.map.iterator();
         while (iter.next()) |entry| {
             self.allocator.free(entry.value_ptr.name);
-            switch (entry.value_ptr.source) {
-                .source_path => |path| self.allocator.free(path),
-            }
+            entry.value_ptr.source.deinit(self.allocator);
         }
 
         self.map.deinit();
+        self.source.deinit();
+    }
+
+    pub fn getAssetFile(self: Self, handle: AssetHandle) ?std.fs.File {
+        if (self.map.getPtr(handle)) |asset| {
+            const file = self.source.directory.openFile(asset.source.source_path, .{ .mode = .read_only }) catch return null;
+            return file;
+        }
+
+        return null;
     }
 };
 

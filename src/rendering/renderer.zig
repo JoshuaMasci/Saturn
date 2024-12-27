@@ -15,6 +15,8 @@ const Texture = @import("../platform/opengl/texture.zig");
 const Shader = @import("../platform/opengl/shader.zig");
 const Material = @import("types.zig").Material;
 
+const AssetMesh = @import("../asset/mesh.zig");
+
 fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u8 {
     var file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
     defer file.close();
@@ -66,6 +68,31 @@ pub const Renderer = struct {
         };
     }
 
+    pub fn loadResourceFromSource(self: *Self, repo_name: []const u8) void {
+        const global = @import("../global.zig");
+
+        const repo_hash = asset.HashMethod.hash(repo_name);
+        if (global.asset_registry.repositories.getPtr(repo_hash)) |repo| {
+            var key_iter = repo.map.keyIterator();
+            while (key_iter.next()) |key| {
+                if (key.asset_type == .rendering_mesh) {
+                    if (repo.getAssetFile(key.*)) |asset_file| {
+                        defer asset_file.close();
+
+                        const reader = asset_file.reader();
+                        if (AssetMesh.deserialzie(self.allocator, reader)) |mesh| {
+                            defer mesh.deinit(self.allocator);
+                            const gpu_mesh = Mesh.init(&mesh);
+                            self.static_mesh_map.put(asset.MeshAssetHandle{ .handle = key.* }, gpu_mesh) catch unreachable;
+                        } else |err| {
+                            std.log.info("Failed to load mesh {}", .{err});
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn deinit(self: *Self) void {
         gl.deleteVertexArrays(1, &self.skybox_vao);
         self.skybox_shader.deinit();
@@ -84,7 +111,10 @@ pub const Renderer = struct {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
-    pub fn renderScene(self: Self, window_size: [2]u32, scene: *const RenderScene, scene_camera: *const Camera) void {
+    pub fn renderScene(self: Self, window_size: [2]u32, scene: *const RenderScene, camera: struct {
+        transform: Transform,
+        camera: Camera,
+    }) void {
         var err: gl.Enum = gl.getError();
         while (err != gl.NO_ERROR) {
             std.log.err("GL Error: {}", .{err});
@@ -102,8 +132,8 @@ pub const Renderer = struct {
         const height_float: f32 = @floatFromInt(window_size[1]);
         const aspect_ratio: f32 = width_float / height_float;
 
-        const view_matrix = scene_camera.transform.get_view_matrix();
-        const projection_matrix = scene_camera.data.perspective_gl(aspect_ratio);
+        const view_matrix = camera.transform.get_view_matrix();
+        const projection_matrix = camera.camera.projection_gl(aspect_ratio);
         var view_projection_matrix = projection_matrix.mul(view_matrix);
 
         if (scene.skybox) |skybox_handle| {
@@ -111,7 +141,7 @@ pub const Renderer = struct {
                 gl.disable(gl.DEPTH_TEST);
                 defer gl.enable(gl.DEPTH_TEST);
 
-                const rotation = Transform{ .rotation = scene_camera.transform.rotation };
+                const rotation = Transform{ .rotation = camera.transform.rotation };
                 const rotation_view_matrix = rotation.get_view_matrix();
                 const inverse_view_projection_matrix = projection_matrix.mul(rotation_view_matrix).inv();
 
@@ -130,31 +160,21 @@ pub const Renderer = struct {
         self.pbr_material_shader.bind();
         self.pbr_material_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
 
-        // var instance_iterator = scene.instances.iterator();
-        // while (instance_iterator.next()) |instance| {
-        //     const model_matrix = instance.value_ptr.transform.get_model_matrix();
-        //     self.pbr_material_shader.set_uniform_mat4("model_matrix", &model_matrix);
-        //     if (self.materials.get(instance.value_ptr.material)) |material| {
-        //         self.pbr_material_shader.set_uniform_vec4("base_color_factor", za.Vec4.fromArray(material.base_color_factor));
-        //         self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
+        for (scene.static_meshes.items, 0..) |static_mesh, i| {
+            if (static_mesh.component.visable == false) {
+                continue;
+            }
 
-        //         if (material.base_color_texture) |texture_handle| {
-        //             if (self.textures.get(texture_handle)) |texture| {
-        //                 const slot = 0;
-        //                 texture.bind(slot);
-        //                 self.pbr_material_shader.set_uniform_int("base_color_texture", slot);
-        //                 self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 1);
-        //             }
-        //         }
+            if (self.static_mesh_map.getPtr(static_mesh.component.mesh)) |mesh| {
+                const model_matrix = static_mesh.transform.get_model_matrix();
+                self.pbr_material_shader.set_uniform_mat4("model_matrix", &model_matrix);
+                self.pbr_material_shader.set_uniform_vec4("base_color_factor", za.Vec4.X);
+                self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
 
-        //         if (self.static_meshes.get(instance.value_ptr.mesh)) |mesh| {
-        //             mesh.draw();
-        //         } else {
-        //             std.log.warn("Instance {} contains an invalid Mesh {}", .{ instance.handle, instance.value_ptr.mesh });
-        //         }
-        //     } else {
-        //         std.log.warn("Instance {} contains an invalid Material {}", .{ instance.handle, instance.value_ptr.material });
-        //     }
-        // }
+                mesh.draw();
+            } else {
+                std.log.warn("Instance {} contains an invalid Mesh {}", .{ i, static_mesh.component.mesh });
+            }
+        }
     }
 };
