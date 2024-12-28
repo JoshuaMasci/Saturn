@@ -40,7 +40,7 @@ pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u32, writer, self.indices);
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     var magic: [8]u8 = undefined;
     try reader.readNoEof(&magic);
     if (!std.mem.eql(u8, &MAGIC, &magic)) {

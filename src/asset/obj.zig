@@ -15,8 +15,6 @@ pub fn loadObjMesh(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []c
         index_count += obj_mesh.indices.len;
     }
 
-    std.log.info("Index Count: {}", .{index_count});
-
     const primitives = try allocator.alloc(Mesh.Primitive, primitive_count);
     errdefer allocator.free(primitives);
 
@@ -56,8 +54,6 @@ pub fn loadObjMesh(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []c
     }
 
     std.debug.assert(global_index == index_count);
-
-    std.log.info("global_index: {}", .{global_index});
 
     return mesh;
 }

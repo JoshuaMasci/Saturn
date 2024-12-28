@@ -23,9 +23,12 @@ height: u32,
 data: []u8,
 //TODO: mip data
 
+pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+    allocator.free(self.data);
+}
+
 pub fn serialize(self: Self, writer: anytype) !void {
     try writer.writeAll(&MAGIC);
-
     try writer.writeInt(u32, @intFromEnum(self.format), .little);
     try writer.writeInt(u32, @intFromEnum(self.color_space), .little);
     try writer.writeInt(u32, self.width, .little);
@@ -33,12 +36,24 @@ pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.data);
 }
 
-pub fn deserialzie(reader: anytype, allocator: std.mem.Allocator) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     var magic: [8]u8 = undefined;
     try reader.readNoEof(&magic);
-    if (std.mem.eql(u8, &MAGIC, &magic)) {
+    if (!std.mem.eql(u8, &MAGIC, &magic)) {
         return error.InvalidMagic;
     }
 
-    _ = allocator; // autofix
+    const format: Format = @enumFromInt(try reader.readInt(u32, .little));
+    const color_space: ColorSpace = @enumFromInt(try reader.readInt(u32, .little));
+    const width = try reader.readInt(u32, .little);
+    const height = try reader.readInt(u32, .little);
+    const data = try serde.deserialzieSlice(allocator, u8, reader);
+
+    return .{
+        .format = format,
+        .color_space = color_space,
+        .width = width,
+        .height = height,
+        .data = data,
+    };
 }

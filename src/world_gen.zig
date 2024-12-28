@@ -35,10 +35,10 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
     std.debug.assert(global.asset_registry.isAssetHandleValid(grid_material_handle.handle));
 
     //TODO: load from assest system?
-    const bridge_mesh = try LoadedMesh.from_obj(allocator, "res/models/bridge.obj");
-    const bridge_glass_mesh = try LoadedMesh.from_obj(allocator, "res/models/bridge_glass.obj");
-    const hull_mesh = try LoadedMesh.from_obj(allocator, "res/models/hull.obj");
-    const engine_mesh = try LoadedMesh.from_obj(allocator, "res/models/engine.obj");
+    const bridge_mesh = try LoadedMesh.from_obj(allocator, "assets/models/bridge.obj");
+    const bridge_glass_mesh = try LoadedMesh.from_obj(allocator, "assets/models/bridge_glass.obj");
+    const hull_mesh = try LoadedMesh.from_obj(allocator, "assets/models/hull.obj");
+    const engine_mesh = try LoadedMesh.from_obj(allocator, "assets/models/engine.obj");
 
     var outside_world = try universe.World.init(allocator, .{ .render = universe.RenderWorldSystem.init(allocator), .physics = universe.PhysicsWorldSystem.init() });
     var inside_world = try universe.World.init(allocator, .{ .render = universe.RenderWorldSystem.init(allocator), .physics = universe.PhysicsWorldSystem.init() });

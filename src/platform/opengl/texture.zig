@@ -97,9 +97,9 @@ pub const Sampler = struct {
 
 pub fn init_2d(
     size: [2]u32,
-    data: []u8,
     format: Format,
     sampler: Sampler,
+    data: []u8,
 ) Self {
     var texture: gl.Uint = undefined;
     gl.genTextures(1, &texture);

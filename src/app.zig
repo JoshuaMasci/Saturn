@@ -31,7 +31,7 @@ pub const App = struct {
     game_world_handle: universe.World.Handle,
     game_debug_camera: universe.Entity.Handle,
 
-    timer: f32 = 15.0,
+    timer: f32 = 0,
     frames: f32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) !Self {

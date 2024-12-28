@@ -1,5 +1,6 @@
 const std = @import("std");
 const za = @import("zalgebra");
+const global = @import("../global.zig");
 
 const gl = @import("zopengl").bindings;
 
@@ -16,6 +17,7 @@ const Shader = @import("../platform/opengl/shader.zig");
 const Material = @import("types.zig").Material;
 
 const AssetMesh = @import("../asset/mesh.zig");
+const AssetTexture2D = @import("../asset/texture_2d.zig");
 
 fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u8 {
     var file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
@@ -50,9 +52,9 @@ pub const Renderer = struct {
     pub fn init(allocator: std.mem.Allocator) !Self {
         var skybox_vao: gl.Uint = undefined;
         gl.genVertexArrays(1, &skybox_vao);
-        const skybox_shader: Shader = try create_shader(allocator, "res/shaders/whole_screen.vert", "res/shaders/skybox.frag");
-        const colored_material_shader: Shader = try create_shader(allocator, "res/shaders/colored.vert", "res/shaders/colored.frag");
-        const pbr_material_shader: Shader = try create_shader(allocator, "res/shaders/pbr_material.vert", "res/shaders/pbr_material.frag");
+        const skybox_shader: Shader = try create_shader(allocator, "assets/shaders/whole_screen.vert", "assets/shaders/skybox.frag");
+        const colored_material_shader: Shader = try create_shader(allocator, "assets/shaders/colored.vert", "assets/shaders/colored.frag");
+        const pbr_material_shader: Shader = try create_shader(allocator, "assets/shaders/pbr_material.vert", "assets/shaders/pbr_material.frag");
 
         return .{
             .skybox_vao = skybox_vao,
@@ -69,13 +71,11 @@ pub const Renderer = struct {
     }
 
     pub fn loadResourceFromSource(self: *Self, repo_name: []const u8) void {
-        const global = @import("../global.zig");
-
         const repo_hash = asset.HashMethod.hash(repo_name);
         if (global.asset_registry.repositories.getPtr(repo_hash)) |repo| {
             var key_iter = repo.map.keyIterator();
             while (key_iter.next()) |key| {
-                if (key.asset_type == .rendering_mesh) {
+                if (key.asset_type == .mesh) {
                     if (repo.getAssetFile(key.*)) |asset_file| {
                         defer asset_file.close();
 
@@ -86,6 +86,27 @@ pub const Renderer = struct {
                             self.static_mesh_map.put(asset.MeshAssetHandle{ .handle = key.* }, gpu_mesh) catch unreachable;
                         } else |err| {
                             std.log.info("Failed to load mesh {}", .{err});
+                        }
+                    }
+                } else if (key.asset_type == .texture) {
+                    if (repo.getAssetFile(key.*)) |asset_file| {
+                        defer asset_file.close();
+
+                        const reader = asset_file.reader();
+                        if (AssetTexture2D.deserialzie(self.allocator, reader)) |texture| {
+                            defer texture.deinit(self.allocator);
+
+                            const size = .{ texture.width, texture.height };
+                            const format: Texture.Format = switch (texture.format) {
+                                .r8 => .{ .load = .r, .store = .r, .layout = .u8 },
+                                .rg8 => .{ .load = .rg, .store = .rg, .layout = .u8 },
+                                .rgba8 => .{ .load = .rgba, .store = .rgba, .layout = .u8 },
+                            };
+
+                            const gpu_texture = Texture.init_2d(size, format, .{}, texture.data);
+                            self.texture_map.put(asset.TextureAssetHandle{ .handle = key.* }, gpu_texture) catch unreachable;
+                        } else |err| {
+                            std.log.info("Failed to load texture {}", .{err});
                         }
                     }
                 }
@@ -157,6 +178,10 @@ pub const Renderer = struct {
             }
         }
 
+        const grid_texture_handle = asset.TextureAssetHandle.fromSourcePath("engine:textures/grid.tex2d").?;
+        std.debug.assert(global.asset_registry.isAssetHandleValid(grid_texture_handle.handle));
+        const grid_texture_opt = self.texture_map.get(grid_texture_handle);
+
         self.pbr_material_shader.bind();
         self.pbr_material_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
 
@@ -168,8 +193,16 @@ pub const Renderer = struct {
             if (self.static_mesh_map.getPtr(static_mesh.component.mesh)) |mesh| {
                 const model_matrix = static_mesh.transform.get_model_matrix();
                 self.pbr_material_shader.set_uniform_mat4("model_matrix", &model_matrix);
-                self.pbr_material_shader.set_uniform_vec4("base_color_factor", za.Vec4.X);
-                self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
+                self.pbr_material_shader.set_uniform_vec4("base_color_factor", za.Vec4.ONE);
+
+                if (grid_texture_opt) |grid_texture| {
+                    const TextureSlot = 0;
+                    grid_texture.bind(TextureSlot);
+                    self.pbr_material_shader.set_uniform_int("base_color_texture", TextureSlot);
+                    self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 1);
+                } else {
+                    self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
+                }
 
                 mesh.draw();
             } else {

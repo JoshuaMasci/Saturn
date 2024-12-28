@@ -38,10 +38,10 @@ fn CreateAssetHandle(comptime asset_type: AssetType) type {
     };
 }
 
-pub const MeshAssetHandle = CreateAssetHandle(.rendering_mesh);
-pub const TextureAssetHandle = CreateAssetHandle(.rendering_texture);
-pub const MaterialAssetHandle = CreateAssetHandle(.rendering_material);
-pub const CubeTextureAssetHandle = CreateAssetHandle(.rendering_cube_texture);
+pub const MeshAssetHandle = CreateAssetHandle(.mesh);
+pub const TextureAssetHandle = CreateAssetHandle(.texture);
+pub const MaterialAssetHandle = CreateAssetHandle(.material);
+pub const CubeTextureAssetHandle = CreateAssetHandle(.cube_texture);
 
 pub const AssetType = enum(u8) {
     const Self = @This();
@@ -49,29 +49,18 @@ pub const AssetType = enum(u8) {
     unknown = 0,
 
     // Rendering
-    rendering_mesh,
-    rendering_texture,
-    rendering_material,
-    rendering_cube_texture,
-
-    // Physics
-    phyiscs_mesh,
-    physics_hull,
-
-    // Audio
-    audio_stream,
-
-    // Entity
-    prefab,
-    scene,
+    mesh,
+    texture,
+    material,
+    cube_texture,
 
     pub fn getAssetTypesFromExt(ext: []const u8) []const Self {
         if (std.mem.eql(u8, ext, ".mesh")) {
-            return &.{ .rendering_mesh, .phyiscs_mesh };
-        } else if (std.mem.eql(u8, ext, ".png")) {
-            return &.{.rendering_texture};
+            return &.{.mesh};
+        } else if (std.mem.eql(u8, ext, ".tex2d")) {
+            return &.{.texture};
         } else if (std.mem.eql(u8, ext, ".mat")) {
-            return &.{.rendering_material};
+            return &.{.material};
         }
 
         return &.{};

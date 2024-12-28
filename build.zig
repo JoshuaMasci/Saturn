@@ -81,7 +81,7 @@ pub fn build(b: *std.Build) !void {
         b.installArtifact(assets_exe);
         const run_assets_cmd = b.addRunArtifact(assets_exe);
         run_assets_cmd.step.dependOn(b.getInstallStep());
-        run_assets_cmd.addArg("res/");
+        run_assets_cmd.addArg("assets/");
         run_assets_cmd.addArg("zig-out/assets"); //TODO: get this path from builder
         const run_assets_step = b.step("assets", "Process assets");
         run_assets_step.dependOn(&run_assets_cmd.step);
