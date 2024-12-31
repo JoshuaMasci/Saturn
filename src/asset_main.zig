@@ -43,7 +43,7 @@ pub fn main() !void {
                 } else |err| {
                     std.log.err("Failed to processed Texture {s} -> {}", .{ entry.path, err });
                 }
-            } else if (std.mem.eql(u8, file_ext, ".mat")) {
+            } else if (std.mem.eql(u8, file_ext, ".json_mat")) {
                 if (processMaterial(arena_allocator, entry.path)) {
                     std.log.info("Processed Material {s}", .{entry.path});
                 } else |err| {
@@ -103,9 +103,17 @@ pub fn processStb(allocator: std.mem.Allocator, file_path: []const u8) !void {
 }
 
 pub fn processMaterial(allocator: std.mem.Allocator, file_path: []const u8) !void {
-    _ = allocator; // autofix
-    makePath(output_dir, file_path);
-    const output_file = try output_dir.createFile(file_path, .{});
+    const file_buffer = try input_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+    defer allocator.free(file_buffer);
+
+    const new_path = try replaceExt(allocator, file_path, ".json_mat");
+    defer allocator.free(new_path);
+
+    makePath(output_dir, new_path);
+    const output_file = try output_dir.createFile(new_path, .{});
     defer output_file.close();
-    try output_file.writeAll(&.{ 1, 2, 3, 4, 5, 6, 7, 8 }); //TODO: write actual data
+
+    // Just write the pure json file for now
+    // TODO: at least convert from source asset path to AssetRegistry strings?
+    try output_file.writeAll(file_buffer);
 }
