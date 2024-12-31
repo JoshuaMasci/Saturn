@@ -8,11 +8,11 @@ const Transform = @import("../transform.zig");
 const Camera = @import("../camera.zig").Camera;
 const RenderScene = @import("scene.zig").RenderScene;
 
-const ColoredVertex = @import("../platform/opengl/vertex.zig").ColoredVertex;
-const TexturedVertex = @import("../platform/opengl/vertex.zig").TexturedVertex;
-const Mesh = @import("../platform/opengl/mesh.zig");
-const Texture = @import("../platform/opengl/texture.zig");
-const Shader = @import("../platform/opengl/shader.zig");
+const ColoredVertex = @import("opengl/vertex.zig").ColoredVertex;
+const TexturedVertex = @import("opengl/vertex.zig").TexturedVertex;
+const Mesh = @import("opengl/mesh.zig");
+const Texture = @import("opengl/texture.zig");
+const Shader = @import("opengl/shader.zig");
 const Material = @import("types.zig").Material;
 
 const MeshAsset = @import("../asset/mesh.zig");

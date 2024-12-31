@@ -75,7 +75,7 @@ pub const RenderThread = struct {
     }
 };
 
-const OpenglContext = @import("../platform/opengl/context.zig").Sdl2Context;
+const OpenglContext = @import("opengl/context.zig").Sdl2Context;
 
 fn renderThreadMain(
     render_settings: RenderSettings,
