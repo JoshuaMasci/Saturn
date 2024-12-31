@@ -1,6 +1,8 @@
 const std = @import("std");
 const serde = @import("../serde.zig");
 
+pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".mesh"});
+
 const MAGIC: [8]u8 = .{ 'S', 'A', 'T', '-', 'M', 'E', 'S', 'H' };
 
 pub const VertexPositions = [3]f32;

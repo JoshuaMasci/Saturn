@@ -1,6 +1,8 @@
 const std = @import("std");
 const serde = @import("../serde.zig");
 
+pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".tex2d"});
+
 const MAGIC: [8]u8 = .{ 'S', 'A', 'T', '-', 'T', 'E', 'X', '2' };
 
 pub const Format = enum(u32) {

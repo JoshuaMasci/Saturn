@@ -8,7 +8,8 @@ const universe = @import("universe.zig");
 
 const obj = @import("obj.zig");
 const zstbi = @import("zstbi");
-const asset = @import("asset.zig");
+
+const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
 
 pub fn create_debug_camera(allocator: std.mem.Allocator) !universe.Entity {
     var entity = universe.Entity.init(allocator, .{});
@@ -23,22 +24,21 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
     outside: *universe.World,
     inside: *universe.World,
 } {
-    const bridge_mesh_handle = asset.MeshAssetHandle.fromSourcePath("engine:models/bridge.mesh").?;
-    const bridge_glass_mesh_handle = asset.MeshAssetHandle.fromSourcePath("engine:models/bridge_glass.mesh").?;
-    const hull_mesh_handle = asset.MeshAssetHandle.fromSourcePath("engine:models/hull.mesh").?;
-    const engine_mesh_handle = asset.MeshAssetHandle.fromSourcePath("engine:models/engine.mesh").?;
-    const grid_material_handle = asset.MaterialAssetHandle.fromSourcePath("engine:materials/grid.mat").?;
-    std.debug.assert(global.asset_registry.isAssetHandleValid(bridge_mesh_handle.handle));
-    std.debug.assert(global.asset_registry.isAssetHandleValid(bridge_glass_mesh_handle.handle));
-    std.debug.assert(global.asset_registry.isAssetHandleValid(hull_mesh_handle.handle));
-    std.debug.assert(global.asset_registry.isAssetHandleValid(engine_mesh_handle.handle));
-    std.debug.assert(global.asset_registry.isAssetHandleValid(grid_material_handle.handle));
+    const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
+    const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge_glass.mesh").?;
+    const hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/hull.mesh").?;
+    const engine_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/engine.mesh").?;
+    const grid_material_handle = 0; //asset.MaterialAssetHandle.fromSourcePath("engine:materials/grid.mat").?;
+    std.debug.assert(global.assets.meshes.isValid(bridge_mesh_handle));
+    std.debug.assert(global.assets.meshes.isValid(bridge_glass_mesh_handle));
+    std.debug.assert(global.assets.meshes.isValid(hull_mesh_handle));
+    std.debug.assert(global.assets.meshes.isValid(engine_mesh_handle));
+    //std.debug.assert(global.asset_registry.isAssetHandleValid(grid_material_handle.handle));
 
-    //TODO: load from assest system?
-    const bridge_mesh = try LoadedMesh.from_obj(allocator, "assets/models/bridge.obj");
-    const bridge_glass_mesh = try LoadedMesh.from_obj(allocator, "assets/models/bridge_glass.obj");
-    const hull_mesh = try LoadedMesh.from_obj(allocator, "assets/models/hull.obj");
-    const engine_mesh = try LoadedMesh.from_obj(allocator, "assets/models/engine.obj");
+    const bridge_mesh = try PhysicsMeshes.fromHandle(allocator, bridge_mesh_handle);
+    const bridge_glass_mesh = try PhysicsMeshes.fromHandle(allocator, bridge_glass_mesh_handle);
+    const hull_mesh = try PhysicsMeshes.fromHandle(allocator, hull_mesh_handle);
+    const engine_mesh = try PhysicsMeshes.fromHandle(allocator, engine_mesh_handle);
 
     var outside_world = try universe.World.init(allocator, .{ .render = universe.RenderWorldSystem.init(allocator), .physics = universe.PhysicsWorldSystem.init() });
     var inside_world = try universe.World.init(allocator, .{ .render = universe.RenderWorldSystem.init(allocator), .physics = universe.PhysicsWorldSystem.init() });
@@ -147,17 +147,17 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
     };
 }
 
-const LoadedMesh = struct {
+const PhysicsMeshes = struct {
     mesh_shape: physics_system.Shape,
     convex_shape: physics_system.Shape,
 
-    fn from_obj(allocator: std.mem.Allocator, file_path: []const u8) !@This() {
-        var obj_mesh = try obj.load_obj_file(allocator, file_path);
-        defer obj_mesh.deinit();
+    fn fromHandle(allocator: std.mem.Allocator, handle: MeshAssetHandle) !@This() {
+        var mesh = try global.assets.meshes.loadAsset(allocator, handle);
+        defer mesh.deinit(allocator);
 
         return .{
-            .mesh_shape = physics_system.Shape.init_mesh(obj_mesh.positions.items, obj_mesh.indices.items),
-            .convex_shape = physics_system.Shape.init_convex_hull(obj_mesh.positions.items, 1.0),
+            .mesh_shape = physics_system.Shape.init_mesh(mesh.positions, mesh.indices),
+            .convex_shape = physics_system.Shape.init_convex_hull(mesh.positions, 1.0),
         };
     }
 };

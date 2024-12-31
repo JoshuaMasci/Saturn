@@ -94,8 +94,6 @@ fn renderThreadMain(
     renderer.* = Renderer.init(global.global_allocator) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
     defer renderer.deinit();
 
-    renderer.loadResourceFromSource("engine");
-
     //Prepare for first render call
     render_signals.render_done_semaphore.post();
 

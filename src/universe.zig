@@ -4,7 +4,6 @@ const Transform = @import("transform.zig");
 const ObjectPool = @import("object_pool.zig").HandlePool;
 const PerspectiveCamera = @import("camera.zig").PerspectiveCamera;
 
-const asset = @import("asset.zig");
 const rendering_scene = @import("rendering/scene.zig");
 
 pub const DebugCameraEntitySystem = struct {

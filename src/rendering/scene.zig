@@ -1,12 +1,15 @@
 const std = @import("std");
-const asset = @import("../asset.zig");
+
+const CubeTextureAssetHandle = u32;
+const MaterialAssetHandle = u32;
+const MeshAssetHandle = @import("../asset/mesh.zig").Registry.Handle;
 
 const Transform = @import("../transform.zig");
 
 pub const StaticMeshComponent = struct {
     visable: bool = true,
-    mesh: asset.MeshAssetHandle,
-    material: asset.MaterialAssetHandle,
+    mesh: MeshAssetHandle,
+    material: MaterialAssetHandle,
 };
 
 pub const SceneStaticMesh = struct {
@@ -17,7 +20,7 @@ pub const SceneStaticMesh = struct {
 pub const RenderScene = struct {
     const Self = @This();
 
-    skybox: ?asset.CubeTextureAssetHandle = null,
+    skybox: ?CubeTextureAssetHandle = null,
     static_meshes: std.ArrayList(SceneStaticMesh),
 
     pub fn init(allocator: std.mem.Allocator) Self {

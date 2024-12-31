@@ -35,8 +35,7 @@ pub const App = struct {
     frames: f32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const asset_registry = @import("global.zig").asset_registry;
-        try asset_registry.addDirectorySource("engine", "zig-out/assets"); //TODO: allow this path to be configured for project builds
+        try @import("global.zig").assets.addDir("engine", "zig-out/assets");
 
         const platform = try sdl_platform.Platform.init(allocator);
         const render_thread = try RenderThread.init(allocator, .{ .window_name = "Saturn Engine", .size = .{ .windowed = .{ 1920, 1080 } }, .vsync = .on });

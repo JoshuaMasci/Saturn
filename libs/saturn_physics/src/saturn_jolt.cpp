@@ -124,12 +124,20 @@ create_mesh_shape(const float positions[][3], size_t position_count, const uint3
     }
 
     JPH::IndexedTriangleList triangle_list;
-    const size_t triangle_count = indices_count / 3;
-    for (int i = 0; i < triangle_count; i++) {
-        const size_t offset = i * 3;
-        triangle_list.push_back(JPH::IndexedTriangle(
-                indices[offset + 0], indices[offset + 1], indices[offset + 2], 0));
+
+    if (indices_count == 0) {
+        for (int i = 0; i < position_count; i += 3) {
+            triangle_list.push_back(JPH::IndexedTriangle(i + 0, i + 1, i + 2, 0));
+        }
+    } else {
+        const size_t triangle_count = indices_count / 3;
+        for (int i = 0; i < triangle_count; i++) {
+            const size_t offset = i * 3;
+            triangle_list.push_back(JPH::IndexedTriangle(
+                    indices[offset + 0], indices[offset + 1], indices[offset + 2], 0));
+        }
     }
+
     auto shape = JPH::MeshShapeSettings(vertex_list, triangle_list).Create().Get();
     return shape_pool->insert(shape);
 
