@@ -1,5 +1,4 @@
 const std = @import("std");
-const StringHash = @import("string_hash.zig");
 
 pub const Button = enum {
     player_interact,

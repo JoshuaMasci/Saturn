@@ -2,7 +2,7 @@ const std = @import("std");
 const global = @import("../global.zig");
 
 const Transform = @import("../transform.zig");
-const Camera = @import("../camera.zig").Camera;
+const Camera = @import("camera.zig").Camera;
 
 const RenderSettings = @import("settings.zig").RenderSettings;
 

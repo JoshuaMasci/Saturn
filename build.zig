@@ -34,7 +34,8 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
     @import("zsdl").link_SDL2(exe);
 
-    exe.linkSystemLibrary2("sdl3", .{});
+    // SDL3
+    //exe.linkSystemLibrary2("sdl3", .{});
 
     // zopengl
     const zopengl = b.dependency("zopengl", .{});

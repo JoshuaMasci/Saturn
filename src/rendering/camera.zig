@@ -1,7 +1,7 @@
 const std = @import("std");
 const za = @import("zalgebra");
 
-const Transform = @import("transform.zig");
+const Transform = @import("../transform.zig");
 
 pub const Fov = union(enum) {
     x: f32,

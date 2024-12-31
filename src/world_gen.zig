@@ -6,9 +6,6 @@ const render_scene = @import("rendering/scene.zig");
 const physics_system = @import("physics");
 const universe = @import("universe.zig");
 
-const obj = @import("obj.zig");
-const zstbi = @import("zstbi");
-
 const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
 
 pub fn create_debug_camera(allocator: std.mem.Allocator) !universe.Entity {

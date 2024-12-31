@@ -1,3 +1,5 @@
+//TODO: rewrite for new asset system?
+
 const std = @import("std");
 const za = @import("zalgebra");
 

@@ -2,7 +2,7 @@ const std = @import("std");
 const za = @import("zalgebra");
 const Transform = @import("transform.zig");
 const ObjectPool = @import("object_pool.zig").HandlePool;
-const PerspectiveCamera = @import("camera.zig").PerspectiveCamera;
+const PerspectiveCamera = @import("rendering/camera.zig").PerspectiveCamera;
 
 const rendering_scene = @import("rendering/scene.zig");
 

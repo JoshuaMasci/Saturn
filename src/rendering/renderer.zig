@@ -5,11 +5,9 @@ const global = @import("../global.zig");
 const gl = @import("zopengl").bindings;
 
 const Transform = @import("../transform.zig");
-const Camera = @import("../camera.zig").Camera;
+const Camera = @import("camera.zig").Camera;
 const RenderScene = @import("scene.zig").RenderScene;
 
-const ColoredVertex = @import("opengl/vertex.zig").ColoredVertex;
-const TexturedVertex = @import("opengl/vertex.zig").TexturedVertex;
 const Mesh = @import("opengl/mesh.zig");
 const Texture = @import("opengl/texture.zig");
 const Shader = @import("opengl/shader.zig");
@@ -49,11 +47,15 @@ pub const Renderer = struct {
     //material_map: std.AutoHashMap(u32, Material),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        var skybox_vao: gl.Uint = undefined;
-        gl.genVertexArrays(1, &skybox_vao);
+
+        //TODO: load shaders from asset cache
         const skybox_shader: Shader = try create_shader(allocator, "assets/shaders/whole_screen.vert", "assets/shaders/skybox.frag");
         const colored_material_shader: Shader = try create_shader(allocator, "assets/shaders/colored.vert", "assets/shaders/colored.frag");
         const pbr_material_shader: Shader = try create_shader(allocator, "assets/shaders/pbr_material.vert", "assets/shaders/pbr_material.frag");
+
+        //Gen empty vao for skybox
+        var skybox_vao: gl.Uint = undefined;
+        gl.genVertexArrays(1, &skybox_vao);
 
         return .{
             .skybox_vao = skybox_vao,

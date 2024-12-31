@@ -8,7 +8,6 @@ const physics_system = @import("physics");
 
 const input = @import("input.zig");
 
-const camera = @import("camera.zig");
 const debug_camera = @import("debug_camera.zig");
 
 const world_gen = @import("world_gen.zig");

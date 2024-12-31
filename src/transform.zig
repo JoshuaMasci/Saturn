@@ -1,5 +1,4 @@
 const za = @import("zalgebra");
-const UnscaledTransform = @import("unscaled_transform.zig");
 
 pub const Right = za.Vec3.NEG_X;
 pub const Up = za.Vec3.Y;
@@ -29,25 +28,6 @@ pub fn transform_by(parent: *const Self, child: *const Self) Self {
         .position = parent.position.add(parent.rotation.rotateVec(child.position.mul(parent.scale))),
         .rotation = parent.rotation.mul(child.rotation).norm(),
         .scale = parent.scale.mul(child.scale),
-    };
-}
-
-pub fn get_unscaled(self: Self) UnscaledTransform {
-    return .{
-        .position = self.position,
-        .rotation = self.rotation,
-    };
-}
-
-pub fn apply_unscaled(self: *Self, transform: *const UnscaledTransform) void {
-    self.position = transform.position;
-    self.rotation = transform.rotation;
-}
-
-pub fn to_unscaled(self: Self) UnscaledTransform {
-    return .{
-        .position = self.position,
-        .rotation = self.rotation,
     };
 }
 

@@ -4,7 +4,7 @@ const za = @import("zalgebra");
 const input = @import("input.zig");
 
 const Transform = @import("transform.zig");
-const PerspectiveCamera = @import("camera.zig").PerspectiveCamera;
+const PerspectiveCamera = @import("../camera.zig").PerspectiveCamera;
 
 pub const DebugCamera = struct {
     const Self = @This();
