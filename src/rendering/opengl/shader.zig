@@ -62,6 +62,12 @@ pub fn set_uniform_vec4(self: Self, name: []const u8, vec: za.Vec4) void {
     gl.uniform4fv(uniform_index, 1, &vec.toArray());
 }
 
+pub fn setUniformVec4(self: Self, name: []const u8, vec: [4]f32) void {
+    const uniform_index = gl.getUniformLocation(self.shader_program, name.ptr);
+    std.debug.assert(uniform_index != gl.INVALID_VALUE);
+    gl.uniform4fv(uniform_index, 1, &vec);
+}
+
 pub fn set_uniform_mat4(self: Self, name: []const u8, mat: *const za.Mat4) void {
     const uniform_index = gl.getUniformLocation(self.shader_program, name.ptr);
     std.debug.assert(uniform_index != gl.INVALID_VALUE);

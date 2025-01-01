@@ -7,6 +7,7 @@ const physics_system = @import("physics");
 const universe = @import("universe.zig");
 
 const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
+const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
 
 pub fn create_debug_camera(allocator: std.mem.Allocator) !universe.Entity {
     var entity = universe.Entity.init(allocator, .{});
@@ -25,12 +26,12 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
     const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge_glass.mesh").?;
     const hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/hull.mesh").?;
     const engine_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/engine.mesh").?;
-    const grid_material_handle = 0; //asset.MaterialAssetHandle.fromSourcePath("engine:materials/grid.mat").?;
+    const grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/grid.json_mat").?;
     std.debug.assert(global.assets.meshes.isValid(bridge_mesh_handle));
     std.debug.assert(global.assets.meshes.isValid(bridge_glass_mesh_handle));
     std.debug.assert(global.assets.meshes.isValid(hull_mesh_handle));
     std.debug.assert(global.assets.meshes.isValid(engine_mesh_handle));
-    //std.debug.assert(global.asset_registry.isAssetHandleValid(grid_material_handle.handle));
+    std.debug.assert(global.assets.materials.isValid(grid_material_handle));
 
     const bridge_mesh = try PhysicsMeshes.fromHandle(allocator, bridge_mesh_handle);
     const bridge_glass_mesh = try PhysicsMeshes.fromHandle(allocator, bridge_glass_mesh_handle);

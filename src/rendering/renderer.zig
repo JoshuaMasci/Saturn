@@ -11,10 +11,10 @@ const RenderScene = @import("scene.zig").RenderScene;
 const Mesh = @import("opengl/mesh.zig");
 const Texture = @import("opengl/texture.zig");
 const Shader = @import("opengl/shader.zig");
-const Material = @import("types.zig").Material;
 
 const MeshAsset = @import("../asset/mesh.zig");
 const TextureAsset = @import("../asset/texture_2d.zig");
+const MaterialAsset = @import("../asset/material.zig");
 
 fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u8 {
     var file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
@@ -44,7 +44,7 @@ pub const Renderer = struct {
     texture_map: std.AutoHashMap(TextureAsset.Registry.Handle, Texture),
     //cube_texture_map: std.AutoHashMap(u32, Texture),
     static_mesh_map: std.AutoHashMap(MeshAsset.Registry.Handle, Mesh),
-    //material_map: std.AutoHashMap(u32, Material),
+    material_map: std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
 
@@ -67,7 +67,7 @@ pub const Renderer = struct {
             .texture_map = std.AutoHashMap(TextureAsset.Registry.Handle, Texture).init(allocator),
             //.cube_texture_map = std.AutoHashMap(asset.CubeTextureAssetHandle, Texture).init(allocator),
             .static_mesh_map = std.AutoHashMap(MeshAsset.Registry.Handle, Mesh).init(allocator),
-            //.material_map = std.AutoHashMap(asset.MaterialAssetHandle, Material).init(allocator),
+            .material_map = std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset).init(allocator),
         };
     }
 
@@ -80,7 +80,7 @@ pub const Renderer = struct {
         self.texture_map.deinit();
         //self.cube_texture_map.deinit();
         self.static_mesh_map.deinit();
-        //self.material_map.deinit();
+        self.material_map.deinit();
     }
 
     pub fn clearFramebuffer(self: *Self) void {
@@ -135,10 +135,67 @@ pub const Renderer = struct {
         //     }
         // }
 
-        const grid_texture_handle = TextureAsset.Registry.Handle.fromRepoPath("engine:textures/grid.tex2d").?;
-        std.debug.assert(global.assets.textures.isValid(grid_texture_handle));
-        if (!self.texture_map.contains(grid_texture_handle)) {
-            if (global.assets.textures.loadAsset(self.allocator, grid_texture_handle)) |texture| {
+        self.pbr_material_shader.bind();
+        self.pbr_material_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
+
+        for (scene.static_meshes.items, 0..) |static_mesh, i| {
+            if (static_mesh.component.visable == false) {
+                continue;
+            }
+
+            self.tryLoadMesh(static_mesh.component.mesh);
+            self.tryLoadMaterial(static_mesh.component.material);
+
+            if (self.static_mesh_map.getPtr(static_mesh.component.mesh)) |mesh| {
+                if (self.material_map.getPtr(static_mesh.component.material)) |material| {
+                    self.pbr_material_shader.setUniformVec4("base_color_factor", material.base_color_factor);
+
+                    if (material.base_color_texture) |texture_handle| {
+                        if (self.texture_map.get(texture_handle)) |texture| {
+                            const TextureSlot = 0;
+                            texture.bind(TextureSlot);
+                            self.pbr_material_shader.set_uniform_int("base_color_texture", TextureSlot);
+                            self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 1);
+                        } else {
+                            self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
+                        }
+                    } else {
+                        self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
+                    }
+                } else {
+                    //Invalid material color
+                    self.pbr_material_shader.setUniformVec4("base_color_factor", .{ 1.0, 0.0, 0.498, 1.0 });
+                    self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
+                }
+
+                const model_matrix = static_mesh.transform.get_model_matrix();
+                self.pbr_material_shader.set_uniform_mat4("model_matrix", &model_matrix);
+
+                mesh.draw();
+            } else {
+                std.log.warn("Instance {} contains an invalid Mesh {}", .{ i, static_mesh.component.mesh });
+            }
+        }
+    }
+
+    pub fn tryLoadMesh(self: *Self, handle: MeshAsset.Registry.Handle) void {
+        if (!self.static_mesh_map.contains(handle)) {
+            if (global.assets.meshes.loadAsset(self.allocator, handle)) |mesh| {
+                defer mesh.deinit(self.allocator);
+                const gpu_mesh = Mesh.init(&mesh);
+                self.static_mesh_map.put(handle, gpu_mesh) catch |err| {
+                    gpu_mesh.deinit();
+                    std.log.err("Failed to appeded static mesh to list {}", .{err});
+                };
+            } else |err| {
+                std.log.err("Failed to load static mesh {}", .{err});
+            }
+        }
+    }
+
+    pub fn tryLoadTexture(self: *Self, handle: TextureAsset.Registry.Handle) void {
+        if (!self.texture_map.contains(handle)) {
+            if (global.assets.textures.loadAsset(self.allocator, handle)) |texture| {
                 defer texture.deinit(self.allocator);
 
                 const size = .{ texture.width, texture.height };
@@ -149,7 +206,7 @@ pub const Renderer = struct {
                 };
 
                 const gpu_texture = Texture.init_2d(size, format, .{}, texture.data);
-                self.texture_map.put(grid_texture_handle, gpu_texture) catch |err| {
+                self.texture_map.put(handle, gpu_texture) catch |err| {
                     gpu_texture.deinit();
                     std.log.err("Failed to appeded texture to list {}", .{err});
                 };
@@ -157,46 +214,31 @@ pub const Renderer = struct {
                 std.log.err("Failed to load texture {}", .{err});
             }
         }
-        const grid_texture_opt = self.texture_map.get(grid_texture_handle);
+    }
 
-        self.pbr_material_shader.bind();
-        self.pbr_material_shader.set_uniform_mat4("view_projection_matrix", &view_projection_matrix);
+    pub fn tryLoadMaterial(self: *Self, handle: MaterialAsset.Registry.Handle) void {
+        if (!self.material_map.contains(handle)) {
+            if (global.assets.materials.loadAsset(self.allocator, handle)) |material| {
+                if (material.base_color_texture) |texture_handle|
+                    self.tryLoadTexture(texture_handle);
 
-        for (scene.static_meshes.items, 0..) |static_mesh, i| {
-            if (static_mesh.component.visable == false) {
-                continue;
-            }
+                if (material.metallic_roughness_texture) |texture_handle|
+                    self.tryLoadTexture(texture_handle);
 
-            if (!self.static_mesh_map.contains(static_mesh.component.mesh)) {
-                if (global.assets.meshes.loadAsset(self.allocator, static_mesh.component.mesh)) |mesh| {
-                    defer mesh.deinit(self.allocator);
-                    const gpu_mesh = Mesh.init(&mesh);
-                    self.static_mesh_map.put(static_mesh.component.mesh, gpu_mesh) catch |err| {
-                        gpu_mesh.deinit();
-                        std.log.err("Failed to appeded static mesh to list {}", .{err});
-                    };
-                } else |err| {
-                    std.log.err("Failed to load static mesh {}", .{err});
-                }
-            }
+                if (material.emissive_texture) |texture_handle|
+                    self.tryLoadTexture(texture_handle);
 
-            if (self.static_mesh_map.getPtr(static_mesh.component.mesh)) |mesh| {
-                const model_matrix = static_mesh.transform.get_model_matrix();
-                self.pbr_material_shader.set_uniform_mat4("model_matrix", &model_matrix);
-                self.pbr_material_shader.set_uniform_vec4("base_color_factor", za.Vec4.ONE);
+                if (material.occlusion_texture) |texture_handle|
+                    self.tryLoadTexture(texture_handle);
 
-                if (grid_texture_opt) |grid_texture| {
-                    const TextureSlot = 0;
-                    grid_texture.bind(TextureSlot);
-                    self.pbr_material_shader.set_uniform_int("base_color_texture", TextureSlot);
-                    self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 1);
-                } else {
-                    self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
-                }
+                if (material.normal_texture) |texture_handle|
+                    self.tryLoadTexture(texture_handle);
 
-                mesh.draw();
-            } else {
-                std.log.warn("Instance {} contains an invalid Mesh {}", .{ i, static_mesh.component.mesh });
+                self.material_map.put(handle, material) catch |err| {
+                    std.log.err("Failed to appeded material to list {}", .{err});
+                };
+            } else |err| {
+                std.log.err("Failed to load material {}", .{err});
             }
         }
     }

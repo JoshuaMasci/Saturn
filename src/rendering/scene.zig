@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const CubeTextureAssetHandle = u32;
-const MaterialAssetHandle = u32;
+const MaterialAssetHandle = @import("../asset/material.zig").Registry.Handle;
 const MeshAssetHandle = @import("../asset/mesh.zig").Registry.Handle;
 
 const Transform = @import("../transform.zig");

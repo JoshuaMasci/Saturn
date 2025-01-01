@@ -7,7 +7,7 @@ pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".js
 
 const MAGIC: [8]u8 = .{ 'S', 'A', 'T', '-', 'M', 'A', 'T', 'E' };
 
-pub const Json = struct {
+pub const JsonMaterial = struct {
     base_color_texture: ?[]const u8 = null,
     base_color_factor: [4]f32 = [_]f32{1.0} ** 4,
 
@@ -20,10 +20,10 @@ pub const Json = struct {
     occlusion_texture: ?[]const u8 = null,
     normal_texture: ?[]const u8 = null,
 
-    pub fn readFromJsonFile(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !std.json.Parsed(@This()) {
+    pub fn readFromJsonFile(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !std.json.Parsed(JsonMaterial) {
         const file_buffer = try dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
         defer allocator.free(file_buffer);
-        return try std.json.parseFromSlice(@This(), allocator, file_buffer, .{ .allocate = .alloc_if_needed });
+        return try std.json.parseFromSlice(JsonMaterial, allocator, file_buffer, .{ .allocate = .alloc_if_needed });
     }
 };
 
@@ -41,7 +41,7 @@ emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
 occlusion_texture: ?TextureAssetHandle = null,
 normal_texture: ?TextureAssetHandle = null,
 
-pub fn initFromJson(json: Json) Self {
+pub fn initFromJson(json: JsonMaterial) Self {
     var base_color_texture: ?TextureAssetHandle = null;
     if (json.base_color_texture) |texture_string|
         base_color_texture = TextureAssetHandle.fromRepoPath(texture_string);
@@ -80,14 +80,22 @@ pub fn initFromJson(json: Json) Self {
 pub fn serialize(self: Self, writer: anytype) !void {
     try writer.writeAll(&MAGIC);
     try writer.writeStructEndian(self, .little);
+    unreachable; // Unimplimented for now
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
-    _ = allocator; // autofix
-    var magic: [8]u8 = undefined;
-    try reader.readNoEof(&magic);
-    if (!std.mem.eql(u8, &MAGIC, &magic)) {
-        return error.InvalidMagic;
-    }
-    return try reader.readStructEndian(Self, .little);
+pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !Self {
+    // var magic: [8]u8 = undefined;
+    // try reader.readNoEof(&magic);
+    // if (!std.mem.eql(u8, &MAGIC, &magic)) {
+    //     return error.InvalidMagic;
+    // }
+    // return try reader.readStructEndian(Self, .little);
+
+    const file_data = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(file_data);
+
+    var json = try std.json.parseFromSlice(JsonMaterial, allocator, file_data, .{ .allocate = .alloc_if_needed });
+    defer json.deinit();
+
+    return Self.initFromJson(json.value);
 }
