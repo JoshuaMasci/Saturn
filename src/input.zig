@@ -1,6 +1,8 @@
 const std = @import("std");
 
 pub const Button = enum {
+    renderer_reload,
+
     player_interact,
     player_move_jump,
 };

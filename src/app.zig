@@ -5,16 +5,13 @@ const za = @import("zalgebra");
 const sdl_platform = @import("platform/sdl2.zig");
 
 const physics_system = @import("physics");
-
+const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 const input = @import("input.zig");
 
-const debug_camera = @import("debug_camera.zig");
-
 const world_gen = @import("world_gen.zig");
-
-const universe = @import("universe.zig");
-
-const RenderThread = @import("rendering/render_thread.zig").RenderThread;
+const Universe = @import("entity/universe.zig");
+const World = @import("entity/world.zig");
+const Entity = @import("entity/entity.zig");
 
 pub const App = struct {
     const Self = @This();
@@ -26,9 +23,9 @@ pub const App = struct {
     render_thread: RenderThread,
 
     // New World System Test
-    game_universe: universe.Universe,
-    game_world_handle: universe.World.Handle,
-    game_debug_camera: universe.Entity.Handle,
+    game_universe: Universe,
+    game_world_handle: World.Handle,
+    game_debug_camera: Entity.Handle,
 
     timer: f32 = 0,
     frames: f32 = 0,
@@ -41,12 +38,12 @@ pub const App = struct {
 
         physics_system.init(allocator);
 
-        var game_universe = try universe.Universe.init(allocator);
+        var game_universe = try Universe.init(allocator);
 
         var game_worlds = try world_gen.create_ship_worlds(allocator);
-        const debug_entity = game_worlds.inside.add_entity(try world_gen.create_debug_camera(allocator));
-        const inside_world = try game_universe.add_world(game_worlds.inside);
-        const outside_world = try game_universe.add_world(game_worlds.outside);
+        const debug_entity = game_worlds.inside.addEntity(try world_gen.create_debug_camera(allocator));
+        const inside_world = try game_universe.addWorld(game_worlds.inside);
+        const outside_world = try game_universe.addWorld(game_worlds.outside);
         _ = outside_world; // autofix
 
         return .{
@@ -117,8 +114,13 @@ pub const App = struct {
     }
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
+        if (event.button == .renderer_reload and event.state == .pressed) {
+            self.render_thread.reload();
+            return;
+        }
+
         //std.log.info("Button {} -> {}", .{ event.button, event.state });
-        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
+        if (self.game_universe.worlds.getPtr(self.game_world_handle)) |game_world| {
             if (game_world.entities.getPtr(self.game_debug_camera)) |game_debug_entity| {
                 if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
                     debug_camera_system.on_button_event(event);
@@ -129,7 +131,7 @@ pub const App = struct {
 
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
         //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
-        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
+        if (self.game_universe.worlds.getPtr(self.game_world_handle)) |game_world| {
             if (game_world.entities.getPtr(self.game_debug_camera)) |game_debug_entity| {
                 if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
                     debug_camera_system.on_axis_event(event);

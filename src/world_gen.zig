@@ -2,142 +2,62 @@ const std = @import("std");
 const global = @import("global.zig");
 
 const za = @import("zalgebra");
-const render_scene = @import("rendering/scene.zig");
+const Transform = @import("transform.zig");
+
 const physics_system = @import("physics");
-const universe = @import("universe.zig");
+
+const Universe = @import("entity/universe.zig");
+const World = @import("entity/world.zig");
+const Entity = @import("entity/entity.zig");
+const physics = @import("entity/engine/physics.zig");
+const rendering = @import("entity/engine/rendering.zig");
 
 const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
 const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
 
-pub fn create_debug_camera(allocator: std.mem.Allocator) !universe.Entity {
-    var entity = universe.Entity.init(allocator, .{});
-    entity.transform.position = za.Vec3.Z.scale(10.0);
-    entity.systems.debug_camera = .{};
-    entity.systems.physics = universe.PhysicsEntitySystem{ .motion_type = .dynamic };
-    entity.systems.debug_camera.?.camera_node = try entity.add_node(null, .{}, .{ .camera = .{}, .collider = .{ .shape = physics_system.Shape.init_sphere(0.25, 1.0) } });
+pub fn create_debug_camera(allocator: std.mem.Allocator) !Entity {
+    var entity = Entity.init(allocator, .{});
+    entity.transform.position = za.Vec3.Z.scale(1.0);
+    entity.systems.debug_camera = .{ .pitch_yaw = za.Vec2.new(0.0, std.math.pi) };
+    entity.systems.physics = physics.PhysicsEntitySystem{ .motion_type = .dynamic };
+    entity.systems.debug_camera.?.camera_node = try entity.nodes.addNode(null, .{}, .{ .camera = .{}, .collider = .{ .shape = physics_system.Shape.init_sphere(0.25, 1.0) } });
     return entity;
 }
 
 pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
-    outside: *universe.World,
-    inside: *universe.World,
+    outside: World,
+    inside: World,
 } {
+    var outside_world = try World.init(allocator, .{});
+    outside_world.systems.physics = physics.PhysicsWorldSystem.init();
+    outside_world.systems.render = rendering.RenderWorldSystem.init(allocator);
+
+    var inside_world = try World.init(allocator, .{});
+    inside_world.systems.physics = physics.PhysicsWorldSystem.init();
+    inside_world.systems.render = rendering.RenderWorldSystem.init(allocator);
+
+    var ship_inside = Entity.init(allocator, .{ .physics = .{} });
+    var ship_outside = Entity.init(allocator, .{ .physics = .{ .motion_type = .dynamic } });
+
     const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
     const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge_glass.mesh").?;
     const hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/hull.mesh").?;
+    const l_hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/l_hull.mesh").?;
     const engine_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/engine.mesh").?;
+    const airlock_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/airlock.mesh").?;
+
     const grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/grid.json_mat").?;
-    std.debug.assert(global.assets.meshes.isValid(bridge_mesh_handle));
-    std.debug.assert(global.assets.meshes.isValid(bridge_glass_mesh_handle));
-    std.debug.assert(global.assets.meshes.isValid(hull_mesh_handle));
-    std.debug.assert(global.assets.meshes.isValid(engine_mesh_handle));
-    std.debug.assert(global.assets.materials.isValid(grid_material_handle));
 
-    const bridge_mesh = try PhysicsMeshes.fromHandle(allocator, bridge_mesh_handle);
-    const bridge_glass_mesh = try PhysicsMeshes.fromHandle(allocator, bridge_glass_mesh_handle);
-    const hull_mesh = try PhysicsMeshes.fromHandle(allocator, hull_mesh_handle);
-    const engine_mesh = try PhysicsMeshes.fromHandle(allocator, engine_mesh_handle);
+    try addMeshToEntites(allocator, &ship_inside, &ship_outside, bridge_mesh_handle, grid_material_handle, .{});
+    try addMeshToEntites(allocator, &ship_inside, &ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{});
+    try addMeshToEntites(allocator, &ship_inside, &ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(5.0) });
+    try addMeshToEntites(allocator, &ship_inside, &ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(15.0) });
+    try addMeshToEntites(allocator, &ship_inside, &ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) });
 
-    var outside_world = try universe.World.init(allocator, .{ .render = universe.RenderWorldSystem.init(allocator), .physics = universe.PhysicsWorldSystem.init() });
-    var inside_world = try universe.World.init(allocator, .{ .render = universe.RenderWorldSystem.init(allocator), .physics = universe.PhysicsWorldSystem.init() });
+    try addMeshToEntites(allocator, &ship_inside, &ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0) });
 
-    //Outside
-    {
-        var ship_entity = universe.Entity.init(allocator, .{ .physics = .{ .motion_type = .dynamic } });
-        _ = try ship_entity.add_node(
-            null,
-            .{},
-            .{
-                .static_mesh = .{ .mesh = bridge_mesh_handle, .material = grid_material_handle },
-                .collider = .{ .shape = bridge_mesh.convex_shape },
-            },
-        );
-        _ = try ship_entity.add_node(
-            null,
-            .{ .position = za.Vec3.NEG_Z.scale(5.0) },
-            .{
-                .static_mesh = .{ .mesh = hull_mesh_handle, .material = grid_material_handle },
-                .collider = .{ .shape = hull_mesh.convex_shape },
-            },
-        );
-        _ = try ship_entity.add_node(
-            null,
-            .{ .position = za.Vec3.NEG_Z.scale(15.0) },
-            .{
-                .static_mesh = .{ .mesh = engine_mesh_handle, .material = grid_material_handle },
-                .collider = .{ .shape = engine_mesh.convex_shape },
-            },
-        );
-        _ = outside_world.add_entity(ship_entity);
-    }
-
-    //Inside
-    {
-        var ship_entity = universe.Entity.init(allocator, .{ .physics = .{} });
-        _ = try ship_entity.add_node(
-            null,
-            .{},
-            .{
-                .static_mesh = .{ .mesh = bridge_mesh_handle, .material = grid_material_handle },
-                .collider = .{ .shape = bridge_mesh.mesh_shape },
-            },
-        );
-        _ = try ship_entity.add_node(
-            null,
-            .{},
-            .{
-                //.static_mesh = .{ .mesh = bridge_glass_mesh_handle, .material = grid_material_handle },
-                .collider = .{ .shape = bridge_glass_mesh.mesh_shape },
-            },
-        );
-        _ = try ship_entity.add_node(
-            null,
-            .{ .position = za.Vec3.NEG_Z.scale(5.0) },
-            .{
-                .static_mesh = .{ .mesh = hull_mesh_handle, .material = grid_material_handle },
-                .collider = .{ .shape = hull_mesh.mesh_shape },
-            },
-        );
-        _ = try ship_entity.add_node(
-            null,
-            .{ .position = za.Vec3.NEG_Z.scale(15.0) },
-            .{
-                .static_mesh = .{ .mesh = engine_mesh_handle, .material = grid_material_handle },
-                .collider = .{ .shape = engine_mesh.mesh_shape },
-            },
-        );
-        _ = inside_world.add_entity(ship_entity);
-
-        // {
-        //     const proc = @import("procedural.zig");
-        //     const materials = [_]rendering_system.MaterialHandle{
-        //         try proc.create_color_material(rendering_backend, .{ 0.5, 0.0, 0.5, 1.0 }),
-        //         try proc.create_color_material(rendering_backend, .{ 0.0, 0.5, 0.5, 1.0 }),
-        //         try proc.create_color_material(rendering_backend, .{ 0.5, 0.5, 0.0, 1.0 }),
-        //     };
-        //     const cube_scale = .{0.25} ** 3;
-        //     const cube_mesh = try proc.create_cube_mesh(allocator, rendering_backend, cube_scale);
-        //     const cube_shape = physics_system.Shape.init_box(cube_scale, 1.0);
-
-        //     for (0..15) |i| {
-        //         const index: usize = i % materials.len;
-        //         const material = materials[index];
-
-        //         const cube_velocity = za.Vec3.NEG_Z.scale(5.0).add(za.Vec3.NEG_Y.scale(0.5));
-        //         var cube_entity = universe.Entity.init(allocator, .{  .physics = .{ .motion_type = .dynamic, .linear_velocity = cube_velocity } });
-        //         cube_entity.transform.position = za.Vec3.NEG_Z;
-        //         _ = try cube_entity.add_node(
-        //             null,
-        //             .{},
-        //             .{
-        //                 .static_mesh = .{ .mesh = cube_mesh, .material = material },
-        //                 .collider = .{ .shape = cube_shape },
-        //             },
-        //         );
-        //         _ = inside_world.add_entity(cube_entity);
-        //     }
-        // }
-    }
+    _ = inside_world.addEntity(ship_inside);
+    _ = outside_world.addEntity(ship_outside);
 
     return .{
         .outside = outside_world,
@@ -159,3 +79,27 @@ const PhysicsMeshes = struct {
         };
     }
 };
+
+fn addMeshToEntites(allocator: std.mem.Allocator, inside: *Entity, outside: *Entity, mesh: MeshAssetHandle, material: MaterialAssetHandle, transform: Transform) !void {
+    std.debug.assert(global.assets.meshes.isValid(mesh));
+    std.debug.assert(global.assets.materials.isValid(material));
+
+    const mesh_shapes = try PhysicsMeshes.fromHandle(allocator, mesh);
+    _ = try inside.nodes.addNode(
+        null,
+        transform,
+        .{
+            .static_mesh = .{ .mesh = mesh, .material = material },
+            .collider = .{ .shape = mesh_shapes.mesh_shape },
+        },
+    );
+
+    _ = try outside.nodes.addNode(
+        null,
+        transform,
+        .{
+            .static_mesh = .{ .mesh = mesh, .material = material },
+            .collider = .{ .shape = mesh_shapes.convex_shape },
+        },
+    );
+}

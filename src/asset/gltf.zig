@@ -4,7 +4,6 @@ const std = @import("std");
 const za = @import("zalgebra");
 
 const zgltf = @import("zgltf");
-
 const zstbi = @import("zstbi");
 
 const Transform = @import("transform.zig");

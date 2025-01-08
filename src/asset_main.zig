@@ -49,6 +49,12 @@ pub fn main() !void {
                 } else |err| {
                     std.log.err("Failed to processed Material {s} -> {}", .{ entry.path, err });
                 }
+            } else if (std.mem.eql(u8, file_ext, ".glb")) {
+                if (proccessGltf(arena_allocator, entry.path)) {
+                    std.log.info("Processed Gltf {s}", .{entry.path});
+                } else |err| {
+                    std.log.err("Failed to processed Gltf {s} -> {}", .{ entry.path, err });
+                }
             }
         }
     }
@@ -116,4 +122,21 @@ pub fn processMaterial(allocator: std.mem.Allocator, file_path: []const u8) !voi
     // Just write the pure json file for now
     // TODO: at least convert from source asset path to AssetRegistry strings?
     try output_file.writeAll(file_buffer);
+}
+
+pub fn proccessGltf(allocator: std.mem.Allocator, file_path: []const u8) !void {
+    const output_dir_path = try replaceExt(allocator, file_path, "");
+    defer allocator.free(output_dir_path);
+
+    makePath(output_dir, output_dir_path);
+
+    output_dir.makeDir(output_dir_path) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => |other_err| return other_err,
+    };
+
+    var gltf_dir = try output_dir.openDir(output_dir_path, .{});
+    defer gltf_dir.close();
+
+    //TODO: proccess gltf meshes/textures/materials
 }

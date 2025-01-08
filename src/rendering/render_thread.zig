@@ -11,6 +11,8 @@ const rendering_scene = @import("scene.zig");
 
 pub const RenderState = struct {
     const Self = @This();
+    should_reload: bool = false,
+
     temp_allocator: std.heap.ArenaAllocator,
     scene: ?rendering_scene.RenderScene = null,
     camera_transform: ?Transform = null,
@@ -36,6 +38,8 @@ pub const RenderThread = struct {
     render_signals: *RenderSignals,
 
     render_thread: std.Thread,
+
+    should_reload: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, render_settings: RenderSettings) !Self {
         const render_state = try allocator.create(RenderState);
@@ -65,13 +69,19 @@ pub const RenderThread = struct {
         self.allocator.destroy(self.render_signals);
     }
 
+    pub fn reload(self: *Self) void {
+        self.should_reload = true;
+    }
+
     pub fn beginFrame(self: *Self) void {
         self.render_signals.render_done_semaphore.wait();
         _ = self.render_state.temp_allocator.reset(.retain_capacity);
     }
 
     pub fn submitFrame(self: *Self) void {
+        self.render_state.should_reload = self.should_reload;
         self.render_signals.start_render_semphore.post();
+        self.should_reload = false;
     }
 };
 
@@ -101,6 +111,13 @@ fn renderThreadMain(
         render_signals.start_render_semphore.wait();
         if (render_signals.quit_thread.load(.monotonic)) {
             return; //TODO: deinit
+        }
+
+        // Reload the whole renderer and assets
+        if (render_state.should_reload) {
+            renderer.deinit();
+            renderer.* = Renderer.init(global.global_allocator) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
+            std.log.debug("Reloaded renderer", .{});
         }
 
         renderer.clearFramebuffer();

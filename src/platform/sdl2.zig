@@ -63,6 +63,8 @@ pub const Platform = struct {
             try keyboard.?.button_bindings.put(sdl.Scancode.lshift, .{ .axis = .{ .axis = .player_move_up_down, .dir = .negitive } });
 
             try keyboard.?.button_bindings.put(sdl.Scancode.e, .{ .button = .player_interact });
+
+            try keyboard.?.button_bindings.put(sdl.Scancode.f5, .{ .button = .renderer_reload });
         }
 
         return .{
