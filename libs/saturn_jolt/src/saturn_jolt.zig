@@ -4,12 +4,6 @@ const c = @cImport({
     @cInclude("saturn_jolt.h");
 });
 
-// TODO LIST:
-//  1. Shape Functions
-//  2. Volume
-//  3. VirtualCharacter
-//  4. Multi Shape functions
-
 pub fn init(allocator: std.mem.Allocator) void {
     std.debug.assert(mem_allocator == null and mem_allocations == null);
 
@@ -83,21 +77,6 @@ pub const Shape = struct {
 
     pub fn deinit(self: Self) void {
         c.destroy_shape(self.handle);
-    }
-
-    // Will crash if not given compound shape handle
-    //TODO: move compound shape functions elsewhere?
-    pub fn add_child_shape(self: Self, transform: *const Transform, child_shape: Shape, user_data: u32) ChildHandle {
-        return c.add_child_shape(self.handle, transform, child_shape.handle, user_data);
-    }
-    pub fn remove_child_shape(self: Self, child_handle: ChildHandle) void {
-        return c.remove_child_shape(self.handle, child_handle);
-    }
-    pub fn modify_child_shape(self: Self, child_handle: ChildHandle, transform: *const Transform) ChildHandle {
-        return c.remove_child_shape(self.handle, child_handle, transform);
-    }
-    pub fn recalculate_center_of_mass(self: Self) void {
-        c.recalculate_center_of_mass(self.handle);
     }
 };
 
