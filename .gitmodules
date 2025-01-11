@@ -2,5 +2,5 @@
 	path = libs/zig-gamedev
 	url = https://github.com/JoshuaMasci/zig-gamedev.git
 [submodule "libs/saturn_physics/JoltPhysics"]
-	path = libs/saturn_physics/JoltPhysics
+	path = libs/saturn_jolt/JoltPhysics
 	url = https://github.com/jrouwe/JoltPhysics.git
