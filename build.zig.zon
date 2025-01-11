@@ -9,7 +9,7 @@
         "README.md",
     },
     .dependencies = .{
-        .saturn_physics = .{ .path = "libs/saturn_physics" },
+        .saturn_jolt = .{ .path = "libs/saturn_jolt" },
         .zalgebra = .{
             .url = "https://github.com/JoshuaMasci/zalgebra/archive/8ee8402.tar.gz",
             .hash = "12206f6e0c673d4fc52c5852434501b897b1f054cdf55442a53f793b9fd1fc31b6f1",

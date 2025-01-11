@@ -25,6 +25,22 @@ pub const DebugCameraEntitySystem = struct {
     }
 
     pub fn update(self: *Self, data: Entity.UpdateData) void {
+        if (data.stage == .post_physics) {
+            if (self.cast_ray) {
+                if (data.world.systems.physics) |physics_world| {
+                    if (physics_world.castRayIgnoreEntity(
+                        1,
+                        data.entity,
+                        data.entity.transform.position,
+                        data.entity.transform.get_forward().scale(10.0),
+                    )) |hit| {
+                        std.log.info("Hit Entity: {}", .{hit});
+                    }
+                }
+                self.cast_ray = false;
+            }
+        }
+
         if (data.stage != .pre_physics)
             return;
 
@@ -51,10 +67,6 @@ pub const DebugCameraEntitySystem = struct {
 
         // Axis events should fire each frame they are active, so the input is reset each update
         self.angular_input = za.Vec3.set(0.0);
-
-        if (self.cast_ray) {
-            self.cast_ray = false;
-        }
     }
 
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
