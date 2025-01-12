@@ -41,6 +41,7 @@ typedef struct World World;
 typedef struct Body Body;
 typedef struct SoftBody SoftBody;
 typedef uint64_t Shape;
+const Shape InvalidShape = UINT64_MAX;
 
 typedef uint64_t UserData;
 typedef uint32_t SubShapeIndex;
@@ -90,6 +91,7 @@ typedef struct ShapeCastHit {
 typedef void (*ShapeCastCallback)(void *, ShapeCastHit);
 
 typedef struct BodySettings {
+    Shape shape;
     RVec3 position;
     Quat rotation;
     Vec3 linear_velocity;
@@ -112,6 +114,8 @@ Shape shapeCreateCapsule(float half_height, float radius, float density, UserDat
 Shape shapeCreateConvexHull(const Vec3 positions[], size_t position_count, float density, UserData user_data);
 Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint32_t *indices, size_t indices_count, UserData user_data);
 Shape shapeCreateCompound();
+void shapeDestroy(Shape shape);
+
 
 // World functions
 World *worldCreate(const WorldSettings *settings);

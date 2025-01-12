@@ -22,9 +22,7 @@ pub fn create_debug_camera(allocator: std.mem.Allocator) !Entity {
     entity.systems.physics = physics.PhysicsEntitySystem.init(.dynamic);
     entity.systems.debug_camera.?.camera_node = try entity.nodes.addNode(null, .{}, .{
         .camera = .{},
-        .collider = .{
-            .shape = 0, //physics_system.Shape.init_sphere(0.25, 1.0)
-        },
+        .collider = .{ .shape = physics_system.Shape.initSphere(0.25, 1.0, 0) },
     });
     return entity;
 }
@@ -79,8 +77,8 @@ const PhysicsMeshes = struct {
         defer mesh.deinit(allocator);
 
         return .{
-            .mesh_shape = 0, // physics_system.Shape.init_mesh(mesh.positions, mesh.indices),
-            .convex_shape = 0, // physics_system.Shape.init_convex_hull(mesh.positions, 1.0),
+            .mesh_shape = physics_system.Shape.initMesh(mesh.positions, mesh.indices, 0),
+            .convex_shape = physics_system.Shape.initConvexHull(mesh.positions, 1.0, 0),
         };
     }
 };

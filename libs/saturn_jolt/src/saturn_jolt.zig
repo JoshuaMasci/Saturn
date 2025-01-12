@@ -44,7 +44,51 @@ pub const Velocity = c.Velocity;
 pub const UserData = c.UserData;
 pub const ObjectLayer = c.ObjectLayer;
 
-pub const Shape = c.Shape;
+pub const Shape = struct {
+    const Self = @This();
+
+    handle: c.Shape,
+
+    pub fn initSphere(radius: f32, density: f32, user_data: UserData) Self {
+        return .{
+            .handle = c.shapeCreateSphere(radius, density, user_data),
+        };
+    }
+
+    pub fn initBox(half_extent: [3]f32, density: f32, user_data: UserData) Self {
+        return .{
+            .handle = c.shapeCreateBox(&half_extent, density, user_data),
+        };
+    }
+
+    pub fn initCylinder(half_height: f32, radius: f32, density: f32, user_data: UserData) Self {
+        return .{
+            .handle = c.shapeCreateCylinder(half_height, radius, density, user_data),
+        };
+    }
+
+    pub fn initCapsule(half_height: f32, radius: f32, density: f32, user_data: UserData) Self {
+        return .{
+            .handle = c.shapeCreateCapsule(half_height, radius, density, user_data),
+        };
+    }
+
+    pub fn initConvexHull(positions: [][3]f32, density: f32, user_data: UserData) Self {
+        return .{
+            .handle = c.shapeCreateConvexHull(@alignCast(@ptrCast(positions.ptr)), positions.len, density, user_data),
+        };
+    }
+
+    pub fn initMesh(positions: [][3]f32, indices: []u32, user_data: UserData) Self {
+        return .{
+            .handle = c.shapeCreateMesh(@alignCast(@ptrCast(positions.ptr)), positions.len, @alignCast(@ptrCast(indices.ptr)), indices.len, user_data),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        c.shapeDestroy(self.handle);
+    }
+};
 
 pub const MotionType = enum(u32) {
     static = 0,
