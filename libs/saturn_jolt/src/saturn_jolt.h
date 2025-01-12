@@ -114,7 +114,7 @@ Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint3
 Shape shapeCreateCompound();
 
 // World functions
-World *worldCreate(WorldSettings *settings);
+World *worldCreate(const WorldSettings *settings);
 void worldDestroy(World *world_ptr);
 void worldUpdate(World *world_ptr, float delta_time, int collision_steps);
 
@@ -124,21 +124,21 @@ void worldRemoveBody(World *world_ptr, Body *body_ptr);
 bool worldCastRayCloset(World *world_ptr, ObjectLayer object_layer_pattern, const RVec3 origin, const RVec3 direction, RayCastHit *hit_result);
 bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pattern, Body *ignore_body_ptr, const RVec3 origin, const RVec3 direction, RayCastHit *hit_result);
 void worldCastRayAll(World *world_ptr, ObjectLayer object_layer_pattern, const RVec3 origin, const RVec3 direction, RayCastCallback callback, void *callback_data);
-void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape shape, const Transform *transform, ShapeCastCallback callback, void *callback_data);
+void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape shape, const Transform *c_transform, ShapeCastCallback callback, void *callback_data);
 
 // Body functions
-Body *bodyCreate(BodySettings *settings);
+Body *bodyCreate(const BodySettings *settings);
 void bodyDestroy(Body *body_ptr);
 World *bodyGetWorld(Body *body_ptr);
 
-Velocity bodyGetVelocity(Body *body_ptr);
-void bodySetVelocity(Body *body_ptr, const Velocity *velocity);
 Transform bodyGetTransform(Body *body_ptr);
-void bodySetTransform(Body *body_ptr, const Transform *transform);
+void bodySetTransform(Body *body_ptr, const Transform *c_transform);
+Velocity bodyGetVelocity(Body *body_ptr);
+void bodySetVelocity(Body *body_ptr, const Velocity *c_velocity);
 
-SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Transform *transform, UserData user_data);
+SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Transform *c_transform, UserData user_data);
 void bodyRemoveShape(Body *body_ptr, SubShapeIndex index);
-void bodyUpdateShape(Body *body_ptr, SubShapeIndex index, Shape shape, const Transform *transform);
+void bodyUpdateShape(Body *body_ptr, SubShapeIndex index, Shape shape, const Transform *c_transform);
 void bodyRecalculateMass(Body *body_ptr);
 
 #ifdef __cplusplus

@@ -1,3 +1,4 @@
+const std = @import("std");
 const za = @import("zalgebra");
 const Transform = @import("../../transform.zig");
 
@@ -32,21 +33,43 @@ pub const PhysicsColliderComponent = struct {
 pub const PhysicsEntitySystem = struct {
     const Self = @This();
 
-    motion_type: physics.MotionType = .static,
-    object_layer: u16 = 1,
-    compund_shape: ?physics.Shape = null,
-    body_handle: ?physics.BodyHandle = null,
+    body: physics.Body,
 
     linear_velocity: za.Vec3 = za.Vec3.ZERO,
     angular_velocity: za.Vec3 = za.Vec3.ZERO,
 
+    pub fn init(motion_type: physics.MotionType) Self {
+        return .{
+            .body = physics.Body.init(.{
+                .motion_type = motion_type,
+                .object_layer = 1,
+            }),
+        };
+    }
+
     pub fn deinit(self: *Self) void {
-        _ = self; // autofix
+        self.body.deinit();
     }
 
     pub fn update(self: *Self, data: Entity.UpdateData) void {
-        _ = self; // autofix
-        _ = data; // autofix
+        if (data.stage == .pre_physics) {
+            self.body.setTransform(&.{
+                .position = data.entity.transform.position.toArray(),
+                .rotation = data.entity.transform.rotation.norm().toArray(),
+            });
+            self.body.setVelocity(&.{
+                .linear = self.linear_velocity.toArray(),
+                .angular = self.angular_velocity.toArray(),
+            });
+        } else if (data.stage == .post_physics) {
+            const transform = self.body.getTransform();
+            data.entity.transform.position = za.Vec3.fromArray(transform.position);
+            data.entity.transform.rotation = za.Quat.fromArray(transform.rotation).norm();
+
+            const velocity = self.body.getVelocity();
+            self.linear_velocity = za.Vec3.fromArray(velocity.linear);
+            self.angular_velocity = za.Vec3.fromArray(velocity.angular);
+        }
     }
 };
 
@@ -72,53 +95,14 @@ pub const PhysicsWorldSystem = struct {
 
     pub fn registerEntity(self: *Self, data: World.EntityRegisterData) void {
         if (data.entity.systems.physics) |*entity_physics| {
-            var compound_shape = physics.Shape.init_compound_shape();
-            var iter = data.entity.nodes.pool.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.components.collider) |collider| {
-                    const child_transform = data.entity.nodes.getNodeRootTransform(entry.handle).?;
-                    _ = compound_shape.add_child_shape(&.{
-                        .position = child_transform.position.toArray(),
-                        .rotation = child_transform.rotation.toArray(),
-                    }, collider.shape, 0);
-                }
-            }
-
-            entity_physics.compund_shape = compound_shape;
-            entity_physics.body_handle = self.physics_world.add_body(&.{
-                .shape = compound_shape,
-                .position = data.entity.transform.position.toArray(),
-                .rotation = data.entity.transform.rotation.toArray(),
-                .linear_velocity = entity_physics.linear_velocity.toArray(),
-                .angular_velocity = entity_physics.angular_velocity.toArray(),
-                .user_data = @intCast(data.entity.handle),
-                .object_layer = entity_physics.object_layer,
-                .motion_type = entity_physics.motion_type,
-                .is_sensor = false,
-                .friction = 0.2,
-                .linear_damping = 0.0,
-            });
+            self.physics_world.addBody(entity_physics.body);
         }
     }
 
     pub fn update(self: *Self, data: World.UpdateData) void {
         switch (data.stage) {
-            .pre_physics => self.prePhysics(data),
             .physics => self.simulatephysics(data),
-            .post_physics => self.postphysics(data),
             else => {},
-        }
-    }
-
-    pub fn prePhysics(self: *Self, data: World.UpdateData) void {
-        for (data.world.entities.values()) |entity| {
-            if (entity.systems.physics) |entity_physics| {
-                if (entity_physics.body_handle) |body_handle| {
-                    self.physics_world.set_body_transform(body_handle, &.{ .position = entity.transform.position.toArray(), .rotation = entity.transform.rotation.toArray() });
-                    self.physics_world.set_body_linear_velocity(body_handle, entity_physics.linear_velocity.toArray());
-                    self.physics_world.set_body_angular_velocity(body_handle, entity_physics.angular_velocity.toArray());
-                }
-            }
         }
     }
 
@@ -126,33 +110,28 @@ pub const PhysicsWorldSystem = struct {
         self.physics_world.update(data.delta_time, 1);
     }
 
-    pub fn postphysics(self: *Self, data: World.UpdateData) void {
-        for (data.world.entities.values()) |*entity| {
-            if (entity.systems.physics) |*entity_physics| {
-                if (entity_physics.body_handle) |body_handle| {
-                    const body_transform = self.physics_world.get_body_transform(body_handle);
-                    entity.transform.position = za.Vec3.fromArray(body_transform.position);
-                    entity.transform.rotation = za.Quat.fromArray(body_transform.rotation);
-                    entity_physics.linear_velocity = za.Vec3.fromArray(self.physics_world.get_body_linear_velocity(body_handle));
-                    entity_physics.angular_velocity = za.Vec3.fromArray(self.physics_world.get_body_angular_velocity(body_handle));
-                }
-            }
-        }
-    }
-
     pub fn castRay(self: Self, object_layer: u16, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
-        if (self.physics_world.ray_cast_closest(object_layer, start.toArray(), direction.toArray())) |hit| {
-            return RayCastHit.init(hit);
-        }
+        _ = self; // autofix
+        _ = object_layer; // autofix
+        _ = start; // autofix
+        _ = direction; // autofix
+        // if (self.physics_world.ray_cast_closest(object_layer, start.toArray(), direction.toArray())) |hit| {
+        //     return RayCastHit.init(hit);
+        // }
         return null;
     }
 
     pub fn castRayIgnoreEntity(self: Self, object_layer: u16, ignore: *Entity, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
+        _ = self; // autofix
+        _ = object_layer; // autofix
+        _ = ignore; // autofix
+        _ = start; // autofix
+        _ = direction; // autofix
         //TODO: this should log error rather than crash?
-        const ignore_body = ignore.systems.physics.?.body_handle.?;
-        if (self.physics_world.ray_cast_closest_ignore(object_layer, ignore_body, start.toArray(), direction.toArray())) |hit| {
-            return RayCastHit.init(hit);
-        }
+        // const ignore_body = ignore.systems.physics.?.body_handle.?;
+        // if (self.physics_world.ray_cast_closest_ignore(object_layer, ignore_body, start.toArray(), direction.toArray())) |hit| {
+        //     return RayCastHit.init(hit);
+        // }
         return null;
     }
 };

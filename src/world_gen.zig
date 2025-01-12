@@ -19,8 +19,13 @@ pub fn create_debug_camera(allocator: std.mem.Allocator) !Entity {
     var entity = Entity.init(allocator, .{});
     entity.transform.position = za.Vec3.Z.scale(1.0);
     entity.systems.debug_camera = .{ .pitch_yaw = za.Vec2.new(0.0, std.math.pi) };
-    entity.systems.physics = physics.PhysicsEntitySystem{ .motion_type = .dynamic };
-    entity.systems.debug_camera.?.camera_node = try entity.nodes.addNode(null, .{}, .{ .camera = .{}, .collider = .{ .shape = physics_system.Shape.init_sphere(0.25, 1.0) } });
+    entity.systems.physics = physics.PhysicsEntitySystem.init(.dynamic);
+    entity.systems.debug_camera.?.camera_node = try entity.nodes.addNode(null, .{}, .{
+        .camera = .{},
+        .collider = .{
+            .shape = 0, //physics_system.Shape.init_sphere(0.25, 1.0)
+        },
+    });
     return entity;
 }
 
@@ -36,8 +41,8 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
     inside_world.systems.physics = physics.PhysicsWorldSystem.init();
     inside_world.systems.render = rendering.RenderWorldSystem.init(allocator);
 
-    var ship_inside = Entity.init(allocator, .{ .physics = .{} });
-    var ship_outside = Entity.init(allocator, .{ .physics = .{ .motion_type = .dynamic } });
+    var ship_inside = Entity.init(allocator, .{ .physics = physics.PhysicsEntitySystem.init(.static) });
+    var ship_outside = Entity.init(allocator, .{ .physics = physics.PhysicsEntitySystem.init(.dynamic) });
 
     const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
     const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge_glass.mesh").?;
@@ -74,8 +79,8 @@ const PhysicsMeshes = struct {
         defer mesh.deinit(allocator);
 
         return .{
-            .mesh_shape = physics_system.Shape.init_mesh(mesh.positions, mesh.indices),
-            .convex_shape = physics_system.Shape.init_convex_hull(mesh.positions, 1.0),
+            .mesh_shape = 0, // physics_system.Shape.init_mesh(mesh.positions, mesh.indices),
+            .convex_shape = 0, // physics_system.Shape.init_convex_hull(mesh.positions, 1.0),
         };
     }
 };

@@ -33,13 +33,13 @@ pub fn deinit(self: *Self) void {
     }
 
     self.entities.deinit();
-    utils.callMethodOnFields("deinit", &self.systems);
+    self.systems.deinit();
 }
 
 pub fn addEntity(self: *Self, entity: Entity) Entity.Handle {
     self.entities.put(entity.handle, entity) catch std.debug.panic("Failed to push entity to entity list", .{});
     const ptr: *Entity = self.entities.getPtr(entity.handle).?;
-    utils.callMethodWithArgsOnFields("registerEntity", EntityRegisterData, &self.systems, .{ .world = self, .entity = ptr });
+    self.systems.registerEntity(.{ .world = self, .entity = ptr });
     return entity.handle;
 }
 
@@ -48,5 +48,5 @@ pub fn update(self: *Self, stage: UpdateStage, delta_time: f32) void {
     for (self.entities.values()) |*entity| {
         entity.update(stage, self, delta_time);
     }
-    utils.callMethodWithArgsOnFields("update", UpdateData, &self.systems, .{ .stage = stage, .world = self, .delta_time = delta_time });
+    self.systems.update(.{ .stage = stage, .world = self, .delta_time = delta_time });
 }

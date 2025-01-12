@@ -35,9 +35,9 @@ pub fn deinit(self: *Self) void {
         name.deinit();
     }
     self.nodes.deinit();
-    utils.callMethodOnFields("deinit", &self.systems);
+    self.systems.deinit();
 }
 
 pub fn update(self: *Self, stage: UpdateStage, world: *const World, delta_time: f32) void {
-    utils.callMethodWithArgsOnFields("update", UpdateData, &self.systems, .{ .stage = stage, .world = world, .entity = self, .delta_time = delta_time });
+    self.systems.update(.{ .stage = stage, .world = world, .entity = self, .delta_time = delta_time });
 }

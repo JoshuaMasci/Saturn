@@ -150,4 +150,5 @@ add_library(saturn_physics
         JoltPhysics/Jolt/TriangleSplitter/TriangleSplitterLongestAxis.cpp
 
         src/saturn_jolt.cpp
-        src/world.cpp)
+        src/world.cpp
+        src/body.cpp)
