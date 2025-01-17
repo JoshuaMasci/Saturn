@@ -1,11 +1,13 @@
 #include "body.hpp"
 
 #include "world.hpp"
-
+#include "Jolt/Physics/Collision/Shape/MutableCompoundShape.h"
 #include <Jolt/Physics/Collision/Shape/EmptyShape.h>
 
+#include <utility>
+
 Body::Body(const BodySettings *settings) {
-    this->shape = JPH::EmptyShapeSettings().Create().Get();
+    this->body_shape = JPH::EmptyShapeSettings().Create().Get();
 
     this->position = load_rvec3(settings->position);
     this->rotation = load_quat(settings->rotation);
@@ -56,8 +58,6 @@ void Body::setTransform(const JPH::RVec3 new_position, const JPH::Quat new_rotat
     if (this->world_ptr != nullptr) {
         this->world_ptr->physics_system->GetBodyInterface().SetPositionAndRotationWhenChanged(this->body_id, this->position, this->rotation, JPH::EActivation::Activate);
     }
-
-
 }
 
 JPH::Vec3 Body::getLinearVelocity() {
@@ -89,7 +89,7 @@ JPH::BodyCreationSettings Body::getCreateSettings() {
     auto settings = JPH::BodyCreationSettings();
 
     //TODO: determine what base shape should be used based on what child shapes have been added
-    settings.SetShape(this->shape);
+    settings.SetShape(this->body_shape);
 
     settings.mPosition = position;
     settings.mRotation = rotation;
@@ -118,6 +118,35 @@ JPH::BodyCreationSettings Body::getCreateSettings() {
     settings.mAngularDamping = angular_damping;
 
     return settings;
+}
+
+SubShapeIndex Body::addShape( const SubShape& shape) {
+    return this->subshapes.insert(shape);
+}
+
+void Body::removeShape( SubShapeIndex index) {
+    this->subshapes.remove(index);
+}
+
+void Body::updateShape( SubShapeIndex index, SubShape shape) {
+    this->subshapes.get(index) = std::move(shape);
+}
+
+void Body::recalculateMass() {
+    if (this->world_ptr != nullptr) {
+        JPH::BodyLockWrite lock(this->world_ptr->physics_system->GetBodyLockInterface(), this->body_id);
+
+        if (lock.Succeeded()) {
+            JPH::Body &body = lock.GetBody();
+            auto *shape = dynamic_cast<JPH::MutableCompoundShape *>(const_cast<JPH::Shape *>(body.GetShape()));
+            shape->AdjustCenterOfMass();
+            lock.ReleaseLock();
+        }
+    }
+}
+
+void Body::removeAllShape() {
+
 }
 
 

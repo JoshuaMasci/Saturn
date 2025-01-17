@@ -144,6 +144,7 @@ SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Transform *c_trans
 void bodyRemoveShape(Body *body_ptr, SubShapeIndex index);
 void bodyUpdateShape(Body *body_ptr, SubShapeIndex index, Shape shape, const Transform *c_transform);
 void bodyRecalculateMass(Body *body_ptr);
+void bodyRemoveAllShape(Body *body_ptr);
 
 #ifdef __cplusplus
 }

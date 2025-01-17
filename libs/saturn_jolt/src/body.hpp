@@ -2,9 +2,19 @@
 
 #include "saturn_jolt.h"
 #include "math.hpp"
+#include "object_pool.hpp"
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+
+#include <variant>
+
+struct SubShape {
+    JPH::Ref<JPH::Shape> shape;
+    JPH::Vec3 position;
+    JPH::Quat rotation;
+    UserData user_data;
+};
 
 class World;
 
@@ -28,13 +38,25 @@ public:
 
     void setVelocity(JPH::Vec3 new_linear_velocity, JPH::Vec3 new_angular_velocity);
 
+    SubShapeIndex addShape(const SubShape &shape);
+
+    void removeShape(SubShapeIndex index);
+
+    void updateShape(SubShapeIndex index, SubShape shape);
+
+    void recalculateMass();
+
+    void removeAllShape();
+
     JPH::BodyCreationSettings getCreateSettings();
 
     JPH::BodyID body_id;
     World *world_ptr = nullptr;
 
 private:
-    JPH::Ref<JPH::Shape> shape;
+    ObjectPool<SubShapeIndex, SubShape> subshapes;
+
+    JPH::Ref<JPH::Shape> body_shape;
 
     JPH::RVec3 position{};
     JPH::Quat rotation{};

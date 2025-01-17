@@ -151,4 +151,5 @@ add_library(saturn_physics
 
         src/saturn_jolt.cpp
         src/world.cpp
-        src/body.cpp)
+        src/body.cpp
+        src/object_pool.hpp)
