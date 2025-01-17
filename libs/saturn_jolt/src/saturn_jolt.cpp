@@ -244,3 +244,29 @@ Velocity bodyGetVelocity(Body *body_ptr) {
 void bodySetVelocity(Body *body_ptr, const Velocity *c_velocity) {
     body_ptr->setVelocity(load_vec3(c_velocity->linear), load_vec3(c_velocity->angular));
 }
+
+SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Transform *c_transform, UserData32 user_data) {
+    shape_pool_mutex.lock();
+    auto shape_ref = shape_pool->get(shape);
+    shape_pool_mutex.unlock();
+
+    return body_ptr->addShape(SubShape{
+            shape_ref, load_vec3(c_transform->position), load_quat(c_transform->rotation), user_data,
+    });
+}
+
+void bodyRemoveShape(Body *body_ptr, SubShapeIndex index) {
+    body_ptr->removeShape(index);
+}
+
+void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Transform *c_transform) {
+    body_ptr->updateShapeTransform(index, load_vec3(c_transform->position), load_quat(c_transform->rotation));
+}
+
+void bodyRemoveAllShapes(Body *body_ptr) {
+    body_ptr->removeAllShape();
+}
+
+void bodyCommitShapeChanges(Body *body_ptr) {
+    body_ptr->commitShapeChanges();
+}

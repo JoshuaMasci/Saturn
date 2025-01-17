@@ -41,8 +41,10 @@ pub const Quat = c.Quat;
 pub const Transform = c.Transform;
 pub const Velocity = c.Velocity;
 
+pub const UserData32 = c.UserData32;
 pub const UserData = c.UserData;
 pub const ObjectLayer = c.ObjectLayer;
+pub const SubShapeIndex = c.SubShapeIndex;
 
 pub const Shape = struct {
     const Self = @This();
@@ -201,6 +203,26 @@ pub const Body = struct {
 
     pub fn setVelocity(self: *Self, velocity: *const Velocity) void {
         c.bodySetVelocity(self.ptr, velocity);
+    }
+
+    pub fn addShape(self: *Self, shape: Shape, transform: *const Transform, user_data: UserData32) SubShapeIndex {
+        return c.bodyAddShape(self.ptr, shape.handle, transform, user_data);
+    }
+
+    pub fn removeShape(self: *Self, index: SubShapeIndex) void {
+        return c.bodyRemoveShape(self.ptr, index);
+    }
+
+    pub fn updateShapeTransform(self: *Self, index: SubShapeIndex, transform: *const Transform) void {
+        return c.bodyUpdateShapeTransform(self.ptr, index, transform);
+    }
+
+    pub fn removeAllShapes(self: *Self) void {
+        return c.bodyRemoveAllShapes(self.ptr);
+    }
+
+    pub fn commitShapeChanges(self: *Self) void {
+        return c.bodyCommitShapeChanges(self.ptr);
     }
 };
 

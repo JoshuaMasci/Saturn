@@ -51,6 +51,27 @@ pub const PhysicsEntitySystem = struct {
         self.body.deinit();
     }
 
+    pub fn rebuildShape(self: *Self, entity: *Entity) void {
+        self.body.removeAllShapes();
+
+        var iter = entity.nodes.pool.iterator();
+        while (iter.next()) |entry| {
+            if (entry.value_ptr.components.collider) |collider| {
+                var node_transform: Transform = entity.nodes.getNodeRootTransform(entry.handle) orelse .{};
+                _ = self.body.addShape(
+                    collider.shape,
+                    &.{
+                        .position = node_transform.position.toArray(),
+                        .rotation = node_transform.rotation.toArray(),
+                    },
+                    0,
+                );
+            }
+        }
+
+        self.body.commitShapeChanges();
+    }
+
     pub fn update(self: *Self, data: Entity.UpdateData) void {
         if (data.stage == .pre_physics) {
             self.body.setTransform(&.{

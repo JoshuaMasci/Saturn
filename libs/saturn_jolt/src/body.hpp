@@ -44,9 +44,12 @@ public:
 
     void updateShape(SubShapeIndex index, SubShape shape);
 
-    void recalculateMass();
+    void updateShapeTransform(SubShapeIndex index, JPH::Vec3 position,
+                              JPH::Quat rotation);
 
     void removeAllShape();
+
+    void commitShapeChanges();
 
     JPH::BodyCreationSettings getCreateSettings();
 
@@ -54,6 +57,7 @@ public:
     World *world_ptr = nullptr;
 
 private:
+
     ObjectPool<SubShapeIndex, SubShape> subshapes;
 
     JPH::Ref<JPH::Shape> body_shape;

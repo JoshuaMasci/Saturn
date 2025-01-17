@@ -1,7 +1,7 @@
 #include "body.hpp"
 
 #include "world.hpp"
-#include "Jolt/Physics/Collision/Shape/MutableCompoundShape.h"
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/EmptyShape.h>
 
 #include <utility>
@@ -120,34 +120,48 @@ JPH::BodyCreationSettings Body::getCreateSettings() {
     return settings;
 }
 
-SubShapeIndex Body::addShape( const SubShape& shape) {
+SubShapeIndex Body::addShape(const SubShape &shape) {
     return this->subshapes.insert(shape);
 }
 
-void Body::removeShape( SubShapeIndex index) {
+void Body::removeShape(SubShapeIndex index) {
     this->subshapes.remove(index);
 }
 
-void Body::updateShape( SubShapeIndex index, SubShape shape) {
+
+void Body::updateShape(SubShapeIndex index, SubShape shape) {
     this->subshapes.get(index) = std::move(shape);
 }
 
-void Body::recalculateMass() {
-    if (this->world_ptr != nullptr) {
-        JPH::BodyLockWrite lock(this->world_ptr->physics_system->GetBodyLockInterface(), this->body_id);
-
-        if (lock.Succeeded()) {
-            JPH::Body &body = lock.GetBody();
-            auto *shape = dynamic_cast<JPH::MutableCompoundShape *>(const_cast<JPH::Shape *>(body.GetShape()));
-            shape->AdjustCenterOfMass();
-            lock.ReleaseLock();
-        }
-    }
+void Body::updateShapeTransform(SubShapeIndex index, JPH::Vec3 new_position, JPH::Quat new_rotation) {
+    auto ref = this->subshapes.get(index);
+    ref.position = new_position;
+    ref.rotation = new_rotation;
 }
 
 void Body::removeAllShape() {
-
+    this->subshapes.clear();
 }
 
+void Body::commitShapeChanges() {
+    auto shape_ref = JPH::EmptyShapeSettings().Create().Get();
+
+    //TODO: not rebuild the whole compound shape during this step
+    if (this->subshapes.size() != 0) {
+        auto static_shape_settings = JPH::StaticCompoundShapeSettings();
+
+        for (const auto &pair: this->subshapes) {
+            static_shape_settings.AddShape(pair.second.position, pair.second.rotation, pair.second.shape, pair.second.user_data);
+        }
+
+        shape_ref = static_shape_settings.Create().Get();
+    }
+
+    this->body_shape = shape_ref;
+
+    if (this->world_ptr != nullptr) {
+        this->world_ptr->physics_system->GetBodyInterface().SetShape(this->body_id, shape_ref, true, JPH::EActivation::DontActivate);
+    }
+}
 
 

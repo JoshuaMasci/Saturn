@@ -43,6 +43,7 @@ typedef struct SoftBody SoftBody;
 typedef uint64_t Shape;
 const Shape InvalidShape = UINT64_MAX;
 
+typedef uint32_t UserData32;
 typedef uint64_t UserData;
 typedef uint32_t SubShapeIndex;
 
@@ -140,11 +141,11 @@ void bodySetTransform(Body *body_ptr, const Transform *c_transform);
 Velocity bodyGetVelocity(Body *body_ptr);
 void bodySetVelocity(Body *body_ptr, const Velocity *c_velocity);
 
-SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Transform *c_transform, UserData user_data);
+SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Transform *c_transform, UserData32 user_data);
 void bodyRemoveShape(Body *body_ptr, SubShapeIndex index);
-void bodyUpdateShape(Body *body_ptr, SubShapeIndex index, Shape shape, const Transform *c_transform);
-void bodyRecalculateMass(Body *body_ptr);
-void bodyRemoveAllShape(Body *body_ptr);
+void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Transform *c_transform);
+void bodyRemoveAllShapes(Body *body_ptr);
+void bodyCommitShapeChanges(Body *body_ptr);
 
 #ifdef __cplusplus
 }

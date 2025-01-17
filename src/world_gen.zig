@@ -24,6 +24,7 @@ pub fn create_debug_camera(allocator: std.mem.Allocator) !Entity {
         .camera = .{},
         .collider = .{ .shape = physics_system.Shape.initSphere(0.25, 1.0, 0) },
     });
+    entity.systems.physics.?.rebuildShape(&entity);
     return entity;
 }
 
@@ -58,6 +59,9 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
     try addMeshToEntites(allocator, &ship_inside, &ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) });
 
     try addMeshToEntites(allocator, &ship_inside, &ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0) });
+
+    ship_inside.systems.physics.?.rebuildShape(&ship_inside);
+    ship_outside.systems.physics.?.rebuildShape(&ship_outside);
 
     _ = inside_world.addEntity(ship_inside);
     _ = outside_world.addEntity(ship_outside);

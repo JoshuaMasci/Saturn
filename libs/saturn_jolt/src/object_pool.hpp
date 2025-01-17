@@ -6,7 +6,7 @@
 template<typename I, typename T>
 class ObjectPool {
 private:
-    JPH::UnorderedMap <I, T> pool;
+    JPH::UnorderedMap<I, T> pool;
     I next_handle = 1;
 
 public:
@@ -17,14 +17,20 @@ public:
         return handle;
     }
 
-    // Retrieve the shape by its handle (index)
-    T get(I handle) {
+    T &get(I handle) {
         return this->pool[handle];
     }
 
-    // Remove a shape by its handle (index)
     void remove(I handle) {
         this->pool.erase(handle);
+    }
+
+    void clear() {
+        this->pool.clear();
+    }
+
+    size_t size() {
+        return this->pool.size();
     }
 
     // Iterator support: Allow for iterating over pool items
