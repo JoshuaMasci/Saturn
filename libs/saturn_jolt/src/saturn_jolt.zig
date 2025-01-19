@@ -46,15 +46,12 @@ pub const ObjectLayer = c.ObjectLayer;
 pub const SubShapeIndex = c.SubShapeIndex;
 
 pub const RayCastHit = c.RayCastHit;
-// struct {
-//     body: Body,
-//     shape_index: SubShapeIndex,
-//     distance: f32,
-//     ws_position: RVec3,
-//     ws_normal: Vec3,
-//     body_user_data: UserData,
-//     shape_user_data: UserData,
-// };
+
+pub const SubShapeSettings = struct {
+    shape: Shape,
+    position: Vec3,
+    rotation: Quat,
+};
 
 pub const Shape = struct {
     const Self = @This();
@@ -94,6 +91,15 @@ pub const Shape = struct {
     pub fn initMesh(positions: [][3]f32, indices: []u32, user_data: UserData) Self {
         return .{
             .handle = c.shapeCreateMesh(@alignCast(@ptrCast(positions.ptr)), positions.len, @alignCast(@ptrCast(indices.ptr)), indices.len, user_data),
+        };
+    }
+
+    pub fn initCompound(sub_shapes: []const SubShapeSettings, user_data: UserData) Self {
+        //TODO: since Shape is currently a wrapper type, we can cast it to a c.SubShapeSettings without issue, may become a problem on diffrent platforms
+        comptime std.debug.assert(@sizeOf(SubShapeSettings) == @sizeOf(c.SubShapeSettings));
+
+        return .{
+            .handle = c.shapeCreateCompound(@alignCast(@ptrCast(sub_shapes.ptr)), sub_shapes.len, user_data),
         };
     }
 

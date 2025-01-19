@@ -13,11 +13,12 @@ const Universe = @import("entity/universe.zig");
 const World = @import("entity/world.zig");
 const Entity = @import("entity/entity.zig");
 
+const global = @import("global.zig");
+
 pub const App = struct {
     const Self = @This();
 
     should_quit: bool,
-    allocator: std.mem.Allocator,
 
     platform: sdl_platform.Platform,
     render_thread: RenderThread,
@@ -30,25 +31,24 @@ pub const App = struct {
     timer: f32 = 0,
     frames: f32 = 0,
 
-    pub fn init(allocator: std.mem.Allocator) !Self {
-        try @import("global.zig").assets.addDir("engine", "zig-out/assets");
+    pub fn init() !Self {
+        try global.assets.addDir("engine", "zig-out/assets");
 
-        const platform = try sdl_platform.Platform.init(allocator);
-        const render_thread = try RenderThread.init(allocator, .{ .window_name = "Saturn Engine", .size = .{ .windowed = .{ 1920, 1080 } }, .vsync = .on });
+        const platform = try sdl_platform.Platform.init(global.global_allocator);
+        const render_thread = try RenderThread.init(global.global_allocator, .{ .window_name = "Saturn Engine", .size = .{ .windowed = .{ 1920, 1080 } }, .vsync = .on });
 
-        physics_system.init(allocator);
+        physics_system.init(global.global_allocator);
 
-        var game_universe = try Universe.init(allocator);
+        var game_universe = try Universe.init(global.global_allocator);
 
-        var game_worlds = try world_gen.create_ship_worlds(allocator);
-        const debug_entity = game_worlds.inside.addEntity(try world_gen.create_debug_camera(allocator));
+        var game_worlds = try world_gen.create_ship_worlds(global.global_allocator);
+        const debug_entity = game_worlds.inside.addEntity(try world_gen.create_debug_camera(global.global_allocator));
         const inside_world = try game_universe.addWorld(game_worlds.inside);
         const outside_world = try game_universe.addWorld(game_worlds.outside);
         _ = outside_world; // autofix
 
         return .{
             .should_quit = false,
-            .allocator = allocator,
             .platform = platform,
             .render_thread = render_thread,
 
@@ -72,14 +72,16 @@ pub const App = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
+        const frame_allocator = global.global_allocator; //TODO: move to arena allocator
+
         self.timer += delta_time;
         self.frames += 1;
         if (self.timer > 20.0) {
             const avr_delta_time = self.timer / self.frames;
             std.log.info("DT: {d:.3} ms FPS: {d:.3}", .{ avr_delta_time * 1000, 1.0 / avr_delta_time });
             if (mem_usage_opt) |mem_usage| {
-                if (@import("utils.zig").format_human_readable_bytes(self.allocator, mem_usage)) |mem_usage_string| {
-                    defer self.allocator.free(mem_usage_string);
+                if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+                    defer frame_allocator.free(mem_usage_string);
                     std.log.info("Mem Usage: {s}", .{mem_usage_string});
                 }
             }

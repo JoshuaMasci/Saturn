@@ -25,6 +25,7 @@
 #include "Jolt/Physics/Collision/Shape/CapsuleShape.h"
 #include "Jolt/Physics/Collision/Shape/ConvexHullShape.h"
 #include "Jolt/Physics/Collision/Shape/MeshShape.h"
+#include "Jolt/Physics/Collision/Shape/StaticCompoundShape.h"
 
 ShapePool *shape_pool = nullptr;
 std::mutex shape_pool_mutex;
@@ -87,7 +88,6 @@ Shape shapeCreateBox(const Vec3 half_extent, float density, UserData user_data) 
     settings.mUserData = user_data;
 
     auto shape = settings.Create().Get();
-    shape_pool_mutex.lock();
     shape_pool_mutex.lock();
     auto shape_handle = shape_pool->insert(shape);
     shape_pool_mutex.unlock();
@@ -172,6 +172,23 @@ Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint3
     shape_pool_mutex.unlock();
     return shape_handle;
 
+}
+
+Shape shapeCreateCompound(const SubShapeSettings sub_shapes[], size_t sub_shape_count, UserData user_data) {
+    auto static_shape_settings = JPH::StaticCompoundShapeSettings();
+    static_shape_settings.mUserData = user_data;
+
+    shape_pool_mutex.lock();
+    for (auto i = 0; i < sub_shape_count; i++) {
+        auto subshape = &sub_shapes[i];
+        auto shape_ref = shape_pool->get(subshape->shape);
+        static_shape_settings.AddShape(load_vec3(subshape->position), load_quat(subshape->rotation), shape_ref, i);
+    }
+
+    auto shape = static_shape_settings.Create().Get();
+    auto shape_handle = shape_pool->insert(shape);
+    shape_pool_mutex.unlock();
+    return shape_handle;
 }
 
 void shapeDestroy(Shape shape) {

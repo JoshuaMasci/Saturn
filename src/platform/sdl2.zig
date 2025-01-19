@@ -95,10 +95,16 @@ pub const Platform = struct {
             switch (event.type) {
                 .quit => self.should_quit = true,
                 .mousebuttondown, .mousebuttonup => if (self.mouse) |*mouse| {
-                    mouse.on_button_event(app, &event.button);
+                    if (mouse.is_captured()) {
+                        mouse.on_button_event(app, &event.button);
+                    } else if (event.button.button == @intFromEnum(MouseButton.left)) {
+                        mouse.set_captured(true);
+                    }
                 },
                 .mousemotion => if (self.mouse) |*mouse| {
-                    mouse.on_move(app, &event.motion);
+                    if (mouse.is_captured()) {
+                        mouse.on_move(app, &event.motion);
+                    }
                 },
                 .keydown, .keyup => if (self.keyboard) |*keyboard| {
 

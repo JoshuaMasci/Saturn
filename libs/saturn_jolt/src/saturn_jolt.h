@@ -106,6 +106,12 @@ typedef struct BodySettings {
     float gravity_factor;
 } BodySettings;
 
+typedef struct SubShapeSettings {
+    Shape shape;
+    Vec3 position;
+    Quat rotation;
+} SubShapeSettings;
+
 // Shape functions
 Shape shapeCreateSphere(float radius, float density, UserData user_data);
 Shape shapeCreateBox(const Vec3 half_extent, float density, UserData user_data);
@@ -113,7 +119,7 @@ Shape shapeCreateCylinder(float half_height, float radius, float density, UserDa
 Shape shapeCreateCapsule(float half_height, float radius, float density, UserData user_data);
 Shape shapeCreateConvexHull(const Vec3 positions[], size_t position_count, float density, UserData user_data);
 Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint32_t *indices, size_t indices_count, UserData user_data);
-Shape shapeCreateCompound();
+Shape shapeCreateCompound(const SubShapeSettings sub_shapes[], size_t sub_shape_count, UserData user_data);
 void shapeDestroy(Shape shape);
 
 

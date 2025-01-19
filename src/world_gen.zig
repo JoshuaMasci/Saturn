@@ -58,7 +58,33 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
     try addMeshToEntites(allocator, &ship_inside, &ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(15.0) });
     try addMeshToEntites(allocator, &ship_inside, &ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) });
 
-    try addMeshToEntites(allocator, &ship_inside, &ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0) });
+    //Custom Airlock Shape
+    //    try addMeshToEntites(allocator, &ship_inside, &ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0) });
+    {
+        const mesh = airlock_mesh_handle;
+        const material = grid_material_handle;
+        const transform: Transform = .{ .position = za.Vec3.new(5.0, 0.0, -15.0) };
+
+        const airlock_shape = create_airlock_shape();
+
+        _ = try ship_inside.nodes.addNode(
+            null,
+            transform,
+            .{
+                .static_mesh = .{ .mesh = mesh, .material = material },
+                .collider = .{ .shape = airlock_shape },
+            },
+        );
+
+        _ = try ship_outside.nodes.addNode(
+            null,
+            transform,
+            .{
+                .static_mesh = .{ .mesh = mesh, .material = material },
+                .collider = .{ .shape = airlock_shape },
+            },
+        );
+    }
 
     ship_inside.systems.physics.?.rebuildShape(&ship_inside);
     ship_outside.systems.physics.?.rebuildShape(&ship_outside);
@@ -109,4 +135,39 @@ fn addMeshToEntites(allocator: std.mem.Allocator, inside: *Entity, outside: *Ent
             .collider = .{ .shape = mesh_shapes.convex_shape },
         },
     );
+}
+
+fn create_airlock_shape() physics_system.Shape {
+    const ident_rot = [4]f32{ 0.0, 0.0, 0.0, 1.0 };
+
+    var floor_box = physics_system.Shape.initBox(.{ 1.125, 0.25, 1.5 }, 1.0, 0);
+    defer floor_box.deinit();
+
+    var wall_box = physics_system.Shape.initBox(.{ 1.125, 1.0, 0.25 }, 1.0, 0);
+    defer wall_box.deinit();
+
+    const sub_shapes = [_]physics_system.SubShapeSettings{
+        .{
+            .shape = floor_box,
+            .position = .{ -1.25, -1.25, 0.0 },
+            .rotation = ident_rot,
+        },
+        .{
+            .shape = floor_box,
+            .position = .{ -1.25, 1.25, 0.0 },
+            .rotation = ident_rot,
+        },
+        .{
+            .shape = wall_box,
+            .position = .{ -1.25, 0.0, 1.25 },
+            .rotation = ident_rot,
+        },
+        .{
+            .shape = wall_box,
+            .position = .{ -1.25, 0.0, -1.25 },
+            .rotation = ident_rot,
+        },
+    };
+
+    return physics_system.Shape.initCompound(&sub_shapes, 0);
 }

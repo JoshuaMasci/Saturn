@@ -17,7 +17,7 @@ pub fn main() !void {
     zstbi.init(allocator);
     defer zstbi.deinit();
 
-    var app = try App.init(allocator);
+    var app = try App.init();
     defer app.deinit();
 
     var last_frame_time_ns = std.time.nanoTimestamp();
