@@ -2,6 +2,7 @@ const std = @import("std");
 const za = @import("zalgebra");
 const Transform = @import("../../transform.zig");
 
+const Node = @import("../node.zig");
 const Entity = @import("../entity.zig");
 const World = @import("../world.zig");
 const UpdateStage = @import("../universe.zig").UpdateStage;
@@ -10,7 +11,7 @@ const physics = @import("physics");
 
 pub const RayCastHit = struct {
     entity_handle: Entity.Handle,
-    shape_index: u32 = 0,
+    node_handle: Node.Handle,
     distance: f32,
     ws_position: za.Vec3,
     ws_normal: za.Vec3,
@@ -18,7 +19,7 @@ pub const RayCastHit = struct {
     fn init(hit: physics.RayCastHit) @This() {
         return .{
             .entity_handle = @intCast(hit.body_user_data),
-            .shape_index = hit.shape_index,
+            .node_handle = Node.Handle.fromU64(hit.shape_user_data),
             .distance = hit.distance,
             .ws_position = za.Vec3.fromArray(hit.ws_position),
             .ws_normal = za.Vec3.fromArray(hit.ws_normal),
@@ -64,7 +65,7 @@ pub const PhysicsEntitySystem = struct {
                         .position = node_transform.position.toArray(),
                         .rotation = node_transform.rotation.toArray(),
                     },
-                    0,
+                    entry.handle.toU64(),
                 );
             }
         }
@@ -132,27 +133,21 @@ pub const PhysicsWorldSystem = struct {
     }
 
     pub fn castRay(self: Self, object_layer: u16, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
-        _ = self; // autofix
-        _ = object_layer; // autofix
-        _ = start; // autofix
-        _ = direction; // autofix
-        // if (self.physics_world.ray_cast_closest(object_layer, start.toArray(), direction.toArray())) |hit| {
-        //     return RayCastHit.init(hit);
-        // }
+        if (self.physics_world.ray_cast_closest(object_layer, start.toArray(), direction.toArray())) |hit| {
+            return RayCastHit.init(hit);
+        }
         return null;
     }
 
     pub fn castRayIgnoreEntity(self: Self, object_layer: u16, ignore: *Entity, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
-        _ = self; // autofix
-        _ = object_layer; // autofix
-        _ = ignore; // autofix
-        _ = start; // autofix
-        _ = direction; // autofix
         //TODO: this should log error rather than crash?
-        // const ignore_body = ignore.systems.physics.?.body_handle.?;
-        // if (self.physics_world.ray_cast_closest_ignore(object_layer, ignore_body, start.toArray(), direction.toArray())) |hit| {
-        //     return RayCastHit.init(hit);
-        // }
+        const ignore_body = ignore.systems.physics.?.body;
+        const start_a = start.toArray();
+        const direction_a = direction.toArray();
+
+        if (self.physics_world.castRayClosestIgnoreBody(object_layer, ignore_body, start_a, direction_a)) |hit| {
+            return RayCastHit.init(hit);
+        }
         return null;
     }
 };

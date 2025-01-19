@@ -151,7 +151,7 @@ void Body::commitShapeChanges() {
         auto static_shape_settings = JPH::StaticCompoundShapeSettings();
 
         for (const auto &pair: this->subshapes) {
-            static_shape_settings.AddShape(pair.second.position, pair.second.rotation, pair.second.shape, pair.second.user_data);
+            static_shape_settings.AddShape(pair.second.position, pair.second.rotation, pair.second.shape, pair.first);
         }
 
         shape_ref = static_shape_settings.Create().Get();
@@ -162,6 +162,21 @@ void Body::commitShapeChanges() {
     if (this->world_ptr != nullptr) {
         this->world_ptr->physics_system->GetBodyInterface().SetShape(this->body_id, shape_ref, true, JPH::EActivation::DontActivate);
     }
+}
+
+SubShapeInfo Body::getSubShapeInfo(JPH::SubShapeID id) const {
+    uint32_t shape_index = 0;
+    UserData shape_data = UINT64_MAX;
+    if (body_shape->GetType() == JPH::EShapeType::Compound) {
+        auto *compound_shape = (JPH::CompoundShape *) this->body_shape.GetPtr();
+        JPH::SubShapeID rem;
+        shape_index = compound_shape->GetSubShape(compound_shape->GetSubShapeIndexFromID(id, rem)).mUserData;
+        if (this->subshapes.contains(shape_index)) {
+            shape_data = this->subshapes.get(shape_index).user_data;
+        }
+    }
+
+    return SubShapeInfo{shape_index, shape_data};
 }
 
 

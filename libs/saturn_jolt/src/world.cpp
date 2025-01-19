@@ -1,6 +1,9 @@
 #include "world.hpp"
 
 #include "body.hpp"
+#include "Jolt/Physics/Collision/Shape/CompoundShape.h"
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/RayCast.h>
 
 World::World(const WorldSettings *settings)
         : temp_allocator(settings->temp_allocation_size), job_system(1024) {
@@ -61,4 +64,70 @@ void World::removeBody(Body *body) {
         body->body_id = JPH::BodyID();
         body->world_ptr = nullptr;
     }
+}
+
+void convertRayHit(RayCastHit *hit_result, JPH::RayCast &ray, JPH::RayCastResult &hit, const JPH::BodyLockInterfaceLocking &body_lock_interface) {
+    {
+        JPH::BodyLockRead lock(body_lock_interface, hit.mBodyID);
+        if (lock.Succeeded()) {
+            const JPH::Body &body = lock.GetBody();
+            Body *body_ptr = reinterpret_cast<Body *>(body.GetUserData());
+
+            hit_result->body_ptr = body_ptr;
+            hit_result->body_user_data = body_ptr->getUserData();
+
+            auto shape_info = body_ptr->getSubShapeInfo(hit.mSubShapeID2);
+            hit_result->shape_index = shape_info.index;
+            hit_result->shape_user_data = shape_info.user_data;
+
+
+            auto ray_distance = ray.mDirection * hit.mFraction;
+            auto ws_position = ray.mOrigin + ray_distance;
+            auto ws_normal = body.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, ws_position);
+
+            hit_result->ws_position[0] = ws_position.GetX();
+            hit_result->ws_position[1] = ws_position.GetY();
+            hit_result->ws_position[2] = ws_position.GetZ();
+            hit_result->ws_normal[0] = ws_normal.GetX();
+            hit_result->ws_normal[1] = ws_normal.GetY();
+            hit_result->ws_normal[2] = ws_normal.GetZ();
+
+        }
+    }
+}
+
+bool World::castRayCloset(ObjectLayer object_layer_pattern, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const {
+    JPH::RayCast ray(origin, direction);
+    JPH::RayCastResult hit;
+
+    JPH::BroadPhaseLayerFilter broad_phase_filter{};
+    AnyMatchObjectLayerFilter layer_filter(object_layer_pattern);
+    JPH::BodyFilter body_filter{};
+
+    bool has_hit = this->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit,
+                                                                       broad_phase_filter, layer_filter,
+                                                                       body_filter);
+    if (has_hit) {
+        convertRayHit(hit_result, ray, hit, this->physics_system->GetBodyLockInterface());
+    }
+
+    return has_hit;
+}
+
+bool World::castRayClosetIgnoreBody(ObjectLayer object_layer_pattern, JPH::BodyID ignore_body, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const {
+    JPH::RayCast ray(origin, direction);
+    JPH::RayCastResult hit;
+
+    JPH::BroadPhaseLayerFilter broad_phase_filter{};
+    AnyMatchObjectLayerFilter layer_filter(object_layer_pattern);
+    JPH::IgnoreSingleBodyFilter body_filter{JPH::BodyID(ignore_body)};
+
+    bool has_hit = this->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit,
+                                                                       broad_phase_filter, layer_filter,
+                                                                       body_filter);
+    if (has_hit) {
+        convertRayHit(hit_result, ray, hit, this->physics_system->GetBodyLockInterface());
+    }
+
+    return has_hit;
 }

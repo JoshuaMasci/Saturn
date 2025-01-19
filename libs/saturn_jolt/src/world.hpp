@@ -23,6 +23,10 @@ public:
 
     void removeBody(Body *body);
 
+    bool castRayCloset(ObjectLayer object_layer_pattern, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const;
+
+    bool castRayClosetIgnoreBody(ObjectLayer object_layer_pattern, JPH::BodyID ignore_body, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const;
+
     JPH::PhysicsSystem *physics_system;
 
 private:

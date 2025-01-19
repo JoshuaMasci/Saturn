@@ -6,7 +6,7 @@ pub const Components = @import("game.zig").NodeComponents;
 
 const Self = @This();
 
-pub const Pool = ObjectPool(u16, Self);
+pub const Pool = ObjectPool(Self);
 pub const Handle = Pool.Handle;
 
 handle: Handle,

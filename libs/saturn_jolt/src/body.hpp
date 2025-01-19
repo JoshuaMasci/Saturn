@@ -9,6 +9,11 @@
 
 #include <variant>
 
+struct SubShapeInfo {
+    uint32_t index;
+    UserData user_data;
+};
+
 struct SubShape {
     JPH::Ref<JPH::Shape> shape;
     JPH::Vec3 position;
@@ -52,6 +57,11 @@ public:
     void commitShapeChanges();
 
     JPH::BodyCreationSettings getCreateSettings();
+
+    UserData getUserData() const { return this->user_data; }
+
+    SubShapeInfo getSubShapeInfo(JPH::SubShapeID id) const;
+
 
     JPH::BodyID body_id;
     World *world_ptr = nullptr;

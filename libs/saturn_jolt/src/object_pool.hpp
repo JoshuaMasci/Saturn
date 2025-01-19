@@ -21,8 +21,16 @@ public:
         return this->pool[handle];
     }
 
+    const T &get(I handle) const {
+        return this->pool.at(handle);
+    }
+
     void remove(I handle) {
         this->pool.erase(handle);
+    }
+
+    bool contains(I handle) const {
+        return this->pool.find(handle) != this->end();
     }
 
     void clear() {

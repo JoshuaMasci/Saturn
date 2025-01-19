@@ -41,10 +41,20 @@ pub const Quat = c.Quat;
 pub const Transform = c.Transform;
 pub const Velocity = c.Velocity;
 
-pub const UserData32 = c.UserData32;
 pub const UserData = c.UserData;
 pub const ObjectLayer = c.ObjectLayer;
 pub const SubShapeIndex = c.SubShapeIndex;
+
+pub const RayCastHit = c.RayCastHit;
+// struct {
+//     body: Body,
+//     shape_index: SubShapeIndex,
+//     distance: f32,
+//     ws_position: RVec3,
+//     ws_normal: Vec3,
+//     body_user_data: UserData,
+//     shape_user_data: UserData,
+// };
 
 pub const Shape = struct {
     const Self = @This();
@@ -138,6 +148,22 @@ pub const World = struct {
     pub fn update(self: *Self, delta_time: f32, collisions_steps: i32) void {
         c.worldUpdate(self.ptr, delta_time, collisions_steps);
     }
+
+    pub fn castRayClosest(self: Self, object_layer_pattern: ObjectLayer, origin: [3]f32, direction: [3]f32) ?RayCastHit {
+        var hit: c.RayCastHit = .{};
+        return if (c.worldCastRayAll(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &hit))
+            hit
+        else
+            null;
+    }
+
+    pub fn castRayClosestIgnoreBody(self: Self, object_layer_pattern: ObjectLayer, ignore_body: Body, origin: [3]f32, direction: [3]f32) ?c.RayCastHit {
+        var hit: c.RayCastHit = .{};
+        return if (c.worldCastRayClosetIgnoreBody(self.ptr, object_layer_pattern, ignore_body.ptr, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &hit))
+            hit
+        else
+            null;
+    }
 };
 
 pub const Body = struct {
@@ -205,7 +231,7 @@ pub const Body = struct {
         c.bodySetVelocity(self.ptr, velocity);
     }
 
-    pub fn addShape(self: *Self, shape: Shape, transform: *const Transform, user_data: UserData32) SubShapeIndex {
+    pub fn addShape(self: *Self, shape: Shape, transform: *const Transform, user_data: UserData) SubShapeIndex {
         return c.bodyAddShape(self.ptr, shape.handle, transform, user_data);
     }
 

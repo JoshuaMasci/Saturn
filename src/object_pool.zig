@@ -1,34 +1,36 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn HandlePool(comptime IndexType: type, comptime T: type) type {
-    switch (@typeInfo(IndexType)) {
-        .Int => |info| {
-            if (info.signedness == .signed) {
-                @compileError("Invalid type for index: " ++ @typeName(IndexType) ++ ". Only unsigned ints may be used for index types");
-            }
-        },
-        else => {
-            @compileError("Invalid type for index: " ++ @typeName(IndexType) ++ ". Only unsigned ints may be used for index types");
-        },
-    }
-
+pub fn HandlePool(comptime T: type) type {
     return struct {
         const Self = @This();
 
         const ListEntry = struct {
-            revision: IndexType,
+            revision: u32,
+            next_freed: ?u32,
             value: ?T,
-            next_freed: ?IndexType,
         };
 
         pub const Handle = struct {
-            index: IndexType,
-            revision: IndexType,
+            index: u32,
+            revision: u32,
+
+            pub fn toU64(self: @This()) u64 {
+                const index = @as(u64, @intCast(self.index)) << 32;
+                const revision: u64 = @intCast(self.revision);
+                return index | revision;
+            }
+
+            pub fn fromU64(value: u64) @This() {
+                return .{
+                    .index = @intCast(value >> 32),
+                    .revision = @intCast(value & 0xFFFFFFFF),
+                };
+            }
         };
 
         list: std.ArrayList(ListEntry),
-        first_freed: ?IndexType,
+        first_freed: ?u32,
 
         pub fn init(allocator: Allocator) Self {
             return .{
@@ -65,8 +67,8 @@ pub fn HandlePool(comptime IndexType: type, comptime T: type) type {
                 self.first_freed = entry.next_freed;
                 entry.next_freed = null;
             } else {
-                const index: IndexType = @intCast(self.list.items.len);
-                const revision: IndexType = 0;
+                const index: u32 = @intCast(self.list.items.len);
+                const revision: u32 = 0;
                 try self.list.append(.{
                     .revision = revision,
                     .value = value,
@@ -94,7 +96,7 @@ pub fn HandlePool(comptime IndexType: type, comptime T: type) type {
             return null;
         }
 
-        fn append_freed_list(self: *Self, index: IndexType) void {
+        fn append_freed_list(self: *Self, index: u32) void {
             if (self.first_freed) |freed_index| {
                 var current_index = freed_index;
                 while (self.list.items[current_index].next_freed) |next_freed| {
@@ -142,7 +144,7 @@ pub fn HandlePool(comptime IndexType: type, comptime T: type) type {
         };
         pub const Iterator = struct {
             slice: []ListEntry,
-            index: IndexType,
+            index: u32,
 
             pub fn next(it: *Iterator) ?Entry {
                 if (it.index >= it.slice.len) return null;
