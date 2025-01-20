@@ -1,4 +1,6 @@
 const std = @import("std");
+
+const Entity = @import("entity.zig");
 const World = @import("world.zig");
 
 pub const UpdateStage = enum {
@@ -13,6 +15,8 @@ pub const UpdateStage = enum {
 const Self = @This();
 
 allocator: std.mem.Allocator,
+
+//entites: std.AutoHashMap(Entity.Handle, Entity),
 worlds: std.AutoHashMap(World.Handle, World),
 
 pub fn init(allocator: std.mem.Allocator) !Self {
@@ -25,7 +29,7 @@ pub fn init(allocator: std.mem.Allocator) !Self {
 pub fn deinit(self: *Self) void {
     var iter = self.worlds.valueIterator();
     while (iter.next()) |world| {
-        world.*.deinit();
+        world.deinit();
     }
     self.worlds.deinit();
 }

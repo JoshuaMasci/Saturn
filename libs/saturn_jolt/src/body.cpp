@@ -15,7 +15,7 @@ Body::Body(const BodySettings *settings) {
     this->angular_velocity = load_vec3(settings->angular_velocity);
 
     // Sets user_data to ptr so this object can always be accessed
-    this->user_data = (uint64_t) this;
+    this->user_data = settings->user_data;
     this->object_layer = settings->object_layer;
     this->motion_type = settings->motion_type;
     this->allow_sleep = settings->allow_sleep;
@@ -95,7 +95,7 @@ JPH::BodyCreationSettings Body::getCreateSettings() {
     settings.mRotation = rotation;
     settings.mLinearVelocity = linear_velocity;
     settings.mAngularVelocity = angular_velocity;
-    settings.mUserData = user_data;
+    settings.mUserData = (uint64_t) this; // Ptr to this is stored in mUserData
     settings.mObjectLayer = object_layer;
 
     switch (motion_type) {

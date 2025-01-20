@@ -4,6 +4,8 @@ pub const debug_camera = @import("engine/debug_camera.zig");
 
 const PerspectiveCamera = @import("../rendering/camera.zig").PerspectiveCamera;
 
+const Entity = @import("entity.zig");
+
 pub const WorldSystems = struct {
     const Self = @This();
 
@@ -28,6 +30,11 @@ pub const WorldSystems = struct {
         if (self.physics) |*system| {
             system.registerEntity(data);
         }
+    }
+
+    pub fn deregisterEntity(self: *Self, data: @import("world.zig").EntityRegisterData) void {
+        _ = self; // autofix
+        _ = data; // autofix
     }
 
     pub fn update(self: *Self, data: @import("world.zig").UpdateData) void {
@@ -57,19 +64,28 @@ pub const EntitySystems = struct {
         }
     }
 
-    pub fn update(self: *Self, data: @import("entity.zig").UpdateData) void {
+    pub fn updateParallel(self: *Self, data: Entity.ParallelUpdateData) void {
         if (self.debug_camera) |*system| {
-            system.update(data);
+            system.updateParallel(data);
         }
 
         if (self.physics) |*system| {
-            system.update(data);
+            system.updateParallel(data);
+        }
+    }
+
+    pub fn updateExclusive(self: *Self, data: Entity.ExclusiveUpdateData) void {
+        if (self.debug_camera) |*system| {
+            system.updateExclusive(data);
         }
     }
 };
+
+pub const AirLockComponent = struct {};
 
 pub const NodeComponents = struct {
     static_mesh: ?rendering.StaticMeshComponent = null,
     camera: ?PerspectiveCamera = null,
     collider: ?physics.PhysicsColliderComponent = null,
+    airlock: ?AirLockComponent = null,
 };

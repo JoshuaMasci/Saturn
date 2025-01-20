@@ -39,10 +39,11 @@ pub const PhysicsEntitySystem = struct {
     linear_velocity: za.Vec3 = za.Vec3.ZERO,
     angular_velocity: za.Vec3 = za.Vec3.ZERO,
 
-    pub fn init(motion_type: physics.MotionType) Self {
+    pub fn init(entity_handle: Entity.Handle, motion_type: physics.MotionType) Self {
         return .{
             .body = physics.Body.init(.{
                 .motion_type = motion_type,
+                .user_data = @intCast(entity_handle),
                 .object_layer = 1,
             }),
         };
@@ -73,7 +74,7 @@ pub const PhysicsEntitySystem = struct {
         self.body.commitShapeChanges();
     }
 
-    pub fn update(self: *Self, data: Entity.UpdateData) void {
+    pub fn updateParallel(self: *Self, data: Entity.ParallelUpdateData) void {
         if (data.stage == .pre_physics) {
             self.body.setTransform(&.{
                 .position = data.entity.transform.position.toArray(),

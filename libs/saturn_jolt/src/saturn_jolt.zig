@@ -97,7 +97,6 @@ pub const Shape = struct {
     pub fn initCompound(sub_shapes: []const SubShapeSettings, user_data: UserData) Self {
         //TODO: since Shape is currently a wrapper type, we can cast it to a c.SubShapeSettings without issue, may become a problem on diffrent platforms
         comptime std.debug.assert(@sizeOf(SubShapeSettings) == @sizeOf(c.SubShapeSettings));
-
         return .{
             .handle = c.shapeCreateCompound(@alignCast(@ptrCast(sub_shapes.ptr)), sub_shapes.len, user_data),
         };

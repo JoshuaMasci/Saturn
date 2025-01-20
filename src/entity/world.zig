@@ -46,7 +46,8 @@ pub fn addEntity(self: *Self, entity: Entity) Entity.Handle {
 pub fn update(self: *Self, stage: UpdateStage, delta_time: f32) void {
     //TODO: run in parallel
     for (self.entities.values()) |*entity| {
-        entity.update(stage, self, delta_time);
+        entity.updateParallel(stage, self, delta_time);
+        entity.updateExclusive(stage, self, delta_time);
     }
     self.systems.update(.{ .stage = stage, .world = self, .delta_time = delta_time });
 }
