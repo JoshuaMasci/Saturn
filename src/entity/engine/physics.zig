@@ -122,6 +122,12 @@ pub const PhysicsWorldSystem = struct {
         }
     }
 
+    pub fn deregisterEntity(self: *Self, data: World.EntityRegisterData) void {
+        if (data.entity.systems.physics) |*entity_physics| {
+            self.physics_world.removeBody(entity_physics.body);
+        }
+    }
+
     pub fn update(self: *Self, data: World.UpdateData) void {
         switch (data.stage) {
             .physics => self.simulatephysics(data),

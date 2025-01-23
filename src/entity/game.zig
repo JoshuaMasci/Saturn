@@ -33,8 +33,9 @@ pub const WorldSystems = struct {
     }
 
     pub fn deregisterEntity(self: *Self, data: @import("world.zig").EntityRegisterData) void {
-        _ = self; // autofix
-        _ = data; // autofix
+        if (self.physics) |*system| {
+            system.deregisterEntity(data);
+        }
     }
 
     pub fn update(self: *Self, data: @import("world.zig").UpdateData) void {

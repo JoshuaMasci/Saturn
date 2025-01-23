@@ -31,7 +31,7 @@ pub const RenderWorldSystem = struct {
 
         self.scene.clear();
 
-        for (data.world.entities.values()) |*entity| {
+        for (data.world.entities.values()) |entity| {
             updateEntityInstances(&self.scene, entity) catch |err| std.debug.panic("Failed to update scene entity: {}", .{err});
         }
     }

@@ -15,8 +15,8 @@ const rendering = @import("entity/engine/rendering.zig");
 const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
 const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
 
-pub fn create_debug_camera(allocator: std.mem.Allocator) !Entity {
-    var entity = Entity.init(allocator, .{});
+pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle) !Entity.Handle {
+    var entity = universe.createEntity();
     entity.transform.position = za.Vec3.Z.scale(1.0);
     entity.systems.debug_camera = .{ .pitch_yaw = za.Vec2.new(0.0, std.math.pi) };
     entity.systems.physics = physics.PhysicsEntitySystem.init(entity.handle, .dynamic);
@@ -24,25 +24,31 @@ pub fn create_debug_camera(allocator: std.mem.Allocator) !Entity {
         .camera = .{},
         .collider = .{ .shape = physics_system.Shape.initSphere(0.25, 1.0, 0) },
     });
-    entity.systems.physics.?.rebuildShape(&entity);
-    return entity;
+    entity.systems.physics.?.rebuildShape(entity);
+
+    if (world_opt) |world| {
+        universe.worlds.get(world).?.addEntity(entity);
+    }
+
+    return entity.handle;
 }
 
-pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
-    outside: World,
-    inside: World,
+pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !struct {
+    outside: World.Handle,
+    inside: World.Handle,
 } {
-    var outside_world = try World.init(allocator, .{});
-    outside_world.systems.physics = physics.PhysicsWorldSystem.init();
-    outside_world.systems.render = rendering.RenderWorldSystem.init(allocator);
-
-    var inside_world = try World.init(allocator, .{});
+    var inside_world = universe.createWorld();
     inside_world.systems.physics = physics.PhysicsWorldSystem.init();
     inside_world.systems.render = rendering.RenderWorldSystem.init(allocator);
 
-    var ship_inside = Entity.init(allocator, .{});
+    var outside_world = universe.createWorld();
+    outside_world.systems.physics = physics.PhysicsWorldSystem.init();
+    outside_world.systems.render = rendering.RenderWorldSystem.init(allocator);
+
+    var ship_inside = universe.createEntity();
     ship_inside.systems.physics = physics.PhysicsEntitySystem.init(ship_inside.handle, .static);
-    var ship_outside = Entity.init(allocator, .{});
+
+    var ship_outside = universe.createEntity();
     ship_outside.systems.physics = physics.PhysicsEntitySystem.init(ship_outside.handle, .dynamic);
 
     const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
@@ -54,11 +60,11 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
 
     const grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/grid.json_mat").?;
 
-    try addMeshToEntites(allocator, &ship_inside, &ship_outside, bridge_mesh_handle, grid_material_handle, .{});
-    try addMeshToEntites(allocator, &ship_inside, &ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{});
-    try addMeshToEntites(allocator, &ship_inside, &ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(5.0) });
-    try addMeshToEntites(allocator, &ship_inside, &ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(15.0) });
-    try addMeshToEntites(allocator, &ship_inside, &ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) });
+    try addMeshToEntites(allocator, ship_inside, ship_outside, bridge_mesh_handle, grid_material_handle, .{});
+    try addMeshToEntites(allocator, ship_inside, ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{});
+    try addMeshToEntites(allocator, ship_inside, ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(5.0) });
+    try addMeshToEntites(allocator, ship_inside, ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(15.0) });
+    try addMeshToEntites(allocator, ship_inside, ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) });
 
     //Custom Airlock Shape
     //    try addMeshToEntites(allocator, &ship_inside, &ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0) });
@@ -109,15 +115,15 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator) !struct {
         );
     }
 
-    ship_inside.systems.physics.?.rebuildShape(&ship_inside);
-    ship_outside.systems.physics.?.rebuildShape(&ship_outside);
+    ship_inside.systems.physics.?.rebuildShape(ship_inside);
+    ship_outside.systems.physics.?.rebuildShape(ship_outside);
 
-    _ = inside_world.addEntity(ship_inside);
-    _ = outside_world.addEntity(ship_outside);
+    inside_world.addEntity(ship_inside);
+    outside_world.addEntity(ship_outside);
 
     return .{
-        .outside = outside_world,
-        .inside = inside_world,
+        .outside = outside_world.handle,
+        .inside = inside_world.handle,
     };
 }
 

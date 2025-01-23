@@ -25,7 +25,6 @@ pub const App = struct {
 
     // New World System Test
     game_universe: Universe,
-    game_world_handle: World.Handle,
     game_debug_camera: Entity.Handle,
 
     timer: f32 = 0,
@@ -41,11 +40,8 @@ pub const App = struct {
 
         var game_universe = try Universe.init(global.global_allocator);
 
-        var game_worlds = try world_gen.create_ship_worlds(global.global_allocator);
-        const debug_entity = game_worlds.inside.addEntity(try world_gen.create_debug_camera(global.global_allocator));
-        const inside_world = try game_universe.addWorld(game_worlds.inside);
-        const outside_world = try game_universe.addWorld(game_worlds.outside);
-        _ = outside_world; // autofix
+        const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, &game_universe);
+        const debug_entity = try world_gen.create_debug_camera(&game_universe, game_worlds.inside);
 
         return .{
             .should_quit = false,
@@ -53,7 +49,6 @@ pub const App = struct {
             .render_thread = render_thread,
 
             .game_universe = game_universe,
-            .game_world_handle = inside_world,
             .game_debug_camera = debug_entity,
         };
     }
@@ -100,13 +95,15 @@ pub const App = struct {
         self.render_thread.beginFrame();
 
         self.render_thread.render_state.scene = null;
-        if (self.game_universe.worlds.get(self.game_world_handle)) |game_world| {
-            if (game_world.systems.render) |render_world| {
-                self.render_thread.render_state.scene = try render_world.scene.dupe(self.render_thread.render_state.temp_allocator.allocator());
-            }
+        if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
+            self.render_thread.render_state.camera_transform = game_debug_entity.transform;
 
-            if (game_world.entities.getPtr(self.game_debug_camera)) |debug_camera_entity| {
-                self.render_thread.render_state.camera_transform = debug_camera_entity.transform;
+            if (game_debug_entity.world_handle) |world_handle| {
+                if (self.game_universe.worlds.get(world_handle)) |game_world| {
+                    if (game_world.systems.render) |render_world| {
+                        self.render_thread.render_state.scene = try render_world.scene.dupe(self.render_thread.render_state.temp_allocator.allocator());
+                    }
+                }
             }
         }
 
@@ -122,22 +119,18 @@ pub const App = struct {
         }
 
         //std.log.info("Button {} -> {}", .{ event.button, event.state });
-        if (self.game_universe.worlds.getPtr(self.game_world_handle)) |game_world| {
-            if (game_world.entities.getPtr(self.game_debug_camera)) |game_debug_entity| {
-                if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
-                    debug_camera_system.on_button_event(event);
-                }
+        if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
+            if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
+                debug_camera_system.on_button_event(event);
             }
         }
     }
 
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
         //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
-        if (self.game_universe.worlds.getPtr(self.game_world_handle)) |game_world| {
-            if (game_world.entities.getPtr(self.game_debug_camera)) |game_debug_entity| {
-                if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
-                    debug_camera_system.on_axis_event(event);
-                }
+        if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
+            if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
+                debug_camera_system.on_axis_event(event);
             }
         }
     }

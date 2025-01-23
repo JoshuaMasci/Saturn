@@ -63,7 +63,7 @@ pub const DebugCameraEntitySystem = struct {
                         data.entity.transform.position,
                         data.entity.transform.get_forward().scale(10.0),
                     )) |hit| {
-                        const entity = data.world.entities.getPtr(hit.entity_handle).?;
+                        const entity = data.world.entities.get(hit.entity_handle).?;
                         const node = entity.nodes.pool.getPtr(hit.node_handle).?;
                         if (node.components.airlock != null) {
                             std.log.info("Hit Airlock!!!: {}", .{hit});

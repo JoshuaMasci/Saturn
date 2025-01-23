@@ -1,5 +1,6 @@
 const std = @import("std");
 const utils = @import("../utils.zig");
+const LockQueue = @import("../lock_queue.zig").LockQueue;
 
 const Entity = @import("entity.zig");
 const UpdateStage = @import("universe.zig").UpdateStage;
@@ -11,41 +12,41 @@ pub const EntityRegisterData = struct { world: *Self, entity: *Entity };
 const Self = @This();
 
 pub const Handle = u32;
-var next_handle = std.atomic.Value(Handle).init(1);
 
 allocator: std.mem.Allocator,
 handle: Handle,
-entities: std.AutoArrayHashMap(Entity.Handle, Entity),
+entities: std.AutoArrayHashMap(Entity.Handle, *Entity),
 systems: Systems = .{},
 
-pub fn init(allocator: std.mem.Allocator, systems: Systems) !Self {
+pub fn init(allocator: std.mem.Allocator, handle: Handle) !Self {
     return .{
         .allocator = allocator,
-        .handle = next_handle.fetchAdd(1, .monotonic), //TODO: is this the correct atomic order?,
-        .entities = std.AutoArrayHashMap(Entity.Handle, Entity).init(allocator),
-        .systems = systems,
+        .handle = handle,
+        .entities = std.AutoArrayHashMap(Entity.Handle, *Entity).init(allocator),
+        .systems = .{},
     };
 }
 
 pub fn deinit(self: *Self) void {
-    for (self.entities.values()) |*entity| {
-        entity.deinit();
+    for (self.entities.values()) |entity| {
+        self.systems.deregisterEntity(.{ .world = self, .entity = entity });
+        entity.world_handle = null;
     }
 
     self.entities.deinit();
     self.systems.deinit();
 }
 
-pub fn addEntity(self: *Self, entity: Entity) Entity.Handle {
+pub fn addEntity(self: *Self, entity: *Entity) void {
+    std.debug.assert(entity.world_handle == null);
     self.entities.put(entity.handle, entity) catch std.debug.panic("Failed to push entity to entity list", .{});
-    const ptr: *Entity = self.entities.getPtr(entity.handle).?;
-    self.systems.registerEntity(.{ .world = self, .entity = ptr });
-    return entity.handle;
+    self.systems.registerEntity(.{ .world = self, .entity = entity });
+    entity.world_handle = self.handle;
 }
 
 pub fn update(self: *Self, stage: UpdateStage, delta_time: f32) void {
     //TODO: run in parallel
-    for (self.entities.values()) |*entity| {
+    for (self.entities.values()) |entity| {
         entity.updateParallel(stage, self, delta_time);
         entity.updateExclusive(stage, self, delta_time);
     }

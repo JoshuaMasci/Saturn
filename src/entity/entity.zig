@@ -9,12 +9,14 @@ pub const Systems = @import("game.zig").EntitySystems;
 pub const ParallelUpdateData = struct { stage: UpdateStage, world: *const World, entity: *Self, delta_time: f32 };
 pub const ExclusiveUpdateData = struct { stage: UpdateStage, world: *World, entity: *Self, delta_time: f32 };
 
+const Pool = @import("../containers.zig").HandlePool(*Self);
+
 const Self = @This();
 
 pub const Handle = u64;
-var next_handle = std.atomic.Value(Handle).init(1);
 
 handle: Handle,
+world_handle: ?World.Handle = null,
 
 name: ?std.ArrayList(u8) = null,
 transform: Transform = .{},
@@ -23,11 +25,11 @@ nodes: Node.Nodes,
 
 systems: Systems = .{},
 
-pub fn init(allocator: std.mem.Allocator, systems: Systems) Self {
+pub fn init(allocator: std.mem.Allocator, handle: Handle) Self {
     return .{
-        .handle = next_handle.fetchAdd(1, .monotonic), //TODO: is this the correct atomic order?
+        .handle = handle,
         .nodes = Node.Nodes.init(allocator),
-        .systems = systems,
+        .systems = .{},
     };
 }
 

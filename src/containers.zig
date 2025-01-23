@@ -190,20 +190,22 @@ pub fn HandlePool(comptime T: type) type {
 
 pub fn ObjectPool(comptime T: type) type {
     return struct {
-        const List = std.TailQueue(T);
+        const Self = @This();
+
+        const List = std.DoublyLinkedList(T);
 
         arena: std.heap.ArenaAllocator,
         free: List = .{},
 
-        pub fn init(allocator: std.mem.Allocator) @This() {
+        pub fn init(allocator: std.mem.Allocator) Self {
             return .{ .arena = std.heap.ArenaAllocator.init(allocator) };
         }
 
-        pub fn deinit(self: *@This()) void {
+        pub fn deinit(self: *Self) void {
             self.arena.deinit();
         }
 
-        pub fn new(self: *@This()) !*T {
+        pub fn new(self: *Self) !*T {
             const obj = if (self.free.popFirst()) |item|
                 item
             else
@@ -211,9 +213,145 @@ pub fn ObjectPool(comptime T: type) type {
             return &obj.data;
         }
 
-        pub fn delete(self: *@This(), obj: *T) void {
+        pub fn delete(self: *Self, obj: *T) void {
             const node: *List.Node = @fieldParentPtr("data", obj);
             self.free.append(node);
+        }
+    };
+}
+
+pub fn HandlePtrPool(comptime Handle: type, comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        mutex: std.Thread.Mutex,
+        pool: ObjectPool(T),
+        map: std.AutoArrayHashMap(Handle, *T),
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return Self{
+                .pool = ObjectPool(T).init(allocator),
+                .map = std.AutoArrayHashMap(Handle, *T).init(allocator),
+                .mutex = .{},
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.mutex.lock();
+
+            if (comptime std.meta.hasFn(T, "deinit")) {
+                for (self.map.values()) |value| {
+                    value.deinit();
+                }
+            }
+
+            self.pool.deinit();
+            self.map.deinit();
+        }
+
+        pub fn create(self: *Self, handle: Handle) *T {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            // Check if the object is already created
+            if (self.map.contains(handle)) {
+                std.debug.panic("Handle({}) already exists in map", .{handle});
+            }
+
+            // Create a new object from the pool
+            const obj = self.pool.new() catch |err| std.debug.panic("Failed to alloc from pool: {}", .{err});
+            self.map.put(handle, obj) catch |err| std.debug.panic("Failed to insert into map: {}", .{err});
+            return obj;
+        }
+
+        pub fn destroy(self: *Self, handle: Handle) void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            // Remove the object from the map
+            if (self.map.contains(handle)) {
+                const value = self.map.get(handle) orelse return;
+
+                if (comptime std.meta.hasFn(T, "deinit")) {
+                    value.deinit();
+                }
+
+                self.pool.delete(value);
+                self.map.remove(handle);
+            }
+        }
+
+        pub fn get(self: *Self, handle: Handle) ?*T {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            return self.map.get(handle);
+        }
+
+        pub fn getValues(self: *Self, allocator: std.mem.Allocator) []*T {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            const src_values = self.map.values();
+            const values = allocator.alloc(*T, src_values.len) catch |err| std.debug.panic("Failed to alloc from temp list: {}", .{err});
+            @memcpy(values, src_values);
+            return values;
+        }
+    };
+}
+
+pub fn LockQueue(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        pub const LockedList = struct {
+            mutex: *std.Thread.Mutex,
+            list: []T,
+
+            pub fn deinit(self: @This()) void {
+                self.mutex.unlock();
+            }
+        };
+
+        mutex: std.Thread.Mutex,
+        list: std.ArrayList(T),
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return .{
+                .mutex = .{},
+                .list = std.ArrayList(T).init(allocator),
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.mutex.lock();
+            self.list.deinit();
+        }
+
+        pub fn push(self: *Self, value: T) !void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            try self.list.append(value);
+        }
+
+        pub fn pop(self: *Self) ?T {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            return self.list.popOrNull();
+        }
+
+        pub fn popAll(self: *Self) ?LockedList {
+            self.mutex.lock();
+
+            if (self.list.items.len == 0) {
+                self.mutex.unlock();
+                return null;
+            }
+
+            return .{
+                .mutex = &self.mutex,
+                .list = self.list.items,
+            };
         }
     };
 }

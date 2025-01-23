@@ -1,6 +1,6 @@
 const std = @import("std");
 const Transform = @import("../transform.zig");
-const ObjectPool = @import("../object_pool.zig").HandlePool;
+const ObjectPool = @import("../containers.zig").HandlePool;
 
 pub const Components = @import("game.zig").NodeComponents;
 
