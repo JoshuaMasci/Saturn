@@ -6,49 +6,6 @@ const PerspectiveCamera = @import("../rendering/camera.zig").PerspectiveCamera;
 
 const Entity = @import("entity.zig");
 
-pub const WorldSystems = struct {
-    const Self = @This();
-
-    render: ?rendering.RenderWorldSystem = null,
-    physics: ?physics.PhysicsWorldSystem = null,
-
-    pub fn deinit(self: *Self) void {
-        if (self.render) |*system| {
-            system.deinit();
-        }
-
-        if (self.physics) |*system| {
-            system.deinit();
-        }
-    }
-
-    pub fn registerEntity(self: *Self, data: @import("world.zig").EntityRegisterData) void {
-        if (self.render) |*system| {
-            system.registerEntity(data);
-        }
-
-        if (self.physics) |*system| {
-            system.registerEntity(data);
-        }
-    }
-
-    pub fn deregisterEntity(self: *Self, data: @import("world.zig").EntityRegisterData) void {
-        if (self.physics) |*system| {
-            system.deregisterEntity(data);
-        }
-    }
-
-    pub fn update(self: *Self, data: @import("world.zig").UpdateData) void {
-        if (self.render) |*system| {
-            system.update(data);
-        }
-
-        if (self.physics) |*system| {
-            system.update(data);
-        }
-    }
-};
-
 pub const EntitySystems = struct {
     const Self = @This();
 

@@ -20,18 +20,27 @@ pub const RenderWorldSystem = struct {
         self.scene.deinit();
     }
 
-    pub fn registerEntity(self: *Self, data: World.EntityRegisterData) void {
+    pub fn registerEntity(self: *Self, world: *World, entity: *Entity) void {
+        _ = world; // autofix
+        _ = entity; // autofix
         _ = self; // autofix
-        _ = data; // autofix
     }
 
-    pub fn update(self: *Self, data: World.UpdateData) void {
-        if (data.stage != .pre_render)
+    pub fn deregisterEntity(self: *Self, world: *World, entity: *Entity) void {
+        _ = world; // autofix
+        _ = entity; // autofix
+        _ = self; // autofix
+    }
+
+    pub fn update(self: *Self, stage: UpdateStage, world: *World, delta_time: f32) void {
+        _ = delta_time; // autofix
+
+        if (stage != .pre_render)
             return;
 
         self.scene.clear();
 
-        for (data.world.entities.values()) |entity| {
+        for (world.entities.values()) |entity| {
             updateEntityInstances(&self.scene, entity) catch |err| std.debug.panic("Failed to update scene entity: {}", .{err});
         }
     }

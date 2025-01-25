@@ -6,6 +6,8 @@ const Entity = @import("../entity.zig");
 
 const input = @import("../../input.zig");
 
+const physics = @import("physics.zig");
+
 pub const DebugCameraEntitySystem = struct {
     const Self = @This();
 
@@ -56,7 +58,7 @@ pub const DebugCameraEntitySystem = struct {
     pub fn updateExclusive(self: *Self, data: Entity.ExclusiveUpdateData) void {
         if (data.stage == .post_physics) {
             if (self.cast_ray) {
-                if (data.world.systems.physics) |physics_world| {
+                if (data.world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
                     if (physics_world.castRayIgnoreEntity(
                         1,
                         data.entity,

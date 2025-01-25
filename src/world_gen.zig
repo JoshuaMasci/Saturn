@@ -38,12 +38,12 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     inside: World.Handle,
 } {
     var inside_world = universe.createWorld();
-    inside_world.systems.physics = physics.PhysicsWorldSystem.init();
-    inside_world.systems.render = rendering.RenderWorldSystem.init(allocator);
+    inside_world.systems.add(physics.PhysicsWorldSystem.init());
+    inside_world.systems.add(rendering.RenderWorldSystem.init(allocator));
 
     var outside_world = universe.createWorld();
-    outside_world.systems.physics = physics.PhysicsWorldSystem.init();
-    outside_world.systems.render = rendering.RenderWorldSystem.init(allocator);
+    outside_world.systems.add(physics.PhysicsWorldSystem.init());
+    outside_world.systems.add(rendering.RenderWorldSystem.init(allocator));
 
     var ship_inside = universe.createEntity();
     ship_inside.systems.physics = physics.PhysicsEntitySystem.init(ship_inside.handle, .static);

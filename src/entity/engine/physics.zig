@@ -7,6 +7,8 @@ const Entity = @import("../entity.zig");
 const World = @import("../world.zig");
 const UpdateStage = @import("../universe.zig").UpdateStage;
 
+const WorldSystem = @import("../world_system.zig");
+
 const physics = @import("physics");
 
 pub const RayCastHit = struct {
@@ -116,27 +118,30 @@ pub const PhysicsWorldSystem = struct {
         self.physics_world.deinit();
     }
 
-    pub fn registerEntity(self: *Self, data: World.EntityRegisterData) void {
-        if (data.entity.systems.physics) |*entity_physics| {
+    pub fn registerEntity(self: *Self, world: *World, entity: *Entity) void {
+        _ = world; // autofix
+        if (entity.systems.physics) |*entity_physics| {
             self.physics_world.addBody(entity_physics.body);
         }
     }
 
-    pub fn deregisterEntity(self: *Self, data: World.EntityRegisterData) void {
-        if (data.entity.systems.physics) |*entity_physics| {
+    pub fn deregisterEntity(self: *Self, world: *World, entity: *Entity) void {
+        _ = world; // autofix
+        if (entity.systems.physics) |*entity_physics| {
             self.physics_world.removeBody(entity_physics.body);
         }
     }
 
-    pub fn update(self: *Self, data: World.UpdateData) void {
-        switch (data.stage) {
-            .physics => self.simulatephysics(data),
+    pub fn update(self: *Self, stage: UpdateStage, world: *World, delta_time: f32) void {
+        _ = world; // autofix
+        switch (stage) {
+            .physics => self.simulatephysics(delta_time),
             else => {},
         }
     }
 
-    pub fn simulatephysics(self: *Self, data: World.UpdateData) void {
-        self.physics_world.update(data.delta_time, 1);
+    pub fn simulatephysics(self: *Self, delta_time: f32) void {
+        self.physics_world.update(delta_time, 1);
     }
 
     pub fn castRay(self: Self, object_layer: u16, start: za.Vec3, direction: za.Vec3) ?RayCastHit {

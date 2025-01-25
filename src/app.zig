@@ -100,7 +100,8 @@ pub const App = struct {
 
             if (game_debug_entity.world_handle) |world_handle| {
                 if (self.game_universe.worlds.get(world_handle)) |game_world| {
-                    if (game_world.systems.render) |render_world| {
+                    const rendering = @import("entity/engine/rendering.zig");
+                    if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
                         self.render_thread.render_state.scene = try render_world.scene.dupe(self.render_thread.render_state.temp_allocator.allocator());
                     }
                 }

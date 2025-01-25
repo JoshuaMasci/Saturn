@@ -10,6 +10,10 @@
     },
     .dependencies = .{
         .saturn_jolt = .{ .path = "libs/saturn_jolt" },
+        .sdl3 = .{
+            .url = "git+https://github.com/castholm/SDL.git#bbc8dfb78c2a71f10b21548b58dfe5ac46cc3fef",
+            .hash = "122046c6dcdcf941e6e5b1e8fa273185d04420e56436d47b906308eaf70208222f59",
+        },
         .zalgebra = .{
             .url = "https://github.com/JoshuaMasci/zalgebra/archive/8ee8402.tar.gz",
             .hash = "12206f6e0c673d4fc52c5852434501b897b1f054cdf55442a53f793b9fd1fc31b6f1",
@@ -23,7 +27,6 @@
             .url = "git+https://github.com/chip2n/zig-obj.git#4ce054733812eb0b28d97adb0ea1f66f21fd41c8",
             .hash = "12205e75ae77fad4d4d2e1b6489270612d8e44c8b9268580f0c9123f0f2fc7175a74",
         },
-
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
         .zstbi = .{ .path = "libs/zig-gamedev/libs/zstbi" },
