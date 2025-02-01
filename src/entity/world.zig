@@ -4,7 +4,6 @@ const utils = @import("../utils.zig");
 const Entity = @import("entity.zig");
 const UpdateStage = @import("universe.zig").UpdateStage;
 
-const type_id = @import("../type_id.zig");
 const WorldSystem = @import("world_system.zig");
 
 pub const Systems = @import("game.zig").WorldSystems;

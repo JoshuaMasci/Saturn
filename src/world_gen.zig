@@ -11,6 +11,7 @@ const World = @import("entity/world.zig");
 const Entity = @import("entity/entity.zig");
 const physics = @import("entity/engine/physics.zig");
 const rendering = @import("entity/engine/rendering.zig");
+const DebugCameraEntitySystem = @import("entity/engine//debug_camera.zig").DebugCameraEntitySystem;
 
 const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
 const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
@@ -18,13 +19,13 @@ const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
 pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle) !Entity.Handle {
     var entity = universe.createEntity();
     entity.transform.position = za.Vec3.Z.scale(1.0);
-    entity.systems.debug_camera = .{ .pitch_yaw = za.Vec2.new(0.0, std.math.pi) };
-    entity.systems.physics = physics.PhysicsEntitySystem.init(entity.handle, .dynamic);
-    entity.systems.debug_camera.?.camera_node = try entity.nodes.addNode(null, .{}, .{
+    entity.systems.add(DebugCameraEntitySystem{ .pitch_yaw = za.Vec2.new(0.0, std.math.pi) });
+    entity.systems.add(physics.PhysicsEntitySystem.init(entity.handle, .dynamic));
+    entity.systems.get(DebugCameraEntitySystem).?.camera_node = try entity.nodes.addNode(null, .{}, .{
         .camera = .{},
         .collider = .{ .shape = physics_system.Shape.initSphere(0.25, 1.0, 0) },
     });
-    entity.systems.physics.?.rebuildShape(entity);
+    entity.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(entity);
 
     if (world_opt) |world| {
         universe.worlds.get(world).?.addEntity(entity);
@@ -46,10 +47,10 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     outside_world.systems.add(rendering.RenderWorldSystem.init(allocator));
 
     var ship_inside = universe.createEntity();
-    ship_inside.systems.physics = physics.PhysicsEntitySystem.init(ship_inside.handle, .static);
+    ship_inside.systems.add(physics.PhysicsEntitySystem.init(ship_inside.handle, .static));
 
     var ship_outside = universe.createEntity();
-    ship_outside.systems.physics = physics.PhysicsEntitySystem.init(ship_outside.handle, .dynamic);
+    ship_outside.systems.add(physics.PhysicsEntitySystem.init(ship_outside.handle, .dynamic));
 
     const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
     const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge_glass.mesh").?;
@@ -115,8 +116,8 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
         );
     }
 
-    ship_inside.systems.physics.?.rebuildShape(ship_inside);
-    ship_outside.systems.physics.?.rebuildShape(ship_outside);
+    ship_inside.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(ship_inside);
+    ship_outside.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(ship_outside);
 
     inside_world.addEntity(ship_inside);
     outside_world.addEntity(ship_outside);

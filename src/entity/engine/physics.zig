@@ -76,25 +76,35 @@ pub const PhysicsEntitySystem = struct {
         self.body.commitShapeChanges();
     }
 
-    pub fn updateParallel(self: *Self, data: Entity.ParallelUpdateData) void {
-        if (data.stage == .pre_physics) {
+    pub fn updateParallel(self: *Self, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void {
+        _ = world; // autofix
+        _ = delta_time; // autofix
+        if (stage == .pre_physics) {
             self.body.setTransform(&.{
-                .position = data.entity.transform.position.toArray(),
-                .rotation = data.entity.transform.rotation.norm().toArray(),
+                .position = entity.transform.position.toArray(),
+                .rotation = entity.transform.rotation.norm().toArray(),
             });
             self.body.setVelocity(&.{
                 .linear = self.linear_velocity.toArray(),
                 .angular = self.angular_velocity.toArray(),
             });
-        } else if (data.stage == .post_physics) {
+        } else if (stage == .post_physics) {
             const transform = self.body.getTransform();
-            data.entity.transform.position = za.Vec3.fromArray(transform.position);
-            data.entity.transform.rotation = za.Quat.fromArray(transform.rotation).norm();
+            entity.transform.position = za.Vec3.fromArray(transform.position);
+            entity.transform.rotation = za.Quat.fromArray(transform.rotation).norm();
 
             const velocity = self.body.getVelocity();
             self.linear_velocity = za.Vec3.fromArray(velocity.linear);
             self.angular_velocity = za.Vec3.fromArray(velocity.angular);
         }
+    }
+
+    pub fn updateExclusive(self: *Self, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void {
+        _ = self; // autofix
+        _ = stage; // autofix
+        _ = entity; // autofix
+        _ = world; // autofix
+        _ = delta_time; // autofix
     }
 };
 
@@ -120,14 +130,14 @@ pub const PhysicsWorldSystem = struct {
 
     pub fn registerEntity(self: *Self, world: *World, entity: *Entity) void {
         _ = world; // autofix
-        if (entity.systems.physics) |*entity_physics| {
+        if (entity.systems.get(PhysicsEntitySystem)) |entity_physics| {
             self.physics_world.addBody(entity_physics.body);
         }
     }
 
     pub fn deregisterEntity(self: *Self, world: *World, entity: *Entity) void {
         _ = world; // autofix
-        if (entity.systems.physics) |*entity_physics| {
+        if (entity.systems.get(PhysicsEntitySystem)) |entity_physics| {
             self.physics_world.removeBody(entity_physics.body);
         }
     }

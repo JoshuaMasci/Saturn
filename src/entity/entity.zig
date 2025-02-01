@@ -9,6 +9,8 @@ pub const Systems = @import("game.zig").EntitySystems;
 pub const ParallelUpdateData = struct { stage: UpdateStage, world: *const World, entity: *Self, delta_time: f32 };
 pub const ExclusiveUpdateData = struct { stage: UpdateStage, world: *World, entity: *Self, delta_time: f32 };
 
+const EntitySystem = @import("enitty_system.zig");
+
 const Pool = @import("../containers.zig").HandlePool(*Self);
 
 const Self = @This();
@@ -23,13 +25,13 @@ transform: Transform = .{},
 
 nodes: Node.Nodes,
 
-systems: Systems = .{},
+systems: EntitySystem.Systems,
 
 pub fn init(allocator: std.mem.Allocator, handle: Handle) Self {
     return .{
         .handle = handle,
         .nodes = Node.Nodes.init(allocator),
-        .systems = .{},
+        .systems = EntitySystem.Systems.init(allocator),
     };
 }
 
@@ -42,11 +44,11 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn updateParallel(self: *Self, stage: UpdateStage, world: *const World, delta_time: f32) void {
-    self.systems.updateParallel(.{ .stage = stage, .world = world, .entity = self, .delta_time = delta_time });
+    self.systems.updateParallel(stage, self, world, delta_time);
 }
 
 pub fn updateExclusive(self: *Self, stage: UpdateStage, world: *World, delta_time: f32) void {
-    self.systems.updateExclusive(.{ .stage = stage, .world = world, .entity = self, .delta_time = delta_time });
+    self.systems.updateExclusive(stage, self, world, delta_time);
 }
 
 //TODO: Implement this in world update scheduling
