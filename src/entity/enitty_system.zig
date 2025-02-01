@@ -119,10 +119,12 @@ pub const Systems = struct {
         return null;
     }
 
-    pub fn updateParallel(self: *Systems, temp_allocator: std.mem.Allocator, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void {
+    pub fn updateParallel(self: *Systems, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void {
         const systems = self.systems.values();
-        const temp_systems = temp_allocator.alloc(Self, systems.len) catch |err| std.debug.panic("Failed to allocate temp list: {}", .{err});
-        defer temp_allocator.free(temp_systems);
+
+        var temp_systems16: [16]Self = undefined;
+        std.debug.assert(systems.len <= temp_systems16.len);
+        const temp_systems = temp_systems16[0..systems.len];
         @memcpy(temp_systems, systems);
 
         for (temp_systems) |system| {
@@ -130,10 +132,12 @@ pub const Systems = struct {
         }
     }
 
-    pub fn updateExclusive(self: *Systems, temp_allocator: std.mem.Allocator, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void {
+    pub fn updateExclusive(self: *Systems, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void {
         const systems = self.systems.values();
-        const temp_systems = temp_allocator.alloc(Self, systems.len) catch |err| std.debug.panic("Failed to allocate temp list: {}", .{err});
-        defer temp_allocator.free(temp_systems);
+
+        var temp_systems16: [16]Self = undefined;
+        std.debug.assert(systems.len <= temp_systems16.len);
+        const temp_systems = temp_systems16[0..systems.len];
         @memcpy(temp_systems, systems);
 
         for (temp_systems) |system| {

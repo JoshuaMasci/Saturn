@@ -72,7 +72,7 @@ pub const DebugCameraEntitySystem = struct {
                     )) |hit| {
                         const hit_entity = world.entities.get(hit.entity_handle).?;
                         const node = hit_entity.nodes.pool.getPtr(hit.node_handle).?;
-                        if (node.components.airlock != null) {
+                        if (node.components.get(@import("../game.zig").AirLockComponent) != null) {
                             std.log.info("Hit Airlock!!!: {}", .{hit});
                         }
                     }

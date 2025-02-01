@@ -113,6 +113,8 @@ pub const App = struct {
         self.game_universe.update(.frame_end, delta_time);
     }
 
+    const DebugCamera = @import("entity/engine/debug_camera.zig").DebugCameraEntitySystem;
+
     pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
         if (event.button == .renderer_reload and event.state == .pressed) {
             self.render_thread.reload();
@@ -121,7 +123,7 @@ pub const App = struct {
 
         //std.log.info("Button {} -> {}", .{ event.button, event.state });
         if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
-            if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
+            if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
                 debug_camera_system.on_button_event(event);
             }
         }
@@ -130,7 +132,7 @@ pub const App = struct {
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
         //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
         if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
-            if (game_debug_entity.systems.debug_camera) |*debug_camera_system| {
+            if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
                 debug_camera_system.on_axis_event(event);
             }
         }

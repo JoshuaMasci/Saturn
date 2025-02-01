@@ -60,7 +60,7 @@ pub const PhysicsEntitySystem = struct {
 
         var iter = entity.nodes.pool.iterator();
         while (iter.next()) |entry| {
-            if (entry.value_ptr.components.collider) |collider| {
+            if (entry.value_ptr.components.get(PhysicsColliderComponent)) |collider| {
                 var node_transform: Transform = entity.nodes.getNodeRootTransform(entry.handle) orelse .{};
                 _ = self.body.addShape(
                     collider.shape,
@@ -163,7 +163,7 @@ pub const PhysicsWorldSystem = struct {
 
     pub fn castRayIgnoreEntity(self: Self, object_layer: u16, ignore: *Entity, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
         //TODO: this should log error rather than crash?
-        const ignore_body = ignore.systems.physics.?.body;
+        const ignore_body = ignore.systems.get(PhysicsEntitySystem).?.body;
         const start_a = start.toArray();
         const direction_a = direction.toArray();
 

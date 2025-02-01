@@ -48,7 +48,7 @@ pub const RenderWorldSystem = struct {
     fn updateEntityInstances(scene: *rendering_scene.RenderScene, entity: *const Entity) !void {
         var iter = entity.nodes.pool.iterator();
         while (iter.next()) |entry| {
-            if (entry.value_ptr.components.static_mesh) |*static_mesh_component| {
+            if (entry.value_ptr.components.get(StaticMeshComponent)) |static_mesh_component| {
                 const root_transform = entity.nodes.getNodeRootTransform(entry.handle).?;
                 const world_transform = entity.transform.transform_by(&root_transform);
                 try scene.static_meshes.append(.{

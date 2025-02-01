@@ -21,10 +21,12 @@ pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle) !Entit
     entity.transform.position = za.Vec3.Z.scale(1.0);
     entity.systems.add(DebugCameraEntitySystem{ .pitch_yaw = za.Vec2.new(0.0, std.math.pi) });
     entity.systems.add(physics.PhysicsEntitySystem.init(entity.handle, .dynamic));
-    entity.systems.get(DebugCameraEntitySystem).?.camera_node = try entity.nodes.addNode(null, .{}, .{
-        .camera = .{},
-        .collider = .{ .shape = physics_system.Shape.initSphere(0.25, 1.0, 0) },
-    });
+    var root_node = entity.nodes.addNode(null, .{});
+
+    root_node.components.add(@import("rendering/camera.zig").PerspectiveCamera{});
+    root_node.components.add(physics.PhysicsColliderComponent{ .shape = physics_system.Shape.initSphere(0.25, 1.0, 0) });
+
+    entity.systems.get(DebugCameraEntitySystem).?.camera_node = root_node.handle;
     entity.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(entity);
 
     if (world_opt) |world| {
@@ -76,23 +78,13 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
 
         const airlock_shape = create_airlock_shape();
 
-        _ = try ship_inside.nodes.addNode(
-            null,
-            transform,
-            .{
-                .static_mesh = .{ .mesh = mesh, .material = material },
-                .collider = .{ .shape = airlock_shape },
-            },
-        );
+        var inside_node = ship_inside.nodes.addNode(null, transform);
+        inside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+        inside_node.components.add(physics.PhysicsColliderComponent{ .shape = airlock_shape });
 
-        _ = try ship_outside.nodes.addNode(
-            null,
-            transform,
-            .{
-                .static_mesh = .{ .mesh = mesh, .material = material },
-                .collider = .{ .shape = airlock_shape },
-            },
-        );
+        var outside_node = ship_outside.nodes.addNode(null, transform);
+        outside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+        outside_node.components.add(physics.PhysicsColliderComponent{ .shape = airlock_shape });
     }
 
     // Airlock Doors
@@ -105,15 +97,10 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
         const transform: Transform = .{ .position = za.Vec3.new(5.0, 0.0, -15.0), .scale = size };
         const door_box = physics_system.Shape.initBox(size.data, 1.0, 0);
 
-        _ = try ship_inside.nodes.addNode(
-            null,
-            transform,
-            .{
-                .static_mesh = .{ .mesh = mesh, .material = material },
-                .collider = .{ .shape = door_box },
-                .airlock = .{},
-            },
-        );
+        var inside_node = ship_inside.nodes.addNode(null, transform);
+        inside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+        inside_node.components.add(physics.PhysicsColliderComponent{ .shape = door_box });
+        inside_node.components.add(@import("entity/game.zig").AirLockComponent{});
     }
 
     ship_inside.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(ship_inside);
@@ -148,23 +135,13 @@ fn addMeshToEntites(allocator: std.mem.Allocator, inside: *Entity, outside: *Ent
     std.debug.assert(global.assets.materials.isValid(material));
 
     const mesh_shapes = try PhysicsMeshes.fromHandle(allocator, mesh);
-    _ = try inside.nodes.addNode(
-        null,
-        transform,
-        .{
-            .static_mesh = .{ .mesh = mesh, .material = material },
-            .collider = .{ .shape = mesh_shapes.mesh_shape },
-        },
-    );
+    var inside_node = inside.nodes.addNode(null, transform);
+    inside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+    inside_node.components.add(physics.PhysicsColliderComponent{ .shape = mesh_shapes.mesh_shape });
 
-    _ = try outside.nodes.addNode(
-        null,
-        transform,
-        .{
-            .static_mesh = .{ .mesh = mesh, .material = material },
-            .collider = .{ .shape = mesh_shapes.convex_shape },
-        },
-    );
+    var outside_node = outside.nodes.addNode(null, transform);
+    outside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+    outside_node.components.add(physics.PhysicsColliderComponent{ .shape = mesh_shapes.convex_shape });
 }
 
 fn create_airlock_shape() physics_system.Shape {
