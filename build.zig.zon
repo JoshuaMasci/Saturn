@@ -27,8 +27,11 @@
             .url = "git+https://github.com/chip2n/zig-obj.git#4ce054733812eb0b28d97adb0ea1f66f21fd41c8",
             .hash = "12205e75ae77fad4d4d2e1b6489270612d8e44c8b9268580f0c9123f0f2fc7175a74",
         },
+        .zstbi = .{
+            .url = "git+https://github.com/zig-gamedev/zstbi.git#bcbd249f3f57fb84d6d76f1bc621c7bd3bfaa4a2",
+            .hash = "12208b7d15a730294a7d8ee3a9d3ef145e109f94d0a68be7f0ee282e0630ede093d5",
+        },
         .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
         .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
-        .zstbi = .{ .path = "libs/zig-gamedev/libs/zstbi" },
     },
 }
