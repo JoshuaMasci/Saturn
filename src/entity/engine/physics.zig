@@ -76,8 +76,7 @@ pub const PhysicsEntitySystem = struct {
         self.body.commitShapeChanges();
     }
 
-    pub fn updateParallel(self: *Self, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void {
-        _ = world; // autofix
+    pub fn updateParallel(self: *Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
         _ = delta_time; // autofix
         if (stage == .pre_physics) {
             self.body.setTransform(&.{
@@ -99,11 +98,10 @@ pub const PhysicsEntitySystem = struct {
         }
     }
 
-    pub fn updateExclusive(self: *Self, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void {
+    pub fn updateExclusive(self: *Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
         _ = self; // autofix
         _ = stage; // autofix
         _ = entity; // autofix
-        _ = world; // autofix
         _ = delta_time; // autofix
     }
 };

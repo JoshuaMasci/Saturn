@@ -50,7 +50,7 @@ pub const RenderWorldSystem = struct {
         while (iter.next()) |entry| {
             if (entry.value_ptr.components.get(StaticMeshComponent)) |static_mesh_component| {
                 const root_transform = entity.nodes.getNodeRootTransform(entry.handle).?;
-                const world_transform = entity.transform.transform_by(&root_transform);
+                const world_transform = entity.transform.applyTransform(&root_transform);
                 try scene.static_meshes.append(.{
                     .transform = world_transform,
                     .component = static_mesh_component.*,

@@ -17,18 +17,18 @@ pub fn free(self: Self, allocator: std.mem.Allocator) void {
     self.vtable.free_ptr(self.ptr, allocator);
 }
 
-pub fn updateParallel(self: Self, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void {
-    self.vtable.updateParallel(self.ptr, stage, entity, world, delta_time);
+pub fn updateParallel(self: Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
+    self.vtable.updateParallel(self.ptr, stage, entity, delta_time);
 }
 
-pub fn updateExclusive(self: Self, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void {
-    self.vtable.updateExclusive(self.ptr, stage, entity, world, delta_time);
+pub fn updateExclusive(self: Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
+    self.vtable.updateExclusive(self.ptr, stage, entity, delta_time);
 }
 
 pub const VTable = struct {
     deinit: *const fn (ctx: *anyopaque) void,
-    updateParallel: *const fn (ctx: *anyopaque, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void,
-    updateExclusive: *const fn (ctx: *anyopaque, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void,
+    updateParallel: *const fn (ctx: *anyopaque, stage: UpdateStage, entity: *Entity, delta_time: f32) void,
+    updateExclusive: *const fn (ctx: *anyopaque, stage: UpdateStage, entity: *Entity, delta_time: f32) void,
     free_ptr: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
 
     pub inline fn implVTable(comptime T: type) *const VTable {
@@ -49,14 +49,14 @@ pub const VTable = struct {
                 self.deinit();
             }
 
-            fn updateParallel(ctx: *anyopaque, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void {
+            fn updateParallel(ctx: *anyopaque, stage: UpdateStage, entity: *Entity,  delta_time: f32) void {
                 var self: *T = @ptrCast(@alignCast(ctx));
-                self.updateParallel(stage, entity, world, delta_time);
+                self.updateParallel(stage, entity, delta_time);
             }
 
-            fn updateExclusive(ctx: *anyopaque, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void {
+            fn updateExclusive(ctx: *anyopaque, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
                 var self: *T = @ptrCast(@alignCast(ctx));
-                self.updateExclusive(stage, entity, world, delta_time);
+                self.updateExclusive(stage, entity, delta_time);
             }
 
             fn freePtrWrapper(ctx: *anyopaque, allocator: std.mem.Allocator) void {
@@ -119,7 +119,7 @@ pub const Systems = struct {
         return null;
     }
 
-    pub fn updateParallel(self: *Systems, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void {
+    pub fn updateParallel(self: *Systems, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
         const systems = self.systems.values();
 
         var temp_systems16: [16]Self = undefined;
@@ -128,11 +128,11 @@ pub const Systems = struct {
         @memcpy(temp_systems, systems);
 
         for (temp_systems) |system| {
-            system.updateParallel(stage, entity, world, delta_time);
+            system.updateParallel(stage, entity, delta_time);
         }
     }
 
-    pub fn updateExclusive(self: *Systems, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void {
+    pub fn updateExclusive(self: *Systems, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
         const systems = self.systems.values();
 
         var temp_systems16: [16]Self = undefined;
@@ -141,7 +141,7 @@ pub const Systems = struct {
         @memcpy(temp_systems, systems);
 
         for (temp_systems) |system| {
-            system.updateExclusive(stage, entity, world, delta_time);
+            system.updateExclusive(stage, entity, delta_time);
         }
     }
 };

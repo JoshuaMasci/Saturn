@@ -11,19 +11,19 @@ scale: za.Vec3 = za.Vec3.ONE,
 
 pub const Identity: Self = .{};
 
-pub fn get_right(self: Self) za.Vec3 {
+pub fn getRight(self: Self) za.Vec3 {
     return self.rotation.rotateVec(Self.Right).norm();
 }
 
-pub fn get_up(self: Self) za.Vec3 {
+pub fn getUp(self: Self) za.Vec3 {
     return self.rotation.rotateVec(Self.Up).norm();
 }
 
-pub fn get_forward(self: Self) za.Vec3 {
+pub fn getForward(self: Self) za.Vec3 {
     return self.rotation.rotateVec(Self.Forward).norm();
 }
 
-pub fn transform_by(parent: *const Self, child: *const Self) Self {
+pub fn applyTransform(parent: *const Self, child: *const Self) Self {
     return .{
         .position = parent.position.add(parent.rotation.rotateVec(child.position.mul(parent.scale))),
         .rotation = parent.rotation.mul(child.rotation).norm(),
@@ -31,12 +31,19 @@ pub fn transform_by(parent: *const Self, child: *const Self) Self {
     };
 }
 
-pub fn get_model_matrix(self: Self) za.Mat4 {
+pub fn getRelativeTransform(parent: *const Self, child: *const Self) Self {
+    return .{
+        .position = .{ .data = parent.rotation.inv().rotateVec(child.position.sub(parent.position)).data / parent.scale.data },
+        .rotation = parent.rotation.inv().mul(child.rotation).norm(),
+        .scale = .{ .data = child.scale.data / parent.scale.data },
+    };
+}
+pub fn getModelMatrix(self: Self) za.Mat4 {
     return za.Mat4.recompose(self.position, self.rotation, self.scale);
 }
 
-pub fn get_view_matrix(self: Self) za.Mat4 {
-    const forward = self.get_forward();
-    const up = self.get_up();
+pub fn getViewMatrix(self: Self) za.Mat4 {
+    const forward = self.getForward();
+    const up = self.getUp();
     return za.Mat4.RightHanded.lookAt(self.position, self.position.add(forward), up);
 }

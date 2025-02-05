@@ -1,34 +1,31 @@
 const std = @import("std");
 const Node = @import("node.zig");
 const World = @import("world.zig");
-const UpdateStage = @import("universe.zig").UpdateStage;
+
+const Universe = @import("universe.zig");
+const UpdateStage = Universe.UpdateStage;
+
 const Transform = @import("../transform.zig");
 const utils = @import("../utils.zig");
 
-pub const Systems = @import("game.zig").EntitySystems;
-pub const ParallelUpdateData = struct { stage: UpdateStage, world: *const World, entity: *Self, delta_time: f32 };
-pub const ExclusiveUpdateData = struct { stage: UpdateStage, world: *World, entity: *Self, delta_time: f32 };
-
-const EntitySystem = @import("enitty_system.zig");
-
+const EntitySystem = @import("entity_system.zig");
 const Pool = @import("../containers.zig").HandlePool(*Self);
-
-const Self = @This();
 
 pub const Handle = u64;
 
-handle: Handle,
-world_handle: ?World.Handle = null,
+const Self = @This();
 
+handle: Handle,
+universe: *Universe,
+world: ?*World = null,
 name: ?std.ArrayList(u8) = null,
 transform: Transform = .{},
-
 nodes: Node.Nodes,
-
 systems: EntitySystem.Systems,
 
-pub fn init(allocator: std.mem.Allocator, handle: Handle) Self {
+pub fn init(allocator: std.mem.Allocator, universe: *Universe, handle: Handle) Self {
     return .{
+        .universe = universe,
         .handle = handle,
         .nodes = Node.Nodes.init(allocator),
         .systems = EntitySystem.Systems.init(allocator),
@@ -43,12 +40,12 @@ pub fn deinit(self: *Self) void {
     self.systems.deinit();
 }
 
-pub fn updateParallel(self: *Self, stage: UpdateStage, world: *const World, delta_time: f32) void {
-    self.systems.updateParallel(stage, self, world, delta_time);
+pub fn updateParallel(self: *Self, stage: UpdateStage, delta_time: f32) void {
+    self.systems.updateParallel(stage, self, delta_time);
 }
 
-pub fn updateExclusive(self: *Self, stage: UpdateStage, world: *World, delta_time: f32) void {
-    self.systems.updateExclusive(stage, self, world, delta_time);
+pub fn updateExclusive(self: *Self, stage: UpdateStage, delta_time: f32) void {
+    self.systems.updateExclusive(stage, self, delta_time);
 }
 
 //TODO: Implement this in world update scheduling

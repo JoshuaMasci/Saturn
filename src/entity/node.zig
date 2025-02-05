@@ -93,7 +93,7 @@ pub const Nodes = struct {
         while (parent_handle) |handle| {
             const parent_node = self.pool.getPtr(handle).?;
             parent_handle = parent_node.parent;
-            total_transform = parent_node.local_transform.transform_by(&total_transform);
+            total_transform = parent_node.local_transform.applyTransform(&total_transform);
         }
 
         return total_transform;

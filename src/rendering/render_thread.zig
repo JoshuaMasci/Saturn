@@ -6,7 +6,10 @@ const Camera = @import("camera.zig").Camera;
 
 const RenderSettings = @import("settings.zig").RenderSettings;
 
-const Renderer = @import("renderer.zig").Renderer;
+const Platform = @import("../platform.zig");
+const Context = Platform.getWindow();
+const Renderer = Platform.getRenderer();
+
 const rendering_scene = @import("scene.zig");
 
 pub const RenderState = struct {
@@ -85,8 +88,6 @@ pub const RenderThread = struct {
     }
 };
 
-const OpenglContext = @import("opengl/context.zig").Sdl2Context;
-
 fn renderThreadMain(
     render_settings: RenderSettings,
     render_state: *RenderState,
@@ -95,7 +96,7 @@ fn renderThreadMain(
     std.log.info("Starting Render Thread", .{});
     defer std.log.info("Exiting Render Thread", .{});
 
-    var context = OpenglContext.init_window(render_settings.window_name, render_settings.size, render_settings.vsync) catch |err| std.debug.panic("Failed to init opengl context: {}", .{err});
+    var context = Context.init_window(render_settings.window_name, render_settings.size, render_settings.vsync) catch |err| std.debug.panic("Failed to init opengl context: {}", .{err});
     defer context.deinit();
 
     var renderer = global.global_allocator.create(Renderer) catch |err| std.debug.panic("Failed to allocate renderer: {}", .{err});

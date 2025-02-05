@@ -94,13 +94,21 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
 
         const size = za.Vec3.new(0.25, 1.0, 1.0);
 
-        const transform: Transform = .{ .position = za.Vec3.new(5.0, 0.0, -15.0), .scale = size };
         const door_box = physics_system.Shape.initBox(size.data, 1.0, 0);
 
-        var inside_node = ship_inside.nodes.addNode(null, transform);
+        const inside_airlock_center = ship_inside.nodes.addNode(null, .{ .position = za.Vec3.new(2.5 * 1.5, 0.0, -15.0) });
+        const outside_airlock_center = ship_outside.nodes.addNode(null, .{ .position = za.Vec3.new(2.5 * 1.5, 0.0, -15.0) });
+
+        var inside_node = ship_inside.nodes.addNode(inside_airlock_center.handle, .{ .position = za.Vec3.new(2.5 * 0.5, 0.0, 0.0), .scale = size });
+        var outside_node = ship_outside.nodes.addNode(outside_airlock_center.handle, .{ .position = za.Vec3.new(-2.5 * 0.5, 0.0, 0.0), .scale = size });
+
         inside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
         inside_node.components.add(physics.PhysicsColliderComponent{ .shape = door_box });
-        inside_node.components.add(@import("entity/game.zig").AirLockComponent{});
+        inside_node.components.add(@import("entity/game.zig").AirLockComponent{ .center_node = inside_airlock_center.handle, .target = .{ .world = outside_world.handle, .entity = ship_outside.handle, .node = outside_airlock_center.handle } });
+
+        outside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+        outside_node.components.add(physics.PhysicsColliderComponent{ .shape = door_box });
+        outside_node.components.add(@import("entity/game.zig").AirLockComponent{ .center_node = outside_airlock_center.handle, .target = .{ .world = inside_world.handle, .entity = ship_inside.handle, .node = inside_airlock_center.handle } });
     }
 
     ship_inside.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(ship_inside);

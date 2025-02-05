@@ -27,9 +27,7 @@ pub const DebugCameraEntitySystem = struct {
         _ = self; // autofix
     }
 
-    pub fn updateParallel(self: *Self, stage: UpdateStage, entity: *Entity, world: *const World, delta_time: f32) void {
-        _ = world; // autofix
-
+    pub fn updateParallel(self: *Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
         if (stage != .pre_physics)
             return;
 
@@ -58,22 +56,30 @@ pub const DebugCameraEntitySystem = struct {
         self.angular_input = za.Vec3.set(0.0);
     }
 
-    pub fn updateExclusive(self: *Self, stage: UpdateStage, entity: *Entity, world: *World, delta_time: f32) void {
+    pub fn updateExclusive(self: *Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
         _ = delta_time; // autofix
 
         if (stage == .post_physics) {
             if (self.cast_ray) {
-                if (world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
+                if (entity.world.?.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
                     if (physics_world.castRayIgnoreEntity(
                         1,
                         entity,
                         entity.transform.position,
-                        entity.transform.get_forward().scale(10.0),
+                        entity.transform.getForward().scale(10.0),
                     )) |hit| {
-                        const hit_entity = world.entities.get(hit.entity_handle).?;
+                        const hit_entity = entity.world.?.entities.get(hit.entity_handle).?;
                         const node = hit_entity.nodes.pool.getPtr(hit.node_handle).?;
-                        if (node.components.get(@import("../game.zig").AirLockComponent) != null) {
-                            std.log.info("Hit Airlock!!!: {}", .{hit});
+                        if (node.components.get(@import("../game.zig").AirLockComponent)) |airlock| {
+                            if (airlock.target) |target| {
+                                const world_airlock_transform = hit_entity.transform.applyTransform(&hit_entity.nodes.getNodeRootTransform(airlock.center_node).?);
+                                const airlock_reltive_transform = world_airlock_transform.getRelativeTransform(&entity.transform);
+
+                                std.log.info("Hit Airlock Enabled", .{});
+                                entity.universe.scheduleMove(entity.handle, target.world, .{ .entity = target.entity, .node = target.node, .transform = airlock_reltive_transform });
+                            } else {
+                                std.log.info("Hit Airlock Disabled", .{});
+                            }
                         }
                     }
                 }

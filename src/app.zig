@@ -1,8 +1,7 @@
 const std = @import("std");
 const za = @import("zalgebra");
 
-//const saturn_options = @import("saturn_options");
-const sdl_platform = @import("platform/sdl2.zig");
+const Platform = @import("platform.zig").getPlatform();
 
 const physics_system = @import("physics");
 const RenderThread = @import("rendering/render_thread.zig").RenderThread;
@@ -20,11 +19,11 @@ pub const App = struct {
 
     should_quit: bool,
 
-    platform: sdl_platform.Platform,
+    platform: Platform,
     render_thread: RenderThread,
 
     // New World System Test
-    game_universe: Universe,
+    game_universe: *Universe,
     game_debug_camera: Entity.Handle,
 
     timer: f32 = 0,
@@ -33,15 +32,15 @@ pub const App = struct {
     pub fn init() !Self {
         try global.assets.addDir("engine", "zig-out/assets");
 
-        const platform = try sdl_platform.Platform.init(global.global_allocator);
+        const platform = try Platform.init(global.global_allocator);
         const render_thread = try RenderThread.init(global.global_allocator, .{ .window_name = "Saturn Engine", .size = .{ .windowed = .{ 1920, 1080 } }, .vsync = .on });
 
         physics_system.init(global.global_allocator);
 
-        var game_universe = try Universe.init(global.global_allocator);
+        const game_universe = try Universe.init(global.global_allocator);
 
-        const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, &game_universe);
-        const debug_entity = try world_gen.create_debug_camera(&game_universe, game_worlds.inside);
+        const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
+        const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside);
 
         return .{
             .should_quit = false,
@@ -98,12 +97,10 @@ pub const App = struct {
         if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
             self.render_thread.render_state.camera_transform = game_debug_entity.transform;
 
-            if (game_debug_entity.world_handle) |world_handle| {
-                if (self.game_universe.worlds.get(world_handle)) |game_world| {
-                    const rendering = @import("entity/engine/rendering.zig");
-                    if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
-                        self.render_thread.render_state.scene = try render_world.scene.dupe(self.render_thread.render_state.temp_allocator.allocator());
-                    }
+            if (game_debug_entity.world) |game_world| {
+                const rendering = @import("entity/engine/rendering.zig");
+                if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
+                    self.render_thread.render_state.scene = try render_world.scene.dupe(self.render_thread.render_state.temp_allocator.allocator());
                 }
             }
         }

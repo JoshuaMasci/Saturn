@@ -110,7 +110,7 @@ pub const Renderer = struct {
         const height_float: f32 = @floatFromInt(window_size[1]);
         const aspect_ratio: f32 = width_float / height_float;
 
-        const view_matrix = camera.transform.get_view_matrix();
+        const view_matrix = camera.transform.getViewMatrix();
         const projection_matrix = camera.camera.projection_gl(aspect_ratio);
         var view_projection_matrix = projection_matrix.mul(view_matrix);
 
@@ -168,7 +168,7 @@ pub const Renderer = struct {
                     self.pbr_material_shader.set_uniform_int("base_color_texture_enable", 0);
                 }
 
-                const model_matrix = static_mesh.transform.get_model_matrix();
+                const model_matrix = static_mesh.transform.getModelMatrix();
                 self.pbr_material_shader.set_uniform_mat4("model_matrix", &model_matrix);
 
                 mesh.draw();
