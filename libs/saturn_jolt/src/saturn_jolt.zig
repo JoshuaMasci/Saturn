@@ -44,6 +44,7 @@ pub const Velocity = c.Velocity;
 pub const UserData = c.UserData;
 pub const ObjectLayer = c.ObjectLayer;
 pub const SubShapeIndex = c.SubShapeIndex;
+pub const MassProperties = c.MassProperties;
 
 pub const RayCastHit = c.RayCastHit;
 
@@ -88,9 +89,15 @@ pub const Shape = struct {
         };
     }
 
-    pub fn initMesh(positions: [][3]f32, indices: []u32, user_data: UserData) Self {
+    pub fn initMeshStatic(positions: [][3]f32, indices: []u32, user_data: UserData) Self {
         return .{
-            .handle = c.shapeCreateMesh(@alignCast(@ptrCast(positions.ptr)), positions.len, @alignCast(@ptrCast(indices.ptr)), indices.len, user_data),
+            .handle = c.shapeCreateMesh(@alignCast(@ptrCast(positions.ptr)), positions.len, @alignCast(@ptrCast(indices.ptr)), indices.len, null, user_data),
+        };
+    }
+
+    pub fn initMeshWithMass(positions: [][3]f32, indices: []u32, mass_properites: MassProperties, user_data: UserData) Self {
+        return .{
+            .handle = c.shapeCreateMesh(@alignCast(@ptrCast(positions.ptr)), positions.len, @alignCast(@ptrCast(indices.ptr)), indices.len, &mass_properites, user_data),
         };
     }
 
@@ -104,6 +111,10 @@ pub const Shape = struct {
 
     pub fn deinit(self: *Self) void {
         c.shapeDestroy(self.handle);
+    }
+
+    pub fn getMassProperties(self: Self) MassProperties {
+        return c.shapeGetMassProperties(self.handle);
     }
 };
 

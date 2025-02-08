@@ -35,6 +35,7 @@ typedef float RVec3[3];
 #endif
 
 typedef float Vec3[3];
+typedef float Vec4[4];
 typedef float Quat[4];
 
 typedef struct World World;
@@ -70,6 +71,11 @@ typedef struct Velocity {
     Vec3 linear;
     Vec3 angular;
 } Velocity;
+
+typedef struct MassProperties {
+	float mass;
+	float inertia_tensor[16];
+} MassProperties;
 
 typedef struct RayCastHit {
     Body *body_ptr;
@@ -118,9 +124,11 @@ Shape shapeCreateBox(const Vec3 half_extent, float density, UserData user_data);
 Shape shapeCreateCylinder(float half_height, float radius, float density, UserData user_data);
 Shape shapeCreateCapsule(float half_height, float radius, float density, UserData user_data);
 Shape shapeCreateConvexHull(const Vec3 positions[], size_t position_count, float density, UserData user_data);
-Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint32_t *indices, size_t indices_count, UserData user_data);
+Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint32_t *indices, size_t indices_count, const MassProperties* mass_properties, UserData user_data);
 Shape shapeCreateCompound(const SubShapeSettings sub_shapes[], size_t sub_shape_count, UserData user_data);
 void shapeDestroy(Shape shape);
+
+MassProperties shapeGetMassProperties(Shape shape);
 
 
 // World functions

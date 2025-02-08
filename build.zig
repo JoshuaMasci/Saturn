@@ -29,17 +29,22 @@ pub fn build(b: *std.Build) !void {
     const zobj = b.dependency("zobj", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("zobj", zobj.module("obj"));
 
-    // zsdl
-    const zsdl = b.dependency("zsdl", .{});
-    exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
-    @import("zsdl").link_SDL2(exe);
+    if (!use_sdl3) { // zsdl
+        const zsdl = b.dependency("zsdl", .{});
+        exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
+        @import("zsdl").link_SDL2(exe);
 
-    // SDL3
-    //exe.linkSystemLibrary2("sdl3", .{});
-
-    // zopengl
-    const zopengl = b.dependency("zopengl", .{});
-    exe.root_module.addImport("zopengl", zopengl.module("root"));
+        // zopengl
+        const zopengl = b.dependency("zopengl", .{});
+        exe.root_module.addImport("zopengl", zopengl.module("root"));
+    } else {
+        const sdl3 = b.dependency("sdl3", .{
+            .target = target,
+            .optimize = optimize,
+            .preferred_link_mode = .dynamic,
+        });
+        exe.linkLibrary(sdl3.artifact("SDL3"));
+    }
 
     // zstbi
     const zstbi = b.dependency("zstbi", .{});

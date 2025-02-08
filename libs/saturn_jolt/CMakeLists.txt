@@ -152,4 +152,6 @@ add_library(saturn_physics
         src/saturn_jolt.cpp
         src/world.cpp
         src/body.cpp
-        src/object_pool.hpp)
+        src/object_pool.hpp
+        src/mass_shape.cpp
+        src/mass_shape.hpp)

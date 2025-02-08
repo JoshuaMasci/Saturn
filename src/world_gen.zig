@@ -69,23 +69,24 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     try addMeshToEntites(allocator, ship_inside, ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(15.0) });
     try addMeshToEntites(allocator, ship_inside, ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) });
 
+    try addMeshToEntites(allocator, ship_inside, ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0) });
+
     //Custom Airlock Shape
-    //    try addMeshToEntites(allocator, &ship_inside, &ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0) });
-    {
-        const mesh = airlock_mesh_handle;
-        const material = grid_material_handle;
-        const transform: Transform = .{ .position = za.Vec3.new(5.0, 0.0, -15.0) };
+    // {
+    //     const mesh = airlock_mesh_handle;
+    //     const material = grid_material_handle;
+    //     const transform: Transform = .{ .position = za.Vec3.new(5.0, 0.0, -15.0) };
 
-        const airlock_shape = create_airlock_shape();
+    //     const airlock_shape = create_airlock_shape();
 
-        var inside_node = ship_inside.nodes.addNode(null, transform);
-        inside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
-        inside_node.components.add(physics.PhysicsColliderComponent{ .shape = airlock_shape });
+    //     var inside_node = ship_inside.nodes.addNode(null, transform);
+    //     inside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+    //     inside_node.components.add(physics.PhysicsColliderComponent{ .shape = airlock_shape });
 
-        var outside_node = ship_outside.nodes.addNode(null, transform);
-        outside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
-        outside_node.components.add(physics.PhysicsColliderComponent{ .shape = airlock_shape });
-    }
+    //     var outside_node = ship_outside.nodes.addNode(null, transform);
+    //     outside_node.components.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+    //     outside_node.components.add(physics.PhysicsColliderComponent{ .shape = airlock_shape });
+    // }
 
     // Airlock Doors
     {
@@ -124,16 +125,21 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
 }
 
 const PhysicsMeshes = struct {
-    mesh_shape: physics_system.Shape,
     convex_shape: physics_system.Shape,
+    mesh_shape: physics_system.Shape,
 
     fn fromHandle(allocator: std.mem.Allocator, handle: MeshAssetHandle) !@This() {
         var mesh = try global.assets.meshes.loadAsset(allocator, handle);
         defer mesh.deinit(allocator);
 
+        var convex_shape = physics_system.Shape.initConvexHull(mesh.positions, 1.0, 0);
+        defer convex_shape.deinit();
+
+        const mass_properties = convex_shape.getMassProperties();
+        const mesh_shape = physics_system.Shape.initMeshWithMass(mesh.positions, mesh.indices, mass_properties, 0);
         return .{
-            .mesh_shape = physics_system.Shape.initMesh(mesh.positions, mesh.indices, 0),
-            .convex_shape = physics_system.Shape.initConvexHull(mesh.positions, 1.0, 0),
+            .convex_shape = mesh_shape,
+            .mesh_shape = mesh_shape,
         };
     }
 };

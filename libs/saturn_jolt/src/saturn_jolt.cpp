@@ -7,7 +7,6 @@
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Core/Factory.h>
-#include <Jolt/Physics/Collision/Shape/MutableCompoundShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
@@ -17,15 +16,16 @@
 #include "memory.hpp"
 #include "shape_pool.hpp"
 
-#include "world.hpp"
-#include "body.hpp"
-#include "Jolt/Physics/Collision/Shape/SphereShape.h"
 #include "Jolt/Physics/Collision/Shape/BoxShape.h"
-#include "Jolt/Physics/Collision/Shape/CylinderShape.h"
 #include "Jolt/Physics/Collision/Shape/CapsuleShape.h"
 #include "Jolt/Physics/Collision/Shape/ConvexHullShape.h"
+#include "Jolt/Physics/Collision/Shape/CylinderShape.h"
 #include "Jolt/Physics/Collision/Shape/MeshShape.h"
+#include "Jolt/Physics/Collision/Shape/SphereShape.h"
 #include "Jolt/Physics/Collision/Shape/StaticCompoundShape.h"
+#include "body.hpp"
+#include "mass_shape.hpp"
+#include "world.hpp"
 
 ShapePool *shape_pool = nullptr;
 std::mutex shape_pool_mutex;
@@ -46,6 +46,8 @@ void init(const AllocationFunctions *functions) {
     ::new(factory) JPH::Factory();
     JPH::Factory::sInstance = factory;
     JPH::RegisterTypes();
+
+	JPH::MassShape::sRegister();
 
     shape_pool = alloc_t<ShapePool>();
     ::new(shape_pool) ShapePool();
@@ -143,7 +145,9 @@ Shape shapeCreateConvexHull(const Vec3 positions[], size_t position_count, float
 
 }
 
-Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint32_t *indices, size_t indices_count, UserData user_data) {
+Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint32_t *indices, size_t indices_count, const MassProperties* mass_properties, UserData user_data) {
+	JPH::MassProperties mass;
+
     JPH::VertexList vertex_list;
     for (size_t i = 0; i < position_count; i++) {
         vertex_list.push_back(load_float3(positions[i]));
@@ -166,7 +170,16 @@ Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint3
 
     auto settings = JPH::MeshShapeSettings(vertex_list, triangle_list);
     settings.mUserData = user_data;
+
     auto shape = settings.Create().Get();
+
+	if (mass_properties != nullptr) {
+		JPH::MassProperties override_mass;
+		override_mass.mMass = mass_properties->mass;
+		override_mass.mInertia = JPH::Mat44::sLoadFloat4x4(reinterpret_cast<const JPH::Float4 *>(mass_properties->inertia_tensor));
+		shape = JPH::MassShapeSettings(shape, override_mass).Create().Get();
+	}
+
     shape_pool_mutex.lock();
     auto shape_handle = shape_pool->insert(shape);
     shape_pool_mutex.unlock();
@@ -195,6 +208,17 @@ void shapeDestroy(Shape shape) {
     shape_pool_mutex.lock();
     shape_pool->remove(shape);
     shape_pool_mutex.unlock();
+}
+
+MassProperties shapeGetMassProperties(Shape shape) {
+	shape_pool_mutex.lock();
+	auto shape_ref = shape_pool->get(shape);
+	shape_pool_mutex.unlock();
+	auto shape_properties = shape_ref->GetMassProperties();
+	MassProperties mass_properties;
+	mass_properties.mass = shape_properties.mMass;
+	shape_properties.mInertia.StoreFloat4x4(reinterpret_cast<JPH::Float4 *>(mass_properties.inertia_tensor));
+	return mass_properties;
 }
 
 World *worldCreate(const WorldSettings *settings) {

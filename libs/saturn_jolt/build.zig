@@ -88,6 +88,7 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
             "src/saturn_jolt.cpp",
             "src/world.cpp",
             "src/body.cpp",
+            "src/mass_shape.cpp",
             jolt_src_path ++ "Core/TickCounter.cpp",
             jolt_src_path ++ "Core/Factory.cpp",
             jolt_src_path ++ "Core/Memory.cpp",

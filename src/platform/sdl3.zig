@@ -4,7 +4,13 @@ const input = @import("../input.zig");
 const App = @import("../app.zig").App;
 
 pub const c = @cImport({
+    @cDefine("SDL_DISABLE_OLD_NAMES", {});
     @cInclude("SDL3/SDL.h");
+    @cInclude("SDL3/SDL_revision.h");
+    // For programs that provide their own entry points instead of relying on SDL's main function
+    // macro magic, 'SDL_MAIN_HANDLED' should be defined before including 'SDL_main.h'.
+    @cDefine("SDL_MAIN_HANDLED", {});
+    @cInclude("SDL3/SDL_main.h");
 });
 
 pub const Platform = struct {
@@ -49,29 +55,5 @@ pub const Platform = struct {
                 self.should_quit = true;
             }
         }
-        // var event: sdl.Event = undefined;
-        // while (sdl.pollEvent(&event)) {
-        //     switch (event.type) {
-        //         .quit => self.should_quit = true,
-        //         .mousebuttondown, .mousebuttonup => if (self.mouse) |*mouse| {
-        //             mouse.on_button_event(app, &event.button);
-        //         },
-        //         .mousemotion => if (self.mouse) |*mouse| {
-        //             mouse.on_move(app, &event.motion);
-        //         },
-        //         .keydown, .keyup => if (self.keyboard) |*keyboard| {
-
-        //             //TODO: move capture/free function to app
-        //             if (event.key.keysym.scancode == .escape and event.key.repeat == 0 and event.key.state == .pressed) {
-        //                 if (self.mouse) |*mouse| {
-        //                     mouse.set_captured(!mouse.is_captured());
-        //                 }
-        //             }
-
-        //             keyboard.on_button_event(app, &event.key);
-        //         },
-        //         else => {},
-        //     }
-        // }
     }
 };

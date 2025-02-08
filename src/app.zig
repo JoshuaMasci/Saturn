@@ -2,9 +2,9 @@ const std = @import("std");
 const za = @import("zalgebra");
 
 const Platform = @import("platform.zig").getPlatform();
+const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 
 const physics_system = @import("physics");
-const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 const input = @import("input.zig");
 
 const world_gen = @import("world_gen.zig");
@@ -22,7 +22,6 @@ pub const App = struct {
     platform: Platform,
     render_thread: RenderThread,
 
-    // New World System Test
     game_universe: *Universe,
     game_debug_camera: Entity.Handle,
 

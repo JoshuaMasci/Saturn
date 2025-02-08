@@ -10,3 +10,5 @@ pub const AirLockComponent = struct {
         node: Node.Handle,
     },
 };
+
+pub const AirLockEntitySystem = struct {};
