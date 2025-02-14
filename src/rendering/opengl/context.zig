@@ -58,9 +58,7 @@ pub const Sdl2Context = struct {
 
         try sdl.gl.setSwapInterval(switch (vsync) {
             .on => 1,
-            .half => 2,
             .off => 0,
-            .variable => unreachable, //TODO: unimplmented
         });
 
         return .{

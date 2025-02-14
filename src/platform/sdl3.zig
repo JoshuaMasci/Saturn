@@ -23,14 +23,8 @@ pub const Platform = struct {
         const version = c.SDL_GetVersion();
         std.log.info("Starting sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
 
-        const ram = c.SDL_GetSystemRAM();
-        const theme = c.SDL_GetSystemTheme();
-        const simd = c.SDL_GetSIMDAlignment();
-        const cache = c.SDL_GetCPUCacheLineSize();
-        std.log.info("Ram: {} Theme: {} SIMD: {} CACHE: {}", .{ ram, theme, simd, cache });
-
-        const failed = c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC | c.SDL_INIT_VIDEO);
-        if (failed) {
+        const failed = c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC);
+        if (!failed) {
             return error.SdlInitFailed;
         }
 

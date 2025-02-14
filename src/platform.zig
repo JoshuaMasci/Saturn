@@ -1,16 +1,17 @@
 const saturn_options = @import("saturn_options");
 
-const sdl2 = @import("platform/sdl2.zig");
 pub fn getPlatform() type {
-	return sdl2.Platform;
+    if (saturn_options.sdl3) {
+        return @import("platform/sdl3.zig").Platform;
+    } else {
+        return @import("platform/sdl2.zig").Platform;
+    }
 }
 
-const OpenglContext = @import("rendering/opengl/context.zig").Sdl2Context;
-pub fn getWindow() type {
-	return OpenglContext;
-}
-
-const Renderer = @import("rendering/renderer.zig").Renderer;
 pub fn getRenderer() type {
-	return Renderer;
+    if (saturn_options.sdl3) {
+        return @import("rendering/sdl_gpu/renderer.zig").Renderer;
+    } else {
+        return @import("rendering/opengl/renderer.zig").Renderer;
+    }
 }

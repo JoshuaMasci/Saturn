@@ -6,8 +6,6 @@ pub const WindowSize = union(enum) {
 
 pub const VerticalSync = enum {
     on,
-    half,
-    variable,
     off,
 };
 

@@ -1,20 +1,23 @@
 const std = @import("std");
 const za = @import("zalgebra");
-const global = @import("../global.zig");
+const global = @import("../../global.zig");
 
+const Context = @import("context.zig").Sdl2Context;
 const gl = @import("zopengl").bindings;
 
-const Transform = @import("../transform.zig");
-const Camera = @import("camera.zig").Camera;
-const RenderScene = @import("scene.zig").RenderScene;
+const Transform = @import("../../transform.zig");
+const Camera = @import("../camera.zig").Camera;
+const RenderScene = @import("../scene.zig").RenderScene;
 
-const Mesh = @import("opengl/mesh.zig");
-const Texture = @import("opengl/texture.zig");
-const Shader = @import("opengl/shader.zig");
+const Mesh = @import("mesh.zig");
+const Texture = @import("texture.zig");
+const Shader = @import("shader.zig");
 
-const MeshAsset = @import("../asset/mesh.zig");
-const TextureAsset = @import("../asset/texture_2d.zig");
-const MaterialAsset = @import("../asset/material.zig");
+const MeshAsset = @import("../../asset/mesh.zig");
+const TextureAsset = @import("../../asset/texture_2d.zig");
+const MaterialAsset = @import("../../asset/material.zig");
+
+const Settings = @import("../../rendering/settings.zig");
 
 fn read_file_to_string(allocator: std.mem.Allocator, file_path: []const u8) ![]u8 {
     var file = try std.fs.cwd().openFile(file_path, .{ .mode = .read_only });
@@ -31,10 +34,14 @@ fn create_shader(allocator: std.mem.Allocator, vertex_path: []const u8, fragment
     return Shader.init(vertex_code, fragment_code);
 }
 
+const sdl = @import("zsdl2");
+
 pub const Renderer = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
+
+    context: Context,
 
     skybox_vao: gl.Uint,
     skybox_shader: Shader,
@@ -46,7 +53,8 @@ pub const Renderer = struct {
     static_mesh_map: std.AutoHashMap(MeshAsset.Registry.Handle, Mesh),
     material_map: std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
-    pub fn init(allocator: std.mem.Allocator) !Self {
+    pub fn init(allocator: std.mem.Allocator, settings: Settings.RenderSettings) !Self {
+        const context = try Context.init_window(settings.window_name, settings.size, settings.vsync);
 
         //TODO: load shaders from asset cache
         const skybox_shader: Shader = try create_shader(allocator, "assets/shaders/whole_screen.vert", "assets/shaders/skybox.frag");
@@ -58,8 +66,11 @@ pub const Renderer = struct {
         gl.genVertexArrays(1, &skybox_vao);
 
         return .{
-            .skybox_vao = skybox_vao,
             .allocator = allocator,
+
+            .context = context,
+
+            .skybox_vao = skybox_vao,
             .skybox_shader = skybox_shader,
             .colored_material_shader = colored_material_shader,
             .pbr_material_shader = pbr_material_shader,
@@ -81,6 +92,8 @@ pub const Renderer = struct {
         //self.cube_texture_map.deinit();
         self.static_mesh_map.deinit();
         self.material_map.deinit();
+
+        self.context.deinit();
     }
 
     pub fn clearFramebuffer(self: *Self) void {
@@ -89,10 +102,13 @@ pub const Renderer = struct {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
-    pub fn renderScene(self: *Self, window_size: [2]u32, scene: *const RenderScene, camera: struct {
+    pub fn renderScene(self: *Self, target: ?void, scene: *const RenderScene, camera: struct {
         transform: Transform,
         camera: Camera,
     }) void {
+        _ = target; // autofix
+        const window_size = self.context.getWindowSize() catch |err| std.debug.panic("Failed to get window size {}", .{err});
+
         var gl_err: gl.Enum = gl.getError();
         while (gl_err != gl.NO_ERROR) {
             std.log.err("GL Error: {}", .{gl_err});
@@ -176,6 +192,8 @@ pub const Renderer = struct {
                 std.log.warn("Instance {} contains an invalid Mesh {}", .{ i, static_mesh.component.mesh });
             }
         }
+
+        self.context.swapWindow();
     }
 
     pub fn tryLoadMesh(self: *Self, handle: MeshAsset.Registry.Handle) void {

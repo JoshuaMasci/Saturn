@@ -5,7 +5,6 @@
 #include <Jolt/Core/StreamOut.h>
 #include <Jolt/ObjectStream/TypeDeclarations.h>
 #include <Jolt/Physics/Collision/RayCast.h>
-#include <Jolt/Physics/Collision/Shape/ScaleHelpers.h>
 #include <Jolt/Physics/Collision/ShapeCast.h>
 #include <Jolt/Physics/Collision/TransformedShape.h>
 #include <mass_shape.hpp>

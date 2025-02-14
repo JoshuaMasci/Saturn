@@ -96,14 +96,14 @@ fn renderThreadMain(
     std.log.info("Starting Render Thread", .{});
     defer std.log.info("Exiting Render Thread", .{});
 
-    var context = Context.init_window(render_settings.window_name, render_settings.size, render_settings.vsync) catch |err| std.debug.panic("Failed to init opengl context: {}", .{err});
-    defer context.deinit();
-
     var renderer = global.global_allocator.create(Renderer) catch |err| std.debug.panic("Failed to allocate renderer: {}", .{err});
     defer global.global_allocator.destroy(renderer);
 
-    renderer.* = Renderer.init(global.global_allocator) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
+    renderer.* = Renderer.init(global.global_allocator, render_settings) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
     defer renderer.deinit();
+
+    // const window = renderer.createWindow(render_settings.window_name, render_settings.size, render_settings.vsync);
+    // defer renderer.destroyWindow(window);
 
     //Prepare for first render call
     render_signals.render_done_semaphore.post();
@@ -117,7 +117,7 @@ fn renderThreadMain(
         // Reload the whole renderer and assets
         if (render_state.should_reload) {
             renderer.deinit();
-            renderer.* = Renderer.init(global.global_allocator) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
+            renderer.* = Renderer.init(global.global_allocator, render_settings) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
             std.log.debug("Reloaded renderer", .{});
         }
 
@@ -127,7 +127,7 @@ fn renderThreadMain(
         const DefaultCamera = Camera.Default;
         if (render_state.scene) |*scene| {
             renderer.renderScene(
-                context.getWindowSize() catch |err| std.debug.panic("Failed to get window size: {}", .{err}),
+                null,
                 scene,
                 .{
                     .transform = render_state.camera_transform orelse .{},
@@ -135,9 +135,6 @@ fn renderThreadMain(
                 },
             );
         }
-
-        //TODO: render here
-        context.swapWindow();
 
         render_signals.render_done_semaphore.post();
         if (render_signals.quit_thread.load(.monotonic)) {
