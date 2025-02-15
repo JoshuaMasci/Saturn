@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const Transform = @import("../transform.zig");
-const Node = @import("node.zig");
 const Entity = @import("entity.zig");
 const World = @import("world.zig");
 
@@ -18,7 +17,6 @@ pub const UpdateStage = enum {
 
 pub const EntityMoveTarget = struct {
     entity: ?Entity.Handle,
-    node: ?Node.Handle,
     transform: Transform,
 };
 
@@ -76,11 +74,7 @@ pub fn update(self: *Self, stage: UpdateStage, delta_time: f32) void {
 
                 if (target.entity) |entity_handle| {
                     const target_entity = self.entites.get(entity_handle).?;
-                    var entity_transform = target_entity.transform;
-                    if (target.node) |node_handle| {
-                        entity_transform = entity_transform.applyTransform(&target_entity.nodes.getNodeRootTransform(node_handle).?);
-                    }
-                    transform = entity_transform.applyTransform(&transform);
+                    transform = target_entity.getWorldTransform().applyTransform(&transform);
                 }
 
                 entity.transform = transform;
@@ -103,6 +97,7 @@ pub fn createEntity(self: *Self) *Entity {
     const handle = self.next_entity_handle.fetchAdd(1, .monotonic); //TODO: is this the correct atomic order?
     const entity = self.entites.create(handle);
     entity.* = Entity.init(self.allocator, self, handle);
+    entity.*.root = entity;
     return entity;
 }
 

@@ -2,7 +2,6 @@ const std = @import("std");
 const za = @import("zalgebra");
 const Transform = @import("../../transform.zig");
 
-const Node = @import("../node.zig");
 const Entity = @import("../entity.zig");
 const World = @import("../world.zig");
 const UpdateStage = @import("../universe.zig").UpdateStage;
@@ -12,16 +11,16 @@ const WorldSystem = @import("../world_system.zig");
 const physics = @import("physics");
 
 pub const RayCastHit = struct {
+    root_handle: Entity.Handle,
     entity_handle: Entity.Handle,
-    node_handle: Node.Handle,
     distance: f32,
     ws_position: za.Vec3,
     ws_normal: za.Vec3,
 
     fn init(hit: physics.RayCastHit) @This() {
         return .{
-            .entity_handle = @intCast(hit.body_user_data),
-            .node_handle = Node.Handle.fromU64(hit.shape_user_data),
+            .root_handle = @intCast(hit.body_user_data),
+            .entity_handle = @intCast(hit.shape_user_data),
             .distance = hit.distance,
             .ws_position = za.Vec3.fromArray(hit.ws_position),
             .ws_normal = za.Vec3.fromArray(hit.ws_normal),
@@ -57,23 +56,26 @@ pub const PhysicsEntitySystem = struct {
 
     pub fn rebuildShape(self: *Self, entity: *Entity) void {
         self.body.removeAllShapes();
+        addShapes(&self.body, entity);
+        self.body.commitShapeChanges();
+    }
 
-        var iter = entity.nodes.pool.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.components.get(PhysicsColliderComponent)) |collider| {
-                var node_transform: Transform = entity.nodes.getNodeRootTransform(entry.handle) orelse .{};
-                _ = self.body.addShape(
-                    collider.shape,
-                    &.{
-                        .position = node_transform.position.toArray(),
-                        .rotation = node_transform.rotation.toArray(),
-                    },
-                    entry.handle.toU64(),
-                );
-            }
+    fn addShapes(body: *physics.Body, entity: *Entity) void {
+        if (entity.systems.get(PhysicsColliderComponent)) |collider| {
+            const root_transform = entity.getRootTransform();
+            _ = body.addShape(
+                collider.shape,
+                &.{
+                    .position = root_transform.position.toArray(),
+                    .rotation = root_transform.rotation.toArray(),
+                },
+                entity.handle,
+            );
         }
 
-        self.body.commitShapeChanges();
+        for (entity.children.values()) |child| {
+            addShapes(body, child);
+        }
     }
 
     pub fn updateParallel(self: *Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
@@ -96,13 +98,6 @@ pub const PhysicsEntitySystem = struct {
             self.linear_velocity = za.Vec3.fromArray(velocity.linear);
             self.angular_velocity = za.Vec3.fromArray(velocity.angular);
         }
-    }
-
-    pub fn updateExclusive(self: *Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
-        _ = self; // autofix
-        _ = stage; // autofix
-        _ = entity; // autofix
-        _ = delta_time; // autofix
     }
 };
 
@@ -161,7 +156,7 @@ pub const PhysicsWorldSystem = struct {
 
     pub fn castRayIgnoreEntity(self: Self, object_layer: u16, ignore: *Entity, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
         //TODO: this should log error rather than crash?
-        const ignore_body = ignore.systems.get(PhysicsEntitySystem).?.body;
+        const ignore_body = ignore.root.?.systems.get(PhysicsEntitySystem).?.body;
         const start_a = start.toArray();
         const direction_a = direction.toArray();
 

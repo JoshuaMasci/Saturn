@@ -33,6 +33,7 @@ pub const VTable = struct {
 
     pub inline fn implVTable(comptime T: type) *const VTable {
         const functions = implVTableFunctions(T);
+
         return &VTable{
             .deinit = &functions.deinitWrapper,
             .updateParallel = &functions.updateParallel,
@@ -45,18 +46,24 @@ pub const VTable = struct {
         return struct {
             // Wrapper functions
             fn deinitWrapper(ctx: *anyopaque) void {
-                var self: *T = @ptrCast(@alignCast(ctx));
-                self.deinit();
+                if (std.meta.hasFn(T, "deinit")) {
+                    var self: *T = @ptrCast(@alignCast(ctx));
+                    self.deinit();
+                }
             }
 
-            fn updateParallel(ctx: *anyopaque, stage: UpdateStage, entity: *Entity,  delta_time: f32) void {
-                var self: *T = @ptrCast(@alignCast(ctx));
-                self.updateParallel(stage, entity, delta_time);
+            fn updateParallel(ctx: *anyopaque, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
+                if (std.meta.hasFn(T, "updateParallel")) {
+                    var self: *T = @ptrCast(@alignCast(ctx));
+                    self.updateParallel(stage, entity, delta_time);
+                }
             }
 
             fn updateExclusive(ctx: *anyopaque, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
-                var self: *T = @ptrCast(@alignCast(ctx));
-                self.updateExclusive(stage, entity, delta_time);
+                if (std.meta.hasFn(T, "updateExclusive")) {
+                    var self: *T = @ptrCast(@alignCast(ctx));
+                    self.updateExclusive(stage, entity, delta_time);
+                }
             }
 
             fn freePtrWrapper(ctx: *anyopaque, allocator: std.mem.Allocator) void {
@@ -111,7 +118,7 @@ pub const Systems = struct {
         return false;
     }
 
-    pub fn get(self: *Systems, comptime T: type) ?*T {
+    pub fn get(self: Systems, comptime T: type) ?*T {
         const id = type_id.typeId(T);
         if (self.systems.get(id)) |system| {
             return @ptrCast(@alignCast(system.ptr));

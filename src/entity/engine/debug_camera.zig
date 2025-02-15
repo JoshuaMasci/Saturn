@@ -3,7 +3,6 @@ const za = @import("zalgebra");
 
 const input = @import("../../input.zig");
 
-const Node = @import("../node.zig");
 const Entity = @import("../entity.zig");
 const World = @import("../world.zig");
 const physics = @import("physics.zig");
@@ -15,11 +14,8 @@ pub const DebugCameraEntitySystem = struct {
     linear_speed: za.Vec3 = za.Vec3.set(5.0),
     angular_speed: za.Vec3 = za.Vec3.set(std.math.pi),
 
-    pitch_yaw: za.Vec2 = za.Vec2.ZERO,
     linear_input: za.Vec3 = za.Vec3.ZERO,
     angular_input: za.Vec3 = za.Vec3.ZERO,
-
-    camera_node: ?Node.Handle = null,
 
     cast_ray: bool = false,
 
@@ -41,15 +37,21 @@ pub const DebugCameraEntitySystem = struct {
 
         const angular_rotation = self.angular_input.mul(self.angular_speed).scale(delta_time);
 
-        self.pitch_yaw = self.pitch_yaw.add(angular_rotation.toVec2());
+        const foward = entity.transform.getForward();
+        const y = foward.y();
+        const xz = foward.swizzle2(.x, .z);
+
+        const pitch = -std.math.atan2(y, xz.length());
+        const yaw = std.math.atan2(xz.x(), xz.y());
+        var pitch_yaw = za.Vec2.new(pitch, yaw).add(angular_rotation.toVec2());
 
         // Clamp pitch and keep roation between 0->360 degrees
-        const pi_half = std.math.pi / 2.0;
         const pi_2 = std.math.pi * 2.0;
-        self.pitch_yaw = za.Vec2.new(std.math.clamp(self.pitch_yaw.x(), -pi_half, pi_half), @mod(self.pitch_yaw.y(), pi_2));
+        const max_angle: f32 = std.math.degreesToRadians(89.9);
+        pitch_yaw = za.Vec2.new(std.math.clamp(pitch_yaw.x(), -max_angle, max_angle), @mod(pitch_yaw.y(), pi_2));
 
-        const pitch_quat = za.Quat.fromAxis(self.pitch_yaw.x(), za.Vec3.X);
-        const yaw_quat = za.Quat.fromAxis(self.pitch_yaw.y(), za.Vec3.Y);
+        const pitch_quat = za.Quat.fromAxis(pitch_yaw.x(), za.Vec3.X);
+        const yaw_quat = za.Quat.fromAxis(pitch_yaw.y(), za.Vec3.Y);
         entity.transform.rotation = yaw_quat.mul(pitch_quat).norm();
 
         // Axis events should fire each frame they are active, so the input is reset each update
@@ -62,21 +64,22 @@ pub const DebugCameraEntitySystem = struct {
         if (stage == .post_physics) {
             if (self.cast_ray) {
                 if (entity.world.?.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
+                    const entity_transform = entity.getWorldTransform();
+
                     if (physics_world.castRayIgnoreEntity(
                         1,
                         entity,
-                        entity.transform.position,
-                        entity.transform.getForward().scale(10.0),
+                        entity_transform.position,
+                        entity_transform.getForward().scale(10.0),
                     )) |hit| {
                         const hit_entity = entity.world.?.entities.get(hit.entity_handle).?;
-                        const node = hit_entity.nodes.pool.getPtr(hit.node_handle).?;
-                        if (node.components.get(@import("../game.zig").AirLockComponent)) |airlock| {
+                        if (hit_entity.systems.get(@import("../game.zig").AirLockComponent)) |airlock| {
                             if (airlock.target) |target| {
-                                const world_airlock_transform = hit_entity.transform.applyTransform(&hit_entity.nodes.getNodeRootTransform(airlock.center_node).?);
-                                const airlock_reltive_transform = world_airlock_transform.getRelativeTransform(&entity.transform);
+                                const world_airlock_transform = entity.world.?.entities.get(airlock.center_node).?.getWorldTransform();
+                                const airlock_relative_transform = world_airlock_transform.getRelativeTransform(&entity.getWorldTransform());
 
                                 std.log.info("Hit Airlock Enabled", .{});
-                                entity.universe.scheduleMove(entity.handle, target.world, .{ .entity = target.entity, .node = target.node, .transform = airlock_reltive_transform });
+                                entity.universe.scheduleMove(entity.handle, target.world, .{ .entity = target.entity, .transform = airlock_relative_transform });
                             } else {
                                 std.log.info("Hit Airlock Disabled", .{});
                             }

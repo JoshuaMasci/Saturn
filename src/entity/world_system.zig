@@ -51,23 +51,31 @@ pub const VTable = struct {
         return struct {
             // Wrapper functions
             fn deinitWrapper(ctx: *anyopaque) void {
-                var self: *T = @ptrCast(@alignCast(ctx));
-                self.deinit();
+                if (std.meta.hasFn(T, "deinit")) {
+                    var self: *T = @ptrCast(@alignCast(ctx));
+                    self.deinit();
+                }
             }
 
             fn registerEntityWrapper(ctx: *anyopaque, world: *World, entity: *Entity) void {
-                var self: *T = @ptrCast(@alignCast(ctx));
-                self.registerEntity(world, entity);
+                if (std.meta.hasFn(T, "registerEntity")) {
+                    var self: *T = @ptrCast(@alignCast(ctx));
+                    self.registerEntity(world, entity);
+                }
             }
 
             fn deregisterEntityWrapper(ctx: *anyopaque, world: *World, entity: *Entity) void {
-                var self: *T = @ptrCast(@alignCast(ctx));
-                self.deregisterEntity(world, entity);
+                if (std.meta.hasFn(T, "deregisterEntity")) {
+                    var self: *T = @ptrCast(@alignCast(ctx));
+                    self.deregisterEntity(world, entity);
+                }
             }
 
             fn updateWrapper(ctx: *anyopaque, stage: UpdateStage, world: *World, delta_time: f32) void {
-                var self: *T = @ptrCast(@alignCast(ctx));
-                self.update(stage, world, delta_time);
+                if (std.meta.hasFn(T, "update")) {
+                    var self: *T = @ptrCast(@alignCast(ctx));
+                    self.update(stage, world, delta_time);
+                }
             }
 
             fn freePtrWrapper(ctx: *anyopaque, allocator: std.mem.Allocator) void {

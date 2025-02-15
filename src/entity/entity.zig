@@ -1,5 +1,4 @@
 const std = @import("std");
-const Node = @import("node.zig");
 const World = @import("world.zig");
 
 const Universe = @import("universe.zig");
@@ -9,7 +8,6 @@ const Transform = @import("../transform.zig");
 const utils = @import("../utils.zig");
 
 const EntitySystem = @import("entity_system.zig");
-const Pool = @import("../containers.zig").HandlePool(*Self);
 
 pub const Handle = u64;
 
@@ -20,32 +18,98 @@ universe: *Universe,
 world: ?*World = null,
 name: ?std.ArrayList(u8) = null,
 transform: Transform = .{},
-nodes: Node.Nodes,
 systems: EntitySystem.Systems,
+
+root: ?*Self = null,
+parent: ?*Self = null,
+children: std.AutoArrayHashMap(Handle, *Self),
+
+//TODO: cache values
+//Transform caches
+//cached_root_transform: ?Transform = null,
+//cached_world_transform: ?Transform = null,
 
 pub fn init(allocator: std.mem.Allocator, universe: *Universe, handle: Handle) Self {
     return .{
         .universe = universe,
         .handle = handle,
-        .nodes = Node.Nodes.init(allocator),
         .systems = EntitySystem.Systems.init(allocator),
+        .children = std.AutoArrayHashMap(Handle, *Self).init(allocator),
     };
 }
 
 pub fn deinit(self: *Self) void {
+    self.children.deinit();
+
     if (self.name) |name| {
         name.deinit();
     }
-    self.nodes.deinit();
     self.systems.deinit();
+}
+
+pub fn addChild(self: *Self, child: *Self) void {
+    std.debug.assert(child.parent == null);
+    std.debug.assert(!self.children.contains(child.handle));
+
+    child.parent = self;
+    child.setHierarchyRoot(child);
+    self.children.put(child.handle, child) catch |err| std.debug.panic("Failed to append child: {}", .{err});
+
+    if (self.world) |world| {
+        world.addEntity(child);
+    }
+}
+
+pub fn removeChild(self: *Self, handle: Handle) void {
+    const result = self.children.fetchSwapRemove(handle);
+    if (result) |child| {
+        if (child.value.world) |world| {
+            world.removeEntity(child);
+        }
+
+        child.value.setHierarchyRoot(child.value);
+        child.value.parent = null;
+    }
+}
+
+fn setHierarchyRoot(self: *Self, root: ?*Self) void {
+    self.root = root;
+    for (self.children.values()) |child| {
+        child.setHierarchyRoot(root);
+    }
+}
+
+pub fn getRootTransform(self: *const Self) Transform {
+    if (self.parent) |parent| {
+        return parent.getRootTransform().applyTransform(&self.transform);
+    } else {
+        return .{};
+    }
+}
+
+pub fn getWorldTransform(self: *const Self) Transform {
+    if (self.parent) |parent| {
+        return parent.getWorldTransform().applyTransform(&self.transform);
+    } else {
+        return self.transform;
+    }
 }
 
 pub fn updateParallel(self: *Self, stage: UpdateStage, delta_time: f32) void {
     self.systems.updateParallel(stage, self, delta_time);
+
+    //TODO: allow removal during loop?
+    for (self.children.values()) |child| {
+        child.updateParallel(stage, delta_time);
+    }
 }
 
 pub fn updateExclusive(self: *Self, stage: UpdateStage, delta_time: f32) void {
     self.systems.updateExclusive(stage, self, delta_time);
+
+    for (self.children.values()) |child| {
+        child.updateExclusive(stage, delta_time);
+    }
 }
 
 //TODO: Implement this in world update scheduling

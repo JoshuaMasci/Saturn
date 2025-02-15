@@ -46,16 +46,16 @@ pub const RenderWorldSystem = struct {
     }
 
     fn updateEntityInstances(scene: *rendering_scene.RenderScene, entity: *const Entity) !void {
-        var iter = entity.nodes.pool.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.components.get(StaticMeshComponent)) |static_mesh_component| {
-                const root_transform = entity.nodes.getNodeRootTransform(entry.handle).?;
-                const world_transform = entity.transform.applyTransform(&root_transform);
-                try scene.static_meshes.append(.{
-                    .transform = world_transform,
-                    .component = static_mesh_component.*,
-                });
-            }
+        if (entity.systems.get(StaticMeshComponent)) |static_mesh_component| {
+            const world_transform = entity.getWorldTransform();
+            try scene.static_meshes.append(.{
+                .transform = world_transform,
+                .component = static_mesh_component.*,
+            });
+        }
+
+        for (entity.children.values()) |child| {
+            try updateEntityInstances(scene, child);
         }
     }
 };
