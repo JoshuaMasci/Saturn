@@ -3,6 +3,8 @@ const std = @import("std");
 var input_dir: std.fs.Dir = undefined;
 var output_dir: std.fs.Dir = undefined;
 
+pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8;
+
 pub fn main() !void {
     const base_allocator = std.heap.page_allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -27,37 +29,39 @@ pub fn main() !void {
     var walker = try input_dir.walk(base_allocator);
     defer walker.deinit();
 
+    var process_fns = std.StringHashMap(ProcessFn).init(base_allocator);
+    defer process_fns.deinit();
+
+    try process_fns.put(".obj", processObj);
+    try process_fns.put(".png", processStb);
+    try process_fns.put(".json_mat", processMaterial);
+
     while (try walker.next()) |entry| {
         _ = arena.reset(.retain_capacity); // I don't care if it failes for some reason, we'll just waste some memory as a treat
         if (entry.kind == .file) {
-            const file_ext = std.fs.path.extension(entry.basename);
-            if (std.mem.eql(u8, file_ext, ".obj")) {
-                if (processObj(arena_allocator, entry.path)) {
-                    std.log.info("Processed Obj Mesh {s}", .{entry.path});
-                } else |err| {
-                    std.log.err("Failed to processed Obj Mesh {s} -> {}", .{ entry.path, err });
-                }
-            } else if (std.mem.eql(u8, file_ext, ".png")) {
-                if (processStb(arena_allocator, entry.path)) {
-                    std.log.info("Processed Texture {s}", .{entry.path});
-                } else |err| {
-                    std.log.err("Failed to processed Texture {s} -> {}", .{ entry.path, err });
-                }
-            } else if (std.mem.eql(u8, file_ext, ".json_mat")) {
-                if (processMaterial(arena_allocator, entry.path)) {
-                    std.log.info("Processed Material {s}", .{entry.path});
-                } else |err| {
-                    std.log.err("Failed to processed Material {s} -> {}", .{ entry.path, err });
-                }
-            } else if (std.mem.eql(u8, file_ext, ".glb")) {
-                if (proccessGltf(arena_allocator, entry.path)) {
-                    std.log.info("Processed Gltf {s}", .{entry.path});
-                } else |err| {
-                    std.log.err("Failed to processed Gltf {s} -> {}", .{ entry.path, err });
+            const meta_file_ext = std.fs.path.extension(entry.basename);
+            if (std.mem.eql(u8, meta_file_ext, ".meta")) {
+
+                // Get the file ext of real file
+                const file_ext = std.fs.path.extension(std.fs.path.stem(entry.basename));
+
+                if (process_fns.get(file_ext)) |process_fn| {
+                    if (process_fn(arena_allocator, entry.path)) |err| {
+                        std.log.err("Failed to process file {s} -> {s}", .{ entry.path, err });
+                    } else {
+                        std.log.info("Succesfully processed file {s}", .{entry.path});
+                    }
+                } else {
+                    std.log.err("Unknown meta file type: {s}", .{file_ext});
                 }
             }
         }
     }
+}
+
+pub fn removeExt(path: []const u8) []const u8 {
+    const ext = std.fs.path.extension(path);
+    return path[0..(path.len - ext.len)];
 }
 
 pub fn replaceExt(allocator: std.mem.Allocator, path: []const u8, new_ext: []const u8) ![]const u8 {
@@ -80,63 +84,76 @@ pub fn makePath(dir: std.fs.Dir, file_path: []const u8) void {
     }
 }
 
-pub fn processObj(allocator: std.mem.Allocator, file_path: []const u8) !void {
+pub fn errorString(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) []const u8 {
+    return std.fmt.allocPrint(allocator, fmt, args) catch "Failed to alloc string";
+}
+
+pub fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
+    const file_path = removeExt(meta_file_path);
+
     const obj = @import("asset/obj.zig");
-    const processed_mesh = try obj.loadObjMesh(allocator, input_dir, file_path);
+    const processed_mesh = obj.loadObjMesh(allocator, input_dir, file_path) catch |err|
+        return errorString(allocator, "Failed to open obj({s}): {}", .{ file_path, err });
 
-    const new_path = try replaceExt(allocator, file_path, ".mesh");
+    const new_path = replaceExt(allocator, file_path, ".mesh") catch |err|
+        return errorString(allocator, "Failed to allocate string: {}", .{err});
+
     defer allocator.free(new_path);
 
     makePath(output_dir, new_path);
-    const output_file = try output_dir.createFile(new_path, .{});
+    const output_file = output_dir.createFile(new_path, .{}) catch |err|
+        return errorString(allocator, "Failed to create file: {}", .{err});
     defer output_file.close();
 
-    try processed_mesh.serialize(output_file.writer());
+    processed_mesh.serialize(output_file.writer()) catch |err|
+        return errorString(allocator, "Failed to serialize file: {}", .{err});
+
+    return null;
 }
 
-pub fn processStb(allocator: std.mem.Allocator, file_path: []const u8) !void {
+pub fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
+    const file_path = removeExt(meta_file_path);
+
     const stbi = @import("asset/stbi.zig");
-    const texture = try stbi.loadTexture2d(allocator, input_dir, file_path);
+    const texture = stbi.loadTexture2d(allocator, input_dir, file_path) catch |err|
+        return errorString(allocator, "Failed to open file({s}): {}", .{ file_path, err });
 
-    const new_path = try replaceExt(allocator, file_path, ".tex2d");
+    const new_path = replaceExt(allocator, file_path, ".tex2d") catch |err|
+        return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
     makePath(output_dir, new_path);
-    const output_file = try output_dir.createFile(new_path, .{});
+    const output_file = output_dir.createFile(new_path, .{}) catch |err|
+        return errorString(allocator, "Failed to create file: {}", .{err});
     defer output_file.close();
 
-    try texture.serialize(output_file.writer());
+    texture.serialize(output_file.writer()) catch |err|
+        return errorString(allocator, "Failed to serialize file: {}", .{err});
+
+    return null;
 }
 
-pub fn processMaterial(allocator: std.mem.Allocator, file_path: []const u8) !void {
-    const file_buffer = try input_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+pub fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
+    const file_path = removeExt(meta_file_path);
+
+    const file_buffer = input_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null) catch |err|
+        return errorString(allocator, "Failed to read file({s}): {}", .{ file_path, err });
+
     defer allocator.free(file_buffer);
 
-    const new_path = try replaceExt(allocator, file_path, ".json_mat");
+    const new_path = replaceExt(allocator, file_path, ".json_mat") catch |err|
+        return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
     makePath(output_dir, new_path);
-    const output_file = try output_dir.createFile(new_path, .{});
+    const output_file = output_dir.createFile(new_path, .{}) catch |err|
+        return errorString(allocator, "Failed to create file: {}", .{err});
     defer output_file.close();
 
     // Just write the pure json file for now
     // TODO: at least convert from source asset path to AssetRegistry strings?
-    try output_file.writeAll(file_buffer);
-}
+    output_file.writeAll(file_buffer) catch |err|
+        return errorString(allocator, "Failed to write file: {}", .{err});
 
-pub fn proccessGltf(allocator: std.mem.Allocator, file_path: []const u8) !void {
-    const output_dir_path = try replaceExt(allocator, file_path, "");
-    defer allocator.free(output_dir_path);
-
-    makePath(output_dir, output_dir_path);
-
-    output_dir.makeDir(output_dir_path) catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => |other_err| return other_err,
-    };
-
-    var gltf_dir = try output_dir.openDir(output_dir_path, .{});
-    defer gltf_dir.close();
-
-    //TODO: proccess gltf meshes/textures/materials
+    return null;
 }
