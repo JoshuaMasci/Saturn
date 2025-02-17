@@ -5,13 +5,4 @@
 #include <Jolt/Core/UnorderedSet.h>
 #include <Jolt/Jolt.h>
 
-template <class T>
-T *alloc_t() {
-	return static_cast<T *>(JPH::Allocate(sizeof(T)));
-}
 
-template <class T>
-void free_t(T *ptr) { JPH::Free((void *)ptr); }
-
-template <typename T>
-using JoltVector = std::vector<T, JPH::STLAllocator<T>>;

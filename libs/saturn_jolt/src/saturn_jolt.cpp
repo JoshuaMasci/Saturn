@@ -49,14 +49,12 @@ void init(const AllocationFunctions *functions) {
 
 	JPH::MassShape::sRegister();
 
-    shape_pool = alloc_t<ShapePool>();
-    ::new(shape_pool) ShapePool();
+    shape_pool = new ShapePool();
 }
 
 void deinit() {
     shape_pool_mutex.lock();
-    shape_pool->~ShapePool();
-    free_t(shape_pool);
+   	delete shape_pool;
     shape_pool_mutex.unlock();
 
     JPH::UnregisterTypes();
@@ -222,14 +220,11 @@ MassProperties shapeGetMassProperties(Shape shape) {
 }
 
 World *worldCreate(const WorldSettings *settings) {
-    auto world_ptr = alloc_t<World>();
-    ::new(world_ptr) World(settings);
-    return world_ptr;
+    return new World(settings);
 }
 
 void worldDestroy(World *world_ptr) {
-    world_ptr->~World();
-    free_t(world_ptr);
+   delete world_ptr;
 }
 
 void worldUpdate(World *world_ptr, float delta_time, int collision_steps) {
@@ -267,14 +262,11 @@ void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape sh
 
 // Body functions
 Body *bodyCreate(const BodySettings *settings) {
-    auto body_ptr = alloc_t<Body>();
-    ::new(body_ptr) Body(settings);
-    return body_ptr;
+    return new Body(settings);
 }
 
 void bodyDestroy(Body *body_ptr) {
-    body_ptr->~Body();
-    free_t(body_ptr);
+   delete body_ptr;
 }
 
 World *bodyGetWorld(Body *body_ptr) {
