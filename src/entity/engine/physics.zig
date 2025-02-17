@@ -156,7 +156,7 @@ pub const PhysicsWorldSystem = struct {
 
     pub fn castRayIgnoreEntity(self: Self, object_layer: u16, ignore: *Entity, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
         //TODO: this should log error rather than crash?
-        const ignore_body = ignore.root.?.systems.get(PhysicsEntitySystem).?.body;
+        const ignore_body = ignore.root.systems.get(PhysicsEntitySystem).?.body;
         const start_a = start.toArray();
         const direction_a = direction.toArray();
 
@@ -165,4 +165,20 @@ pub const PhysicsWorldSystem = struct {
         }
         return null;
     }
+
+    pub fn castShape(self: Self, temp_allocator: std.mem.Allocator, object_layer: u16, shape: physics.Shape, transform: Transform) std.ArrayList(Entity.Handle) {
+        var callback_list = ShapeCastHitList.init(temp_allocator);
+        self.physics_world.castShape(object_layer, shape, &.{ .position = transform.position.toArray(), .rotation = transform.rotation.toArray() }, &shapeCastCallback, &callback_list);
+        return callback_list;
+    }
 };
+
+pub const ShapeCastHitList = std.ArrayList(Entity.Handle);
+fn shapeCastCallback(ptr_opt: ?*anyopaque, hit: physics.ShapeCastHit) callconv(.C) void {
+    if (ptr_opt) |ptr| {
+        const callback_list: *ShapeCastHitList = @alignCast(@ptrCast(ptr));
+        callback_list.append(@intCast(hit.shape_user_data)) catch |err| {
+            std.log.err("Failed to append shape cast hit {}", .{err});
+        };
+    }
+}

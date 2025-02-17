@@ -16,9 +16,9 @@ const DebugCameraEntitySystem = @import("entity/engine//debug_camera.zig").Debug
 const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
 const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
 
-pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle) !Entity.Handle {
-    var entity = universe.createEntity();
-    entity.transform.position = za.Vec3.Z.scale(1.0);
+pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle, transform: Transform) !Entity.Handle {
+    var entity = universe.createEntity("Debug Camera");
+    entity.transform = transform;
     entity.systems.add(DebugCameraEntitySystem{});
     entity.systems.add(physics.PhysicsEntitySystem.init(entity.handle, .dynamic));
 
@@ -47,10 +47,10 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     outside_world.systems.add(physics.PhysicsWorldSystem.init());
     outside_world.systems.add(rendering.RenderWorldSystem.init(allocator));
 
-    var ship_inside = universe.createEntity();
+    var ship_inside = universe.createEntity("Ship Inside Root");
     ship_inside.systems.add(physics.PhysicsEntitySystem.init(ship_inside.handle, .static));
 
-    var ship_outside = universe.createEntity();
+    var ship_outside = universe.createEntity("Ship Outside Root");
     ship_outside.systems.add(physics.PhysicsEntitySystem.init(ship_outside.handle, .dynamic));
 
     const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
@@ -73,39 +73,38 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0), .rotation = za.Quat.fromEulerAngles(za.Vec3.new(0.0, za.toRadians(@as(f32, 90.0)), 0.0)) });
     createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_inside_mesh_handle, uv_grid_material_handle, .{ .position = za.Vec3.new(2.5 + 1.25, 0.0, -15.0), .rotation = za.Quat.fromEulerAngles(za.Vec3.new(0.0, za.toRadians(@as(f32, 90.0)), 0.0)) });
 
-    // Airlock Doors
+    // Airlocks
     {
-        const mesh = MeshAssetHandle.fromRepoPath("engine:models/cube.mesh").?;
-        const material = MaterialAssetHandle.fromRepoPath("engine:materials/teal.json_mat").?;
-        const size = za.Vec3.new(0.25, 1.0, 1.0);
-        const door_box = physics_system.Shape.initBox(size.data, 1.0, 0);
         const center_transform: Transform = .{ .position = za.Vec3.new(2.5 * 1.5, 0.0, -15.0) };
 
-        var inside_airlock_center = universe.createEntity();
+        var inside_airlock_center = universe.createEntity("Airlock Inside");
         inside_airlock_center.transform = center_transform;
 
-        var outside_airlock_center = universe.createEntity();
+        var outside_airlock_center = universe.createEntity("Airlock Outside");
         outside_airlock_center.transform = center_transform;
+        const airlock_volume = try PhysicsMeshes.fromHandle(allocator, airlock_inside_mesh_handle);
 
-        var inside_door = universe.createEntity();
+        inside_airlock_center.systems.add(@import("game/airlock.zig").AirLockComponent{ .cast_layer = 1, .cast_shape = airlock_volume.convex_shape, .linked_entity = outside_airlock_center.handle });
+        outside_airlock_center.systems.add(@import("game/airlock.zig").AirLockComponent{ .cast_layer = 1, .cast_shape = airlock_volume.convex_shape, .linked_entity = inside_airlock_center.handle });
+
+        const mesh = MeshAssetHandle.fromRepoPath("engine:models/cube.mesh").?;
+        const material = MaterialAssetHandle.fromRepoPath("engine:materials/teal.json_mat").?;
+        const size = za.Vec3.new(0.2, 1.0, 1.0);
+        const door_box = physics_system.Shape.initBox(size.data, 1.0, 0);
+
+        var inside_door = universe.createEntity("Airlock Door Inside");
         inside_door.transform = .{ .position = za.Vec3.new(2.5 * 0.5, 0.0, 0.0), .scale = size };
 
-        var outside_door = universe.createEntity();
+        var outside_door = universe.createEntity("Airlock Door Outside");
         outside_door.transform = .{ .position = za.Vec3.new(-2.5 * 0.5, 0.0, 0.0), .scale = size };
 
         inside_door.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
         inside_door.systems.add(physics.PhysicsColliderComponent{ .shape = door_box });
-        inside_door.systems.add(@import("entity/game.zig").AirLockComponent{ .center_node = inside_airlock_center.handle, .target = .{
-            .world = outside_world.handle,
-            .entity = outside_airlock_center.handle,
-        } });
+        inside_door.systems.add(@import("game/button.zig").ButtonComponent{ .target = inside_airlock_center.handle });
 
         outside_door.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
         outside_door.systems.add(physics.PhysicsColliderComponent{ .shape = door_box });
-        outside_door.systems.add(@import("entity/game.zig").AirLockComponent{ .center_node = outside_airlock_center.handle, .target = .{
-            .world = inside_world.handle,
-            .entity = inside_airlock_center.handle,
-        } });
+        outside_door.systems.add(@import("game/button.zig").ButtonComponent{ .target = outside_airlock_center.handle });
 
         inside_airlock_center.addChild(inside_door);
         outside_airlock_center.addChild(outside_door);
@@ -138,12 +137,11 @@ const PhysicsMeshes = struct {
         defer mesh.deinit(allocator);
 
         var convex_shape = physics_system.Shape.initConvexHull(mesh.positions, 1.0, 0);
-        defer convex_shape.deinit();
 
         const mass_properties = convex_shape.getMassProperties();
         const mesh_shape = physics_system.Shape.initMeshWithMass(mesh.positions, mesh.indices, mass_properties, 0);
         return .{
-            .convex_shape = mesh_shape,
+            .convex_shape = convex_shape,
             .mesh_shape = mesh_shape,
         };
     }
@@ -154,12 +152,12 @@ fn createMeshEntity(allocator: std.mem.Allocator, universe: *Universe, inside_pa
     std.debug.assert(global.assets.materials.isValid(material));
     const mesh_shapes = PhysicsMeshes.fromHandle(allocator, mesh) catch |err| std.debug.panic("Failed to create physics meshes: {}", .{err});
 
-    var inside = universe.createEntity();
+    var inside = universe.createEntity("Mesh Entity Inside");
     inside.transform = transform;
     inside.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
     inside.systems.add(physics.PhysicsColliderComponent{ .shape = mesh_shapes.mesh_shape });
 
-    var outside = universe.createEntity();
+    var outside = universe.createEntity("Mesh Entity Outside");
     outside.transform = transform;
     outside.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
     outside.systems.add(physics.PhysicsColliderComponent{ .shape = mesh_shapes.mesh_shape });

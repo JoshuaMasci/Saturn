@@ -73,16 +73,8 @@ pub const DebugCameraEntitySystem = struct {
                         entity_transform.getForward().scale(10.0),
                     )) |hit| {
                         const hit_entity = entity.world.?.entities.get(hit.entity_handle).?;
-                        if (hit_entity.systems.get(@import("../game.zig").AirLockComponent)) |airlock| {
-                            if (airlock.target) |target| {
-                                const world_airlock_transform = entity.world.?.entities.get(airlock.center_node).?.getWorldTransform();
-                                const airlock_relative_transform = world_airlock_transform.getRelativeTransform(&entity.getWorldTransform());
-
-                                std.log.info("Hit Airlock Enabled", .{});
-                                entity.universe.scheduleMove(entity.handle, target.world, .{ .entity = target.entity, .transform = airlock_relative_transform });
-                            } else {
-                                std.log.info("Hit Airlock Disabled", .{});
-                            }
+                        if (hit_entity.systems.get(@import("../../game/button.zig").ButtonComponent)) |button| {
+                            button.pressButton(hit_entity.universe);
                         }
                     }
                 }

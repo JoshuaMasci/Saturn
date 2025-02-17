@@ -258,6 +258,13 @@ bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pat
     return world_ptr->castRayClosetIgnoreBody(object_layer_pattern, ignore_body_id, load_rvec3(origin), load_rvec3(direction), hit_result);
 }
 
+void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape shape, const Transform *c_transform, ShapeCastCallback callback, void *callback_data) {
+	shape_pool_mutex.lock();
+	auto shape_ref = shape_pool->get(shape);
+	shape_pool_mutex.unlock();
+	world_ptr->castShape(object_layer_pattern, load_vec3(c_transform->position), load_quat(c_transform->rotation), shape_ref, callback, callback_data);
+}
+
 // Body functions
 Body *bodyCreate(const BodySettings *settings) {
     auto body_ptr = alloc_t<Body>();

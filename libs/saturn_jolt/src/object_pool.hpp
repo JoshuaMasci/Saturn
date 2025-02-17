@@ -37,7 +37,7 @@ public:
         this->pool.clear();
     }
 
-    size_t size() {
+    size_t size() const {
         return this->pool.size();
     }
 

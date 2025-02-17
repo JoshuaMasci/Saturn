@@ -13,14 +13,16 @@ pub const Handle = u64;
 
 const Self = @This();
 
+//TODO: heap alloc name
+name: ?[]const u8 = null,
+
 handle: Handle,
 universe: *Universe,
 world: ?*World = null,
-name: ?std.ArrayList(u8) = null,
 transform: Transform = .{},
 systems: EntitySystem.Systems,
 
-root: ?*Self = null,
+root: *Self = undefined,
 parent: ?*Self = null,
 children: std.AutoArrayHashMap(Handle, *Self),
 
@@ -29,8 +31,9 @@ children: std.AutoArrayHashMap(Handle, *Self),
 //cached_root_transform: ?Transform = null,
 //cached_world_transform: ?Transform = null,
 
-pub fn init(allocator: std.mem.Allocator, universe: *Universe, handle: Handle) Self {
+pub fn init(allocator: std.mem.Allocator, universe: *Universe, handle: Handle, name: ?[]const u8) Self {
     return .{
+        .name = name,
         .universe = universe,
         .handle = handle,
         .systems = EntitySystem.Systems.init(allocator),
@@ -41,9 +44,9 @@ pub fn init(allocator: std.mem.Allocator, universe: *Universe, handle: Handle) S
 pub fn deinit(self: *Self) void {
     self.children.deinit();
 
-    if (self.name) |name| {
-        name.deinit();
-    }
+    // if (self.name) |name| {
+    //     name.deinit();
+    // }
     self.systems.deinit();
 }
 
@@ -52,7 +55,7 @@ pub fn addChild(self: *Self, child: *Self) void {
     std.debug.assert(!self.children.contains(child.handle));
 
     child.parent = self;
-    child.setHierarchyRoot(child);
+    child.setHierarchyRoot(self.root);
     self.children.put(child.handle, child) catch |err| std.debug.panic("Failed to append child: {}", .{err});
 
     if (self.world) |world| {
@@ -72,7 +75,7 @@ pub fn removeChild(self: *Self, handle: Handle) void {
     }
 }
 
-fn setHierarchyRoot(self: *Self, root: ?*Self) void {
+fn setHierarchyRoot(self: *Self, root: *Self) void {
     self.root = root;
     for (self.children.values()) |child| {
         child.setHierarchyRoot(root);

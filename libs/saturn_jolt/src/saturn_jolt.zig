@@ -41,6 +41,8 @@ pub const SubShapeIndex = c.SubShapeIndex;
 pub const MassProperties = c.MassProperties;
 
 pub const RayCastHit = c.RayCastHit;
+pub const ShapeCastHit = c.ShapeCastHit;
+pub const ShapeCastCallback = c.ShapeCastCallback;
 
 pub const SubShapeSettings = struct {
     shape: Shape,
@@ -174,14 +176,20 @@ pub const World = struct {
         else
             null;
     }
+
+    pub fn castShape(self: Self, object_layer_pattern: ObjectLayer, shape: Shape, transform: *const Transform, callback: ShapeCastCallback, callback_data: *anyopaque) void {
+        c.worldCastShape(self.ptr, object_layer_pattern, shape.handle, transform, callback, callback_data);
+    }
 };
 
 pub const Body = struct {
     const Self = @This();
 
     pub const Settings = struct {
-        position: RVec3 = .{ 0.0, 0.0, 0.0 },
-        rotation: Quat = .{ 0.0, 0.0, 0.0, 1.0 },
+        transform: Transform = .{
+            .position = .{ 0.0, 0.0, 0.0 },
+            .rotation = .{ 0.0, 0.0, 0.0, 1.0 },
+        },
         linear_velocity: Vec3 = .{ 0.0, 0.0, 0.0 },
         angular_velocity: Vec3 = .{ 0.0, 0.0, 0.0 },
         user_data: UserData = 0,
@@ -199,8 +207,8 @@ pub const Body = struct {
     pub fn init(settings: Settings) Self {
         return .{
             .ptr = c.bodyCreate(&.{
-                .position = settings.position,
-                .rotation = settings.rotation,
+                .position = settings.transform.position,
+                .rotation = settings.transform.rotation,
                 .linear_velocity = settings.linear_velocity,
                 .angular_velocity = settings.angular_velocity,
                 .user_data = settings.user_data,

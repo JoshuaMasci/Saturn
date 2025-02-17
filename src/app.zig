@@ -39,7 +39,7 @@ pub const App = struct {
         const game_universe = try Universe.init(global.global_allocator);
 
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
-        const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside);
+        const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside, .{ .position = za.Vec3.new(0.0, 0.0, -15.0) });
 
         return .{
             .should_quit = false,
@@ -69,7 +69,7 @@ pub const App = struct {
 
         self.timer += delta_time;
         self.frames += 1;
-        if (self.timer > 20.0) {
+        if (self.timer > 10.0) {
             const avr_delta_time = self.timer / self.frames;
             std.log.info("DT: {d:.3} ms FPS: {d:.3}", .{ avr_delta_time * 1000, 1.0 / avr_delta_time });
             if (mem_usage_opt) |mem_usage| {
@@ -93,7 +93,7 @@ pub const App = struct {
         self.render_thread.beginFrame();
 
         self.render_thread.render_state.scene = null;
-        if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
+        if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
             self.render_thread.render_state.camera_transform = game_debug_entity.transform;
 
             if (game_debug_entity.world) |game_world| {
@@ -118,7 +118,7 @@ pub const App = struct {
         }
 
         //std.log.info("Button {} -> {}", .{ event.button, event.state });
-        if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
+        if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
             if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
                 debug_camera_system.on_button_event(event);
             }
@@ -127,7 +127,7 @@ pub const App = struct {
 
     pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
         //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
-        if (self.game_universe.entites.get(self.game_debug_camera)) |game_debug_entity| {
+        if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
             if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
                 debug_camera_system.on_axis_event(event);
             }

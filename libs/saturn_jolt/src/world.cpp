@@ -1,7 +1,9 @@
 #include "world.hpp"
 
-#include "body.hpp"
+#include "Jolt/Physics/Collision/CollideShape.h"
 #include "Jolt/Physics/Collision/Shape/CompoundShape.h"
+#include "body.hpp"
+#include "collision_collector.hpp"
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 
@@ -130,4 +132,17 @@ bool World::castRayClosetIgnoreBody(ObjectLayer object_layer_pattern, JPH::BodyI
     }
 
     return has_hit;
+}
+
+void World::castShape(ObjectLayer object_layer_pattern, JPH::RVec3 position, JPH::Quat rotation, const JPH::Ref<JPH::Shape>& shape_ref, ShapeCastCallback callback, void *callback_data) const {
+	auto center_of_mass_transform = JPH::RMat44::sRotationTranslation(rotation, position);
+
+	JPH::CollideShapeSettings settings = JPH::CollideShapeSettings();
+	ShapeCastCallbackCollisionCollector collector(callback, callback_data,
+												  this->physics_system->GetBodyInterface());
+
+	this->physics_system->GetNarrowPhaseQuery().CollideShape(shape_ref, JPH::Vec3::sReplicate(1.0f),
+																	  center_of_mass_transform, settings, position,
+																	  collector, {}, AnyMatchObjectLayerFilter(
+																		  object_layer_pattern), {}, {});
 }

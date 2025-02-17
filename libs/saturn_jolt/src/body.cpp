@@ -174,7 +174,10 @@ SubShapeInfo Body::getSubShapeInfo(JPH::SubShapeID id) const {
         if (this->subshapes.contains(shape_index)) {
             shape_data = this->subshapes.get(shape_index).user_data;
         }
-    }
+    } else if (this->subshapes.size() == 1) {
+		shape_index = 0;
+		shape_data = this->subshapes.begin()->second.user_data;
+	}
 
     return SubShapeInfo{shape_index, shape_data};
 }

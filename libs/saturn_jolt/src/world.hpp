@@ -27,6 +27,8 @@ public:
 
     bool castRayClosetIgnoreBody(ObjectLayer object_layer_pattern, JPH::BodyID ignore_body, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const;
 
+	void castShape(ObjectLayer object_layer_pattern, JPH::RVec3 position, JPH::Quat rotation, const JPH::Ref<JPH::Shape>& shape_ref, ShapeCastCallback callback, void *callback_data) const;
+
     JPH::PhysicsSystem *physics_system;
 
 private:

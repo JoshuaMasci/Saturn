@@ -15,22 +15,22 @@ pub const UpdateStage = enum {
     frame_end,
 };
 
-pub const EntityMoveTarget = struct {
-    entity: ?Entity.Handle,
-    transform: Transform,
+pub const EntityMoveTarget = union(enum) {
+    entity: Entity.Handle,
+    world: World.Handle,
 };
 
 pub const EntityMove = struct {
     entity: Entity.Handle,
-    target_world: World.Handle,
-    target: ?EntityMoveTarget,
+    target: EntityMoveTarget,
+    offset: Transform,
 };
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 
-entites: containers.HandlePtrPool(Entity.Handle, Entity),
+entities: containers.HandlePtrPool(Entity.Handle, Entity),
 worlds: containers.HandlePtrPool(World.Handle, World),
 
 move_entity_list: std.ArrayList(EntityMove),
@@ -42,7 +42,7 @@ pub fn init(allocator: std.mem.Allocator) !*Self {
     const ptr = try allocator.create(Self);
     ptr.* = .{
         .allocator = allocator,
-        .entites = containers.HandlePtrPool(Entity.Handle, Entity).init(allocator),
+        .entities = containers.HandlePtrPool(Entity.Handle, Entity).init(allocator),
         .worlds = containers.HandlePtrPool(World.Handle, World).init(allocator),
         .move_entity_list = std.ArrayList(EntityMove).init(allocator),
     };
@@ -52,36 +52,49 @@ pub fn init(allocator: std.mem.Allocator) !*Self {
 pub fn deinit(self: *Self) void {
     self.move_entity_list.deinit();
     self.worlds.deinit();
-    self.entites.deinit();
+    self.entities.deinit();
     self.allocator.destroy(self);
 }
 
-pub fn scheduleMove(self: *Self, entity: Entity.Handle, target_world: World.Handle, target: ?EntityMoveTarget) void {
-    self.move_entity_list.append(.{ .entity = entity, .target_world = target_world, .target = target }) catch |err| std.debug.panic("Failed to append to move entity list: {}", .{err});
+pub fn scheduleMove(self: *Self, entity: Entity.Handle, target: EntityMoveTarget, offset: Transform) void {
+    self.move_entity_list.append(.{ .entity = entity, .target = target, .offset = offset }) catch |err| std.debug.panic("Failed to append to move entity list: {}", .{err});
 }
 
 pub fn update(self: *Self, stage: UpdateStage, delta_time: f32) void {
     if (stage == .frame_start) {
         for (self.move_entity_list.items) |move_entity| {
-            const entity = self.entites.get(move_entity.entity).?;
+            const entity = self.entities.get(move_entity.entity).?;
+
+            const old_world_handle = entity.world.?.handle;
 
             if (entity.world) |world| {
                 world.removeEntity(entity);
             }
 
-            if (move_entity.target) |target| {
-                var transform = target.transform;
+            var target_world: ?*World = null;
+            var target_transform = move_entity.offset;
 
-                if (target.entity) |entity_handle| {
-                    const target_entity = self.entites.get(entity_handle).?;
-                    transform = target_entity.getWorldTransform().applyTransform(&transform);
-                }
-
-                entity.transform = transform;
+            switch (move_entity.target) {
+                .entity => |target_handle| {
+                    if (self.entities.get(target_handle)) |target_entity| {
+                        target_world = target_entity.world;
+                        target_transform = target_entity.getWorldTransform().applyTransform(&target_transform);
+                    }
+                },
+                .world => |target_handle| {
+                    if (self.worlds.get(target_handle)) |world| {
+                        target_world = world;
+                    }
+                },
             }
 
-            const target_world = self.worlds.get(move_entity.target_world).?;
-            target_world.addEntity(entity);
+            entity.transform = target_transform;
+
+            if (target_world) |new_world| {
+                std.debug.assert(old_world_handle != new_world.handle);
+
+                new_world.addEntity(entity);
+            }
         }
         self.move_entity_list.clearRetainingCapacity();
     }
@@ -93,10 +106,10 @@ pub fn update(self: *Self, stage: UpdateStage, delta_time: f32) void {
     }
 }
 
-pub fn createEntity(self: *Self) *Entity {
+pub fn createEntity(self: *Self, name: []const u8) *Entity {
     const handle = self.next_entity_handle.fetchAdd(1, .monotonic); //TODO: is this the correct atomic order?
-    const entity = self.entites.create(handle);
-    entity.* = Entity.init(self.allocator, self, handle);
+    const entity = self.entities.create(handle);
+    entity.* = Entity.init(self.allocator, self, handle, name);
     entity.*.root = entity;
     return entity;
 }
