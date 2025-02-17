@@ -35,6 +35,28 @@ pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle, transf
     return entity.handle;
 }
 
+pub fn create_props(universe: *Universe, world_handle: World.Handle, count: usize, position: za.Vec3, scale: f32) void {
+    const cube_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/cube.mesh").?;
+    const material_handles: []const MaterialAssetHandle = &.{
+        MaterialAssetHandle.fromRepoPath("engine:materials/olive.json_mat").?,
+        MaterialAssetHandle.fromRepoPath("engine:materials/purple.json_mat").?,
+        MaterialAssetHandle.fromRepoPath("engine:materials/teal.json_mat").?,
+    };
+
+    const cube_shape = physics_system.Shape.initBox(.{ scale, scale, scale }, 1, 0);
+
+    for (0..count) |i| {
+        var cube_entity = universe.createEntity("Cube Entity");
+        cube_entity.transform.position = position;
+        cube_entity.transform.scale = za.Vec3.set(scale);
+        cube_entity.systems.add(rendering.StaticMeshComponent{ .mesh = cube_mesh_handle, .material = material_handles[@mod(i, material_handles.len)] });
+        cube_entity.systems.add(physics.PhysicsColliderComponent{ .shape = cube_shape });
+        cube_entity.systems.add(physics.PhysicsEntitySystem.init(cube_entity.handle, .dynamic));
+        cube_entity.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(cube_entity);
+        universe.worlds.get(world_handle).?.addEntity(cube_entity);
+    }
+}
+
 pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !struct {
     outside: World.Handle,
     inside: World.Handle,
@@ -64,14 +86,14 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     const grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/grid.json_mat").?;
     const uv_grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/uv_grid.json_mat").?;
 
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_mesh_handle, grid_material_handle, .{});
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{});
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(5.0) });
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(15.0) });
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) });
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_mesh_handle, grid_material_handle, .{}, false);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{}, false);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(5.0) }, false);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(15.0) }, false);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) }, false);
 
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0), .rotation = za.Quat.fromEulerAngles(za.Vec3.new(0.0, za.toRadians(@as(f32, 90.0)), 0.0)) });
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_inside_mesh_handle, uv_grid_material_handle, .{ .position = za.Vec3.new(2.5 + 1.25, 0.0, -15.0), .rotation = za.Quat.fromEulerAngles(za.Vec3.new(0.0, za.toRadians(@as(f32, 90.0)), 0.0)) });
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0), .rotation = za.Quat.fromEulerAngles(za.Vec3.new(0.0, za.toRadians(@as(f32, 90.0)), 0.0)) }, true);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_inside_mesh_handle, uv_grid_material_handle, .{ .position = za.Vec3.new(2.5 + 1.25, 0.0, -15.0), .rotation = za.Quat.fromEulerAngles(za.Vec3.new(0.0, za.toRadians(@as(f32, 90.0)), 0.0)) }, true);
 
     // Airlocks
     {
@@ -82,7 +104,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
 
         var outside_airlock_center = universe.createEntity("Airlock Outside");
         outside_airlock_center.transform = center_transform;
-        const airlock_volume = try PhysicsMeshes.fromHandle(allocator, airlock_inside_mesh_handle);
+        const airlock_volume = try PhysicsMeshes.fromHandle(allocator, airlock_inside_mesh_handle, false);
 
         inside_airlock_center.systems.add(@import("game/airlock.zig").AirLockComponent{ .cast_layer = 1, .cast_shape = airlock_volume.convex_shape, .linked_entity = outside_airlock_center.handle });
         outside_airlock_center.systems.add(@import("game/airlock.zig").AirLockComponent{ .cast_layer = 1, .cast_shape = airlock_volume.convex_shape, .linked_entity = inside_airlock_center.handle });
@@ -132,14 +154,17 @@ const PhysicsMeshes = struct {
     convex_shape: physics_system.Shape,
     mesh_shape: physics_system.Shape,
 
-    fn fromHandle(allocator: std.mem.Allocator, handle: MeshAssetHandle) !@This() {
+    fn fromHandle(allocator: std.mem.Allocator, handle: MeshAssetHandle, dynamic_mesh_shape: bool) !@This() {
         var mesh = try global.assets.meshes.loadAsset(allocator, handle);
         defer mesh.deinit(allocator);
 
         var convex_shape = physics_system.Shape.initConvexHull(mesh.positions, 1.0, 0);
 
-        const mass_properties = convex_shape.getMassProperties();
-        const mesh_shape = physics_system.Shape.initMeshWithMass(mesh.positions, mesh.indices, mass_properties, 0);
+        const mesh_shape = if (dynamic_mesh_shape)
+            physics_system.Shape.initMeshWithMass(mesh.positions, mesh.indices, convex_shape.getMassProperties(), 0)
+        else
+            physics_system.Shape.initMeshStatic(mesh.positions, mesh.indices, 0);
+
         return .{
             .convex_shape = convex_shape,
             .mesh_shape = mesh_shape,
@@ -147,20 +172,22 @@ const PhysicsMeshes = struct {
     }
 };
 
-fn createMeshEntity(allocator: std.mem.Allocator, universe: *Universe, inside_parent: ?*Entity, outside_parent: ?*Entity, mesh: MeshAssetHandle, material: MaterialAssetHandle, transform: Transform) void {
+fn createMeshEntity(allocator: std.mem.Allocator, universe: *Universe, inside_parent: ?*Entity, outside_parent: ?*Entity, mesh: MeshAssetHandle, material: MaterialAssetHandle, transform: Transform, use_dynamic_static_mesh: bool) void {
     std.debug.assert(global.assets.meshes.isValid(mesh));
     std.debug.assert(global.assets.materials.isValid(material));
-    const mesh_shapes = PhysicsMeshes.fromHandle(allocator, mesh) catch |err| std.debug.panic("Failed to create physics meshes: {}", .{err});
+    const mesh_shapes = PhysicsMeshes.fromHandle(allocator, mesh, use_dynamic_static_mesh) catch |err| std.debug.panic("Failed to create physics meshes: {}", .{err});
 
     var inside = universe.createEntity("Mesh Entity Inside");
     inside.transform = transform;
     inside.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
     inside.systems.add(physics.PhysicsColliderComponent{ .shape = mesh_shapes.mesh_shape });
 
+    const outside_shape = if (use_dynamic_static_mesh) mesh_shapes.mesh_shape else mesh_shapes.convex_shape;
+
     var outside = universe.createEntity("Mesh Entity Outside");
     outside.transform = transform;
     outside.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
-    outside.systems.add(physics.PhysicsColliderComponent{ .shape = mesh_shapes.mesh_shape });
+    outside.systems.add(physics.PhysicsColliderComponent{ .shape = outside_shape });
 
     if (inside_parent) |inside_entity| {
         inside_entity.addChild(inside);

@@ -40,6 +40,7 @@ pub const App = struct {
 
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
         const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside, .{ .position = za.Vec3.new(0.0, 0.0, -15.0) });
+        world_gen.create_props(game_universe, game_worlds.inside, 15, za.Vec3.new(2.5, 0.0, -15.0), 0.15);
 
         return .{
             .should_quit = false,
