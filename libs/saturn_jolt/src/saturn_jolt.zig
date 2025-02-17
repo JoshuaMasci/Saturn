@@ -11,25 +11,19 @@ const c = @cImport({
 });
 
 pub fn init(allocator: std.mem.Allocator) void {
-    std.debug.assert(mem_allocator == null and mem_allocations == null);
+    std.debug.assert(mem_allocator == null);
 
     mem_allocator = allocator;
-    mem_allocations = std.AutoHashMap(usize, SizeAndAlignment).init(allocator);
-    mem_allocations.?.ensureTotalCapacity(32) catch unreachable;
-
     c.init(&c.AllocationFunctions{
-        .alloc = zjoltAlloc,
-        .free = zjoltFree,
-        .aligned_alloc = zjoltAlignedAlloc,
-        .aligned_free = zjoltFree,
-        .realloc = zjoltReallocate,
+        .alloc = alloc,
+        .free = free,
+        .aligned_alloc = alignedAlloc,
+        .aligned_free = free,
+        .realloc = reallocate,
     });
 }
 pub fn deinit() void {
     c.deinit();
-
-    mem_allocations.?.deinit();
-    mem_allocations = null;
     mem_allocator = null;
 }
 
@@ -269,80 +263,97 @@ pub const Body = struct {
 };
 
 // Memory Allocation
-const SizeAndAlignment = packed struct(u64) {
-    size: u48,
-    alignment: u16,
-};
 var mem_allocator: ?std.mem.Allocator = null;
-var mem_allocations: ?std.AutoHashMap(usize, SizeAndAlignment) = null;
-var mem_mutex: std.Thread.Mutex = .{};
-const default_mem_alignment = 16;
+const Metadata = struct {
+    size: usize,
+    alignment: usize,
+};
 
-fn zjoltAlloc(size: usize) callconv(.C) ?*anyopaque {
-    return zjoltAlignedAlloc(size, default_mem_alignment);
+fn alloc(size: usize) callconv(.C) ?*anyopaque {
+    return alignedAlloc(size, 16);
 }
 
-fn zjoltAlignedAlloc(size: usize, alignment: usize) callconv(.C) ?*anyopaque {
-    std.debug.assert(alignment == 64 or alignment == 16);
+fn alignedAlloc(size: usize, alignment: usize) callconv(.C) ?*anyopaque {
+    if (mem_allocator) |allocator| {
+        const allocation_size = size + alignment;
 
-    mem_mutex.lock();
-    defer mem_mutex.unlock();
+        const allocation: []u8 = switch (alignment) {
+            16 => allocator.alignedAlloc(u8, 16, allocation_size),
+            32 => allocator.alignedAlloc(u8, 32, allocation_size),
+            64 => allocator.alignedAlloc(u8, 64, allocation_size),
+            else => |x| std.debug.panic("Unsupported memory aligment: {}", .{x}),
+        } catch return null;
 
-    const ptr = mem_allocator.?.rawAlloc(
-        size,
-        std.math.log2_int(u29, @as(u29, @intCast(alignment))),
-        @returnAddress(),
-    );
-    if (ptr == null)
-        @panic("saturn_jolt: out of memory");
+        const data_ptr_int: usize = @as(usize, @intFromPtr(allocation.ptr)) + alignment;
+        const data_ptr: *u8 = @ptrFromInt(data_ptr_int);
+        const metadata_ptr: *Metadata = @ptrFromInt(data_ptr_int - @sizeOf(Metadata));
+        metadata_ptr.size = size;
+        metadata_ptr.alignment = alignment;
 
-    mem_allocations.?.put(
-        @intFromPtr(ptr),
-        .{ .size = @as(u32, @intCast(size)), .alignment = @as(u16, @intCast(alignment)) },
-    ) catch @panic("saturn_jolt: out of memory");
-
-    return ptr;
-}
-
-fn zjoltReallocate(maybe_ptr: ?*anyopaque, reported_old_size: usize, new_size: usize) callconv(.C) ?*anyopaque {
-    mem_mutex.lock();
-    defer mem_mutex.unlock();
-
-    const old_size = if (maybe_ptr != null) reported_old_size else 0;
-
-    const old_mem = if (old_size > 0)
-        @as([*]align(default_mem_alignment) u8, @ptrCast(@alignCast(maybe_ptr)))[0..old_size]
-    else
-        @as([*]align(default_mem_alignment) u8, undefined)[0..0];
-
-    const mem = mem_allocator.?.realloc(old_mem, new_size) catch @panic("saturn_jolt: out of memory");
-
-    if (maybe_ptr != null) {
-        const removed = mem_allocations.?.remove(@intFromPtr(maybe_ptr.?));
-        std.debug.assert(removed);
+        return data_ptr;
     }
-
-    mem_allocations.?.put(
-        @intFromPtr(mem.ptr),
-        .{ .size = @as(u48, @intCast(new_size)), .alignment = default_mem_alignment },
-    ) catch @panic("saturn_jolt: out of memory");
-
-    return mem.ptr;
+    return null;
 }
 
-fn zjoltFree(maybe_ptr: ?*anyopaque) callconv(.C) void {
-    if (maybe_ptr) |ptr| {
-        mem_mutex.lock();
-        defer mem_mutex.unlock();
+fn reallocate(maybe_ptr: ?*anyopaque, old_size: usize, new_size: usize) callconv(.C) ?*anyopaque {
+    if (maybe_ptr) |data_ptr| {
+        if (mem_allocator) |allocator| {
+            const data_ptr_int: usize = @intFromPtr(data_ptr);
+            const metadata_ptr: *Metadata = @ptrFromInt(data_ptr_int - @sizeOf(Metadata));
+            const allocation_ptr: [*]u8 = @ptrFromInt(data_ptr_int - metadata_ptr.alignment);
+            const allocation_size: usize = metadata_ptr.size + metadata_ptr.alignment;
 
-        const info = mem_allocations.?.fetchRemove(@intFromPtr(ptr)).?.value;
+            if (old_size != metadata_ptr.size) {
+                std.log.warn("Jolt expected memory size({}) doesn't match memory's metadata({}), there may be a bug in the allocator", .{ old_size, metadata_ptr.size });
+            }
 
-        const mem = @as([*]u8, @ptrCast(ptr))[0..info.size];
+            const new_allocation_size = new_size + metadata_ptr.alignment;
 
-        mem_allocator.?.rawFree(
-            mem,
-            std.math.log2_int(u29, @as(u29, @intCast(info.alignment))),
-            @returnAddress(),
-        );
+            // Try to resize current buffer
+            const resized: bool = switch (metadata_ptr.alignment) {
+                16 => allocator.resize(@as([*]align(16) u8, @alignCast(allocation_ptr))[0..allocation_size], new_allocation_size),
+                32 => allocator.resize(@as([*]align(32) u8, @alignCast(allocation_ptr))[0..allocation_size], new_allocation_size),
+                64 => allocator.resize(@as([*]align(64) u8, @alignCast(allocation_ptr))[0..allocation_size], new_allocation_size),
+                else => |x| std.debug.panic("Unsupported memory aligment: {}", .{x}),
+            };
+            if (resized) {
+                metadata_ptr.size = new_size;
+                return data_ptr;
+            }
+
+            // If resize fails, try allocate and memcopy new buffer
+            if (alignedAlloc(new_size, metadata_ptr.alignment)) |new_ptr| {
+                defer free(maybe_ptr);
+
+                if (new_size != 0) {
+                    var old_data_ptr_bytes: [*]u8 = @ptrCast(data_ptr);
+                    var new_data_ptr_bytes: [*]u8 = @ptrCast(new_ptr);
+                    const copy_size = @min(metadata_ptr.size, new_size);
+                    @memcpy(new_data_ptr_bytes[0..copy_size], old_data_ptr_bytes[0..copy_size]);
+                    return new_ptr;
+                } else {
+                    return null;
+                }
+            }
+        }
+    }
+    return alloc(new_size);
+}
+
+fn free(maybe_ptr: ?*anyopaque) callconv(.C) void {
+    if (maybe_ptr) |data_ptr| {
+        if (mem_allocator) |allocator| {
+            const data_ptr_int: usize = @intFromPtr(data_ptr);
+            const metadata_ptr: *Metadata = @ptrFromInt(data_ptr_int - @sizeOf(Metadata));
+            const allocation_ptr: [*]u8 = @ptrFromInt(data_ptr_int - metadata_ptr.alignment);
+            const allocation_size: usize = metadata_ptr.size + metadata_ptr.alignment;
+
+            switch (metadata_ptr.alignment) {
+                16 => allocator.free(@as([*]align(16) u8, @alignCast(allocation_ptr))[0..allocation_size]),
+                32 => allocator.free(@as([*]align(32) u8, @alignCast(allocation_ptr))[0..allocation_size]),
+                64 => allocator.free(@as([*]align(64) u8, @alignCast(allocation_ptr))[0..allocation_size]),
+                else => |x| std.debug.panic("Unsupported memory aligment: {}", .{x}),
+            }
+        }
     }
 }
