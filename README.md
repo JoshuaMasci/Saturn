@@ -21,7 +21,6 @@
 - First pass on lighting/shading
 - Job System for game/physics
 - Add meshoptimizer to asset processing 
-- Shader processing for more than just Vulkan backend
 - Rewrite physics allocator functions to get rid of hashmap
 
 ### V0.3
