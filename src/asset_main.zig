@@ -5,7 +5,15 @@ var output_dir: std.fs.Dir = undefined;
 
 pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8;
 
+//Asset Types
+const hlsl = @import("asset/hlsl.zig");
+
 pub fn main() !void {
+    if (hlsl.init()) {
+        return error.shaderCompilerInitFailed;
+    }
+    defer hlsl.deinit();
+
     const base_allocator = std.heap.page_allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     const arena_allocator = arena.allocator();
@@ -161,8 +169,6 @@ fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]
 
 fn processShader(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);
-
-    const hlsl = @import("asset/hlsl.zig");
 
     const shader = hlsl.compileShader(allocator, input_dir, file_path) catch |err|
         return errorString(allocator, "Failed to compile shader: {}", .{err});

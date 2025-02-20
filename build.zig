@@ -92,7 +92,11 @@ pub fn build(b: *std.Build) !void {
             .preferred_link_mode = .dynamic,
         });
         assets_exe.linkLibrary(sdl3.artifact("SDL3"));
+
+        //TODO: link included versions, rather than system libs
         assets_exe.linkSystemLibrary("SDL3_shadercross");
+        assets_exe.linkSystemLibrary("spirv-cross-c-shared");
+        assets_exe.linkSystemLibrary("dxcompiler");
 
         b.installArtifact(assets_exe);
         const run_assets_cmd = b.addRunArtifact(assets_exe);

@@ -12,8 +12,8 @@
         .saturn_jolt = .{ .path = "libs/saturn_jolt" },
 
         .sdl3 = .{
-            .url = "git+https://github.com/castholm/SDL.git#bbc8dfb78c2a71f10b21548b58dfe5ac46cc3fef",
-            .hash = "122046c6dcdcf941e6e5b1e8fa273185d04420e56436d47b906308eaf70208222f59",
+            .url = "git+https://github.com/castholm/SDL.git#2bb5f57ea8b8c43eabe514f7bbd3361365ba2ff3",
+            .hash = "1220f653f5b656888b522bf5be06fc3062278767cfa7764e5d00eb559056d65b616f",
         },
 
         .zalgebra = .{
