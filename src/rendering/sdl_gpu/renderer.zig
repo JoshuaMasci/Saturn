@@ -25,7 +25,7 @@ pub const Renderer = struct {
     gpu_device: *c.SDL_GPUDevice,
     window: *c.SDL_Window,
 
-    //mesh_shader: *c.SDL_GPUGraphicsPipeline,
+    mesh_graphics_pipeline: *c.SDL_GPUGraphicsPipeline,
 
     pub fn init(allocator: std.mem.Allocator, settings: Settings.RenderSettings) !Self {
         std.debug.assert(c.SDL_Init(c.SDL_INIT_VIDEO));
@@ -40,29 +40,37 @@ pub const Renderer = struct {
             device_shader_formats,
         });
 
+        const window = createWindow(gpu_device, settings.window_name, settings.size, settings.vsync);
+
         const vertex_shader = try loadGraphicsShader(allocator, gpu_device, ShaderAssetHandle.fromRepoPath("engine:shaders/test.vert.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device, vertex_shader);
 
         const fragment_shader = try loadGraphicsShader(allocator, gpu_device, ShaderAssetHandle.fromRepoPath("engine:shaders/test.frag.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device, fragment_shader);
 
-        const window = createWindow(gpu_device, settings.window_name, settings.size, settings.vsync);
-
         const mesh_graphics_pipeline = try loadGraphicsPipeline(
             gpu_device,
             vertex_shader,
             fragment_shader,
             c.SDL_GetGPUSwapchainTextureFormat(gpu_device, window),
+            c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+            .{
+                .compare_op = c.SDL_GPU_COMPAREOP_LESS,
+                .depth_test = true,
+                .depth_write = true,
+            },
         );
-        defer c.SDL_ReleaseGPUGraphicsPipeline(gpu_device, mesh_graphics_pipeline);
 
         return .{
             .gpu_device = gpu_device,
             .window = window,
+            .mesh_graphics_pipeline = mesh_graphics_pipeline,
         };
     }
 
     pub fn deinit(self: *Self) void {
+        c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, self.mesh_graphics_pipeline);
+
         destroyWindow(self.gpu_device, self.window);
         c.SDL_DestroyGPUDevice(self.gpu_device);
     }
@@ -127,7 +135,13 @@ fn loadGraphicsPipeline(
     device: *c.SDL_GPUDevice,
     vertex_shader: ?*c.SDL_GPUShader,
     fragment_shader: ?*c.SDL_GPUShader,
-    target_format: c.SDL_GPUTextureFormat,
+    color_target_format_opt: ?c.SDL_GPUTextureFormat,
+    depth_target_format: ?c.SDL_GPUTextureFormat,
+    depth_state: struct {
+        compare_op: c.SDL_GPUCompareOp = c.SDL_GPU_COMPAREOP_INVALID,
+        depth_test: bool = false,
+        depth_write: bool = false,
+    },
 ) !*c.SDL_GPUGraphicsPipeline {
     const vertex_buffers: []const c.SDL_GPUVertexBufferDescription = &.{
         .{
@@ -170,13 +184,23 @@ fn loadGraphicsPipeline(
         },
     };
 
-    const color_targets: []const c.SDL_GPUColorTargetDescription = &.{.{
-        .format = target_format,
-    }};
-
+    var color_targets = try std.BoundedArray(c.SDL_GPUColorTargetDescription, 8).init(0);
+    if (color_target_format_opt) |color_target_format| {
+        color_targets.appendAssumeCapacity(.{
+            .format = color_target_format,
+        });
+    }
     const target_info: c.SDL_GPUGraphicsPipelineTargetInfo = .{
-        .num_color_targets = @intCast(color_targets.len),
-        .color_target_descriptions = @ptrCast(color_targets.ptr),
+        .num_color_targets = @intCast(color_targets.slice().len),
+        .color_target_descriptions = @ptrCast(color_targets.slice().ptr),
+        .depth_stencil_format = depth_target_format orelse undefined,
+        .has_depth_stencil_target = depth_target_format != null,
+    };
+
+    const depth_stencil_state: c.SDL_GPUDepthStencilState = .{
+        .compare_op = depth_state.compare_op,
+        .enable_depth_test = depth_state.depth_test,
+        .enable_depth_write = depth_state.depth_write,
     };
 
     var create_info = c.SDL_GPUGraphicsPipelineCreateInfo{
@@ -191,7 +215,7 @@ fn loadGraphicsPipeline(
         .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = .{},
         .multisample_state = .{},
-        .depth_stencil_state = .{},
+        .depth_stencil_state = depth_stencil_state,
         .target_info = target_info,
     };
 
