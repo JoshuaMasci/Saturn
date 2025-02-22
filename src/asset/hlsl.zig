@@ -43,7 +43,7 @@ pub fn compileShader(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: [
             .fragment => c.SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT,
             .compute => c.SDL_SHADERCROSS_SHADERSTAGE_COMPUTE,
         },
-        .enable_debug = true, //TODO: make this a setting
+        .enable_debug = false, //TODO: make this a setting
         .name = @ptrCast(shader_name),
     };
 
@@ -52,12 +52,23 @@ pub fn compileShader(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: [
     const spirv_code_ptr: [*]u8 = @ptrCast(c.SDL_ShaderCross_CompileSPIRVFromHLSL(&hlsl_info, &spirv_size) orelse return error.failedToCompileSPIRV);
     defer c.SDL_free(spirv_code_ptr);
 
+    var meta_data: c.SDL_ShaderCross_GraphicsShaderMetadata = undefined;
+    if (!c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code_ptr, spirv_size, @ptrCast(&meta_data))) {
+        return error.failedtoReflectSPIRV;
+    }
+
     const spirv_code: []u8 = try copyBytes(allocator, spirv_code_ptr[0..spirv_size], null);
     errdefer allocator.free(spirv_code);
 
     const shader = Shader{
         .name = shader_name,
         .stage = shader_stage,
+        .bindings = .{
+            .samplers = meta_data.num_samplers,
+            .storage_textures = meta_data.num_storage_textures,
+            .uniform_buffers = meta_data.num_uniform_buffers,
+            .storage_buffers = meta_data.num_storage_buffers,
+        },
         .spirv_code = spirv_code,
     };
 

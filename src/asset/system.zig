@@ -105,7 +105,7 @@ pub fn AssetSystem(comptime T: type, comptime extesnions: []const []const u8) ty
 
         pub fn addDir(self: *Self, repo_hash: HashType, dir_path: []const u8) !void {
             const repo = try DirectoryRepository.init(self.allocator, dir_path, extesnions);
-            try self.repositories.put(repo_hash, repo);
+            try self.repositories.putNoClobber(repo_hash, repo);
         }
 
         pub fn isValid(self: Self, handle: Handle) bool {

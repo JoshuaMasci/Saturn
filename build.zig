@@ -2,9 +2,12 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
-    const use_sdl3 = b.option(bool, "use_sdl3", "use sdl3 instead of sdl2") orelse false;
     var option_step = b.addOptions();
+
+    const use_sdl3 = b.option(bool, "use_sdl3", "use sdl3 instead of sdl2") orelse false;
     option_step.addOption(bool, "sdl3", use_sdl3);
+
+    const build_sdl3 = b.option(bool, "build_sdl3", "build and link sdl3 from source instead") orelse false;
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -38,12 +41,16 @@ pub fn build(b: *std.Build) !void {
         const zopengl = b.dependency("zopengl", .{});
         exe.root_module.addImport("zopengl", zopengl.module("root"));
     } else {
-        const sdl3 = b.dependency("sdl3", .{
-            .target = target,
-            .optimize = optimize,
-            .preferred_link_mode = .dynamic,
-        });
-        exe.linkLibrary(sdl3.artifact("SDL3"));
+        if (build_sdl3) {
+            const sdl3 = b.dependency("sdl3", .{
+                .target = target,
+                .optimize = optimize,
+                .preferred_link_mode = .dynamic,
+            });
+            exe.linkLibrary(sdl3.artifact("SDL3"));
+        } else {
+            exe.linkSystemLibrary("SDL3");
+        }
     }
 
     // zstbi

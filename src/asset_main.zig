@@ -45,6 +45,8 @@ pub fn main() !void {
     try process_fns.put(".json_mat", processMaterial);
     try process_fns.put(".hlsl", processShader);
 
+    var failed: u32 = 0;
+
     while (try walker.next()) |entry| {
         _ = arena.reset(.retain_capacity); // I don't care if it failes for some reason, we'll just waste some memory as a treat
         if (entry.kind == .file) {
@@ -57,6 +59,7 @@ pub fn main() !void {
                 if (process_fns.get(file_ext)) |process_fn| {
                     if (process_fn(arena_allocator, entry.path)) |err| {
                         std.log.err("Failed to process file {s} -> {s}", .{ entry.path, err });
+                        failed += 1;
                     } else {
                         std.log.info("Succesfully processed file {s}", .{entry.path});
                     }
@@ -65,6 +68,11 @@ pub fn main() !void {
                 }
             }
         }
+    }
+
+    if (failed > 0) {
+        std.log.err("Failed to proccess {} assets", .{failed});
+        return error.failedToProccessAssets;
     }
 }
 
