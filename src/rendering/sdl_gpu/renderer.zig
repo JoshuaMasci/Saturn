@@ -9,6 +9,9 @@ const RenderScene = @import("../scene.zig").RenderScene;
 const Settings = @import("../../rendering/settings.zig");
 
 const MeshAsset = @import("../../asset/mesh.zig");
+const Texture2dAsset = @import("../../asset/texture_2d.zig");
+const MaterialAsset = @import("../../asset/material.zig");
+
 const ShaderAsset = @import("../../asset/shader.zig");
 const ShaderAssetHandle = ShaderAsset.Registry.Handle;
 
@@ -18,6 +21,7 @@ const c = @cImport({
 });
 
 const Mesh = @import("mesh.zig");
+const Texture = @import("texture.zig");
 
 pub const WindowHandle = *anyopaque;
 
@@ -32,6 +36,9 @@ pub const Renderer = struct {
     mesh_graphics_pipeline: *c.SDL_GPUGraphicsPipeline,
 
     static_mesh_map: std.AutoHashMap(MeshAsset.Registry.Handle, Mesh),
+
+    texture_map: std.AutoHashMap(Texture2dAsset.Registry.Handle, Texture),
+    material_map: std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
     pub fn init(allocator: std.mem.Allocator, settings: Settings.RenderSettings) !Self {
         std.debug.assert(c.SDL_Init(c.SDL_INIT_VIDEO));
@@ -75,6 +82,8 @@ pub const Renderer = struct {
         );
 
         const static_mesh_map = std.AutoHashMap(MeshAsset.Registry.Handle, Mesh).init(allocator);
+        const texture_map = std.AutoHashMap(Texture2dAsset.Registry.Handle, Texture).init(allocator);
+        const material_map = std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset).init(allocator);
 
         return .{
             .gpu_device = gpu_device,
@@ -82,15 +91,29 @@ pub const Renderer = struct {
             .depth_format = depth_format,
             .mesh_graphics_pipeline = mesh_graphics_pipeline,
             .static_mesh_map = static_mesh_map,
+            .texture_map = texture_map,
+            .material_map = material_map,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        var iter = self.static_mesh_map.valueIterator();
-        while (iter.next()) |mesh| {
-            mesh.deinit();
+        {
+            var iter = self.static_mesh_map.valueIterator();
+            while (iter.next()) |mesh| {
+                mesh.deinit();
+            }
+            self.static_mesh_map.deinit();
         }
-        self.static_mesh_map.deinit();
+
+        {
+            var iter = self.texture_map.valueIterator();
+            while (iter.next()) |texture| {
+                texture.deinit();
+            }
+            self.texture_map.deinit();
+        }
+
+        self.material_map.deinit();
 
         c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, self.mesh_graphics_pipeline);
 
@@ -150,6 +173,7 @@ pub const Renderer = struct {
             }
 
             self.tryLoadMesh(temp_allocator, static_mesh.component.mesh);
+            self.tryLoadMaterial(temp_allocator, static_mesh.component.material);
         }
 
         defer c.SDL_EndGPURenderPass(render_pass);
@@ -162,10 +186,53 @@ pub const Renderer = struct {
                 const gpu_mesh = Mesh.init(self.gpu_device, &mesh);
                 self.static_mesh_map.put(handle, gpu_mesh) catch |err| {
                     gpu_mesh.deinit();
-                    std.log.err("Failed to appeded static mesh to list {}", .{err});
+                    std.log.err("Failed to append static mesh to list {}", .{err});
                 };
             } else |err| {
                 std.log.err("Failed to load static mesh {}", .{err});
+            }
+        }
+    }
+
+    pub fn tryLoadTexture(self: *Self, allocator: std.mem.Allocator, handle: Texture2dAsset.Registry.Handle) void {
+        if (!self.texture_map.contains(handle)) {
+            if (global.assets.textures.loadAsset(allocator, handle)) |texture| {
+                defer texture.deinit(allocator);
+
+                const gpu_texture = Texture.init_2d(self.gpu_device, &texture);
+                self.texture_map.put(handle, gpu_texture) catch |err| {
+                    gpu_texture.deinit();
+                    std.log.err("Failed to append texture to list {}", .{err});
+                };
+            } else |err| {
+                std.log.err("Failed to load texture {}", .{err});
+            }
+        }
+    }
+
+    pub fn tryLoadMaterial(self: *Self, allocator: std.mem.Allocator, handle: MaterialAsset.Registry.Handle) void {
+        if (!self.material_map.contains(handle)) {
+            if (global.assets.materials.loadAsset(allocator, handle)) |material| {
+                if (material.base_color_texture) |texture_handle|
+                    self.tryLoadTexture(allocator, texture_handle);
+
+                if (material.metallic_roughness_texture) |texture_handle|
+                    self.tryLoadTexture(allocator, texture_handle);
+
+                if (material.emissive_texture) |texture_handle|
+                    self.tryLoadTexture(allocator, texture_handle);
+
+                if (material.occlusion_texture) |texture_handle|
+                    self.tryLoadTexture(allocator, texture_handle);
+
+                if (material.normal_texture) |texture_handle|
+                    self.tryLoadTexture(allocator, texture_handle);
+
+                self.material_map.put(handle, material) catch |err| {
+                    std.log.err("Failed to append material to list {}", .{err});
+                };
+            } else |err| {
+                std.log.err("Failed to load material {}", .{err});
             }
         }
     }
