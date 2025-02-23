@@ -121,12 +121,11 @@ fn renderThreadMain(
             std.log.debug("Reloaded renderer", .{});
         }
 
-        renderer.clearFramebuffer();
-
         //TODO: default camera fov should be set by render settings
         const DefaultCamera = Camera.Default;
         if (render_state.scene) |*scene| {
             renderer.renderScene(
+                render_state.temp_allocator.allocator(),
                 null,
                 scene,
                 .{

@@ -8,14 +8,16 @@ const RenderScene = @import("../scene.zig").RenderScene;
 
 const Settings = @import("../../rendering/settings.zig");
 
-const Shader = @import("../../asset/shader.zig");
-const ShaderAssetHandle = Shader.Registry.Handle;
+const MeshAsset = @import("../../asset/mesh.zig");
+const ShaderAsset = @import("../../asset/shader.zig");
+const ShaderAssetHandle = ShaderAsset.Registry.Handle;
 
 const c = @cImport({
     @cDefine("SDL_DISABLE_OLD_NAMES", {});
     @cInclude("SDL3/SDL.h");
-    @cInclude("SDL3/SDL_revision.h");
 });
+
+const Mesh = @import("mesh.zig");
 
 pub const WindowHandle = *anyopaque;
 
@@ -28,6 +30,8 @@ pub const Renderer = struct {
     depth_format: c.SDL_GPUTextureFormat,
 
     mesh_graphics_pipeline: *c.SDL_GPUGraphicsPipeline,
+
+    static_mesh_map: std.AutoHashMap(MeshAsset.Registry.Handle, Mesh),
 
     pub fn init(allocator: std.mem.Allocator, settings: Settings.RenderSettings) !Self {
         std.debug.assert(c.SDL_Init(c.SDL_INIT_VIDEO));
@@ -70,31 +74,35 @@ pub const Renderer = struct {
             },
         );
 
+        const static_mesh_map = std.AutoHashMap(MeshAsset.Registry.Handle, Mesh).init(allocator);
+
         return .{
             .gpu_device = gpu_device,
             .window = window,
             .depth_format = depth_format,
             .mesh_graphics_pipeline = mesh_graphics_pipeline,
+            .static_mesh_map = static_mesh_map,
         };
     }
 
     pub fn deinit(self: *Self) void {
+        var iter = self.static_mesh_map.valueIterator();
+        while (iter.next()) |mesh| {
+            mesh.deinit();
+        }
+        self.static_mesh_map.deinit();
+
         c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, self.mesh_graphics_pipeline);
 
         destroyWindow(self.gpu_device, self.window);
         c.SDL_DestroyGPUDevice(self.gpu_device);
     }
 
-    pub fn clearFramebuffer(self: *Self) void {
-        _ = self; // autofix
-    }
-
-    pub fn renderScene(self: *Self, target: ?WindowHandle, scene: *const RenderScene, camera: struct {
+    pub fn renderScene(self: *Self, temp_allocator: std.mem.Allocator, target: ?WindowHandle, scene: *const RenderScene, camera: struct {
         transform: Transform,
         camera: Camera,
     }) void {
         _ = target; // autofix
-        _ = scene; // autofix
         _ = camera; // autofix
         const window: *c.SDL_Window = @ptrCast(self.window);
 
@@ -134,7 +142,32 @@ pub const Renderer = struct {
         };
 
         const render_pass = c.SDL_BeginGPURenderPass(command_buffer, &color_target, 1, &depth_target);
+
+        for (scene.static_meshes.items, 0..) |static_mesh, i| {
+            _ = i; // autofix
+            if (static_mesh.component.visable == false) {
+                continue;
+            }
+
+            self.tryLoadMesh(temp_allocator, static_mesh.component.mesh);
+        }
+
         defer c.SDL_EndGPURenderPass(render_pass);
+    }
+
+    pub fn tryLoadMesh(self: *Self, allocator: std.mem.Allocator, handle: MeshAsset.Registry.Handle) void {
+        if (!self.static_mesh_map.contains(handle)) {
+            if (global.assets.meshes.loadAsset(allocator, handle)) |mesh| {
+                defer mesh.deinit(allocator);
+                const gpu_mesh = Mesh.init(self.gpu_device, &mesh);
+                self.static_mesh_map.put(handle, gpu_mesh) catch |err| {
+                    gpu_mesh.deinit();
+                    std.log.err("Failed to appeded static mesh to list {}", .{err});
+                };
+            } else |err| {
+                std.log.err("Failed to load static mesh {}", .{err});
+            }
+        }
     }
 };
 
@@ -161,8 +194,6 @@ fn loadGraphicsShader(allocator: std.mem.Allocator, device: *c.SDL_GPUDevice, ha
     return c.SDL_CreateGPUShader(device, &create_info) orelse error.failedToCreateShader;
 }
 
-const Mesh = @import("../../asset/mesh.zig");
-
 fn loadGraphicsPipeline(
     device: *c.SDL_GPUDevice,
     vertex_shader: ?*c.SDL_GPUShader,
@@ -180,13 +211,13 @@ fn loadGraphicsPipeline(
             .slot = 0,
             .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX,
             .instance_step_rate = 0,
-            .pitch = @sizeOf(Mesh.VertexPositions),
+            .pitch = @sizeOf(MeshAsset.VertexPositions),
         },
         .{
             .slot = 1,
             .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX,
             .instance_step_rate = 0,
-            .pitch = @sizeOf(Mesh.VertexAttributes),
+            .pitch = @sizeOf(MeshAsset.VertexAttributes),
         },
     };
     const vertex_attributes: []const c.SDL_GPUVertexAttribute = &.{
@@ -200,19 +231,19 @@ fn loadGraphicsPipeline(
             .buffer_slot = 1,
             .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
             .location = 1,
-            .offset = @offsetOf(Mesh.VertexAttributes, "normal"),
+            .offset = @offsetOf(MeshAsset.VertexAttributes, "normal"),
         },
         .{
             .buffer_slot = 1,
             .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
             .location = 2,
-            .offset = @offsetOf(Mesh.VertexAttributes, "tangent"),
+            .offset = @offsetOf(MeshAsset.VertexAttributes, "tangent"),
         },
         .{
             .buffer_slot = 1,
             .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
             .location = 3,
-            .offset = @offsetOf(Mesh.VertexAttributes, "uv0"),
+            .offset = @offsetOf(MeshAsset.VertexAttributes, "uv0"),
         },
     };
 

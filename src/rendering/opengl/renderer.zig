@@ -102,10 +102,13 @@ pub const Renderer = struct {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
-    pub fn renderScene(self: *Self, target: ?void, scene: *const RenderScene, camera: struct {
+    pub fn renderScene(self: *Self, temp_allocator: std.mem.Allocator, target: ?void, scene: *const RenderScene, camera: struct {
         transform: Transform,
         camera: Camera,
     }) void {
+        _ = temp_allocator; // autofix
+        self.clearFramebuffer();
+
         _ = target; // autofix
         const window_size = self.context.getWindowSize() catch |err| std.debug.panic("Failed to get window size {}", .{err});
 

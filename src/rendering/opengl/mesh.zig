@@ -1,9 +1,9 @@
 const std = @import("std");
 const gl = @import("zopengl").bindings;
 
-const Self = @This();
-
 const MeshAsset = @import("../../asset/mesh.zig");
+
+const Self = @This();
 
 vao: gl.Uint,
 vertex_buffer: gl.Uint,
