@@ -25,12 +25,12 @@ pub const Platform = struct {
         const version = c.SDL_GetVersion();
         std.log.info("Starting sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
 
-        if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
+        if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
             return error.sdlInitFailed;
         }
 
         const keyboard_mouse_device = try allocator.create(KeyboardMouse);
-        keyboard_mouse_device.* = KeyboardMouse.init();
+        keyboard_mouse_device.* = try KeyboardMouse.init(allocator);
 
         return .{
             .allocator = allocator,
@@ -40,6 +40,7 @@ pub const Platform = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.keyboard_mouse_device.deinit();
         self.allocator.destroy(self.keyboard_mouse_device);
 
         std.log.info("Quiting sdl", .{});
@@ -57,10 +58,10 @@ pub const Platform = struct {
                 c.SDL_EVENT_QUIT => {
                     self.should_quit = true;
                 },
-                c.SDL_EVENT_KEY_UP | c.SDL_EVENT_KEY_DOWN => {
+                c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
                     self.keyboard_mouse_device.proccessKeyboardEvent(&event);
                 },
-                c.SDL_EVENT_MOUSE_BUTTON_UP | c.SDL_EVENT_MOUSE_BUTTON_DOWN | c.SDL_EVENT_MOUSE_WHEEL | c.SDL_EVENT_MOUSE_MOTION => {
+                c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_WHEEL, c.SDL_EVENT_MOUSE_MOTION => {
                     self.keyboard_mouse_device.proccessMousesEvent(&event);
                 },
                 else => {},
@@ -72,32 +73,39 @@ pub const Platform = struct {
 const KeyboardMouse = struct {
     const Self = @This();
 
-    keyboard: ?Keyboard = null,
-    mouse: ?Mouse = null,
+    allocator: std.mem.Allocator,
+    keyboard: ?*Keyboard = null,
+    mouse: ?*Mouse = null,
 
-    fn init() Self {
-        var self = Self{};
-        if (c.SDL_HasKeyboard()) {
-            self.keyboard = .{};
+    fn init(allocator: std.mem.Allocator) !Self {
+        const keyboard: ?*Keyboard = if (c.SDL_HasKeyboard()) try allocator.create(Keyboard) else null;
+        const mouse: ?*Mouse = if (c.SDL_HasMouse()) try allocator.create(Mouse) else null;
+        return .{
+            .allocator = allocator,
+            .keyboard = keyboard,
+            .mouse = mouse,
+        };
+    }
+
+    fn deinit(self: *Self) void {
+        if (self.keyboard) |keyboard| {
+            self.allocator.destroy(keyboard);
         }
-
-        if (c.SDL_HasMouse()) {
-            self.mouse = .{};
+        if (self.mouse) |mouse| {
+            self.allocator.destroy(mouse);
         }
-
-        return self;
     }
 
     fn clearInputs(self: *Self) void {
-        if (self.mouse) |*mouse| {
+        if (self.mouse) |mouse| {
             mouse.axis_state = .{ 0.0, 0.0 };
         }
     }
 
     fn proccessKeyboardEvent(self: *Self, event: *c.SDL_Event) void {
-        if (self.keyboard) |*keyboard| {
+        if (self.keyboard) |keyboard| {
             switch (event.type) {
-                c.SDL_EVENT_KEY_UP | c.SDL_EVENT_KEY_DOWN => {
+                c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
                     keyboard.button_state[event.key.scancode] = event.key.down;
                 },
                 else => {},
@@ -106,7 +114,7 @@ const KeyboardMouse = struct {
     }
 
     fn proccessMousesEvent(self: *Self, event: *c.SDL_Event) void {
-        if (self.mouse) |*mouse| {
+        if (self.mouse) |mouse| {
             switch (event.type) {
                 c.SDL_EVENT_MOUSE_BUTTON_UP | c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
                     mouse.button_state[event.button.button] = event.button.down;
