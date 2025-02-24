@@ -16,9 +16,13 @@ struct PixelInput
 };
 
 // Uniforms
-cbuffer ModelViewProjectionBuffer : register(b0, space1)
+cbuffer ViewProjectionBuffer : register(b0, space1)
 {
     float4x4 view_projection_matrix;
+};
+
+cbuffer ModelBuffer : register(b1, space1)
+{
     float4x4 model_matrix;
 };
 
