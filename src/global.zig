@@ -42,14 +42,25 @@ const Assets = struct {
 };
 pub var assets: *Assets = undefined;
 
+const InputSystem = @import("input2.zig").InputSystem;
+pub var input: *InputSystem = undefined;
+
 pub fn init(allocator: std.mem.Allocator) !void {
     global_allocator = allocator;
 
     assets = try allocator.create(Assets);
     assets.* = Assets.init(allocator);
+
+    input = try allocator.create(InputSystem);
+    input.* = InputSystem.init(allocator);
 }
 
 pub fn deinit() void {
     assets.deinit();
     global_allocator.destroy(assets);
+
+    input.deinit();
+    global_allocator.destroy(input);
+
+    global_allocator = undefined;
 }

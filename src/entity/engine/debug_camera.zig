@@ -8,6 +8,11 @@ const World = @import("../world.zig");
 const physics = @import("physics.zig");
 const UpdateStage = @import("../universe.zig").UpdateStage;
 
+const StringHash = @import("../../string_hash.zig");
+const DebugCameraInputContext = StringHash.new("DebugCamera");
+const DebugCameraForwardBackwardAxis = StringHash.new("DebugCameraForwardBackward");
+const DebugCamearInteract = StringHash.new("DebugCameraInteract");
+
 pub const DebugCameraEntitySystem = struct {
     const Self = @This();
 
@@ -27,7 +32,17 @@ pub const DebugCameraEntitySystem = struct {
         if (stage != .pre_physics)
             return;
 
-        const linear_speed = entity.transform.rotation.rotateVec(self.linear_input.mul(self.linear_speed));
+        if (@import("../../global.zig").input.getContext(DebugCameraInputContext)) |input_context| {
+            self.linear_input.zMut().* = input_context.getAxisValue(DebugCameraForwardBackwardAxis, true);
+
+            if (input_context.isButtonPressed(DebugCamearInteract)) {
+                self.cast_ray = true;
+            }
+        }
+
+        const linear_speed = entity.transform.rotation.rotateVec(self.linear_input.mul(
+            self.linear_speed,
+        ));
         if (entity.systems.get(physics.PhysicsEntitySystem)) |entity_physics| {
             entity_physics.linear_velocity = linear_speed;
             entity_physics.angular_velocity = za.Vec3.ZERO;

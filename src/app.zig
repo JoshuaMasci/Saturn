@@ -84,6 +84,7 @@ pub const App = struct {
         }
 
         try self.platform.proccess_events(self);
+        global.input.update();
 
         self.game_universe.update(.frame_start, delta_time);
         self.game_universe.update(.pre_physics, delta_time);
