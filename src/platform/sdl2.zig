@@ -89,7 +89,7 @@ pub const Platform = struct {
         sdl.quit();
     }
 
-    pub fn proccess_events(self: *Self, app: *App) !void {
+    pub fn proccessEvents(self: *Self, app: *App) !void {
         var event: sdl.Event = undefined;
         while (sdl.pollEvent(&event)) {
             switch (event.type) {
@@ -120,6 +120,12 @@ pub const Platform = struct {
                 else => {},
             }
         }
+    }
+
+    const InputDevice = @import("../input3.zig").InputDevice;
+    pub fn getInputDevices(self: Self) []const InputDevice {
+        _ = self; // autofix
+        return &.{};
     }
 };
 

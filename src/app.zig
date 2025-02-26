@@ -83,8 +83,17 @@ pub const App = struct {
             self.frames = 0;
         }
 
-        try self.platform.proccess_events(self);
-        global.input.update();
+        try self.platform.proccessEvents(self);
+
+        const input_devices = self.platform.getInputDevices();
+        if (input_devices.len > 0) {
+            const input_context = @import("input_bindings.zig").DebugCameraInputContext.init(input_devices);
+            if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
+                if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
+                    debug_camera_system.onInput(&input_context);
+                }
+            }
+        }
 
         self.game_universe.update(.frame_start, delta_time);
         self.game_universe.update(.pre_physics, delta_time);

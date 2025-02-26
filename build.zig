@@ -93,12 +93,16 @@ pub fn build(b: *std.Build) !void {
 
         // Always link sdl3 for the asset pipeline I guess?
         // Shader cross needs it, the sdl2 mode will be deprecated anyways
-        const sdl3 = b.dependency("sdl3", .{
-            .target = target,
-            .optimize = optimize,
-            .preferred_link_mode = .dynamic,
-        });
-        assets_exe.linkLibrary(sdl3.artifact("SDL3"));
+        if (build_sdl3) {
+            const sdl3 = b.dependency("sdl3", .{
+                .target = target,
+                .optimize = optimize,
+                .preferred_link_mode = .dynamic,
+            });
+            assets_exe.linkLibrary(sdl3.artifact("SDL3"));
+        } else {
+            assets_exe.linkSystemLibrary("SDL3");
+        }
 
         //TODO: link included versions, rather than system libs
         assets_exe.linkSystemLibrary("SDL3_shadercross");

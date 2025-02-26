@@ -8,11 +8,6 @@ const World = @import("../world.zig");
 const physics = @import("physics.zig");
 const UpdateStage = @import("../universe.zig").UpdateStage;
 
-const StringHash = @import("../../string_hash.zig");
-const DebugCameraInputContext = StringHash.new("DebugCamera");
-const DebugCameraForwardBackwardAxis = StringHash.new("DebugCameraForwardBackward");
-const DebugCamearInteract = StringHash.new("DebugCameraInteract");
-
 pub const DebugCameraEntitySystem = struct {
     const Self = @This();
 
@@ -31,14 +26,6 @@ pub const DebugCameraEntitySystem = struct {
     pub fn updateParallel(self: *Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
         if (stage != .pre_physics)
             return;
-
-        if (@import("../../global.zig").input.getContext(DebugCameraInputContext)) |input_context| {
-            self.linear_input.zMut().* = input_context.getAxisValue(DebugCameraForwardBackwardAxis, true);
-
-            if (input_context.isButtonPressed(DebugCamearInteract)) {
-                self.cast_ray = true;
-            }
-        }
 
         const linear_speed = entity.transform.rotation.rotateVec(self.linear_input.mul(
             self.linear_speed,
@@ -115,5 +102,13 @@ pub const DebugCameraEntitySystem = struct {
 
             //else => {},
         }
+    }
+
+    pub fn onInput(self: *Self, input_context: *const @import("../../input_bindings.zig").DebugCameraInputContext) void {
+        if (input_context.getButtonPressed(.interact)) {
+            self.cast_ray = true;
+        }
+
+        self.linear_input.data[2] = input_context.getAxisValue(.move_forward_backward);
     }
 };
