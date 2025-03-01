@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 pub fn build(b: *std.Build) !void {
     var option_step = b.addOptions();
 
-    const use_sdl3 = b.option(bool, "use_sdl3", "use sdl3 instead of sdl2") orelse false;
+    const use_sdl3 = b.option(bool, "use_sdl3", "use sdl3 instead of sdl2") orelse true;
     option_step.addOption(bool, "sdl3", use_sdl3);
 
     const build_sdl3 = b.option(bool, "build_sdl3", "build and link sdl3 from source instead") orelse false;

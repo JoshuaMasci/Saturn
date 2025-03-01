@@ -54,7 +54,7 @@ pub const Platform = struct {
     pub fn proccessEvents(self: *Self, app: *App) !void {
         _ = app; // autofix
 
-        self.keyboard_mouse_device.update();
+        self.keyboard_mouse_device.beginFrame();
 
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event)) {
@@ -63,10 +63,14 @@ pub const Platform = struct {
                     self.should_quit = true;
                 },
                 c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
-                    self.keyboard_mouse_device.proccessKeyboardEvent(&event);
+                    if (self.keyboard_mouse_device.keyboard) |keyboard| {
+                        keyboard.proccessEvent(&event);
+                    }
                 },
                 c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_WHEEL, c.SDL_EVENT_MOUSE_MOTION => {
-                    self.keyboard_mouse_device.proccessMousesEvent(&event);
+                    if (self.keyboard_mouse_device.mouse) |mouse| {
+                        mouse.proccessEvent(&event);
+                    }
                 },
                 else => {},
             }
@@ -86,8 +90,18 @@ const KeyboardMouse = struct {
     mouse: ?*Mouse = null,
 
     fn init(allocator: std.mem.Allocator) !Self {
-        const keyboard: ?*Keyboard = if (c.SDL_HasKeyboard()) try allocator.create(Keyboard) else null;
-        const mouse: ?*Mouse = if (c.SDL_HasMouse()) try allocator.create(Mouse) else null;
+        var keyboard: ?*Keyboard = null;
+        if (c.SDL_HasKeyboard()) {
+            keyboard = try allocator.create(Keyboard);
+            keyboard.?.* = Keyboard{};
+        }
+
+        var mouse: ?*Mouse = null;
+        if (c.SDL_HasMouse()) {
+            mouse = try allocator.create(Mouse);
+            mouse.?.* = Mouse{};
+        }
+
         return .{
             .allocator = allocator,
             .keyboard = keyboard,
@@ -104,50 +118,13 @@ const KeyboardMouse = struct {
         }
     }
 
-    fn update(self: *Self) void {
+    fn beginFrame(self: *Self) void {
         if (self.keyboard) |keyboard| {
-            for (&keyboard.button_state) |*button_state| {
-                button_state.previous = button_state.current;
-            }
+            keyboard.beginFrame();
         }
 
         if (self.mouse) |mouse| {
-            mouse.axis_state = .{ .{}, .{} }; //Mouse inputs don't carry over a frame
-
-            for (&mouse.button_state) |*button_state| {
-                button_state.previous = button_state.current;
-            }
-        }
-    }
-
-    fn proccessKeyboardEvent(self: *Self, event: *c.SDL_Event) void {
-        if (self.keyboard) |keyboard| {
-            switch (event.type) {
-                c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
-                    keyboard.button_state[event.key.scancode].timestamp = event.key.timestamp;
-                    keyboard.button_state[event.key.scancode].current = event.key.down;
-                },
-                else => {},
-            }
-        }
-    }
-
-    fn proccessMousesEvent(self: *Self, event: *c.SDL_Event) void {
-        if (self.mouse) |mouse| {
-            switch (event.type) {
-                c.SDL_EVENT_MOUSE_BUTTON_UP | c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
-                    mouse.button_state[event.button.button].timestamp = event.button.timestamp;
-                    mouse.button_state[event.button.button].current = event.button.down;
-                },
-                c.SDL_EVENT_MOUSE_MOTION => {
-                    const PIXEL_MOVE_AMOUNT = 6.0;
-                    mouse.axis_state[0].timestamp = event.motion.timestamp;
-                    mouse.axis_state[1].timestamp = event.motion.timestamp;
-                    mouse.axis_state[0].current = event.motion.xrel / PIXEL_MOVE_AMOUNT;
-                    mouse.axis_state[1].current = event.motion.yrel / PIXEL_MOVE_AMOUNT;
-                },
-                else => {},
-            }
+            mouse.beginFrame();
         }
     }
 
@@ -157,7 +134,7 @@ const KeyboardMouse = struct {
         const self: *Self = @alignCast(@ptrCast(ptr));
         if (self.keyboard) |keyboard| {
             if (button == 0) {
-                return keyboard.button_state[c.SDL_SCANCODE_E];
+                return keyboard.button_state[c.SDL_SCANCODE_E].toDeviceState();
             }
         }
 
@@ -168,21 +145,31 @@ const KeyboardMouse = struct {
         _ = context_hash; // autofix
 
         const self: *Self = @alignCast(@ptrCast(ptr));
-        if (axis == 2) {
-            if (self.keyboard) |keyboard| {
-                var state: input.DeviceAxisState = .{};
 
-                if (keyboard.button_state[c.SDL_SCANCODE_W].current) {
-                    state.current += 1.0;
-                    state.timestamp = @max(state.timestamp, keyboard.button_state[c.SDL_SCANCODE_W].timestamp);
+        if (self.keyboard) |keyboard| {
+            switch (axis) {
+                0 => return keyboard.tempKeyAxis(c.SDL_SCANCODE_A, c.SDL_SCANCODE_D),
+                1 => return keyboard.tempKeyAxis(c.SDL_SCANCODE_LSHIFT, c.SDL_SCANCODE_SPACE),
+                2 => return keyboard.tempKeyAxis(c.SDL_SCANCODE_W, c.SDL_SCANCODE_S),
+                else => {},
+            }
+        }
+
+        if (self.mouse) |mouse| {
+            if (axis == 3 or axis == 4) {
+                switch (mouse.axis_state) {
+                    .active => |axes| {
+                        if (axis == 3) {
+                            var state = axes[0];
+                            state.value *= -1.0;
+                            return state;
+                        } else {
+                            return axes[1];
+                        }
+                    },
+                    .previous => return .{},
+                    .idle => {},
                 }
-
-                if (keyboard.button_state[c.SDL_SCANCODE_S].current) {
-                    state.current -= 1.0;
-                    state.timestamp = @max(state.timestamp, keyboard.button_state[c.SDL_SCANCODE_S].timestamp);
-                }
-
-                return state;
             }
         }
 
@@ -198,11 +185,105 @@ const KeyboardMouse = struct {
     }
 };
 
+const ButtonState = struct {
+    timestamp: u64 = 0,
+    is_pressed: bool = false,
+    was_pressed_last_frame: bool = false,
+
+    pub fn toDeviceState(self: @This()) input.DeviceButtonState {
+        return .{
+            .timestamp = self.timestamp,
+            .state = if (self.is_pressed and !self.was_pressed_last_frame) .pressed else if (self.is_pressed) .held else .released,
+        };
+    }
+};
+
 const Keyboard = struct {
-    button_state: [c.SDL_SCANCODE_COUNT]input.DeviceButtonState = .{} ** c.SDL_SCANCODE_COUNT,
+    const Self = @This();
+
+    button_state: [c.SDL_SCANCODE_COUNT]ButtonState = .{.{}} ** c.SDL_SCANCODE_COUNT,
+
+    fn beginFrame(self: *Self) void {
+        for (&self.button_state) |*button_state| {
+            button_state.was_pressed_last_frame = button_state.is_pressed;
+        }
+    }
+
+    fn proccessEvent(self: *Self, event: *c.SDL_Event) void {
+        switch (event.type) {
+            c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
+                self.button_state[event.key.scancode].timestamp = event.key.timestamp;
+                self.button_state[event.key.scancode].is_pressed = event.key.down;
+            },
+            else => {},
+        }
+    }
+
+    //TODO: remove this once an actual input config is working
+    fn tempKeyAxis(self: Self, pos_key: usize, neg_key: usize) input.DeviceAxisState {
+        var state: input.DeviceAxisState = .{};
+
+        if (self.button_state[pos_key].is_pressed) {
+            state.value += 1.0;
+            state.timestamp = @max(state.timestamp, self.button_state[pos_key].timestamp);
+        }
+
+        if (self.button_state[neg_key].is_pressed) {
+            state.value -= 1.0;
+            state.timestamp = @max(state.timestamp, self.button_state[neg_key].timestamp);
+        }
+
+        return state;
+    }
+};
+
+const MouseMovementState = union(enum) {
+    active: [2]input.DeviceAxisState, // Currently moving this frame
+    previous: void, // Moved in the last frame, not this one
+    idle: void, // No recent movement
 };
 
 const Mouse = struct {
-    button_state: [5]input.DeviceButtonState = .{} ** 5,
-    axis_state: [2]input.DeviceAxisState = .{} ** 2,
+    const Self = @This();
+
+    button_state: [5]ButtonState = .{.{}} ** 5,
+    axis_state: MouseMovementState = .idle,
+
+    fn beginFrame(self: *Self) void {
+        for (&self.button_state) |*button_state| {
+            button_state.was_pressed_last_frame = button_state.is_pressed;
+        }
+
+        // Clears mouse movement for this new frame
+        // .last is used if the mouse moved last frame, so this frame the mouse axis is reset to 0,0 this frame
+        self.axis_state = switch (self.axis_state) {
+            .active => |_| .previous,
+            .previous => .idle,
+            .idle => .idle,
+        };
+    }
+
+    fn proccessEvent(self: *Self, event: *c.SDL_Event) void {
+        switch (event.type) {
+            c.SDL_EVENT_MOUSE_BUTTON_UP | c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                self.button_state[event.button.button].timestamp = event.button.timestamp;
+                self.button_state[event.button.button].is_pressed = event.button.down;
+            },
+            c.SDL_EVENT_MOUSE_MOTION => {
+                const PIXEL_MOVE_AMOUNT = 6.0;
+                const mouse_move_state: [2]input.DeviceAxisState = .{
+                    .{
+                        .value = event.motion.xrel / PIXEL_MOVE_AMOUNT,
+                        .timestamp = event.motion.timestamp,
+                    },
+                    .{
+                        .value = event.motion.yrel / PIXEL_MOVE_AMOUNT,
+                        .timestamp = event.motion.timestamp,
+                    },
+                };
+                self.axis_state = .{ .active = mouse_move_state };
+            },
+            else => {},
+        }
+    }
 };

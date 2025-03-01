@@ -109,6 +109,11 @@ pub const DebugCameraEntitySystem = struct {
             self.cast_ray = true;
         }
 
-        self.linear_input.data[2] = input_context.getAxisValue(.move_forward_backward);
+        self.linear_input.data[0] = input_context.getAxisValue(.move_left_right, true);
+        self.linear_input.data[1] = input_context.getAxisValue(.move_up_down, true);
+        self.linear_input.data[2] = input_context.getAxisValue(.move_forward_backward, true);
+
+        self.angular_input.data[0] = input_context.getAxisValue(.rotate_pitch, true);
+        self.angular_input.data[1] = input_context.getAxisValue(.rotate_yaw, true);
     }
 };

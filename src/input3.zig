@@ -1,14 +1,24 @@
 const std = @import("std");
 
+//TODO: held and released should contain time down/up
+pub const ButtonState = enum {
+    released,
+    pressed,
+    held,
+
+    pub fn isDown(self: @This()) bool {
+        return self == .pressed or self == .held;
+    }
+};
+
 pub const DeviceButtonState = struct {
     timestamp: u64 = 0,
-    current: bool = false,
-    previous: bool = false,
+    state: ButtonState = .released,
 };
 
 pub const DeviceAxisState = struct {
     timestamp: u64 = 0,
-    current: f32 = 0.0,
+    value: f32 = 0.0,
 };
 
 pub const InputDevice = struct {
@@ -48,12 +58,6 @@ pub const InputContextDefinition = struct {
     }
 };
 
-const FinalButtonState = enum {
-    up,
-    pressed,
-    down,
-};
-
 pub fn InputContext(
     comptime name: []const u8,
     comptime ButtonEnum: type,
@@ -64,14 +68,14 @@ pub fn InputContext(
     return struct {
         const Self = @This();
 
-        button_states: std.EnumArray(ButtonEnum, FinalButtonState),
+        button_states: std.EnumArray(ButtonEnum, DeviceButtonState),
         axis_states: std.EnumArray(AxisEnum, DeviceAxisState),
 
         pub fn init(devices: []const InputDevice) Self {
             var self: Self =
                 .{
-                .button_states = std.EnumArray(ButtonEnum, FinalButtonState).initFill(.up),
-                .axis_states = std.EnumArray(AxisEnum, DeviceAxisState).initFill(DeviceAxisState{}),
+                .button_states = std.EnumArray(ButtonEnum, DeviceButtonState).initFill(.{}),
+                .axis_states = std.EnumArray(AxisEnum, DeviceAxisState).initFill(.{}),
             };
             self.update(devices);
             return self;
@@ -83,14 +87,15 @@ pub fn InputContext(
                 const button_enum = @field(ButtonEnum, field.name);
                 const button_index = @intFromEnum(button_enum);
 
-                var state: FinalButtonState = .up;
+                var state: DeviceButtonState = .{};
 
                 for (devices) |device| {
                     if (device.getButton(name_hash, button_index)) |button_state| {
-                        if (state != .down and button_state.current and !button_state.previous) {
-                            state = .pressed;
-                        } else if (button_state.current and button_state.previous) {
-                            state = .down;
+                        if (button_state.state == .held) {
+                            state.state = .held;
+                            state.timestamp = @max(state.timestamp, button_state.timestamp);
+                        } else if (button_state.state == .pressed and state.state != .held) {
+                            state = button_state;
                         }
                     }
                 }
@@ -107,7 +112,7 @@ pub fn InputContext(
 
                 for (devices) |device| {
                     if (device.getAxis(name_hash, axis_index)) |axis_state| {
-                        if (axis_state.timestamp > state.timestamp) {
+                        if (axis_state.timestamp >= state.timestamp) {
                             state = axis_state;
                         }
                     }
@@ -119,16 +124,36 @@ pub fn InputContext(
 
         pub fn getButtonDown(self: Self, button: ButtonEnum) bool {
             const state = self.button_states.get(button);
-            return state == .pressed or state == .down;
+            return state.state == .pressed or state.state == .down;
         }
 
         pub fn getButtonPressed(self: Self, button: ButtonEnum) bool {
             const state = self.button_states.get(button);
-            return state == .pressed;
+            return state.state == .pressed;
         }
 
-        pub fn getAxisValue(self: Self, axis: AxisEnum) f32 {
-            return self.axis_states.get(axis).current;
+        pub fn getAxisValue(self: Self, axis: AxisEnum, clamp: bool) f32 {
+            var value = self.axis_states.get(axis).value;
+            if (clamp) {
+                value = std.math.clamp(value, -1, 1);
+            }
+            return value;
+        }
+
+        pub fn getButtonAxis(self: Self, axis: AxisEnum, pos: ButtonEnum, neg: ButtonEnum, clamp: bool) f32 {
+            const axis_state = self.getAxisValue(axis, clamp);
+            const pos_state = self.getButtonDown(pos);
+            const neg_state = self.getButtonDown(neg);
+
+            if (pos_state and !neg_state) {
+                return 1.0;
+            } else if (neg_state and !pos_state) {
+                return -1.0;
+            } else if (pos_state and neg_state) {
+                return 0.0;
+            } else {
+                return axis_state;
+            }
         }
 
         pub fn getDefinition(allocator: std.mem.Allocator) !InputContextDefinition {
