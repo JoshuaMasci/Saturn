@@ -2,6 +2,7 @@ const std = @import("std");
 const za = @import("zalgebra");
 
 const Platform = @import("platform.zig").getPlatform();
+const Window = @import("platform.zig").getWindow();
 const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 
 const physics_system = @import("physics");
@@ -20,6 +21,7 @@ pub const App = struct {
     should_quit: bool,
 
     platform: Platform,
+    window: Window,
     render_thread: RenderThread,
 
     game_universe: *Universe,
@@ -31,8 +33,9 @@ pub const App = struct {
     pub fn init() !Self {
         try global.assets.addDir("engine", "zig-out/assets");
 
-        const platform = try Platform.init(global.global_allocator);
-        const render_thread = try RenderThread.init(global.global_allocator, .{ .window_name = "Saturn Engine", .size = .{ .windowed = .{ 1920, 1080 } }, .vsync = .on });
+        var platform = try Platform.init(global.global_allocator);
+        const window = platform.createWindow("Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
+        const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
 
@@ -45,6 +48,7 @@ pub const App = struct {
         return .{
             .should_quit = false,
             .platform = platform,
+            .window = window,
             .render_thread = render_thread,
 
             .game_universe = game_universe,
@@ -58,6 +62,7 @@ pub const App = struct {
         physics_system.deinit();
 
         self.render_thread.deinit();
+        self.platform.destroyWindow(self.window);
         self.platform.deinit();
     }
 
@@ -103,14 +108,14 @@ pub const App = struct {
 
         self.render_thread.beginFrame();
 
-        self.render_thread.render_state.scene = null;
+        self.render_thread.render_thread_data.scene = null;
         if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-            self.render_thread.render_state.camera_transform = game_debug_entity.transform;
+            self.render_thread.render_thread_data.camera_transform = game_debug_entity.transform;
 
             if (game_debug_entity.world) |game_world| {
                 const rendering = @import("entity/engine/rendering.zig");
                 if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
-                    self.render_thread.render_state.scene = try render_world.scene.dupe(self.render_thread.render_state.temp_allocator.allocator());
+                    self.render_thread.render_thread_data.scene = try render_world.scene.dupe(self.render_thread.render_thread_data.temp_allocator.allocator());
                 }
             }
         }

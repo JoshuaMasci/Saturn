@@ -8,6 +8,14 @@ pub fn getPlatform() type {
     }
 }
 
+pub fn getWindow() type {
+    if (saturn_options.sdl3) {
+        return @import("platform/sdl3.zig").Window;
+    } else {
+        @compileError("Unimpliemnted for sdl2");
+    }
+}
+
 pub fn getRenderer() type {
     if (saturn_options.sdl3) {
         return @import("rendering/sdl_gpu/renderer.zig").Renderer;

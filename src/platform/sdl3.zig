@@ -3,6 +3,8 @@ const std = @import("std");
 const input = @import("../input3.zig");
 const App = @import("../app.zig").App;
 
+const Settings = @import("../rendering/settings.zig");
+
 pub const c = @cImport({
     @cDefine("SDL_DISABLE_OLD_NAMES", {});
     @cInclude("SDL3/SDL.h");
@@ -16,6 +18,7 @@ pub const Platform = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
+
     should_quit: bool,
     keyboard_mouse_device: *KeyboardMouse,
     input_devices: std.ArrayList(input.InputDevice),
@@ -32,7 +35,7 @@ pub const Platform = struct {
         keyboard_mouse_device.* = try KeyboardMouse.init(allocator);
 
         var input_devices = try std.ArrayList(input.InputDevice).initCapacity(allocator, 1);
-        input_devices.appendAssumeCapacity(keyboard_mouse_device.getInputDevices());
+        input_devices.appendAssumeCapacity(keyboard_mouse_device.getInputDevice());
 
         return .{
             .allocator = allocator,
@@ -51,6 +54,49 @@ pub const Platform = struct {
         c.SDL_Quit();
     }
 
+    pub fn createWindow(self: *Self, name: [:0]const u8, size: Settings.WindowSize) Window {
+        _ = self; // autofix
+        var window_width: i32 = 0;
+        var window_height: i32 = 0;
+        var window_flags = c.SDL_WINDOW_RESIZABLE;
+
+        switch (size) {
+            .windowed => |window_size| {
+                window_width = window_size[0];
+                window_height = window_size[1];
+            },
+            .maximized => window_flags |= c.SDL_WINDOW_MAXIMIZED,
+            .fullscreen => window_flags |= c.SDL_WINDOW_FULLSCREEN,
+        }
+
+        const handle = c.SDL_CreateWindow(name, window_width, window_height, window_flags).?;
+        return .{ .handle = handle };
+    }
+
+    pub fn destroyWindow(self: *Self, window: Window) void {
+        _ = self; // autofix
+        _ = c.SDL_DestroyWindowSurface(window.handle);
+    }
+
+    pub fn captureMouse(self: *Self, window: Window) void {
+        if (self.keyboard_mouse_device.mouse) |mouse| {
+            mouse.capture(window);
+        }
+    }
+
+    pub fn releaseMouse(self: *Self) void {
+        if (self.keyboard_mouse_device.mouse) |mouse| {
+            mouse.release();
+        }
+    }
+
+    pub fn isMouseCaptured(self: *Self) void {
+        if (self.keyboard_mouse_device.mouse) |mouse| {
+            return mouse.isCaptured();
+        }
+        return false;
+    }
+
     pub fn proccessEvents(self: *Self, app: *App) !void {
         _ = app; // autofix
 
@@ -59,16 +105,32 @@ pub const Platform = struct {
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event)) {
             switch (event.type) {
-                c.SDL_EVENT_QUIT => {
+                c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
                     self.should_quit = true;
                 },
                 c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
+                    // Releases mouse so it can't ever get stuck
+                    if (event.key.scancode == c.SDL_SCANCODE_ESCAPE and event.key.down) {
+                        self.releaseMouse();
+                    }
+
                     if (self.keyboard_mouse_device.keyboard) |keyboard| {
                         keyboard.proccessEvent(&event);
                     }
                 },
                 c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_WHEEL, c.SDL_EVENT_MOUSE_MOTION => {
                     if (self.keyboard_mouse_device.mouse) |mouse| {
+
+                        // Capture the mouse on left click
+                        //TODO: allow the app to configure if this should happen
+                        if (!mouse.isCaptured()) {
+                            if (event.button.button == c.SDL_BUTTON_LEFT and event.button.down) {
+                                if (c.SDL_GetWindowFromEvent(&event)) |handle| {
+                                    self.captureMouse(.{ .handle = handle });
+                                }
+                            }
+                        }
+
                         mouse.proccessEvent(&event);
                     }
                 },
@@ -80,6 +142,10 @@ pub const Platform = struct {
     pub fn getInputDevices(self: Self) []const input.InputDevice {
         return self.input_devices.items;
     }
+};
+
+pub const Window = struct {
+    handle: *c.SDL_Window,
 };
 
 const KeyboardMouse = struct {
@@ -129,12 +195,17 @@ const KeyboardMouse = struct {
     }
 
     fn getButton(ptr: *anyopaque, context_hash: u32, button: u32) ?input.DeviceButtonState {
-        _ = context_hash; // autofix
-
         const self: *Self = @alignCast(@ptrCast(ptr));
+
         if (self.keyboard) |keyboard| {
-            if (button == 0) {
-                return keyboard.button_state[c.SDL_SCANCODE_E].toDeviceState();
+            if (Keyboard.getButton(keyboard, context_hash, button)) |state| {
+                return state;
+            }
+        }
+
+        if (self.keyboard) |mouse| {
+            if (Mouse.getButton(mouse, context_hash, button)) |state| {
+                return state;
             }
         }
 
@@ -142,41 +213,24 @@ const KeyboardMouse = struct {
     }
 
     fn getAxis(ptr: *anyopaque, context_hash: u32, axis: u32) ?input.DeviceAxisState {
-        _ = context_hash; // autofix
-
         const self: *Self = @alignCast(@ptrCast(ptr));
 
         if (self.keyboard) |keyboard| {
-            switch (axis) {
-                0 => return keyboard.tempKeyAxis(c.SDL_SCANCODE_A, c.SDL_SCANCODE_D),
-                1 => return keyboard.tempKeyAxis(c.SDL_SCANCODE_LSHIFT, c.SDL_SCANCODE_SPACE),
-                2 => return keyboard.tempKeyAxis(c.SDL_SCANCODE_W, c.SDL_SCANCODE_S),
-                else => {},
+            if (Keyboard.getAxis(keyboard, context_hash, axis)) |state| {
+                return state;
             }
         }
 
         if (self.mouse) |mouse| {
-            if (axis == 3 or axis == 4) {
-                switch (mouse.axis_state) {
-                    .active => |axes| {
-                        if (axis == 3) {
-                            var state = axes[0];
-                            state.value *= -1.0;
-                            return state;
-                        } else {
-                            return axes[1];
-                        }
-                    },
-                    .previous => return .{},
-                    .idle => {},
-                }
+            if (Mouse.getAxis(mouse, context_hash, axis)) |state| {
+                return state;
             }
         }
 
         return null;
     }
 
-    pub fn getInputDevices(self: *Self) input.InputDevice {
+    pub fn getInputDevice(self: *Self) input.InputDevice {
         return .{
             .ptr = @ptrCast(self),
             .get_button_state = &Self.getButton,
@@ -235,6 +289,32 @@ const Keyboard = struct {
 
         return state;
     }
+
+    fn getButton(ptr: *anyopaque, context_hash: u32, button: u32) ?input.DeviceButtonState {
+        _ = context_hash; // autofix
+
+        const self: *Self = @alignCast(@ptrCast(ptr));
+        if (button == 0) {
+            return self.button_state[c.SDL_SCANCODE_E].toDeviceState();
+        }
+
+        return null;
+    }
+
+    fn getAxis(ptr: *anyopaque, context_hash: u32, axis: u32) ?input.DeviceAxisState {
+        _ = context_hash; // autofix
+
+        const self: *Self = @alignCast(@ptrCast(ptr));
+
+        switch (axis) {
+            0 => return self.tempKeyAxis(c.SDL_SCANCODE_A, c.SDL_SCANCODE_D),
+            1 => return self.tempKeyAxis(c.SDL_SCANCODE_SPACE, c.SDL_SCANCODE_LSHIFT),
+            2 => return self.tempKeyAxis(c.SDL_SCANCODE_W, c.SDL_SCANCODE_S),
+            else => {},
+        }
+
+        return null;
+    }
 };
 
 const MouseMovementState = union(enum) {
@@ -248,6 +328,32 @@ const Mouse = struct {
 
     button_state: [5]ButtonState = .{.{}} ** 5,
     axis_state: MouseMovementState = .idle,
+
+    captured_window: ?Window = null,
+
+    fn isCaptured(self: *Self) bool {
+        if (self.captured_window) |window| {
+            if (c.SDL_GetWindowRelativeMouseMode(window.handle)) {
+                return true;
+            }
+            self.captured_window = null;
+        }
+
+        return false;
+    }
+
+    fn capture(self: *Self, window: Window) void {
+        if (c.SDL_SetWindowRelativeMouseMode(window.handle, true) == true) {
+            self.captured_window = window;
+        }
+    }
+
+    fn release(self: *Self) void {
+        if (self.captured_window) |window| {
+            _ = c.SDL_SetWindowRelativeMouseMode(window.handle, false);
+            self.captured_window = null;
+        }
+    }
 
     fn beginFrame(self: *Self) void {
         for (&self.button_state) |*button_state| {
@@ -270,7 +376,7 @@ const Mouse = struct {
                 self.button_state[event.button.button].is_pressed = event.button.down;
             },
             c.SDL_EVENT_MOUSE_MOTION => {
-                const PIXEL_MOVE_AMOUNT = 6.0;
+                const PIXEL_MOVE_AMOUNT = 12.0;
                 const mouse_move_state: [2]input.DeviceAxisState = .{
                     .{
                         .value = event.motion.xrel / PIXEL_MOVE_AMOUNT,
@@ -285,5 +391,37 @@ const Mouse = struct {
             },
             else => {},
         }
+    }
+
+    fn getButton(ptr: *anyopaque, context_hash: u32, button: u32) ?input.DeviceButtonState {
+        _ = ptr; // autofix
+        _ = context_hash; // autofix
+        _ = button; // autofix
+        return null;
+    }
+
+    fn getAxis(ptr: *anyopaque, context_hash: u32, axis: u32) ?input.DeviceAxisState {
+        _ = context_hash; // autofix
+        const self: *Self = @alignCast(@ptrCast(ptr));
+
+        if (axis == 3 or axis == 4) {
+            switch (self.axis_state) {
+                .active => |axes| {
+                    if (self.isCaptured()) {
+                        if (axis == 3) {
+                            var state = axes[0];
+                            state.value *= -1.0;
+                            return state;
+                        } else {
+                            return axes[1];
+                        }
+                    }
+                },
+                .previous => return .{}, //Should still return the empty movement if the mouse is uncaptured
+                .idle => {},
+            }
+        }
+
+        return null;
     }
 };

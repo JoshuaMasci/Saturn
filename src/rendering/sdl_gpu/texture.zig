@@ -2,10 +2,7 @@ const std = @import("std");
 
 const Texture2dAsset = @import("../../asset/texture_2d.zig");
 
-const c = @cImport({
-    @cDefine("SDL_DISABLE_OLD_NAMES", {});
-    @cInclude("SDL3/SDL.h");
-});
+const c = @import("../../platform/sdl3.zig").c;
 
 const Self = @This();
 

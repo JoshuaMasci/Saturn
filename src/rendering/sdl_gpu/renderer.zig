@@ -15,21 +15,19 @@ const MaterialAsset = @import("../../asset/material.zig");
 const ShaderAsset = @import("../../asset/shader.zig");
 const ShaderAssetHandle = ShaderAsset.Registry.Handle;
 
-const c = @cImport({
-    @cDefine("SDL_DISABLE_OLD_NAMES", {});
-    @cInclude("SDL3/SDL.h");
-});
+const c = @import("../../platform/sdl3.zig").c;
 
 const Mesh = @import("mesh.zig");
 const Texture = @import("texture.zig");
 
-pub const WindowHandle = *anyopaque;
+const Window = @import("../../platform/sdl3.zig").Window;
 
 pub const Renderer = struct {
     const Self = @This();
 
+    window: Window,
+
     gpu_device: *c.SDL_GPUDevice,
-    window: *c.SDL_Window,
 
     depth_format: c.SDL_GPUTextureFormat,
 
@@ -40,7 +38,7 @@ pub const Renderer = struct {
     texture_map: std.AutoHashMap(Texture2dAsset.Registry.Handle, Texture),
     material_map: std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
-    pub fn init(allocator: std.mem.Allocator, settings: Settings.RenderSettings) !Self {
+    pub fn init(allocator: std.mem.Allocator, window: Window) !Self {
         std.debug.assert(c.SDL_Init(c.SDL_INIT_VIDEO));
         const gpu_device = c.SDL_CreateGPUDevice(c.SDL_GPU_SHADERFORMAT_SPIRV, true, null).?;
 
@@ -60,19 +58,19 @@ pub const Renderer = struct {
             depth_format = c.SDL_GPU_TEXTUREFORMAT_D24_UNORM;
         }
 
-        const window = createWindow(gpu_device, settings.window_name, settings.size, settings.vsync);
-
         const vertex_shader = try loadGraphicsShader(allocator, gpu_device, ShaderAssetHandle.fromRepoPath("engine:shaders/test.vert.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device, vertex_shader);
 
         const fragment_shader = try loadGraphicsShader(allocator, gpu_device, ShaderAssetHandle.fromRepoPath("engine:shaders/test.frag.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device, fragment_shader);
 
+        _ = c.SDL_ClaimWindowForGPUDevice(gpu_device, window.handle);
+
         const mesh_graphics_pipeline = try loadGraphicsPipeline(
             gpu_device,
             vertex_shader,
             fragment_shader,
-            c.SDL_GetGPUSwapchainTextureFormat(gpu_device, window),
+            c.SDL_GetGPUSwapchainTextureFormat(gpu_device, window.handle),
             depth_format,
             .{
                 .compare_op = c.SDL_GPU_COMPAREOP_LESS,
@@ -125,19 +123,26 @@ pub const Renderer = struct {
 
         self.material_map.deinit();
 
+        self.deregisterWindow(self.window);
+
         c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, self.mesh_graphics_pipeline);
         c.SDL_ReleaseGPUSampler(self.gpu_device, self.linear_sampler);
-
-        destroyWindow(self.gpu_device, self.window);
         c.SDL_DestroyGPUDevice(self.gpu_device);
     }
 
-    pub fn renderScene(self: *Self, temp_allocator: std.mem.Allocator, target: ?WindowHandle, scene: *const RenderScene, camera: struct {
+    pub fn registerWindow(self: *Self, window: Window) void {
+        _ = c.SDL_ClaimWindowForGPUDevice(self.gpu_device, window.handle);
+    }
+    pub fn deregisterWindow(self: *Self, window: Window) void {
+        _ = c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, window.handle);
+    }
+
+    pub fn renderScene(self: *Self, temp_allocator: std.mem.Allocator, target: ?Window, scene: *const RenderScene, camera: struct {
         transform: Transform,
         camera: Camera,
     }) void {
         _ = target; // autofix
-        const window: *c.SDL_Window = @ptrCast(self.window);
+        const window: *c.SDL_Window = self.window.handle;
 
         const command_buffer = c.SDL_AcquireGPUCommandBuffer(self.gpu_device);
         defer _ = c.SDL_SubmitGPUCommandBuffer(command_buffer);
@@ -446,36 +451,4 @@ fn loadGraphicsPipeline(
     };
 
     return c.SDL_CreateGPUGraphicsPipeline(device, &create_info) orelse error.failedToCreateGraphicsPipeline;
-}
-
-pub fn createWindow(gpu_device: *c.SDL_GPUDevice, name: [:0]const u8, size: Settings.WindowSize, vsync: Settings.VerticalSync) *c.SDL_Window {
-    var window_width: i32 = 0;
-    var window_height: i32 = 0;
-    var window_flags = c.SDL_WINDOW_RESIZABLE;
-
-    switch (size) {
-        .windowed => |window_size| {
-            window_width = window_size[0];
-            window_height = window_size[1];
-        },
-        .maximized => window_flags |= c.SDL_WINDOW_MAXIMIZED,
-        .fullscreen => window_flags |= c.SDL_WINDOW_FULLSCREEN,
-    }
-
-    const window = c.SDL_CreateWindow(name, window_width, window_height, window_flags).?;
-    std.debug.assert(c.SDL_ClaimWindowForGPUDevice(gpu_device, window));
-
-    const present_mode: c.SDL_GPUPresentMode = switch (vsync) {
-        .on => c.SDL_GPU_PRESENTMODE_VSYNC,
-        .off => c.SDL_GPU_PRESENTMODE_IMMEDIATE,
-    };
-    std.debug.assert(c.SDL_SetGPUSwapchainParameters(gpu_device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, present_mode));
-
-    return @ptrCast(window);
-}
-
-pub fn destroyWindow(gpu_device: *c.SDL_GPUDevice, handle: *c.SDL_Window) void {
-    const window: *c.SDL_Window = @ptrCast(handle);
-    c.SDL_ReleaseWindowFromGPUDevice(gpu_device, window);
-    c.SDL_DestroyWindow(window);
 }
