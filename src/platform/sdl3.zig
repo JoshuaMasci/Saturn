@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const input = @import("../input3.zig");
+const input = @import("../input.zig");
 const App = @import("../app.zig").App;
 
 const Settings = @import("../rendering/settings.zig");

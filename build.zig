@@ -4,9 +4,6 @@ const builtin = @import("builtin");
 pub fn build(b: *std.Build) !void {
     var option_step = b.addOptions();
 
-    const use_sdl3 = b.option(bool, "use_sdl3", "use sdl3 instead of sdl2") orelse true;
-    option_step.addOption(bool, "sdl3", use_sdl3);
-
     const build_sdl3 = b.option(bool, "build_sdl3", "build and link sdl3 from source instead") orelse false;
 
     const target = b.standardTargetOptions(.{});
@@ -32,25 +29,15 @@ pub fn build(b: *std.Build) !void {
     const zobj = b.dependency("zobj", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("zobj", zobj.module("obj"));
 
-    if (!use_sdl3) { // zsdl
-        const zsdl = b.dependency("zsdl", .{});
-        exe.root_module.addImport("zsdl2", zsdl.module("zsdl2"));
-        @import("zsdl").link_SDL2(exe);
-
-        // zopengl
-        const zopengl = b.dependency("zopengl", .{});
-        exe.root_module.addImport("zopengl", zopengl.module("root"));
+    if (build_sdl3) {
+        const sdl3 = b.dependency("sdl3", .{
+            .target = target,
+            .optimize = optimize,
+            .preferred_link_mode = .dynamic,
+        });
+        exe.linkLibrary(sdl3.artifact("SDL3"));
     } else {
-        if (build_sdl3) {
-            const sdl3 = b.dependency("sdl3", .{
-                .target = target,
-                .optimize = optimize,
-                .preferred_link_mode = .dynamic,
-            });
-            exe.linkLibrary(sdl3.artifact("SDL3"));
-        } else {
-            exe.linkSystemLibrary("SDL3");
-        }
+        exe.linkSystemLibrary("SDL3");
     }
 
     // zstbi
@@ -91,8 +78,6 @@ pub fn build(b: *std.Build) !void {
         assets_exe.root_module.addImport("zstbi", zstbi.module("root"));
         assets_exe.linkLibrary(zstbi.artifact("zstbi"));
 
-        // Always link sdl3 for the asset pipeline I guess?
-        // Shader cross needs it, the sdl2 mode will be deprecated anyways
         if (build_sdl3) {
             const sdl3 = b.dependency("sdl3", .{
                 .target = target,

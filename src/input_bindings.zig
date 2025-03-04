@@ -1,4 +1,4 @@
-const input = @import("input3.zig");
+const input = @import("input.zig");
 
 pub const DebugCameraInputContext = input.InputContext(
     "DebugCamera",

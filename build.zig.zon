@@ -37,8 +37,5 @@
             .url = "git+https://github.com/zig-gamedev/zstbi.git#bcbd249f3f57fb84d6d76f1bc621c7bd3bfaa4a2",
             .hash = "12208b7d15a730294a7d8ee3a9d3ef145e109f94d0a68be7f0ee282e0630ede093d5",
         },
-
-        .zsdl = .{ .path = "libs/zig-gamedev/libs/zsdl" },
-        .zopengl = .{ .path = "libs/zig-gamedev/libs/zopengl" },
     },
 }
