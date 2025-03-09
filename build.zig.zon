@@ -15,7 +15,10 @@
             .url = "git+https://github.com/castholm/SDL.git#2bb5f57ea8b8c43eabe514f7bbd3361365ba2ff3",
             .hash = "1220f653f5b656888b522bf5be06fc3062278767cfa7764e5d00eb559056d65b616f",
         },
-
+        .zgui = .{
+            .url = "git+https://github.com/JoshuaMasci/zgui.git#f22fcae2a6764feca03553f1ab03d1cef96eba5d",
+            .hash = "12204474947520d33f21a1a94fa865bf6d3950799580ca14ca25961110315f8efbca",
+        },
         .zalgebra = .{
             .url = "https://github.com/JoshuaMasci/zalgebra/archive/8ee8402.tar.gz",
             .hash = "12206f6e0c673d4fc52c5852434501b897b1f054cdf55442a53f793b9fd1fc31b6f1",
@@ -24,10 +27,9 @@
             .url = "git+https://github.com/zig-gamedev/zmath.git#f40bb8a935b4878c707c3fccfd5c234cfcb43bf2",
             .hash = "1220c1ab7d1e49106f59c6adb4004befdb95525a72056364a663757aaa1365aae64a",
         },
-
         .zgltf = .{
-            .url = "https://github.com/kooparse/zgltf/archive/17fb60b.tar.gz",
-            .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
+            .url = "git+https://github.com/kooparse/zgltf.git#99a942973ddd9d672a4d4d8cdda63cb7c7ec3d21",
+            .hash = "1220a459a4dcc509de6918c2d0f970b3e19630415c2b15914b6d6c7fc2b28bcd6e54",
         },
         .zobj = .{
             .url = "git+https://github.com/chip2n/zig-obj.git#4ce054733812eb0b28d97adb0ea1f66f21fd41c8",

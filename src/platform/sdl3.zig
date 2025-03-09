@@ -90,7 +90,7 @@ pub const Platform = struct {
         }
     }
 
-    pub fn isMouseCaptured(self: *Self) void {
+    pub fn isMouseCaptured(self: *Self) bool {
         if (self.keyboard_mouse_device.mouse) |mouse| {
             return mouse.isCaptured();
         }
@@ -104,6 +104,9 @@ pub const Platform = struct {
 
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event)) {
+
+            //TODO: only update when input is in "Menu" mode, aka mouse not captured
+            _ = @import("zimgui").backend.processEvent(&event);
             switch (event.type) {
                 c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
                     self.should_quit = true;
@@ -146,6 +149,13 @@ pub const Platform = struct {
 
 pub const Window = struct {
     handle: *c.SDL_Window,
+
+    pub fn getSize(self: @This()) [2]u32 {
+        var w: c_int = 0;
+        var h: c_int = 0;
+        _ = c.SDL_GetWindowSize(self.handle, &w, &h);
+        return .{ @intCast(w), @intCast(h) };
+    }
 };
 
 const KeyboardMouse = struct {
@@ -376,7 +386,7 @@ const Mouse = struct {
                 self.button_state[event.button.button].is_pressed = event.button.down;
             },
             c.SDL_EVENT_MOUSE_MOTION => {
-                const PIXEL_MOVE_AMOUNT = 12.0;
+                const PIXEL_MOVE_AMOUNT = 25.0; //TODO: is this even needed since the xrel is already a float?
                 const mouse_move_state: [2]input.DeviceAxisState = .{
                     .{
                         .value = event.motion.xrel / PIXEL_MOVE_AMOUNT,

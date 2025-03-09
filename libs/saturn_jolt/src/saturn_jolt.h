@@ -56,7 +56,10 @@ typedef struct WorldSettings {
     uint32_t num_body_mutexes;
     uint32_t max_body_pairs;
     uint32_t max_contact_constraints;
+
+    //TODO: both of these should be replaced with global pool
     uint32_t temp_allocation_size;
+    uint16_t threads;
 } WorldSettings;
 
 typedef struct World World;

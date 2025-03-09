@@ -277,7 +277,7 @@ pub fn HandlePtrPool(comptime Handle: type, comptime T: type) type {
                 }
 
                 self.pool.delete(value);
-                self.map.remove(handle);
+                _ = self.map.swapRemove(handle);
             }
         }
 

@@ -129,6 +129,7 @@ pub const World = struct {
         max_body_pairs: u32 = 1024,
         max_contact_constraints: u32 = 1024,
         temp_allocation_size: u32 = 1024 * 1024 * 10,
+        threads: u16 = 4,
     };
 
     ptr: ?*c.World,
@@ -141,6 +142,7 @@ pub const World = struct {
                 .max_body_pairs = settings.max_body_pairs,
                 .max_contact_constraints = settings.max_contact_constraints,
                 .temp_allocation_size = settings.temp_allocation_size,
+                .threads = settings.threads,
             }),
         };
     }

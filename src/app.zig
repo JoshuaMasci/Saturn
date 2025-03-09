@@ -6,6 +6,8 @@ const Window = @import("platform.zig").getWindow();
 const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 
 const physics_system = @import("physics");
+const zimgui = @import("zimgui");
+
 const input = @import("input.zig");
 
 const world_gen = @import("world_gen.zig");
@@ -29,6 +31,7 @@ pub const App = struct {
 
     timer: f32 = 0,
     frames: f32 = 0,
+    average_dt: f32 = 0.0,
 
     pub fn init() !Self {
         try global.assets.addDir("engine", "zig-out/assets");
@@ -38,12 +41,20 @@ pub const App = struct {
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
+        zimgui.init(global.global_allocator);
+        zimgui.backend.init(
+            window.handle,
+            .{
+                .device = render_thread.render_thread_data.renderer.gpu_device,
+                .color_target_format = render_thread.render_thread_data.renderer.color_format,
+                .msaa_samples = 0, // 1 Sample
+            },
+        );
 
         const game_universe = try Universe.init(global.global_allocator);
-
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
         const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside, .{ .position = za.Vec3.new(0.0, 0.0, -15.0) });
-        world_gen.create_props(game_universe, game_worlds.inside, 15, za.Vec3.new(2.5, 0.0, -15.0), 0.15);
+        world_gen.create_props(game_universe, game_worlds.inside, 150, za.Vec3.new(2.5, 0.0, -15.0), 0.15);
 
         return .{
             .should_quit = false,
@@ -61,6 +72,9 @@ pub const App = struct {
 
         physics_system.deinit();
 
+        zimgui.backend.deinit();
+        zimgui.deinit();
+
         self.render_thread.deinit();
         self.platform.destroyWindow(self.window);
         self.platform.deinit();
@@ -73,19 +87,15 @@ pub const App = struct {
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
         const frame_allocator = global.global_allocator; //TODO: move to arena allocator
 
-        self.timer += delta_time;
-        self.frames += 1;
-        if (self.timer > 10.0) {
-            const avr_delta_time = self.timer / self.frames;
-            std.log.info("DT: {d:.3} ms FPS: {d:.3}", .{ avr_delta_time * 1000, 1.0 / avr_delta_time });
-            if (mem_usage_opt) |mem_usage| {
-                if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
-                    defer frame_allocator.free(mem_usage_string);
-                    std.log.info("Mem Usage: {s}", .{mem_usage_string});
-                }
+        {
+            self.timer += delta_time;
+            self.frames += 1;
+            if (self.timer > 0.1) {
+                const avr_delta_time = self.timer / self.frames;
+                self.average_dt = avr_delta_time;
+                self.timer = 0.0;
+                self.frames = 0;
             }
-            self.timer = 0.0;
-            self.frames = 0;
         }
 
         try self.platform.proccessEvents(self);
@@ -107,6 +117,22 @@ pub const App = struct {
         self.game_universe.update(.pre_render, delta_time);
 
         self.render_thread.beginFrame();
+
+        //TODO: imgui draw here
+        const window_size = self.window.getSize();
+        zimgui.backend.newFrame(window_size[0], window_size[1], 1.0);
+
+        if (zimgui.begin("Performance", .{})) {
+            zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
+            zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
+            if (mem_usage_opt) |mem_usage| {
+                if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+                    defer frame_allocator.free(mem_usage_string);
+                    zimgui.text("Memory Usage {s}", .{mem_usage_string});
+                }
+            }
+        }
+        zimgui.end();
 
         self.render_thread.render_thread_data.scene = null;
         if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {

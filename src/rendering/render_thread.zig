@@ -117,12 +117,18 @@ fn renderThreadMain(
             return; //TODO: deinit
         }
 
+        const command_buffer = render_thread_data.renderer.startCommandBuffer();
+
+        const swapchain_target = render_thread_data.renderer.acquireSwapchainTexture(render_thread_data.renderer.window, command_buffer).?;
+
         //TODO: default camera fov should be set by render settings
         const DefaultCamera = Camera.Default;
         if (render_thread_data.scene) |*scene| {
             render_thread_data.renderer.renderScene(
                 render_thread_data.temp_allocator.allocator(),
-                null,
+                command_buffer,
+                swapchain_target.handle,
+                swapchain_target.size,
                 scene,
                 .{
                     .transform = render_thread_data.camera_transform orelse .{},
@@ -130,6 +136,24 @@ fn renderThreadMain(
                 },
             );
         }
+
+        const zimgui = @import("zimgui");
+        zimgui.render();
+        zimgui.backend.prepareDrawData(command_buffer);
+        {
+            const c = @import("../platform/sdl3.zig").c;
+            const color_target: c.SDL_GPUColorTargetInfo = .{
+                .texture = swapchain_target.handle,
+                .load_op = c.SDL_GPU_LOADOP_LOAD,
+                .store_op = c.SDL_GPU_STOREOP_STORE,
+            };
+            const render_pass = c.SDL_BeginGPURenderPass(command_buffer, &color_target, 1, null);
+            defer c.SDL_EndGPURenderPass(render_pass);
+
+            zimgui.backend.renderDrawData(command_buffer, render_pass.?, null);
+        }
+
+        render_thread_data.renderer.endCommandBuffer(command_buffer);
 
         render_signals.render_done_semaphore.post();
         if (render_signals.quit_thread.load(.monotonic)) {

@@ -9,7 +9,7 @@
 #include <Jolt/Physics/Collision/RayCast.h>
 
 World::World(const WorldSettings *settings)
-        : temp_allocator(settings->temp_allocation_size), job_system(1024) {
+        : temp_allocator(settings->temp_allocation_size), job_system(1024, settings->threads, settings->threads) {
     this->broad_phase_layer_interface = new BroadPhaseLayerInterfaceImpl();
     this->object_vs_broadphase_layer_filter = new ObjectVsBroadPhaseLayerFilterImpl();
 	this->object_vs_object_layer_filter = new AnyMatchObjectLayerPairFilter();

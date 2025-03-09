@@ -5,6 +5,7 @@
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
+#include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 
 #include "layer_filters.hpp"
@@ -38,5 +39,5 @@ private:
 
     //TODO: replace these with global versions?
     JPH::TempAllocatorImplWithMallocFallback temp_allocator;
-    JPH::JobSystemSingleThreaded job_system;
+    JPH::JobSystemThreadPool job_system;
 };

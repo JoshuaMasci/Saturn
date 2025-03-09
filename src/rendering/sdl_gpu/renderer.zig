@@ -29,6 +29,7 @@ pub const Renderer = struct {
 
     gpu_device: *c.SDL_GPUDevice,
 
+    color_format: c.SDL_GPUTextureFormat,
     depth_format: c.SDL_GPUTextureFormat,
 
     mesh_graphics_pipeline: *c.SDL_GPUGraphicsPipeline,
@@ -51,6 +52,9 @@ pub const Renderer = struct {
             device_shader_formats,
         });
 
+        _ = c.SDL_ClaimWindowForGPUDevice(gpu_device, window.handle);
+
+        const color_format = c.SDL_GetGPUSwapchainTextureFormat(gpu_device, window.handle);
         var depth_format: c.SDL_GPUTextureFormat = c.SDL_GPU_TEXTUREFORMAT_D16_UNORM;
         if (c.SDL_GPUTextureSupportsFormat(gpu_device, c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT, c.SDL_GPU_TEXTURETYPE_2D, c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
             depth_format = c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
@@ -64,13 +68,11 @@ pub const Renderer = struct {
         const fragment_shader = try loadGraphicsShader(allocator, gpu_device, ShaderAssetHandle.fromRepoPath("engine:shaders/test.frag.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device, fragment_shader);
 
-        _ = c.SDL_ClaimWindowForGPUDevice(gpu_device, window.handle);
-
         const mesh_graphics_pipeline = try loadGraphicsPipeline(
             gpu_device,
             vertex_shader,
             fragment_shader,
-            c.SDL_GetGPUSwapchainTextureFormat(gpu_device, window.handle),
+            color_format,
             depth_format,
             .{
                 .compare_op = c.SDL_GPU_COMPAREOP_LESS,
@@ -95,6 +97,7 @@ pub const Renderer = struct {
         return .{
             .gpu_device = gpu_device,
             .window = window,
+            .color_format = color_format,
             .depth_format = depth_format,
             .mesh_graphics_pipeline = mesh_graphics_pipeline,
             .linear_sampler = linear_sampler,
@@ -137,26 +140,35 @@ pub const Renderer = struct {
         _ = c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, window.handle);
     }
 
-    pub fn renderScene(self: *Self, temp_allocator: std.mem.Allocator, target: ?Window, scene: *const RenderScene, camera: struct {
+    pub fn startCommandBuffer(self: Self) *c.SDL_GPUCommandBuffer {
+        return c.SDL_AcquireGPUCommandBuffer(self.gpu_device).?;
+    }
+
+    pub fn endCommandBuffer(self: Self, command_buffer: *c.SDL_GPUCommandBuffer) void {
+        _ = self; // autofix
+        _ = c.SDL_SubmitGPUCommandBuffer(command_buffer);
+    }
+
+    pub fn acquireSwapchainTexture(self: Self, window: Window, command_buffer: *c.SDL_GPUCommandBuffer) ?struct { handle: ?*c.SDL_GPUTexture, size: [2]u32 } {
+        _ = self; // autofix
+        var handle: ?*c.SDL_GPUTexture = null;
+        var size: [2]u32 = undefined;
+        if (c.SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, window.handle, &handle, &size[0], &size[1])) {
+            return .{ .handle = handle, .size = size };
+        }
+        return null;
+    }
+
+    pub fn renderScene(self: *Self, temp_allocator: std.mem.Allocator, command_buffer: *c.SDL_GPUCommandBuffer, target_hande: ?*c.SDL_GPUTexture, target_size: [2]u32, scene: *const RenderScene, camera: struct {
         transform: Transform,
         camera: Camera,
     }) void {
-        _ = target; // autofix
-        const window: *c.SDL_Window = self.window.handle;
-
-        const command_buffer = c.SDL_AcquireGPUCommandBuffer(self.gpu_device);
-        defer _ = c.SDL_SubmitGPUCommandBuffer(command_buffer);
-
-        var swapchain_texture: ?*c.SDL_GPUTexture = null;
-        var swapchain_size: [2]u32 = undefined;
-        _ = c.SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, window, &swapchain_texture, &swapchain_size[0], &swapchain_size[1]);
-
         const create_info = c.SDL_GPUTextureCreateInfo{
             .type = c.SDL_GPU_TEXTURETYPE_2D,
             .format = self.depth_format,
             .usage = c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-            .width = swapchain_size[0],
-            .height = swapchain_size[1],
+            .width = target_size[0],
+            .height = target_size[1],
             .layer_count_or_depth = 1,
             .num_levels = 1,
             .sample_count = c.SDL_GPU_SAMPLECOUNT_1,
@@ -165,7 +177,7 @@ pub const Renderer = struct {
         defer c.SDL_ReleaseGPUTexture(self.gpu_device, depth_texture);
 
         const color_target: c.SDL_GPUColorTargetInfo = .{
-            .texture = swapchain_texture,
+            .texture = target_hande,
             .clear_color = .{ .r = 0.0, .g = 0.75, .b = 0.5, .a = 1.0 },
             .load_op = c.SDL_GPU_LOADOP_CLEAR,
             .store_op = c.SDL_GPU_STOREOP_STORE,
@@ -180,13 +192,14 @@ pub const Renderer = struct {
         };
 
         const render_pass = c.SDL_BeginGPURenderPass(command_buffer, &color_target, 1, &depth_target);
+        defer c.SDL_EndGPURenderPass(render_pass);
 
         c.SDL_BindGPUGraphicsPipeline(render_pass, self.mesh_graphics_pipeline);
 
         //Write ViewProjection Matrix
         {
-            const width_float: f32 = @floatFromInt(swapchain_size[0]);
-            const height_float: f32 = @floatFromInt(swapchain_size[1]);
+            const width_float: f32 = @floatFromInt(target_size[0]);
+            const height_float: f32 = @floatFromInt(target_size[1]);
             const aspect_ratio: f32 = width_float / height_float;
             const view_matrix = camera.transform.getViewMatrix();
             const projection_matrix = camera.camera.projection_gl(aspect_ratio); //TODO: this is probably not be the correct matrix for SDL_GPU's clip space
@@ -212,8 +225,6 @@ pub const Renderer = struct {
                 self.bindAndDispatchMesh(static_mesh.component.mesh, render_pass);
             }
         }
-
-        defer c.SDL_EndGPURenderPass(render_pass);
     }
 
     fn bindAndDispatchMesh(
