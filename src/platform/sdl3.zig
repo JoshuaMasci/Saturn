@@ -97,9 +97,7 @@ pub const Platform = struct {
         return false;
     }
 
-    pub fn proccessEvents(self: *Self, app: *App) !void {
-        _ = app; // autofix
-
+    pub fn proccessEvents(self: *Self) !void {
         self.keyboard_mouse_device.beginFrame();
 
         var event: c.SDL_Event = undefined;
@@ -123,17 +121,6 @@ pub const Platform = struct {
                 },
                 c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_WHEEL, c.SDL_EVENT_MOUSE_MOTION => {
                     if (self.keyboard_mouse_device.mouse) |mouse| {
-
-                        // Capture the mouse on left click
-                        //TODO: allow the app to configure if this should happen
-                        if (!mouse.isCaptured()) {
-                            if (event.button.button == c.SDL_BUTTON_LEFT and event.button.down) {
-                                if (c.SDL_GetWindowFromEvent(&event)) |handle| {
-                                    self.captureMouse(.{ .handle = handle });
-                                }
-                            }
-                        }
-
                         mouse.proccessEvent(&event);
                     }
                 },

@@ -50,6 +50,7 @@ pub const App = struct {
                 .msaa_samples = 0, // 1 Sample
             },
         );
+        zimgui.io.setConfigFlags(.{ .dock_enable = true });
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
@@ -98,10 +99,12 @@ pub const App = struct {
             }
         }
 
-        try self.platform.proccessEvents(self);
+        try self.platform.proccessEvents();
 
+        //Don't need to check mouse capture since the mouse input device already does that
         const input_devices = self.platform.getInputDevices();
         if (input_devices.len > 0) {
+            const DebugCamera = @import("entity/engine/debug_camera.zig").DebugCameraEntitySystem;
             const input_context = @import("input_bindings.zig").DebugCameraInputContext.init(input_devices);
             if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
                 if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
@@ -118,21 +121,33 @@ pub const App = struct {
 
         self.render_thread.beginFrame();
 
-        //TODO: imgui draw here
-        const window_size = self.window.getSize();
-        zimgui.backend.newFrame(window_size[0], window_size[1], 1.0);
+        {
+            const window_size = self.window.getSize();
+            zimgui.backend.newFrame(window_size[0], window_size[1], 1.0);
 
-        if (zimgui.begin("Performance", .{})) {
-            zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
-            zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
-            if (mem_usage_opt) |mem_usage| {
-                if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
-                    defer frame_allocator.free(mem_usage_string);
-                    zimgui.text("Memory Usage {s}", .{mem_usage_string});
+            createFullscreenDockspace();
+            defer zimgui.end();
+
+            if (zimgui.begin("Performance", .{})) {
+                zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
+                zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
+                if (mem_usage_opt) |mem_usage| {
+                    if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+                        defer frame_allocator.free(mem_usage_string);
+                        zimgui.text("Memory Usage {s}", .{mem_usage_string});
+                    }
                 }
             }
+            zimgui.end();
+
+            if (!self.platform.isMouseCaptured() and
+                !zimgui.isWindowHovered(.{ .any_window = true }) and
+                zimgui.isMouseClicked(zimgui.MouseButton.left) and
+                !zimgui.isAnyItemHovered())
+            {
+                self.platform.captureMouse(self.window);
+            }
         }
-        zimgui.end();
 
         self.render_thread.render_thread_data.scene = null;
         if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
@@ -150,29 +165,48 @@ pub const App = struct {
 
         self.game_universe.update(.frame_end, delta_time);
     }
-
-    const DebugCamera = @import("entity/engine/debug_camera.zig").DebugCameraEntitySystem;
-
-    pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
-        if (event.button == .renderer_reload and event.state == .pressed) {
-            self.render_thread.reload();
-            return;
-        }
-
-        //std.log.info("Button {} -> {}", .{ event.button, event.state });
-        if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-            if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
-                debug_camera_system.on_button_event(event);
-            }
-        }
-    }
-
-    pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
-        //std.log.info("Axis {} -> {:.2}", .{ event.axis, event.get_value(false) });
-        if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-            if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
-                debug_camera_system.on_axis_event(event);
-            }
-        }
-    }
 };
+
+fn createFullscreenDockspace() void {
+    const window_name = "DockSpace";
+    const viewport = zimgui.getMainViewport();
+    const pos = viewport.getPos();
+    const size = viewport.getSize();
+
+    zimgui.setNextWindowPos(.{ .x = pos[0], .y = pos[1] });
+    zimgui.setNextWindowSize(.{ .w = size[0], .h = size[1] });
+    zimgui.setNextWindowViewport(viewport.getId());
+    zimgui.pushStyleVar1f(.{ .idx = zimgui.StyleVar.window_rounding, .v = 0.0 });
+    zimgui.pushStyleVar1f(.{ .idx = zimgui.StyleVar.window_border_size, .v = 0.0 });
+    zimgui.pushStyleVar2f(.{ .idx = zimgui.StyleVar.window_padding, .v = .{ 0.0, 0.0 } });
+    defer zimgui.popStyleVar(.{ .count = 3 });
+    zimgui.pushStyleColor4f(.{ .idx = zimgui.StyleCol.window_bg, .c = .{ 0.0, 0.0, 0.0, 0.0 } });
+    defer zimgui.popStyleColor(.{ .count = 1 });
+
+    const window_flags = zimgui.WindowFlags{
+        .no_scrollbar = true,
+        .no_docking = true,
+        .no_title_bar = true,
+        .no_collapse = true,
+        .no_resize = true,
+        .no_move = true,
+        .no_bring_to_front_on_focus = true,
+        .no_nav_focus = true,
+        .no_nav_inputs = true,
+        .always_auto_resize = true,
+        .no_background = true,
+    };
+
+    // Important: note that we proceed even if Begin() returns false (aka window is collapsed).
+    // This is because we want to keep our DockSpace() active. If a DockSpace() is inactive,
+    // all active windows docked into it will lose their parent and become undocked.
+    // We cannot preserve the docking relationship between an active window and an inactive docking, otherwise
+    // any change of dockspace/settings would lead to windows being stuck in limbo and never being visible.
+    var open = true;
+    _ = zimgui.begin(window_name, .{
+        .popen = &open,
+        .flags = window_flags,
+    });
+
+    _ = zimgui.DockSpace(window_name, size, .{ .passthru_central_node = true });
+}
