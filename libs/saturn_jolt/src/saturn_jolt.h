@@ -34,9 +34,11 @@ typedef double RVec3[3];
 typedef float RVec3[3];
 #endif
 
+typedef float Vec2[2];
 typedef float Vec3[3];
 typedef float Vec4[4];
 typedef float Quat[4];
+typedef float Mat44[16];
 
 typedef struct Transform {
 	RVec3 position;
@@ -161,6 +163,45 @@ void bodyRemoveShape(Body *body_ptr, SubShapeIndex index);
 void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Vec3 position, const Quat rotation);
 void bodyRemoveAllShapes(Body *body_ptr);
 void bodyCommitShapeChanges(Body *body_ptr);
+
+#ifdef JPH_DEBUG_RENDERER
+typedef struct Color {
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+	uint8_t a;
+} Color;
+
+typedef struct Vertex {
+	Vec3 position;
+	Vec3 normal;
+	Vec2 uv;
+	Color color;
+} Vertex;
+
+typedef Vertex Triangle[3];
+typedef uint32_t Geometry;
+
+typedef void (*DrawLineCallback)(void *, RVec3, RVec3, Color);
+typedef void (*DrawTriangleCallback)(void *, RVec3, RVec3, RVec3, Color);
+typedef void (*DrawText3DCallback)(void *, RVec3, char*, size_t, Color, float);
+
+//TODO: how to handle LOD's?
+typedef Geometry (*CreateTriangleMeshCallback)(void *, Triangle*, size_t);
+typedef Geometry  (*CreateIndexedMeshCallback)(void *, Vertex*, size_t, uint32_t*, size_t);
+typedef void (*DrawGeometryCallback)(void *, Mat44, Color, Geometry); //TODO: add CullMode and DrawMode
+
+typedef struct DebugRenderer {
+	void* data;
+	DrawLineCallback draw_line;
+	DrawTriangleCallback draw_triangle;
+	DrawText3DCallback draw_text;
+	CreateTriangleMeshCallback create_triangle_mesh;
+	CreateIndexedMeshCallback create_indexed_mesh;
+	DrawGeometryCallback draw_geometry;
+} DebugRenderer;
+
+#endif
 
 #ifdef __cplusplus
 }

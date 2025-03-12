@@ -9,6 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(JoltPhysics/)
 include_directories(src)
 
+add_definitions(-DJPH_DEBUG_RENDERER)
+
 add_library(saturn_physics
         JoltPhysics/Jolt/Core/TickCounter.cpp
         JoltPhysics/Jolt/Core/Factory.cpp
@@ -154,4 +156,6 @@ add_library(saturn_physics
         src/body.cpp
         src/object_pool.hpp
         src/mass_shape.cpp
-        src/mass_shape.hpp)
+        src/mass_shape.hpp
+        src/callback_debug_renderer.cpp
+)

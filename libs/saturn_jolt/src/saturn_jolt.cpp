@@ -27,6 +27,10 @@
 #include "mass_shape.hpp"
 #include "world.hpp"
 
+#ifdef JPH_DEBUG_RENDERER
+#include "callback_debug_renderer.hpp"
+#endif
+
 ShapePool *shape_pool = nullptr;
 std::mutex shape_pool_mutex;
 
@@ -40,6 +44,9 @@ void init(const AllocationFunctions *functions) {
     } else {
         JPH::RegisterDefaultAllocator();
     }
+
+	auto debug_renderer = new CallbackDebugRenderer();
+	delete debug_renderer;
 
     auto factory =
             static_cast<JPH::Factory *>(JPH::Allocate(sizeof(JPH::Factory)));
