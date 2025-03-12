@@ -239,25 +239,25 @@ void worldRemoveBody(World *world_ptr, Body *body_ptr) {
     world_ptr->removeBody(body_ptr);
 }
 
-bool worldCastRayCloset(World *world_ptr, ObjectLayer object_layer_pattern, const RVec3 origin, const RVec3 direction, RayCastHit *hit_result) {
-    return world_ptr->castRayCloset(object_layer_pattern, load_rvec3(origin), load_rvec3(direction), hit_result);
+bool worldCastRayCloset(World *world_ptr, ObjectLayer object_layer_pattern, const RVec3 origin, const Vec3 direction, RayCastHit *hit_result) {
+    return world_ptr->castRayCloset(object_layer_pattern, load_rvec3(origin), load_vec3(direction), hit_result);
 }
 
-bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pattern, Body *ignore_body_ptr, const RVec3 origin, const RVec3 direction, RayCastHit *hit_result) {
+bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pattern, Body *ignore_body_ptr, const RVec3 origin, const Vec3 direction, RayCastHit *hit_result) {
     JPH::BodyID ignore_body_id;
 
     if (ignore_body_ptr != nullptr && ignore_body_ptr->world_ptr == world_ptr) {
         ignore_body_id = ignore_body_ptr->body_id;
     }
 
-    return world_ptr->castRayClosetIgnoreBody(object_layer_pattern, ignore_body_id, load_rvec3(origin), load_rvec3(direction), hit_result);
+    return world_ptr->castRayClosetIgnoreBody(object_layer_pattern, ignore_body_id, load_rvec3(origin), load_vec3(direction), hit_result);
 }
 
 void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape shape, const Transform *c_transform, ShapeCastCallback callback, void *callback_data) {
 	shape_pool_mutex.lock();
 	auto shape_ref = shape_pool->get(shape);
 	shape_pool_mutex.unlock();
-	world_ptr->castShape(object_layer_pattern, load_vec3(c_transform->position), load_quat(c_transform->rotation), shape_ref, callback, callback_data);
+	world_ptr->castShape(object_layer_pattern, load_rvec3(c_transform->position), load_quat(c_transform->rotation), shape_ref, callback, callback_data);
 }
 
 // Body functions
@@ -299,13 +299,13 @@ void bodySetVelocity(Body *body_ptr, const Velocity *c_velocity) {
     body_ptr->setVelocity(load_vec3(c_velocity->linear), load_vec3(c_velocity->angular));
 }
 
-SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Transform *c_transform, UserData user_data) {
+SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape,  const Vec3 position, const Quat rotation, UserData user_data) {
     shape_pool_mutex.lock();
     auto shape_ref = shape_pool->get(shape);
     shape_pool_mutex.unlock();
 
     return body_ptr->addShape(SubShape{
-            shape_ref, load_vec3(c_transform->position), load_quat(c_transform->rotation), user_data,
+            shape_ref, load_vec3(position), load_quat(rotation), user_data,
     });
 }
 
@@ -313,8 +313,8 @@ void bodyRemoveShape(Body *body_ptr, SubShapeIndex index) {
     body_ptr->removeShape(index);
 }
 
-void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Transform *c_transform) {
-    body_ptr->updateShapeTransform(index, load_vec3(c_transform->position), load_quat(c_transform->rotation));
+void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Vec3 position, const Quat rotation) {
+    body_ptr->updateShapeTransform(index, load_vec3(position), load_quat(rotation));
 }
 
 void bodyRemoveAllShapes(Body *body_ptr) {

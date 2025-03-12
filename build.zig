@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) !void {
         exe.linkSystemLibrary("SDL3");
     }
 
+    // dear imgui
     const zimgui = b.dependency("zgui", .{
         .shared = false,
         .backend = .sdl3_gpu,
@@ -42,7 +43,7 @@ pub fn build(b: *std.Build) !void {
     exe.linkLibrary(zstbi.artifact("zstbi"));
 
     // saturn physics abstraction
-    const saturn_jolt = b.dependency("saturn_jolt", .{});
+    const saturn_jolt = b.dependency("saturn_jolt", .{ .enable_debug_renderer = true });
     exe.root_module.addImport("physics", saturn_jolt.module("root"));
     exe.linkLibrary(saturn_jolt.artifact("saturn_jolt"));
 

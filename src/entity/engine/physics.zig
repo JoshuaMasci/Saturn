@@ -65,10 +65,8 @@ pub const PhysicsEntitySystem = struct {
             const root_transform = entity.getRootTransform();
             _ = body.addShape(
                 collider.shape,
-                &.{
-                    .position = root_transform.position.toArray(),
-                    .rotation = root_transform.rotation.toArray(),
-                },
+                root_transform.position.toArray(),
+                root_transform.rotation.toArray(),
                 entity.handle,
             );
         }

@@ -163,7 +163,7 @@ pub const World = struct {
         c.worldUpdate(self.ptr, delta_time, collisions_steps);
     }
 
-    pub fn castRayClosest(self: Self, object_layer_pattern: ObjectLayer, origin: [3]f32, direction: [3]f32) ?RayCastHit {
+    pub fn castRayClosest(self: Self, object_layer_pattern: ObjectLayer, origin: RVec3, direction: Vec3) ?RayCastHit {
         var hit: c.RayCastHit = .{};
         return if (c.worldCastRayAll(self.ptr, object_layer_pattern, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &hit))
             hit
@@ -171,7 +171,7 @@ pub const World = struct {
             null;
     }
 
-    pub fn castRayClosestIgnoreBody(self: Self, object_layer_pattern: ObjectLayer, ignore_body: Body, origin: [3]f32, direction: [3]f32) ?c.RayCastHit {
+    pub fn castRayClosestIgnoreBody(self: Self, object_layer_pattern: ObjectLayer, ignore_body: Body, origin: RVec3, direction: Vec3) ?c.RayCastHit {
         var hit: c.RayCastHit = .{};
         return if (c.worldCastRayClosetIgnoreBody(self.ptr, object_layer_pattern, ignore_body.ptr, @ptrCast(&origin[0]), @ptrCast(&direction[0]), &hit))
             hit
@@ -251,16 +251,16 @@ pub const Body = struct {
         c.bodySetVelocity(self.ptr, velocity);
     }
 
-    pub fn addShape(self: *Self, shape: Shape, transform: *const Transform, user_data: UserData) SubShapeIndex {
-        return c.bodyAddShape(self.ptr, shape.handle, transform, user_data);
+    pub fn addShape(self: *Self, shape: Shape, position: Vec3, rotation: Quat, user_data: UserData) SubShapeIndex {
+        return c.bodyAddShape(self.ptr, shape.handle, @ptrCast(&position[0]), @ptrCast(&rotation[0]), user_data);
     }
 
     pub fn removeShape(self: *Self, index: SubShapeIndex) void {
         return c.bodyRemoveShape(self.ptr, index);
     }
 
-    pub fn updateShapeTransform(self: *Self, index: SubShapeIndex, transform: *const Transform) void {
-        return c.bodyUpdateShapeTransform(self.ptr, index, transform);
+    pub fn updateShapeTransform(self: *Self, index: SubShapeIndex, position: Vec3, rotation: Quat) void {
+        return c.bodyUpdateShapeTransform(self.ptr, index, @ptrCast(&position[0]), @ptrCast(&rotation[0]));
     }
 
     pub fn removeAllShapes(self: *Self) void {

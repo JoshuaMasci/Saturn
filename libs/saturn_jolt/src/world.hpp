@@ -24,9 +24,9 @@ public:
 
     void removeBody(Body *body);
 
-    bool castRayCloset(ObjectLayer object_layer_pattern, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const;
+    bool castRayCloset(ObjectLayer object_layer_pattern, JPH::RVec3 origin, JPH::Vec3 direction, RayCastHit *hit_result) const;
 
-    bool castRayClosetIgnoreBody(ObjectLayer object_layer_pattern, JPH::BodyID ignore_body, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const;
+    bool castRayClosetIgnoreBody(ObjectLayer object_layer_pattern, JPH::BodyID ignore_body, JPH::RVec3 origin, JPH::Vec3 direction, RayCastHit *hit_result) const;
 
 	void castShape(ObjectLayer object_layer_pattern, JPH::RVec3 position, JPH::Quat rotation, const JPH::Ref<JPH::Shape>& shape_ref, ShapeCastCallback callback, void *callback_data) const;
 

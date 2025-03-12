@@ -33,7 +33,7 @@ World::~World() {
 void World::update(float delta_time, int collision_steps) {
     auto error = this->physics_system->Update(delta_time, collision_steps, &this->temp_allocator, &this->job_system);
     if (error != JPH::EPhysicsUpdateError::None) {
-        printf("Physics Update Error: %d", error);
+        printf("Physics Update Error: %d", (uint32_t)error);
     }
 }
 
@@ -52,7 +52,7 @@ void World::removeBody(Body *body) {
     }
 }
 
-void convertRayHit(RayCastHit *hit_result, JPH::RayCast &ray, JPH::RayCastResult &hit, const JPH::BodyLockInterfaceLocking &body_lock_interface) {
+void convertRayHit(RayCastHit *hit_result, JPH::RRayCast &ray, JPH::RayCastResult &hit, const JPH::BodyLockInterfaceLocking &body_lock_interface) {
     {
         JPH::BodyLockRead lock(body_lock_interface, hit.mBodyID);
         if (lock.Succeeded()) {
@@ -82,15 +82,15 @@ void convertRayHit(RayCastHit *hit_result, JPH::RayCast &ray, JPH::RayCastResult
     }
 }
 
-bool World::castRayCloset(ObjectLayer object_layer_pattern, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const {
-    JPH::RayCast ray(origin, direction);
+bool World::castRayCloset(ObjectLayer object_layer_pattern, JPH::RVec3 origin, JPH::Vec3 direction, RayCastHit *hit_result) const {
+    JPH::RRayCast ray(origin, direction);
     JPH::RayCastResult hit;
 
     JPH::BroadPhaseLayerFilter broad_phase_filter{};
     AnyMatchObjectLayerFilter layer_filter(object_layer_pattern);
     JPH::BodyFilter body_filter{};
 
-    bool has_hit = this->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit,
+    bool has_hit = this->physics_system->GetNarrowPhaseQuery().CastRay(ray, hit,
                                                                        broad_phase_filter, layer_filter,
                                                                        body_filter);
     if (has_hit) {
@@ -100,15 +100,15 @@ bool World::castRayCloset(ObjectLayer object_layer_pattern, JPH::RVec3 origin, J
     return has_hit;
 }
 
-bool World::castRayClosetIgnoreBody(ObjectLayer object_layer_pattern, JPH::BodyID ignore_body, JPH::RVec3 origin, JPH::RVec3 direction, RayCastHit *hit_result) const {
-    JPH::RayCast ray(origin, direction);
+bool World::castRayClosetIgnoreBody(ObjectLayer object_layer_pattern, JPH::BodyID ignore_body, JPH::RVec3 origin, JPH::Vec3 direction, RayCastHit *hit_result) const {
+    JPH::RRayCast ray(origin, direction);
     JPH::RayCastResult hit;
 
     JPH::BroadPhaseLayerFilter broad_phase_filter{};
     AnyMatchObjectLayerFilter layer_filter(object_layer_pattern);
     JPH::IgnoreSingleBodyFilter body_filter{JPH::BodyID(ignore_body)};
 
-    bool has_hit = this->physics_system->GetNarrowPhaseQuery().CastRay(JPH::RRayCast(ray), hit,
+    bool has_hit = this->physics_system->GetNarrowPhaseQuery().CastRay(ray, hit,
                                                                        broad_phase_filter, layer_filter,
                                                                        body_filter);
     if (has_hit) {
