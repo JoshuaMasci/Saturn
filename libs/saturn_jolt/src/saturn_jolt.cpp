@@ -45,9 +45,6 @@ void init(const AllocationFunctions *functions) {
         JPH::RegisterDefaultAllocator();
     }
 
-	auto debug_renderer = new CallbackDebugRenderer();
-	delete debug_renderer;
-
     auto factory =
             static_cast<JPH::Factory *>(JPH::Allocate(sizeof(JPH::Factory)));
     ::new(factory) JPH::Factory();

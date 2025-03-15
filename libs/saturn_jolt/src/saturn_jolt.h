@@ -170,7 +170,7 @@ typedef struct Color {
 	uint8_t g;
 	uint8_t b;
 	uint8_t a;
-} Color;
+} Color __attribute__((aligned(4)));
 
 typedef struct Vertex {
 	Vec3 position;
@@ -182,17 +182,17 @@ typedef struct Vertex {
 typedef Vertex Triangle[3];
 typedef uint32_t Geometry;
 
-typedef void (*DrawLineCallback)(void *, RVec3, RVec3, Color);
-typedef void (*DrawTriangleCallback)(void *, RVec3, RVec3, RVec3, Color);
-typedef void (*DrawText3DCallback)(void *, RVec3, char*, size_t, Color, float);
+typedef void (*DrawLineCallback)(void *, const RVec3, const RVec3, const Color);
+typedef void (*DrawTriangleCallback)(void *, const RVec3, RVec3, const RVec3, const Color);
+typedef void (*DrawText3DCallback)(void *, const RVec3, const char *, const size_t, const Color, const float);
 
-//TODO: how to handle LOD's?
-typedef Geometry (*CreateTriangleMeshCallback)(void *, Triangle*, size_t);
-typedef Geometry  (*CreateIndexedMeshCallback)(void *, Vertex*, size_t, uint32_t*, size_t);
-typedef void (*DrawGeometryCallback)(void *, Mat44, Color, Geometry); //TODO: add CullMode and DrawMode
+// TODO: how to handle LOD's?
+typedef Geometry (*CreateTriangleMeshCallback)(void *, const Triangle *, const size_t);
+typedef Geometry (*CreateIndexedMeshCallback)(void *, const Vertex *, const size_t, const uint32_t *, const size_t);
+typedef void (*DrawGeometryCallback)(void *, const Mat44, const Color, const Geometry); // TODO: add CullMode and DrawMode
 
-typedef struct DebugRenderer {
-	void* data;
+typedef struct DebugRendererData {
+	void *data;
 	DrawLineCallback draw_line;
 	DrawTriangleCallback draw_triangle;
 	DrawText3DCallback draw_text;

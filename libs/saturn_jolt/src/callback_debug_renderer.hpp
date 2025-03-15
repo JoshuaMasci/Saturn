@@ -1,12 +1,11 @@
 #pragma once
 
+#include "saturn_jolt.h"
+
 #include <Jolt/Jolt.h>
+#include <Jolt/Core/Color.h>
 #include <Jolt/Renderer/DebugRenderer.h>
-#include <Jolt/Renderer/DebugRendererSimple.h>
-
 class CallbackDebugRenderer: public JPH::DebugRenderer {
-	JPH_OVERRIDE_NEW_DELETE
-
 	CallbackDebugRenderer();
 
   public:
@@ -19,5 +18,66 @@ class CallbackDebugRenderer: public JPH::DebugRenderer {
 	void DrawText3D(JPH::RVec3Arg inPosition, const std::string_view &inString, JPH::ColorArg inColor, float inHeight) override;
 
   protected:
-	void* callback_data;
+	DebugRendererData* callback_data;
 };
+
+constexpr bool validate_compatible_structs() {
+	// Check Vertex compatibility
+	static_assert(sizeof(Vertex) == sizeof(JPH::DebugRenderer::Vertex),
+				  "Vertex struct sizes don't match");
+
+	static_assert(alignof(Vertex) == alignof(JPH::DebugRenderer::Vertex),
+				  "Vertex struct alignments don't match");
+
+	static_assert(offsetof(Vertex, position) == offsetof(JPH::DebugRenderer::Vertex, mPosition),
+				  "Position field offset mismatch");
+
+	static_assert(offsetof(Vertex, normal) == offsetof(JPH::DebugRenderer::Vertex, mNormal),
+				  "Normal field offset mismatch");
+
+	static_assert(offsetof(Vertex, uv) == offsetof(JPH::DebugRenderer::Vertex, mUV),
+				  "UV field offset mismatch");
+
+	static_assert(offsetof(Vertex, color) == offsetof(JPH::DebugRenderer::Vertex, mColor),
+				  "Color field offset mismatch");
+
+	// Check Color struct compatibility
+	static_assert(sizeof(Color) == sizeof(JPH::Color),
+				  "Color struct sizes don't match");
+
+	static_assert(alignof(Color) == alignof(JPH::Color),
+				  "Color struct alignments don't match");
+
+	static_assert(offsetof(Color, r) == offsetof(JPH::Color, r),
+				  "Color r field offset mismatch");
+
+	static_assert(offsetof(Color, g) == offsetof(JPH::Color, g),
+				  "Color g field offset mismatch");
+
+	static_assert(offsetof(Color, b) == offsetof(JPH::Color, b),
+				  "Color b field offset mismatch");
+
+	static_assert(offsetof(Color, a) == offsetof(JPH::Color, a),
+				  "Color a field offset mismatch");
+
+	// Check Triangle compatibility
+	static_assert(sizeof(Triangle) == sizeof(JPH::DebugRenderer::Triangle),
+				  "Triangle struct sizes don't match");
+
+	static_assert(alignof(Triangle) == alignof(JPH::DebugRenderer::Triangle),
+				  "Triangle struct alignments don't match");
+
+	// Check memory layout of triangles
+	// This checks that the vertex array layout matches between the two structs
+	constexpr size_t triangle_vertex_stride = sizeof(Vertex);
+	constexpr size_t jph_triangle_vertex_stride = sizeof(JPH::DebugRenderer::Vertex);
+	static_assert(triangle_vertex_stride == jph_triangle_vertex_stride,
+				  "Triangle vertex stride mismatch");
+
+	// Check that the layout of vertices in the triangles matches
+	static_assert(offsetof(JPH::DebugRenderer::Triangle, mV) == 0,
+				  "JPH Triangle vertex array does not start at offset 0");
+
+	return true;
+}
+static_assert(validate_compatible_structs(), "Struct compatibility validation failed");
