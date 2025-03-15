@@ -11,7 +11,7 @@ private:
 public:
     Shape insert(const JPH::Ref<JPH::Shape> &shape) {
         Shape handle = this->next_handle++;
-        this->pool.emplace(handle, shape);
+        this->pool[handle] = shape;
         return handle;
     }
 

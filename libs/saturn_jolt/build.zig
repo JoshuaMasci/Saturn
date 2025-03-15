@@ -81,8 +81,7 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
 
     const jolt_src_path = jolt_path ++ "/Jolt/";
 
-    // File list generated via following command, will probably need to rerun when updating
-    // find ./ -type f -name "*.cpp"
+
 
     const c_flags: []const []const u8 = &.{
         "-std=c++17",
@@ -111,6 +110,8 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
         });
     }
 
+    // File list generated via following command, will probably need to rerun when updating
+    // find ./Jolt -name "*.cpp" | sed 's|./Jolt/|jolt_src_path ++ "|' | sed 's|$|",|'
     library.addCSourceFiles(.{ .files = &.{
         jolt_src_path ++ "Core/TickCounter.cpp",
         jolt_src_path ++ "Core/Factory.cpp",
@@ -144,8 +145,6 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
         jolt_src_path ++ "Renderer/DebugRendererPlayback.cpp",
         jolt_src_path ++ "Renderer/DebugRendererRecorder.cpp",
         jolt_src_path ++ "Renderer/DebugRendererSimple.cpp",
-        jolt_src_path ++ "TriangleGrouper/TriangleGrouperMorton.cpp",
-        jolt_src_path ++ "TriangleGrouper/TriangleGrouperClosestCentroid.cpp",
         jolt_src_path ++ "Physics/SoftBody/SoftBodySharedSettings.cpp",
         jolt_src_path ++ "Physics/SoftBody/SoftBodyShape.cpp",
         jolt_src_path ++ "Physics/SoftBody/SoftBodyMotionProperties.cpp",
@@ -244,12 +243,9 @@ fn build_cpp_lib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
         jolt_src_path ++ "Geometry/OrientedBox.cpp",
         jolt_src_path ++ "Geometry/ConvexHullBuilder.cpp",
         jolt_src_path ++ "Geometry/ConvexHullBuilder2D.cpp",
-        jolt_src_path ++ "TriangleSplitter/TriangleSplitterFixedLeafSize.cpp",
         jolt_src_path ++ "TriangleSplitter/TriangleSplitterMean.cpp",
         jolt_src_path ++ "TriangleSplitter/TriangleSplitter.cpp",
         jolt_src_path ++ "TriangleSplitter/TriangleSplitterBinning.cpp",
-        jolt_src_path ++ "TriangleSplitter/TriangleSplitterMorton.cpp",
-        jolt_src_path ++ "TriangleSplitter/TriangleSplitterLongestAxis.cpp",
     }, .flags = c_flags });
 
     return library;

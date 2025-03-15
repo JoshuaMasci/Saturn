@@ -44,8 +44,6 @@ add_library(saturn_physics
         JoltPhysics/Jolt/Renderer/DebugRendererPlayback.cpp
         JoltPhysics/Jolt/Renderer/DebugRendererRecorder.cpp
         JoltPhysics/Jolt/Renderer/DebugRendererSimple.cpp
-        JoltPhysics/Jolt/TriangleGrouper/TriangleGrouperMorton.cpp
-        JoltPhysics/Jolt/TriangleGrouper/TriangleGrouperClosestCentroid.cpp
         JoltPhysics/Jolt/Physics/SoftBody/SoftBodySharedSettings.cpp
         JoltPhysics/Jolt/Physics/SoftBody/SoftBodyShape.cpp
         JoltPhysics/Jolt/Physics/SoftBody/SoftBodyMotionProperties.cpp
@@ -144,12 +142,9 @@ add_library(saturn_physics
         JoltPhysics/Jolt/Geometry/OrientedBox.cpp
         JoltPhysics/Jolt/Geometry/ConvexHullBuilder.cpp
         JoltPhysics/Jolt/Geometry/ConvexHullBuilder2D.cpp
-        JoltPhysics/Jolt/TriangleSplitter/TriangleSplitterFixedLeafSize.cpp
         JoltPhysics/Jolt/TriangleSplitter/TriangleSplitterMean.cpp
         JoltPhysics/Jolt/TriangleSplitter/TriangleSplitter.cpp
         JoltPhysics/Jolt/TriangleSplitter/TriangleSplitterBinning.cpp
-        JoltPhysics/Jolt/TriangleSplitter/TriangleSplitterMorton.cpp
-        JoltPhysics/Jolt/TriangleSplitter/TriangleSplitterLongestAxis.cpp
 
         src/saturn_jolt.cpp
         src/world.cpp

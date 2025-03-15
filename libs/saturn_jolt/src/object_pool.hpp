@@ -13,16 +13,16 @@ public:
     // Insert a new shape and return its handle (index)
     I insert(const T &object) {
         I handle = this->next_handle++;
-        this->pool.emplace(handle, object);
+        this->pool[handle] = object;
         return handle;
     }
 
     T &get(I handle) {
-        return this->pool[handle];
+		return this->pool.find(handle)->second;
     }
 
     const T &get(I handle) const {
-        return this->pool.at(handle);
+        return this->pool.find(handle)->second;
     }
 
     void remove(I handle) {
