@@ -7,11 +7,11 @@
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Core/Factory.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollideShape.h>
+#include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
-#include <Jolt/Physics/Collision/CollideShape.h>
-#include <Jolt/Physics/Collision/CastResult.h>
-#include <Jolt/Physics/Collision/RayCast.h>
 
 #include "memory.hpp"
 #include "shape_pool.hpp"
@@ -27,153 +27,145 @@
 #include "mass_shape.hpp"
 #include "world.hpp"
 
-#ifdef JPH_DEBUG_RENDERER
-#include "callback_debug_renderer.hpp"
-#endif
-
 ShapePool *shape_pool = nullptr;
 std::mutex shape_pool_mutex;
 
 void init(const AllocationFunctions *functions) {
-    if (functions != nullptr) {
-        JPH::Allocate = functions->alloc;
-        JPH::Free = functions->free;
-        JPH::AlignedAllocate = functions->aligned_alloc;
-        JPH::AlignedFree = functions->aligned_free;
-        JPH::Reallocate = functions->realloc;
-    } else {
-        JPH::RegisterDefaultAllocator();
-    }
+	if (functions != nullptr) {
+		JPH::Allocate = functions->alloc;
+		JPH::Free = functions->free;
+		JPH::AlignedAllocate = functions->aligned_alloc;
+		JPH::AlignedFree = functions->aligned_free;
+		JPH::Reallocate = functions->realloc;
+	} else {
+		JPH::RegisterDefaultAllocator();
+	}
 
-    auto factory =
-            static_cast<JPH::Factory *>(JPH::Allocate(sizeof(JPH::Factory)));
-    ::new(factory) JPH::Factory();
-    JPH::Factory::sInstance = factory;
-    JPH::RegisterTypes();
+	auto factory =
+		static_cast<JPH::Factory *>(JPH::Allocate(sizeof(JPH::Factory)));
+	::new (factory) JPH::Factory();
+	JPH::Factory::sInstance = factory;
+	JPH::RegisterTypes();
 
 	JPH::MassShape::sRegister();
 
-    shape_pool = new ShapePool();
+	shape_pool = new ShapePool();
 }
 
 void deinit() {
-    shape_pool_mutex.lock();
-   	delete shape_pool;
-    shape_pool_mutex.unlock();
+	rendererDestroy();
+	shape_pool_mutex.lock();
+	delete shape_pool;
+	shape_pool_mutex.unlock();
 
-    JPH::UnregisterTypes();
-    JPH::Factory::sInstance->~Factory();
-    JPH::Free((void *) JPH::Factory::sInstance);
-    JPH::Factory::sInstance = nullptr;
+	JPH::UnregisterTypes();
+	JPH::Factory::sInstance->~Factory();
+	JPH::Free((void *)JPH::Factory::sInstance);
+	JPH::Factory::sInstance = nullptr;
 
-    JPH::Allocate = nullptr;
-    JPH::Free = nullptr;
-    JPH::AlignedAllocate = nullptr;
-    JPH::AlignedFree = nullptr;
+	JPH::Allocate = nullptr;
+	JPH::Free = nullptr;
+	JPH::AlignedAllocate = nullptr;
+	JPH::AlignedFree = nullptr;
 }
 
 Shape shapeCreateSphere(float radius, float density, UserData user_data) {
-    auto settings = JPH::SphereShapeSettings();
-    settings.mRadius = radius;
-    settings.mDensity = density;
-    settings.mUserData = user_data;
-    auto shape = settings.Create().Get();
-    shape_pool_mutex.lock();
-    auto shape_handle = shape_pool->insert(shape);
-    shape_pool_mutex.unlock();
-    return shape_handle;
-
+	auto settings = JPH::SphereShapeSettings();
+	settings.mRadius = radius;
+	settings.mDensity = density;
+	settings.mUserData = user_data;
+	auto shape = settings.Create().Get();
+	shape_pool_mutex.lock();
+	auto shape_handle = shape_pool->insert(shape);
+	shape_pool_mutex.unlock();
+	return shape_handle;
 }
 
 Shape shapeCreateBox(const Vec3 half_extent, float density, UserData user_data) {
-    auto settings = JPH::BoxShapeSettings();
-    settings.mHalfExtent = load_vec3(half_extent);
-    settings.mDensity = density;
-    settings.mUserData = user_data;
+	auto settings = JPH::BoxShapeSettings();
+	settings.mHalfExtent = load_vec3(half_extent);
+	settings.mDensity = density;
+	settings.mUserData = user_data;
 
-    auto shape = settings.Create().Get();
-    shape_pool_mutex.lock();
-    auto shape_handle = shape_pool->insert(shape);
-    shape_pool_mutex.unlock();
-    return shape_handle;
-
+	auto shape = settings.Create().Get();
+	shape_pool_mutex.lock();
+	auto shape_handle = shape_pool->insert(shape);
+	shape_pool_mutex.unlock();
+	return shape_handle;
 }
 
 Shape shapeCreateCylinder(float half_height, float radius, float density, UserData user_data) {
-    auto settings = JPH::CylinderShapeSettings();
-    settings.mHalfHeight = half_height;
-    settings.mRadius = radius;
-    settings.mDensity = density;
-    settings.mUserData = user_data;
+	auto settings = JPH::CylinderShapeSettings();
+	settings.mHalfHeight = half_height;
+	settings.mRadius = radius;
+	settings.mDensity = density;
+	settings.mUserData = user_data;
 
-    auto shape = settings.Create().Get();
-    shape_pool_mutex.lock();
-    auto shape_handle = shape_pool->insert(shape);
-    shape_pool_mutex.unlock();
-    return shape_handle;
-
+	auto shape = settings.Create().Get();
+	shape_pool_mutex.lock();
+	auto shape_handle = shape_pool->insert(shape);
+	shape_pool_mutex.unlock();
+	return shape_handle;
 }
 
 Shape shapeCreateCapsule(float half_height, float radius, float density, UserData user_data) {
-    auto settings = JPH::CapsuleShapeSettings();
-    settings.mHalfHeightOfCylinder = half_height;
-    settings.mRadius = radius;
-    settings.mDensity = density;
-    settings.mUserData = user_data;
+	auto settings = JPH::CapsuleShapeSettings();
+	settings.mHalfHeightOfCylinder = half_height;
+	settings.mRadius = radius;
+	settings.mDensity = density;
+	settings.mUserData = user_data;
 
-    auto shape = settings.Create().Get();
-    shape_pool_mutex.lock();
-    auto shape_handle = shape_pool->insert(shape);
-    shape_pool_mutex.unlock();
-    return shape_handle;
-
+	auto shape = settings.Create().Get();
+	shape_pool_mutex.lock();
+	auto shape_handle = shape_pool->insert(shape);
+	shape_pool_mutex.unlock();
+	return shape_handle;
 }
 
 Shape shapeCreateConvexHull(const Vec3 positions[], size_t position_count, float density, UserData user_data) {
-    JPH::Array<JPH::Vec3> point_list(position_count);
-    for (size_t i = 0; i < position_count; i++) {
-        point_list[i] = load_vec3(positions[i]);
-    }
-    auto settings = JPH::ConvexHullShapeSettings();
-    settings.mPoints = point_list;
-    settings.mDensity = density;
-    settings.mUserData = user_data;
+	JPH::Array<JPH::Vec3> point_list(position_count);
+	for (size_t i = 0; i < position_count; i++) {
+		point_list[i] = load_vec3(positions[i]);
+	}
+	auto settings = JPH::ConvexHullShapeSettings();
+	settings.mPoints = point_list;
+	settings.mDensity = density;
+	settings.mUserData = user_data;
 
-    auto shape = settings.Create().Get();
-    shape_pool_mutex.lock();
-    auto shape_handle = shape_pool->insert(shape);
-    shape_pool_mutex.unlock();
-    return shape_handle;
-
+	auto shape = settings.Create().Get();
+	shape_pool_mutex.lock();
+	auto shape_handle = shape_pool->insert(shape);
+	shape_pool_mutex.unlock();
+	return shape_handle;
 }
 
-Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint32_t *indices, size_t indices_count, const MassProperties* mass_properties, UserData user_data) {
+Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint32_t *indices, size_t indices_count, const MassProperties *mass_properties, UserData user_data) {
 	JPH::MassProperties mass;
 
-    JPH::VertexList vertex_list;
-    for (size_t i = 0; i < position_count; i++) {
-        vertex_list.push_back(load_float3(positions[i]));
-    }
+	JPH::VertexList vertex_list;
+	for (size_t i = 0; i < position_count; i++) {
+		vertex_list.push_back(load_float3(positions[i]));
+	}
 
-    JPH::IndexedTriangleList triangle_list;
+	JPH::IndexedTriangleList triangle_list;
 
-    if (indices_count == 0) {
-        for (int i = 0; i < position_count; i += 3) {
-            triangle_list.push_back(JPH::IndexedTriangle(i + 0, i + 1, i + 2, 0));
-        }
-    } else {
-        const size_t triangle_count = indices_count / 3;
-        for (int i = 0; i < triangle_count; i++) {
-            const size_t offset = i * 3;
-            triangle_list.push_back(JPH::IndexedTriangle(
-                    indices[offset + 0], indices[offset + 1], indices[offset + 2], 0));
-        }
-    }
+	if (indices_count == 0) {
+		for (int i = 0; i < position_count; i += 3) {
+			triangle_list.push_back(JPH::IndexedTriangle(i + 0, i + 1, i + 2, 0));
+		}
+	} else {
+		const size_t triangle_count = indices_count / 3;
+		for (int i = 0; i < triangle_count; i++) {
+			const size_t offset = i * 3;
+			triangle_list.push_back(JPH::IndexedTriangle(
+				indices[offset + 0], indices[offset + 1], indices[offset + 2], 0));
+		}
+	}
 
-    auto settings = JPH::MeshShapeSettings(vertex_list, triangle_list);
-    settings.mUserData = user_data;
+	auto settings = JPH::MeshShapeSettings(vertex_list, triangle_list);
+	settings.mUserData = user_data;
 
-    auto shape = settings.Create().Get();
+	auto shape = settings.Create().Get();
 
 	if (mass_properties != nullptr) {
 		JPH::MassProperties override_mass;
@@ -182,34 +174,33 @@ Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint3
 		shape = JPH::MassShapeSettings(shape, override_mass).Create().Get();
 	}
 
-    shape_pool_mutex.lock();
-    auto shape_handle = shape_pool->insert(shape);
-    shape_pool_mutex.unlock();
-    return shape_handle;
-
+	shape_pool_mutex.lock();
+	auto shape_handle = shape_pool->insert(shape);
+	shape_pool_mutex.unlock();
+	return shape_handle;
 }
 
 Shape shapeCreateCompound(const SubShapeSettings sub_shapes[], size_t sub_shape_count, UserData user_data) {
-    auto static_shape_settings = JPH::StaticCompoundShapeSettings();
-    static_shape_settings.mUserData = user_data;
+	auto static_shape_settings = JPH::StaticCompoundShapeSettings();
+	static_shape_settings.mUserData = user_data;
 
-    shape_pool_mutex.lock();
-    for (auto i = 0; i < sub_shape_count; i++) {
-        auto subshape = &sub_shapes[i];
-        auto shape_ref = shape_pool->get(subshape->shape);
-        static_shape_settings.AddShape(load_vec3(subshape->position), load_quat(subshape->rotation), shape_ref, i);
-    }
+	shape_pool_mutex.lock();
+	for (auto i = 0; i < sub_shape_count; i++) {
+		auto subshape = &sub_shapes[i];
+		auto shape_ref = shape_pool->get(subshape->shape);
+		static_shape_settings.AddShape(load_vec3(subshape->position), load_quat(subshape->rotation), shape_ref, i);
+	}
 
-    auto shape = static_shape_settings.Create().Get();
-    auto shape_handle = shape_pool->insert(shape);
-    shape_pool_mutex.unlock();
-    return shape_handle;
+	auto shape = static_shape_settings.Create().Get();
+	auto shape_handle = shape_pool->insert(shape);
+	shape_pool_mutex.unlock();
+	return shape_handle;
 }
 
 void shapeDestroy(Shape shape) {
-    shape_pool_mutex.lock();
-    shape_pool->remove(shape);
-    shape_pool_mutex.unlock();
+	shape_pool_mutex.lock();
+	shape_pool->remove(shape);
+	shape_pool_mutex.unlock();
 }
 
 MassProperties shapeGetMassProperties(Shape shape) {
@@ -224,37 +215,37 @@ MassProperties shapeGetMassProperties(Shape shape) {
 }
 
 World *worldCreate(const WorldSettings *settings) {
-    return new World(settings);
+	return new World(settings);
 }
 
 void worldDestroy(World *world_ptr) {
-   delete world_ptr;
+	delete world_ptr;
 }
 
 void worldUpdate(World *world_ptr, float delta_time, int collision_steps) {
-    world_ptr->update(delta_time, collision_steps);
+	world_ptr->update(delta_time, collision_steps);
 }
 
 void worldAddBody(World *world_ptr, Body *body_ptr) {
-    world_ptr->addBody(body_ptr);
+	world_ptr->addBody(body_ptr);
 }
 
 void worldRemoveBody(World *world_ptr, Body *body_ptr) {
-    world_ptr->removeBody(body_ptr);
+	world_ptr->removeBody(body_ptr);
 }
 
 bool worldCastRayCloset(World *world_ptr, ObjectLayer object_layer_pattern, const RVec3 origin, const Vec3 direction, RayCastHit *hit_result) {
-    return world_ptr->castRayCloset(object_layer_pattern, load_rvec3(origin), load_vec3(direction), hit_result);
+	return world_ptr->castRayCloset(object_layer_pattern, load_rvec3(origin), load_vec3(direction), hit_result);
 }
 
 bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pattern, Body *ignore_body_ptr, const RVec3 origin, const Vec3 direction, RayCastHit *hit_result) {
-    JPH::BodyID ignore_body_id;
+	JPH::BodyID ignore_body_id;
 
-    if (ignore_body_ptr != nullptr && ignore_body_ptr->world_ptr == world_ptr) {
-        ignore_body_id = ignore_body_ptr->body_id;
-    }
+	if (ignore_body_ptr != nullptr && ignore_body_ptr->world_ptr == world_ptr) {
+		ignore_body_id = ignore_body_ptr->body_id;
+	}
 
-    return world_ptr->castRayClosetIgnoreBody(object_layer_pattern, ignore_body_id, load_rvec3(origin), load_vec3(direction), hit_result);
+	return world_ptr->castRayClosetIgnoreBody(object_layer_pattern, ignore_body_id, load_rvec3(origin), load_vec3(direction), hit_result);
 }
 
 void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape shape, const Transform *c_transform, ShapeCastCallback callback, void *callback_data) {
@@ -266,65 +257,92 @@ void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape sh
 
 // Body functions
 Body *bodyCreate(const BodySettings *settings) {
-    return new Body(settings);
+	return new Body(settings);
 }
 
 void bodyDestroy(Body *body_ptr) {
-   delete body_ptr;
+	delete body_ptr;
 }
 
 World *bodyGetWorld(Body *body_ptr) {
-    return body_ptr->getWorld();
+	return body_ptr->getWorld();
 }
 
 Transform bodyGetTransform(Body *body_ptr) {
-    auto position = body_ptr->getPosition();
-    auto rotation = body_ptr->getRotation();
-    return Transform{
-            {position.GetX(), position.GetY(), position.GetZ()},
-            {rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW()}};
+	auto position = body_ptr->getPosition();
+	auto rotation = body_ptr->getRotation();
+	return Transform{
+		{position.GetX(), position.GetY(), position.GetZ()},
+		{rotation.GetX(), rotation.GetY(), rotation.GetZ(), rotation.GetW()}};
 }
 
 void bodySetTransform(Body *body_ptr, const Transform *c_transform) {
-    body_ptr->setTransform(load_rvec3(c_transform->position), load_quat(c_transform->rotation));
+	body_ptr->setTransform(load_rvec3(c_transform->position), load_quat(c_transform->rotation));
 }
 
 Velocity bodyGetVelocity(Body *body_ptr) {
-    auto linear = body_ptr->getLinearVelocity();
-    auto angular = body_ptr->getAngularVelocity();
-    return Velocity{
-            {linear.GetX(),  linear.GetY(),  linear.GetZ()},
-            {angular.GetX(), angular.GetY(), angular.GetZ()},
+	auto linear = body_ptr->getLinearVelocity();
+	auto angular = body_ptr->getAngularVelocity();
+	return Velocity{
+		{linear.GetX(), linear.GetY(), linear.GetZ()},
+		{angular.GetX(), angular.GetY(), angular.GetZ()},
 
-    };
+	};
 }
 
 void bodySetVelocity(Body *body_ptr, const Velocity *c_velocity) {
-    body_ptr->setVelocity(load_vec3(c_velocity->linear), load_vec3(c_velocity->angular));
+	body_ptr->setVelocity(load_vec3(c_velocity->linear), load_vec3(c_velocity->angular));
 }
 
-SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape,  const Vec3 position, const Quat rotation, UserData user_data) {
-    shape_pool_mutex.lock();
-    auto shape_ref = shape_pool->get(shape);
-    shape_pool_mutex.unlock();
+SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Vec3 position, const Quat rotation, UserData user_data) {
+	shape_pool_mutex.lock();
+	auto shape_ref = shape_pool->get(shape);
+	shape_pool_mutex.unlock();
 
-    return body_ptr->addShape(SubShape{
-            shape_ref, load_vec3(position), load_quat(rotation), user_data,
-    });
+	return body_ptr->addShape(SubShape{
+		shape_ref,
+		load_vec3(position),
+		load_quat(rotation),
+		user_data,
+	});
 }
 
 void bodyRemoveShape(Body *body_ptr, SubShapeIndex index) {
-    body_ptr->removeShape(index);
+	body_ptr->removeShape(index);
 }
 
 void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Vec3 position, const Quat rotation) {
-    body_ptr->updateShapeTransform(index, load_vec3(position), load_quat(rotation));
+	body_ptr->updateShapeTransform(index, load_vec3(position), load_quat(rotation));
 }
 
 void bodyRemoveAllShapes(Body *body_ptr) {
-    body_ptr->removeAllShape();
+	body_ptr->removeAllShape();
 }
 
 void bodyCommitShapeChanges(Body *body_ptr) {
-    body_ptr->commitShapeChanges();
+	body_ptr->commitShapeChanges();
+}
+
+#ifdef JPH_DEBUG_RENDERER
+#include "callback_debug_renderer.hpp"
+
+Color color_from_u32(uint32_t value) {
+	Color color;
+	color.r = (value >> 24) & 0xFF;
+	color.g = (value >> 16) & 0xFF;
+	color.b = (value >> 8) & 0xFF;
+	color.a = value & 0xFF;
+	return color;
+}
+#endif
+
+void rendererCreate(DebugRendererData data) {
+#ifdef JPH_DEBUG_RENDERER
+	new CallbackDebugRenderer(data);
+#endif
+}
+void rendererDestroy() {
+#ifdef JPH_DEBUG_RENDERER
+	delete JPH::DebugRenderer::sInstance;
+#endif
 }

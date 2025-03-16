@@ -272,6 +272,14 @@ pub const Body = struct {
     }
 };
 
+pub fn initRenderer() void {
+    c.rendererCreate(.{});
+}
+
+pub fn deinitRenderer() void {
+    c.rendererDestroy();
+}
+
 // Memory Allocation
 var mem_allocator: ?std.mem.Allocator = null;
 const Metadata = struct {

@@ -41,6 +41,7 @@ pub const App = struct {
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
+
         zimgui.init(global.global_allocator);
         zimgui.backend.init(
             window.handle,
@@ -71,6 +72,7 @@ pub const App = struct {
     pub fn deinit(self: *Self) void {
         self.game_universe.deinit();
 
+        physics_system.deinitRenderer();
         physics_system.deinit();
 
         zimgui.backend.deinit();

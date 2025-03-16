@@ -164,13 +164,13 @@ void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Vec3 po
 void bodyRemoveAllShapes(Body *body_ptr);
 void bodyCommitShapeChanges(Body *body_ptr);
 
-#ifdef JPH_DEBUG_RENDERER
 typedef struct Color {
 	uint8_t r;
 	uint8_t g;
 	uint8_t b;
 	uint8_t a;
 } Color __attribute__((aligned(4)));
+Color color_from_u32(uint32_t value);
 
 typedef struct Vertex {
 	Vec3 position;
@@ -180,28 +180,31 @@ typedef struct Vertex {
 } Vertex;
 
 typedef Vertex Triangle[3];
-typedef uint32_t Geometry;
+typedef uint32_t MeshPrimitive;
 
 typedef void (*DrawLineCallback)(void *, const RVec3, const RVec3, const Color);
-typedef void (*DrawTriangleCallback)(void *, const RVec3, RVec3, const RVec3, const Color);
+typedef void (*DrawTriangleCallback)(void *, const RVec3, const RVec3, const RVec3, const Color);
 typedef void (*DrawText3DCallback)(void *, const RVec3, const char *, const size_t, const Color, const float);
 
-// TODO: how to handle LOD's?
-typedef Geometry (*CreateTriangleMeshCallback)(void *, const Triangle *, const size_t);
-typedef Geometry (*CreateIndexedMeshCallback)(void *, const Vertex *, const size_t, const uint32_t *, const size_t);
-typedef void (*DrawGeometryCallback)(void *, const Mat44, const Color, const Geometry); // TODO: add CullMode and DrawMode
+typedef void (*CreateTriangleMeshCallback)(void *, const MeshPrimitive, const Triangle *, const size_t);
+typedef void (*CreateIndexedMeshCallback)(void *, const MeshPrimitive, const Vertex *, const size_t, const uint32_t *, const size_t);
+typedef void (*DrawGeometryCallback)(void *, const Mat44, const Color, const MeshPrimitive); // TODO: add CullMode and DrawMode
+
+typedef void (*FreeMeshPrimitive)(void *, const MeshPrimitive);
 
 typedef struct DebugRendererData {
-	void *data;
+	void *ptr;
 	DrawLineCallback draw_line;
 	DrawTriangleCallback draw_triangle;
 	DrawText3DCallback draw_text;
 	CreateTriangleMeshCallback create_triangle_mesh;
 	CreateIndexedMeshCallback create_indexed_mesh;
 	DrawGeometryCallback draw_geometry;
-} DebugRenderer;
+	FreeMeshPrimitive free_mesh;
+} DebugRendererData;
 
-#endif
+void rendererCreate(DebugRendererData data);
+void rendererDestroy();
 
 #ifdef __cplusplus
 }

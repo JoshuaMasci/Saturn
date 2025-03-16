@@ -125,8 +125,15 @@ pub const Platform = struct {
                     }
                 },
                 c.SDL_EVENT_GAMEPAD_ADDED => {
-                    const name = c.SDL_GetGamepadNameForID(event.gdevice.which);
-                    std.log.info("Gamepad Added: {s}", .{name});
+                    const gamepad = c.SDL_OpenGamepad(event.gdevice.which).?;
+                    const name = c.SDL_GetGamepadName(gamepad);
+                    std.log.info("Gamepad Added: {s}({})", .{ name, event.gdevice.which });
+                },
+                c.SDL_EVENT_GAMEPAD_REMOVED => {
+                    const gamepad = c.SDL_GetGamepadFromID(event.gdevice.which);
+                    const name = c.SDL_GetGamepadName(gamepad);
+                    std.log.info("Gamepad Removed: {s}({})", .{ name, event.gdevice.which });
+                    c.SDL_CloseGamepad(gamepad);
                 },
                 else => {},
             }

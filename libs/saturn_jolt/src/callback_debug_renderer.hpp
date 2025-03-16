@@ -1,14 +1,34 @@
 #pragma once
 
+#include <Jolt/Jolt.h>
+
+#include <Jolt/Core/Color.h>
+#include <Jolt/Core/Reference.h>
+#include <Jolt/Renderer/DebugRenderer.h>
+
 #include "saturn_jolt.h"
 
-#include <Jolt/Jolt.h>
-#include <Jolt/Core/Color.h>
-#include <Jolt/Renderer/DebugRenderer.h>
-class CallbackDebugRenderer: public JPH::DebugRenderer {
-	CallbackDebugRenderer();
-
+class CallbackRenderPrimitive : public JPH::RefTarget<CallbackRenderPrimitive>, public JPH::RefTargetVirtual {
   public:
+	CallbackRenderPrimitive(void *data, FreeMeshPrimitive free_fn, MeshPrimitive id) : data(data), free_fn(free_fn), id(id) {}
+	~CallbackRenderPrimitive() override {
+		if (this->free_fn) this->free_fn(data, id);
+	};
+
+	void AddRef() override { JPH::RefTarget<CallbackRenderPrimitive>::AddRef(); };
+	void Release() override { JPH::RefTarget<CallbackRenderPrimitive>::Release(); };
+
+	MeshPrimitive GetId() { return this->id; }
+
+  private:
+	void *data;
+	FreeMeshPrimitive free_fn;
+	MeshPrimitive id;
+};
+
+class CallbackDebugRenderer : public JPH::DebugRenderer {
+  public:
+	explicit CallbackDebugRenderer(DebugRendererData data);
 	~CallbackDebugRenderer() override;
 	void DrawLine(JPH::RVec3Arg inFrom, JPH::RVec3Arg inTo, JPH::ColorArg inColor) override;
 	void DrawTriangle(JPH::RVec3Arg inV1, JPH::RVec3Arg inV2, JPH::RVec3Arg inV3, JPH::ColorArg inColor, ECastShadow inCastShadow) override;
@@ -18,7 +38,7 @@ class CallbackDebugRenderer: public JPH::DebugRenderer {
 	void DrawText3D(JPH::RVec3Arg inPosition, const std::string_view &inString, JPH::ColorArg inColor, float inHeight) override;
 
   protected:
-	DebugRendererData* callback_data;
+	DebugRendererData callback_data;
 };
 
 constexpr bool validate_compatible_structs() {
