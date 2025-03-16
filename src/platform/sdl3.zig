@@ -124,6 +124,10 @@ pub const Platform = struct {
                         mouse.proccessEvent(&event);
                     }
                 },
+                c.SDL_EVENT_GAMEPAD_ADDED => {
+                    const name = c.SDL_GetGamepadNameForID(event.gdevice.which);
+                    std.log.info("Gamepad Added: {s}", .{name});
+                },
                 else => {},
             }
         }
