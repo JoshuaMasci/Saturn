@@ -53,7 +53,7 @@ void init(const AllocationFunctions *functions) {
 }
 
 void deinit() {
-	rendererDestroy();
+	rendererDeinit();
 	shape_pool_mutex.lock();
 	delete shape_pool;
 	shape_pool_mutex.unlock();
@@ -67,6 +67,30 @@ void deinit() {
 	JPH::Free = nullptr;
 	JPH::AlignedAllocate = nullptr;
 	JPH::AlignedFree = nullptr;
+}
+
+#ifdef JPH_DEBUG_RENDERER
+#include "callback_debug_renderer.hpp"
+
+Color color_from_u32(uint32_t value) {
+	Color color;
+	color.r = (value >> 24) & 0xFF;
+	color.g = (value >> 16) & 0xFF;
+	color.b = (value >> 8) & 0xFF;
+	color.a = value & 0xFF;
+	return color;
+}
+#endif
+
+void rendererInit(DebugRendererData data) {
+#ifdef JPH_DEBUG_RENDERER
+	new CallbackDebugRenderer(data);
+#endif
+}
+void rendererDeinit() {
+#ifdef JPH_DEBUG_RENDERER
+	delete JPH::DebugRenderer::sInstance;
+#endif
 }
 
 Shape shapeCreateSphere(float radius, float density, UserData user_data) {
@@ -255,6 +279,16 @@ void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape sh
 	world_ptr->castShape(object_layer_pattern, load_rvec3(c_transform->position), load_quat(c_transform->rotation), shape_ref, callback, callback_data);
 }
 
+void worldRender(World *world_ptr) {
+#ifdef JPH_DEBUG_RENDERER
+	if (JPH::DebugRenderer::sInstance != nullptr && world_ptr != nullptr) {
+		JPH::BodyManager::DrawSettings settings;
+		settings.mDrawShape = true;
+		world_ptr->physics_system->DrawBodies(settings, JPH::DebugRenderer::sInstance);
+	}
+#endif
+}
+
 // Body functions
 Body *bodyCreate(const BodySettings *settings) {
 	return new Body(settings);
@@ -321,28 +355,4 @@ void bodyRemoveAllShapes(Body *body_ptr) {
 
 void bodyCommitShapeChanges(Body *body_ptr) {
 	body_ptr->commitShapeChanges();
-}
-
-#ifdef JPH_DEBUG_RENDERER
-#include "callback_debug_renderer.hpp"
-
-Color color_from_u32(uint32_t value) {
-	Color color;
-	color.r = (value >> 24) & 0xFF;
-	color.g = (value >> 16) & 0xFF;
-	color.b = (value >> 8) & 0xFF;
-	color.a = value & 0xFF;
-	return color;
-}
-#endif
-
-void rendererCreate(DebugRendererData data) {
-#ifdef JPH_DEBUG_RENDERER
-	new CallbackDebugRenderer(data);
-#endif
-}
-void rendererDestroy() {
-#ifdef JPH_DEBUG_RENDERER
-	delete JPH::DebugRenderer::sInstance;
-#endif
 }

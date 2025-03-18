@@ -21,6 +21,8 @@ pub const Platform = struct {
 
     should_quit: bool,
     keyboard_mouse_device: *KeyboardMouse,
+    controllers: std.AutoArrayHashMap(c.SDL_JoystickID, *Controller),
+
     input_devices: std.ArrayList(input.InputDevice),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -34,6 +36,8 @@ pub const Platform = struct {
         const keyboard_mouse_device = try allocator.create(KeyboardMouse);
         keyboard_mouse_device.* = try KeyboardMouse.init(allocator);
 
+        const controllers = std.AutoArrayHashMap(c.SDL_JoystickID, *Controller).init(allocator);
+
         var input_devices = try std.ArrayList(input.InputDevice).initCapacity(allocator, 1);
         input_devices.appendAssumeCapacity(keyboard_mouse_device.getInputDevice());
 
@@ -41,12 +45,20 @@ pub const Platform = struct {
             .allocator = allocator,
             .should_quit = false,
             .keyboard_mouse_device = keyboard_mouse_device,
+            .controllers = controllers,
             .input_devices = input_devices,
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.input_devices.deinit();
+
+        for (self.controllers.values()) |controller| {
+            self.allocator.free(controller.name);
+            self.allocator.destroy(controller);
+        }
+        self.controllers.deinit();
+
         self.keyboard_mouse_device.deinit();
         self.allocator.destroy(self.keyboard_mouse_device);
 
@@ -125,15 +137,28 @@ pub const Platform = struct {
                     }
                 },
                 c.SDL_EVENT_GAMEPAD_ADDED => {
-                    const gamepad = c.SDL_OpenGamepad(event.gdevice.which).?;
-                    const name = c.SDL_GetGamepadName(gamepad);
-                    std.log.info("Gamepad Added: {s}({})", .{ name, event.gdevice.which });
+                    if (!self.controllers.contains(event.gdevice.which)) {
+                        const gamepad = c.SDL_OpenGamepad(event.gdevice.which).?;
+                        const name_ref = c.SDL_GetGamepadName(gamepad);
+                        const name = try self.allocator.dupe(u8, std.mem.span(name_ref));
+                        std.log.info("Gamepad Added: {s}({})", .{ name, event.gdevice.which });
+
+                        const controller = try self.allocator.create(Controller);
+                        controller.* = .{
+                            .name = name,
+                            .joystick = event.gdevice.which,
+                            .gamepad = gamepad,
+                        };
+
+                        try self.controllers.put(controller.joystick, controller);
+                    }
                 },
                 c.SDL_EVENT_GAMEPAD_REMOVED => {
-                    const gamepad = c.SDL_GetGamepadFromID(event.gdevice.which);
-                    const name = c.SDL_GetGamepadName(gamepad);
-                    std.log.info("Gamepad Removed: {s}({})", .{ name, event.gdevice.which });
-                    c.SDL_CloseGamepad(gamepad);
+                    if (self.controllers.fetchSwapRemove(event.gdevice.which)) |entry| {
+                        std.log.info("Gamepad Removed: {s}({})", .{ entry.value.name, event.gdevice.which });
+                        self.allocator.free(entry.value.name);
+                        self.allocator.destroy(entry.value);
+                    }
                 },
                 else => {},
             }
@@ -432,4 +457,14 @@ const Mouse = struct {
 
         return null;
     }
+};
+
+const Controller = struct {
+    const Self = @This();
+
+    name: []u8,
+    joystick: c.SDL_JoystickID,
+    gamepad: *c.SDL_Gamepad,
+
+    buttons: [c.SDL_GAMEPAD_BUTTON_COUNT]ButtonState = .{.{}} ** c.SDL_GAMEPAD_BUTTON_COUNT,
 };

@@ -1,4 +1,5 @@
 #include "callback_debug_renderer.hpp"
+#include "math.hpp"
 
 // Needed to make the casting from JPH to Saturn unambiguous for some reason
 namespace Saturn {
@@ -16,13 +17,37 @@ CallbackDebugRenderer::~CallbackDebugRenderer() {
 
 void CallbackDebugRenderer::DrawLine(JPH::RVec3Arg inFrom, JPH::RVec3Arg inTo, JPH::ColorArg inColor) {
 	if (callback_data.draw_line) {
-		callback_data.draw_line(callback_data.ptr, &inFrom.mF32[0], &inTo.mF32[0], color_from_u32(inColor.mU32));
+		DrawLineData data{
+			{inFrom.GetX(), inFrom.GetY(), inFrom.GetZ()},
+			{inTo.GetX(), inTo.GetY(), inTo.GetZ()},
+			color_from_u32(inColor.mU32)};
+		callback_data.draw_line(callback_data.ptr, data);
 	}
 }
 
 void CallbackDebugRenderer::DrawTriangle(JPH::RVec3Arg inV1, JPH::RVec3Arg inV2, JPH::RVec3Arg inV3, JPH::ColorArg inColor, JPH::DebugRenderer::ECastShadow inCastShadow) {
 	if (callback_data.draw_triangle) {
-		callback_data.draw_triangle(callback_data.ptr, &inV1.mF32[0], &inV2.mF32[0], &inV3.mF32[0], color_from_u32(inColor.mU32));
+		DrawTriangleData data{
+			{inV1.GetX(), inV1.GetY(), inV1.GetZ()},
+			{inV2.GetX(), inV2.GetY(), inV2.GetZ()},
+			{inV3.GetX(), inV3.GetY(), inV3.GetZ()},
+			color_from_u32(inColor.mU32),
+			inCastShadow == ECastShadow::On,
+		};
+		callback_data.draw_triangle(callback_data.ptr, data);
+	}
+}
+
+void CallbackDebugRenderer::DrawText3D(JPH::RVec3Arg inPosition, const std::string_view &inString, JPH::ColorArg inColor, float inHeight) {
+	if (callback_data.draw_text) {
+		DrawTextData data{
+			{inPosition.GetX(), inPosition.GetY(), inPosition.GetZ()},
+			const_cast<char *>(inString.data()),
+			inString.size(),
+			inHeight,
+			color_from_u32(inColor.mU32),
+		};
+		callback_data.draw_text(callback_data.ptr, data);
 	}
 }
 
@@ -45,12 +70,13 @@ JPH::DebugRenderer::Batch CallbackDebugRenderer::CreateTriangleBatch(const JPH::
 void CallbackDebugRenderer::DrawGeometry(const JPH::Mat44 &inModelMatrix, const JPH::AABox &inWorldSpaceBounds, float inLODScaleSq, JPH::ColorArg inModelColor, const JPH::DebugRenderer::GeometryRef &inGeometry, JPH::DebugRenderer::ECullMode inCullMode, JPH::DebugRenderer::ECastShadow inCastShadow, JPH::DebugRenderer::EDrawMode inDrawMode) {
 	if (callback_data.draw_geometry) {
 		auto primitive = dynamic_cast<CallbackRenderPrimitive *>(inGeometry->mLODs[0].mTriangleBatch.GetPtr());
-		callback_data.draw_geometry(callback_data.ptr, nullptr, color_from_u32(inModelColor.mU32), primitive->GetId()); // TODO: figure out lod
-	}
-}
-
-void CallbackDebugRenderer::DrawText3D(JPH::RVec3Arg inPosition, const std::string_view &inString, JPH::ColorArg inColor, float inHeight) {
-	if (callback_data.draw_text) {
-		callback_data.draw_text(callback_data.ptr, &inPosition.mF32[0], const_cast<char *>(inString.data()), inString.size(), color_from_u32(inColor.mU32), inHeight);
+		DrawGeometryData data{
+			primitive->GetId(),
+			color_from_u32(inModelColor.mU32),
+			0,
+			0,
+			{0.0}};
+		storeMat44(inModelMatrix, data.model_matrix);
+		callback_data.draw_geometry(callback_data.ptr, data); // TODO: figure out lod
 	}
 }

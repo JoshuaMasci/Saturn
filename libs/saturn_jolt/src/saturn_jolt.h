@@ -38,7 +38,7 @@ typedef float Vec2[2];
 typedef float Vec3[3];
 typedef float Vec4[4];
 typedef float Quat[4];
-typedef float Mat44[16];
+typedef Vec4 Mat44[4];
 
 typedef struct Transform {
 	RVec3 position;
@@ -61,6 +61,78 @@ typedef uint32_t SubShapeIndex;
 
 typedef uint16_t ObjectLayer;
 typedef uint32_t MotionType;
+
+// Renderer functions
+typedef struct Color {
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+	uint8_t a;
+} Color __attribute__((aligned(4)));
+Color color_from_u32(uint32_t value);
+
+typedef struct Vertex {
+	Vec3 position;
+	Vec3 normal;
+	Vec2 uv;
+	Color color;
+} Vertex;
+
+typedef Vertex Triangle[3];
+typedef uint32_t MeshPrimitive;
+
+typedef struct DrawLineData {
+	RVec3 from;
+	RVec3 to;
+	Color color;
+} DrawLineData;
+typedef void (*DrawLineCallback)(void *, DrawLineData);
+
+typedef struct DrawTriangleData {
+	RVec3 v1;
+	RVec3 v2;
+	RVec3 v3;
+	Color color;
+	bool shadow;
+} DrawTriangleData;
+typedef void (*DrawTriangleCallback)(void *, DrawTriangleData);
+
+typedef struct DrawTextData {
+	RVec3 Position;
+	const char *text;
+	size_t text_len;
+	float height;
+	Color color;
+} DrawTextData;
+typedef void (*DrawText3DCallback)(void *, DrawTextData);
+
+typedef void (*CreateTriangleMeshCallback)(void *, MeshPrimitive, const Triangle *, size_t);
+typedef void (*CreateIndexedMeshCallback)(void *, MeshPrimitive, const Vertex *, size_t, const uint32_t *, size_t);
+
+typedef struct DrawGeometryData {
+	MeshPrimitive mesh;
+	Color color;
+	uint32_t cull_mode;
+	uint32_t draw_mode;
+	Mat44 model_matrix;
+} DrawGeometryData;
+typedef void (*DrawGeometryCallback)(void *, DrawGeometryData);
+
+typedef void (*FreeMeshPrimitive)(void *, MeshPrimitive);
+
+typedef struct DebugRendererData {
+	void *ptr;
+	DrawLineCallback draw_line;
+	DrawTriangleCallback draw_triangle;
+	DrawText3DCallback draw_text;
+	CreateTriangleMeshCallback create_triangle_mesh;
+	CreateIndexedMeshCallback create_indexed_mesh;
+	DrawGeometryCallback draw_geometry;
+	FreeMeshPrimitive free_mesh;
+} DebugRendererData;
+
+void rendererInit(DebugRendererData data);
+void rendererDeinit();
 
 // Structs
 typedef struct WorldSettings {
@@ -148,6 +220,8 @@ bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pat
 void worldCastRayAll(World *world_ptr, ObjectLayer object_layer_pattern, const RVec3 origin, const Vec3 direction, RayCastCallback callback, void *callback_data);
 void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape shape, const Transform *c_transform, ShapeCastCallback callback, void *callback_data);
 
+void worldRender(World *world_ptr);
+
 // Body functions
 Body *bodyCreate(const BodySettings *settings);
 void bodyDestroy(Body *body_ptr);
@@ -163,48 +237,6 @@ void bodyRemoveShape(Body *body_ptr, SubShapeIndex index);
 void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Vec3 position, const Quat rotation);
 void bodyRemoveAllShapes(Body *body_ptr);
 void bodyCommitShapeChanges(Body *body_ptr);
-
-typedef struct Color {
-	uint8_t r;
-	uint8_t g;
-	uint8_t b;
-	uint8_t a;
-} Color __attribute__((aligned(4)));
-Color color_from_u32(uint32_t value);
-
-typedef struct Vertex {
-	Vec3 position;
-	Vec3 normal;
-	Vec2 uv;
-	Color color;
-} Vertex;
-
-typedef Vertex Triangle[3];
-typedef uint32_t MeshPrimitive;
-
-typedef void (*DrawLineCallback)(void *, const RVec3, const RVec3, const Color);
-typedef void (*DrawTriangleCallback)(void *, const RVec3, const RVec3, const RVec3, const Color);
-typedef void (*DrawText3DCallback)(void *, const RVec3, const char *, const size_t, const Color, const float);
-
-typedef void (*CreateTriangleMeshCallback)(void *, const MeshPrimitive, const Triangle *, const size_t);
-typedef void (*CreateIndexedMeshCallback)(void *, const MeshPrimitive, const Vertex *, const size_t, const uint32_t *, const size_t);
-typedef void (*DrawGeometryCallback)(void *, const Mat44, const Color, const MeshPrimitive); // TODO: add CullMode and DrawMode
-
-typedef void (*FreeMeshPrimitive)(void *, const MeshPrimitive);
-
-typedef struct DebugRendererData {
-	void *ptr;
-	DrawLineCallback draw_line;
-	DrawTriangleCallback draw_triangle;
-	DrawText3DCallback draw_text;
-	CreateTriangleMeshCallback create_triangle_mesh;
-	CreateIndexedMeshCallback create_indexed_mesh;
-	DrawGeometryCallback draw_geometry;
-	FreeMeshPrimitive free_mesh;
-} DebugRendererData;
-
-void rendererCreate(DebugRendererData data);
-void rendererDestroy();
 
 #ifdef __cplusplus
 }

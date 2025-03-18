@@ -17,6 +17,8 @@ const Entity = @import("entity/entity.zig");
 
 const global = @import("global.zig");
 
+const PhysicsRenderer = @import("rendering/sdl_gpu/physics_renderer.zig");
+
 pub const App = struct {
     const Self = @This();
 
@@ -41,6 +43,9 @@ pub const App = struct {
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
+
+        var renderer = PhysicsRenderer{};
+        physics_system.initRenderer(renderer.getDebugRendererData());
 
         zimgui.init(global.global_allocator);
         zimgui.backend.init(
@@ -159,6 +164,18 @@ pub const App = struct {
                 const rendering = @import("entity/engine/rendering.zig");
                 if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
                     self.render_thread.render_thread_data.scene = try render_world.scene.dupe(self.render_thread.render_thread_data.temp_allocator.allocator());
+                }
+            }
+        }
+
+        const debug_render_physics = true;
+        if (debug_render_physics) {
+            if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
+                if (game_debug_entity.world) |game_world| {
+                    const physics = @import("entity/engine/physics.zig");
+                    if (game_world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
+                        physics_world.physics_world.render();
+                    }
                 }
             }
         }
