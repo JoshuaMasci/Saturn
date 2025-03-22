@@ -43,16 +43,14 @@ pub const App = struct {
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
-
-        var renderer = PhysicsRenderer{};
-        physics_system.initRenderer(renderer.getDebugRendererData());
+        physics_system.initRenderer(render_thread.render_thread_data.physics_renderer.getDebugRendererData());
 
         zimgui.init(global.global_allocator);
         zimgui.backend.init(
             window.handle,
             .{
-                .device = render_thread.render_thread_data.renderer.gpu_device,
-                .color_target_format = render_thread.render_thread_data.renderer.color_format,
+                .device = render_thread.render_thread_data.scene_renderer.gpu_device,
+                .color_target_format = render_thread.render_thread_data.scene_renderer.color_format,
                 .msaa_samples = 0, // 1 Sample
             },
         );

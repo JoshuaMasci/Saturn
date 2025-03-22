@@ -159,7 +159,7 @@ pub const Renderer = struct {
         return null;
     }
 
-    pub fn renderScene(self: *Self, temp_allocator: std.mem.Allocator, command_buffer: *c.SDL_GPUCommandBuffer, target_hande: ?*c.SDL_GPUTexture, target_size: [2]u32, scene: *const RenderScene, camera: struct {
+    pub fn render(self: *Self, temp_allocator: std.mem.Allocator, command_buffer: *c.SDL_GPUCommandBuffer, target_hande: ?*c.SDL_GPUTexture, target_size: [2]u32, scene: *const RenderScene, camera: struct {
         transform: Transform,
         camera: Camera,
     }) void {

@@ -1,18 +1,34 @@
 const std = @import("std");
 
 const physics = @import("physics");
+const Mesh = @import("mesh.zig");
 
 const Self = @This();
 
-pub fn getDebugRendererData(self: *Self) physics.DebugRendererData {
-    _ = self; // autofix
+meshes: std.AutoArrayHashMap(physics.MeshPrimitive, Mesh),
+
+pub fn init(allocator: std.mem.Allocator) Self {
     return .{
-        .ptr = null,
+        .meshes = std.AutoArrayHashMap(physics.MeshPrimitive, Mesh).init(allocator),
+    };
+}
+
+pub fn deinit(self: *Self) void {
+    for (self.meshes.values()) |mesh| {
+        mesh.deinit();
+    }
+    self.meshes.deinit();
+}
+
+pub fn getDebugRendererData(self: *Self) physics.DebugRendererData {
+    return .{
+        .ptr = self,
         .draw_line = drawLineCallback,
         .draw_triangle = drawTriangleCallback,
         .draw_text = drawText3DCallback,
         .create_triangle_mesh = createTriangleMeshCallback,
         .create_indexed_mesh = createIndexedMeshCallback,
+        .draw_geometry = drawGeometryCallback,
         .free_mesh = freeMeshPrimitive,
     };
 }
@@ -56,7 +72,7 @@ fn createIndexedMeshCallback(ptr: ?*anyopaque, id: physics.MeshPrimitive, vertie
 fn drawGeometryCallback(ptr: ?*anyopaque, data: physics.DrawGeometryData) callconv(.C) void {
     _ = ptr; // autofix
     _ = data; // autofix
-    std.log.info("drawGeometryCallback", .{});
+    //std.log.info("drawGeometryCallback", .{});
 }
 
 fn freeMeshPrimitive(ptr: ?*anyopaque, id: physics.MeshPrimitive) callconv(.C) void {
