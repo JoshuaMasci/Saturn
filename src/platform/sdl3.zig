@@ -5,6 +5,8 @@ const App = @import("../app.zig").App;
 
 const Settings = @import("../rendering/settings.zig");
 
+const c_alloc = @import("../c_alloc.zig");
+
 pub const c = @cImport({
     @cDefine("SDL_DISABLE_OLD_NAMES", {});
     @cInclude("SDL3/SDL.h");
@@ -26,6 +28,9 @@ pub const Platform = struct {
     input_devices: std.ArrayList(input.InputDevice),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
+        c_alloc.mem_allocator = allocator;
+        _ = c.SDL_SetMemoryFunctions(c_alloc.alloc, c_alloc.calloc, c_alloc.realloc, c_alloc.free);
+
         const version = c.SDL_GetVersion();
         std.log.info("Starting sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
 

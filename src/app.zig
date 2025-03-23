@@ -1,8 +1,8 @@
 const std = @import("std");
 const za = @import("zalgebra");
 
-const Platform = @import("platform.zig").getPlatform();
-const Window = @import("platform.zig").getWindow();
+const Platform = @import("platform/sdl3.zig").Platform;
+const Window = @import("platform/sdl3.zig").Window;
 const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 
 const physics_system = @import("physics");
@@ -49,7 +49,7 @@ pub const App = struct {
         zimgui.backend.init(
             window.handle,
             .{
-                .device = render_thread.render_thread_data.scene_renderer.gpu_device,
+                .device = render_thread.render_thread_data.device.handle,
                 .color_target_format = render_thread.render_thread_data.scene_renderer.color_format,
                 .msaa_samples = 0, // 1 Sample
             },

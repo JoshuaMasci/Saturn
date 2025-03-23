@@ -15,19 +15,17 @@ const MaterialAsset = @import("../../asset/material.zig");
 const ShaderAsset = @import("../../asset/shader.zig");
 const ShaderAssetHandle = ShaderAsset.Registry.Handle;
 
-const c = @import("../../platform/sdl3.zig").c;
-
 const Mesh = @import("mesh.zig");
 const Texture = @import("texture.zig");
 
+const c = @import("../../platform/sdl3.zig").c;
+const Device = @import("device.zig");
 const Window = @import("../../platform/sdl3.zig").Window;
 
 pub const Renderer = struct {
     const Self = @This();
 
-    window: Window,
-
-    gpu_device: *c.SDL_GPUDevice,
+    gpu_device: Device,
 
     color_format: c.SDL_GPUTextureFormat,
     depth_format: c.SDL_GPUTextureFormat,
@@ -39,41 +37,26 @@ pub const Renderer = struct {
     texture_map: std.AutoHashMap(Texture2dAsset.Registry.Handle, Texture),
     material_map: std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
-    pub fn init(allocator: std.mem.Allocator, window: Window) !Self {
-        std.debug.assert(c.SDL_Init(c.SDL_INIT_VIDEO));
-        const gpu_device = c.SDL_CreateGPUDevice(c.SDL_GPU_SHADERFORMAT_SPIRV, true, null).?;
+    pub fn init(
+        allocator: std.mem.Allocator,
+        gpu_device: Device,
+        formats: struct {
+            color: c.SDL_GPUTextureFormat,
+            depth: c.SDL_GPUTextureFormat,
+        },
+    ) !Self {
+        const vertex_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/test.vert.shader").?);
+        defer c.SDL_ReleaseGPUShader(gpu_device.handle, vertex_shader);
 
-        const driver_name: [*c]const u8 = c.SDL_GetGPUDeviceDriver(gpu_device);
-
-        const device_shader_formats = c.SDL_GetGPUShaderFormats(gpu_device);
-
-        std.log.info("SDL_GPU Context:\n\tBackend: {s}\n\tShader: {}", .{
-            driver_name,
-            device_shader_formats,
-        });
-
-        _ = c.SDL_ClaimWindowForGPUDevice(gpu_device, window.handle);
-
-        const color_format = c.SDL_GetGPUSwapchainTextureFormat(gpu_device, window.handle);
-        var depth_format: c.SDL_GPUTextureFormat = c.SDL_GPU_TEXTUREFORMAT_D16_UNORM;
-        if (c.SDL_GPUTextureSupportsFormat(gpu_device, c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT, c.SDL_GPU_TEXTURETYPE_2D, c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
-            depth_format = c.SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
-        } else if (c.SDL_GPUTextureSupportsFormat(gpu_device, c.SDL_GPU_TEXTUREFORMAT_D24_UNORM, c.SDL_GPU_TEXTURETYPE_2D, c.SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
-            depth_format = c.SDL_GPU_TEXTUREFORMAT_D24_UNORM;
-        }
-
-        const vertex_shader = try loadGraphicsShader(allocator, gpu_device, ShaderAssetHandle.fromRepoPath("engine:shaders/test.vert.shader").?);
-        defer c.SDL_ReleaseGPUShader(gpu_device, vertex_shader);
-
-        const fragment_shader = try loadGraphicsShader(allocator, gpu_device, ShaderAssetHandle.fromRepoPath("engine:shaders/test.frag.shader").?);
-        defer c.SDL_ReleaseGPUShader(gpu_device, fragment_shader);
+        const fragment_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/test.frag.shader").?);
+        defer c.SDL_ReleaseGPUShader(gpu_device.handle, fragment_shader);
 
         const mesh_graphics_pipeline = try loadGraphicsPipeline(
-            gpu_device,
+            gpu_device.handle,
             vertex_shader,
             fragment_shader,
-            color_format,
-            depth_format,
+            formats.color,
+            formats.depth,
             .{
                 .compare_op = c.SDL_GPU_COMPAREOP_LESS,
                 .depth_test = true,
@@ -81,7 +64,7 @@ pub const Renderer = struct {
             },
         );
 
-        const linear_sampler = c.SDL_CreateGPUSampler(gpu_device, &.{
+        const linear_sampler = c.SDL_CreateGPUSampler(gpu_device.handle, &.{
             .min_filter = c.SDL_GPU_FILTER_LINEAR,
             .mag_filter = c.SDL_GPU_FILTER_LINEAR,
             .mipmap_mode = c.SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
@@ -96,9 +79,8 @@ pub const Renderer = struct {
 
         return .{
             .gpu_device = gpu_device,
-            .window = window,
-            .color_format = color_format,
-            .depth_format = depth_format,
+            .color_format = formats.color,
+            .depth_format = formats.depth,
             .mesh_graphics_pipeline = mesh_graphics_pipeline,
             .linear_sampler = linear_sampler,
             .static_mesh_map = static_mesh_map,
@@ -126,37 +108,8 @@ pub const Renderer = struct {
 
         self.material_map.deinit();
 
-        self.deregisterWindow(self.window);
-
-        c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device, self.mesh_graphics_pipeline);
-        c.SDL_ReleaseGPUSampler(self.gpu_device, self.linear_sampler);
-        c.SDL_DestroyGPUDevice(self.gpu_device);
-    }
-
-    pub fn registerWindow(self: *Self, window: Window) void {
-        _ = c.SDL_ClaimWindowForGPUDevice(self.gpu_device, window.handle);
-    }
-    pub fn deregisterWindow(self: *Self, window: Window) void {
-        _ = c.SDL_ReleaseWindowFromGPUDevice(self.gpu_device, window.handle);
-    }
-
-    pub fn startCommandBuffer(self: Self) *c.SDL_GPUCommandBuffer {
-        return c.SDL_AcquireGPUCommandBuffer(self.gpu_device).?;
-    }
-
-    pub fn endCommandBuffer(self: Self, command_buffer: *c.SDL_GPUCommandBuffer) void {
-        _ = self; // autofix
-        _ = c.SDL_SubmitGPUCommandBuffer(command_buffer);
-    }
-
-    pub fn acquireSwapchainTexture(self: Self, window: Window, command_buffer: *c.SDL_GPUCommandBuffer) ?struct { handle: ?*c.SDL_GPUTexture, size: [2]u32 } {
-        _ = self; // autofix
-        var handle: ?*c.SDL_GPUTexture = null;
-        var size: [2]u32 = undefined;
-        if (c.SDL_WaitAndAcquireGPUSwapchainTexture(command_buffer, window.handle, &handle, &size[0], &size[1])) {
-            return .{ .handle = handle, .size = size };
-        }
-        return null;
+        c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device.handle, self.mesh_graphics_pipeline);
+        c.SDL_ReleaseGPUSampler(self.gpu_device.handle, self.linear_sampler);
     }
 
     pub fn render(self: *Self, temp_allocator: std.mem.Allocator, command_buffer: *c.SDL_GPUCommandBuffer, target_hande: ?*c.SDL_GPUTexture, target_size: [2]u32, scene: *const RenderScene, camera: struct {
@@ -173,8 +126,8 @@ pub const Renderer = struct {
             .num_levels = 1,
             .sample_count = c.SDL_GPU_SAMPLECOUNT_1,
         };
-        const depth_texture: *c.SDL_GPUTexture = c.SDL_CreateGPUTexture(self.gpu_device, &create_info).?;
-        defer c.SDL_ReleaseGPUTexture(self.gpu_device, depth_texture);
+        const depth_texture: *c.SDL_GPUTexture = c.SDL_CreateGPUTexture(self.gpu_device.handle, &create_info).?;
+        defer c.SDL_ReleaseGPUTexture(self.gpu_device.handle, depth_texture);
 
         const color_target: c.SDL_GPUColorTargetInfo = .{
             .texture = target_hande,
@@ -295,7 +248,7 @@ pub const Renderer = struct {
         if (!self.static_mesh_map.contains(handle)) {
             if (global.assets.meshes.loadAsset(allocator, handle)) |mesh| {
                 defer mesh.deinit(allocator);
-                const gpu_mesh = Mesh.init(self.gpu_device, &mesh);
+                const gpu_mesh = Mesh.init(self.gpu_device.handle, &mesh);
                 self.static_mesh_map.put(handle, gpu_mesh) catch |err| {
                     gpu_mesh.deinit();
                     std.log.err("Failed to append static mesh to list {}", .{err});
@@ -311,7 +264,7 @@ pub const Renderer = struct {
             if (global.assets.textures.loadAsset(allocator, handle)) |texture| {
                 defer texture.deinit(allocator);
 
-                const gpu_texture = Texture.init_2d(self.gpu_device, &texture);
+                const gpu_texture = Texture.init_2d(self.gpu_device.handle, &texture);
                 self.texture_map.put(handle, gpu_texture) catch |err| {
                     gpu_texture.deinit();
                     std.log.err("Failed to append texture to list {}", .{err});

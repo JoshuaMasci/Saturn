@@ -3,12 +3,31 @@ const std = @import("std");
 const physics = @import("physics");
 const Mesh = @import("mesh.zig");
 
+const c = @import("../../platform/sdl3.zig").c;
+const Device = @import("device.zig");
+const Window = @import("../../platform/sdl3.zig").Window;
+
 const Self = @This();
+
+gpu_device: Device,
+
+color_format: c.SDL_GPUTextureFormat,
+depth_format: c.SDL_GPUTextureFormat,
 
 meshes: std.AutoArrayHashMap(physics.MeshPrimitive, Mesh),
 
-pub fn init(allocator: std.mem.Allocator) Self {
+pub fn init(
+    allocator: std.mem.Allocator,
+    gpu_device: Device,
+    formats: struct {
+        color: c.SDL_GPUTextureFormat,
+        depth: c.SDL_GPUTextureFormat,
+    },
+) Self {
     return .{
+        .gpu_device = gpu_device,
+        .color_format = formats.color,
+        .depth_format = formats.depth,
         .meshes = std.AutoArrayHashMap(physics.MeshPrimitive, Mesh).init(allocator),
     };
 }

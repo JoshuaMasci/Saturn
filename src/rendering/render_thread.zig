@@ -6,9 +6,10 @@ const Camera = @import("camera.zig").Camera;
 
 const RenderSettings = @import("settings.zig").RenderSettings;
 
-const Platform = @import("../platform.zig");
+const c = @import("../platform/sdl3.zig").c;
 const Window = @import("../platform/sdl3.zig").Window;
-const SceneRenderer = @import("sdl_gpu/renderer.zig").Renderer;
+const Device = @import("sdl_gpu/device.zig");
+const SceneRenderer = @import("sdl_gpu/scene_renderer.zig").Renderer;
 const PhyiscsRenderer = @import("sdl_gpu/physics_renderer.zig");
 
 const rendering_scene = @import("scene.zig");
@@ -16,6 +17,8 @@ const rendering_scene = @import("scene.zig");
 pub const RenderThreadData = struct {
     const Self = @This();
 
+    device: Device,
+    window: Window,
     scene_renderer: SceneRenderer,
     physics_renderer: PhyiscsRenderer,
 
@@ -28,6 +31,8 @@ pub const RenderThreadData = struct {
     pub fn deinit(self: *Self) void {
         self.scene_renderer.deinit();
         self.physics_renderer.deinit();
+        self.device.releaseWindow(self.window);
+        self.device.deinit();
         self.temp_allocator.deinit();
     }
 };
@@ -51,10 +56,18 @@ pub const RenderThread = struct {
     should_reload: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, window: Window) !Self {
+        const device = Device.init();
+        device.claimWindow(window);
+
+        const color_format = c.SDL_GetGPUSwapchainTextureFormat(device.handle, window.handle);
+        const depth_fromat = device.getLargestDepthFormat();
+
         const render_thread_data = try allocator.create(RenderThreadData);
         render_thread_data.* = .{
-            .scene_renderer = SceneRenderer.init(allocator, window) catch |err| std.debug.panic("Failed to init renderer: {}", .{err}),
-            .physics_renderer = PhyiscsRenderer.init(allocator),
+            .window = window,
+            .device = device,
+            .scene_renderer = SceneRenderer.init(allocator, device, .{ .color = color_format, .depth = depth_fromat }) catch |err| std.debug.panic("Failed to init renderer: {}", .{err}),
+            .physics_renderer = PhyiscsRenderer.init(allocator, device, .{ .color = color_format, .depth = depth_fromat }),
             .temp_allocator = std.heap.ArenaAllocator.init(allocator),
         };
 
@@ -121,9 +134,9 @@ fn renderThreadMain(
             return; //TODO: deinit
         }
 
-        const command_buffer = render_thread_data.scene_renderer.startCommandBuffer();
+        const command_buffer = render_thread_data.device.startCommandBuffer();
 
-        const swapchain_target = render_thread_data.scene_renderer.acquireSwapchainTexture(render_thread_data.scene_renderer.window, command_buffer).?;
+        const swapchain_target = render_thread_data.device.acquireSwapchainTexture(render_thread_data.window, command_buffer).?;
 
         //TODO: default camera fov should be set by render settings
         const DefaultCamera = Camera.Default;
@@ -145,7 +158,6 @@ fn renderThreadMain(
         zimgui.render();
         zimgui.backend.prepareDrawData(command_buffer);
         {
-            const c = @import("../platform/sdl3.zig").c;
             const color_target: c.SDL_GPUColorTargetInfo = .{
                 .texture = swapchain_target.handle,
                 .load_op = c.SDL_GPU_LOADOP_LOAD,
@@ -157,7 +169,7 @@ fn renderThreadMain(
             zimgui.backend.renderDrawData(command_buffer, render_pass.?, null);
         }
 
-        render_thread_data.scene_renderer.endCommandBuffer(command_buffer);
+        render_thread_data.device.endCommandBuffer(command_buffer);
 
         render_signals.render_done_semaphore.post();
         if (render_signals.quit_thread.load(.monotonic)) {
