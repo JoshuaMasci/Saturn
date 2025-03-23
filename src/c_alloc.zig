@@ -7,7 +7,7 @@ const Metadata = struct {
 };
 
 pub fn alloc(size: usize) callconv(.C) ?*anyopaque {
-    return alignedAlloc(size, 16);
+    return alignedAlloc(size, 64);
 }
 
 pub fn calloc(count: usize, size: usize) callconv(.C) ?*anyopaque {

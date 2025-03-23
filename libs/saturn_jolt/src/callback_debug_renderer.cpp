@@ -7,7 +7,7 @@ namespace Saturn {
 	using Vertex = Vertex;
 } // namespace Saturn
 
-CallbackDebugRenderer::CallbackDebugRenderer(DebugRendererData data) {
+CallbackDebugRenderer::CallbackDebugRenderer(DebugRendererCallbacks data) {
 	callback_data = data;
 	Initialize();
 }

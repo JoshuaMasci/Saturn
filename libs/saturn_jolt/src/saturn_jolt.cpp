@@ -53,7 +53,7 @@ void init(const AllocationFunctions *functions) {
 }
 
 void deinit() {
-	rendererDeinit();
+	debugRendererDestroy();
 	shape_pool_mutex.lock();
 	delete shape_pool;
 	shape_pool_mutex.unlock();
@@ -82,14 +82,27 @@ Color color_from_u32(uint32_t value) {
 }
 #endif
 
-void rendererInit(DebugRendererData data) {
+void debugRendererCreate(DebugRendererCallbacks data) {
 #ifdef JPH_DEBUG_RENDERER
 	new CallbackDebugRenderer(data);
 #endif
 }
-void rendererDeinit() {
+void debugRendererDestroy() {
 #ifdef JPH_DEBUG_RENDERER
 	delete JPH::DebugRenderer::sInstance;
+#endif
+}
+
+void debugRendererBuildFrame(World *world_ptr, Transform camera_transform) {
+#ifdef JPH_DEBUG_RENDERER
+	if (JPH::DebugRenderer::sInstance != nullptr && world_ptr != nullptr) {
+		auto renderer = dynamic_cast<CallbackDebugRenderer *>(JPH::DebugRenderer::sInstance);
+		renderer->camera_position = load_rvec3(camera_transform.position);
+
+		JPH::BodyManager::DrawSettings settings;
+		settings.mDrawShape = true;
+		world_ptr->physics_system->DrawBodies(settings, JPH::DebugRenderer::sInstance);
+	}
 #endif
 }
 
@@ -277,16 +290,6 @@ void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape sh
 	auto shape_ref = shape_pool->get(shape);
 	shape_pool_mutex.unlock();
 	world_ptr->castShape(object_layer_pattern, load_rvec3(c_transform->position), load_quat(c_transform->rotation), shape_ref, callback, callback_data);
-}
-
-void worldRender(World *world_ptr) {
-#ifdef JPH_DEBUG_RENDERER
-	if (JPH::DebugRenderer::sInstance != nullptr && world_ptr != nullptr) {
-		JPH::BodyManager::DrawSettings settings;
-		settings.mDrawShape = true;
-		world_ptr->physics_system->DrawBodies(settings, JPH::DebugRenderer::sInstance);
-	}
-#endif
 }
 
 // Body functions

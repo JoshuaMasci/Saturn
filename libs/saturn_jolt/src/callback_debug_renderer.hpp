@@ -28,7 +28,7 @@ class CallbackRenderPrimitive : public JPH::RefTarget<CallbackRenderPrimitive>, 
 
 class CallbackDebugRenderer : public JPH::DebugRenderer {
   public:
-	explicit CallbackDebugRenderer(DebugRendererData data);
+	explicit CallbackDebugRenderer(DebugRendererCallbacks data);
 	~CallbackDebugRenderer() override;
 	void DrawLine(JPH::RVec3Arg inFrom, JPH::RVec3Arg inTo, JPH::ColorArg inColor) override;
 	void DrawTriangle(JPH::RVec3Arg inV1, JPH::RVec3Arg inV2, JPH::RVec3Arg inV3, JPH::ColorArg inColor, ECastShadow inCastShadow) override;
@@ -37,8 +37,10 @@ class CallbackDebugRenderer : public JPH::DebugRenderer {
 	void DrawGeometry(const JPH::Mat44 &inModelMatrix, const JPH::AABox &inWorldSpaceBounds, float inLODScaleSq, JPH::ColorArg inModelColor, const GeometryRef &inGeometry, ECullMode inCullMode, ECastShadow inCastShadow, EDrawMode inDrawMode) override;
 	void DrawText3D(JPH::RVec3Arg inPosition, const std::string_view &inString, JPH::ColorArg inColor, float inHeight) override;
 
+	JPH::RVec3 camera_position;
+
   protected:
-	DebugRendererData callback_data;
+	DebugRendererCallbacks callback_data;
 };
 
 constexpr bool validate_compatible_structs() {

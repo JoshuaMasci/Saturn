@@ -182,10 +182,6 @@ pub const World = struct {
     pub fn castShape(self: Self, object_layer_pattern: ObjectLayer, shape: Shape, transform: *const Transform, callback: ShapeCastCallback, callback_data: *anyopaque) void {
         c.worldCastShape(self.ptr, object_layer_pattern, shape.handle, transform, callback, callback_data);
     }
-
-    pub fn render(self: Self) void {
-        c.worldRender(self.ptr);
-    }
 };
 
 pub const Body = struct {
@@ -279,18 +275,22 @@ pub const Body = struct {
 pub const MeshPrimitive = c.MeshPrimitive;
 pub const Vertex = c.Vertex;
 pub const Triangle = c.Triangle;
-pub const DebugRendererData = c.DebugRendererData;
+pub const DebugRendererCallbacks = c.DebugRendererCallbacks;
 pub const DrawLineData = c.DrawLineData;
 pub const DrawTriangleData = c.DrawTriangleData;
 pub const DrawTextData = c.DrawTextData;
 pub const DrawGeometryData = c.DrawGeometryData;
 
-pub fn initRenderer(debug_renderer: c.DebugRendererData) void {
-    c.rendererInit(debug_renderer);
+pub fn initDebugRenderer(debug_renderer: c.DebugRendererCallbacks) void {
+    c.debugRendererCreate(debug_renderer);
 }
 
-pub fn deinitRenderer() void {
-    c.rendererDeinit();
+pub fn deinitDebugRenderer() void {
+    c.debugRendererDestroy();
+}
+
+pub fn debugRendererBuildFrame(world: *World, transform: Transform) void {
+    c.debugRendererBuildFrame(world.ptr, transform);
 }
 
 // Memory Allocation

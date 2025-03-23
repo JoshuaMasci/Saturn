@@ -39,7 +39,12 @@ pub fn deinit(self: *Self) void {
     self.meshes.deinit();
 }
 
-pub fn getDebugRendererData(self: *Self) physics.DebugRendererData {
+pub fn buildFrame(self: Self, world: *physics.World, camera_transform: physics.Transform) void {
+    _ = self; // autofix
+    physics.debugRendererBuildFrame(world, camera_transform);
+}
+
+pub fn getDebugRendererData(self: *Self) physics.DebugRendererCallbacks {
     return .{
         .ptr = self,
         .draw_line = drawLineCallback,

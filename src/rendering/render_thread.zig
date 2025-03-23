@@ -48,10 +48,10 @@ pub const RenderThread = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    render_thread_data: *RenderThreadData,
-    render_signals: *RenderSignals,
+    data: *RenderThreadData,
+    signals: *RenderSignals,
 
-    render_thread: std.Thread,
+    thread: std.Thread,
 
     should_reload: bool = false,
 
@@ -78,21 +78,21 @@ pub const RenderThread = struct {
         render_thread.setName("RenderThread") catch |err| std.log.err("Failed to set render thread name: {}", .{err});
         return .{
             .allocator = allocator,
-            .render_thread_data = render_thread_data,
-            .render_signals = render_signals,
-            .render_thread = render_thread,
+            .data = render_thread_data,
+            .signals = render_signals,
+            .thread = render_thread,
         };
     }
 
     pub fn deinit(self: *Self) void {
         //Tell the render thread to quit
-        self.render_signals.quit_thread.store(true, .monotonic);
-        self.render_signals.start_render_semphore.post();
-        self.render_thread.join();
+        self.signals.quit_thread.store(true, .monotonic);
+        self.signals.start_render_semphore.post();
+        self.thread.join();
 
-        self.render_thread_data.deinit();
-        self.allocator.destroy(self.render_thread_data);
-        self.allocator.destroy(self.render_signals);
+        self.data.deinit();
+        self.allocator.destroy(self.data);
+        self.allocator.destroy(self.signals);
     }
 
     pub fn registerWindow(self: *Self, window: Window) void {
@@ -109,12 +109,12 @@ pub const RenderThread = struct {
     }
 
     pub fn beginFrame(self: *Self) void {
-        self.render_signals.render_done_semaphore.wait();
-        _ = self.render_thread_data.temp_allocator.reset(.retain_capacity);
+        self.signals.render_done_semaphore.wait();
+        _ = self.data.temp_allocator.reset(.retain_capacity);
     }
 
     pub fn submitFrame(self: *Self) void {
-        self.render_signals.start_render_semphore.post();
+        self.signals.start_render_semphore.post();
     }
 };
 

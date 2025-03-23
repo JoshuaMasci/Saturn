@@ -43,14 +43,14 @@ pub const App = struct {
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
-        physics_system.initRenderer(render_thread.render_thread_data.physics_renderer.getDebugRendererData());
+        physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
 
         zimgui.init(global.global_allocator);
         zimgui.backend.init(
             window.handle,
             .{
-                .device = render_thread.render_thread_data.device.handle,
-                .color_target_format = render_thread.render_thread_data.scene_renderer.color_format,
+                .device = render_thread.data.device.handle,
+                .color_target_format = render_thread.data.scene_renderer.color_format,
                 .msaa_samples = 0, // 1 Sample
             },
         );
@@ -75,7 +75,7 @@ pub const App = struct {
     pub fn deinit(self: *Self) void {
         self.game_universe.deinit();
 
-        physics_system.deinitRenderer();
+        physics_system.deinitDebugRenderer();
         physics_system.deinit();
 
         zimgui.backend.deinit();
@@ -154,14 +154,14 @@ pub const App = struct {
             }
         }
 
-        self.render_thread.render_thread_data.scene = null;
+        self.render_thread.data.scene = null;
         if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-            self.render_thread.render_thread_data.camera_transform = game_debug_entity.transform;
+            self.render_thread.data.camera_transform = game_debug_entity.transform;
 
             if (game_debug_entity.world) |game_world| {
                 const rendering = @import("entity/engine/rendering.zig");
                 if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
-                    self.render_thread.render_thread_data.scene = try render_world.scene.dupe(self.render_thread.render_thread_data.temp_allocator.allocator());
+                    self.render_thread.data.scene = try render_world.scene.dupe(self.render_thread.data.temp_allocator.allocator());
                 }
             }
         }
@@ -172,7 +172,7 @@ pub const App = struct {
                 if (game_debug_entity.world) |game_world| {
                     const physics = @import("entity/engine/physics.zig");
                     if (game_world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
-                        physics_world.physics_world.render();
+                        self.render_thread.data.physics_renderer.buildFrame(&physics_world.physics_world, .{});
                     }
                 }
             }

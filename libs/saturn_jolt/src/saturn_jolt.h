@@ -120,7 +120,7 @@ typedef void (*DrawGeometryCallback)(void *, DrawGeometryData);
 
 typedef void (*FreeMeshPrimitive)(void *, MeshPrimitive);
 
-typedef struct DebugRendererData {
+typedef struct DebugRendererCallbacks {
 	void *ptr;
 	DrawLineCallback draw_line;
 	DrawTriangleCallback draw_triangle;
@@ -129,10 +129,11 @@ typedef struct DebugRendererData {
 	CreateIndexedMeshCallback create_indexed_mesh;
 	DrawGeometryCallback draw_geometry;
 	FreeMeshPrimitive free_mesh;
-} DebugRendererData;
+} DebugRendererCallbacks;
 
-void rendererInit(DebugRendererData data);
-void rendererDeinit();
+void debugRendererCreate(DebugRendererCallbacks data);
+void debugRendererDestroy();
+void debugRendererBuildFrame(World *world_ptr, Transform transform);
 
 // Structs
 typedef struct WorldSettings {
@@ -219,8 +220,6 @@ bool worldCastRayCloset(World *world_ptr, ObjectLayer object_layer_pattern, cons
 bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pattern, Body *ignore_body_ptr, const RVec3 origin, const Vec3 direction, RayCastHit *hit_result);
 void worldCastRayAll(World *world_ptr, ObjectLayer object_layer_pattern, const RVec3 origin, const Vec3 direction, RayCastCallback callback, void *callback_data);
 void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape shape, const Transform *c_transform, ShapeCastCallback callback, void *callback_data);
-
-void worldRender(World *world_ptr);
 
 // Body functions
 Body *bodyCreate(const BodySettings *settings);
