@@ -52,7 +52,7 @@ void CallbackDebugRenderer::DrawText3D(JPH::RVec3Arg inPosition, const std::stri
 }
 
 JPH::DebugRenderer::Batch CallbackDebugRenderer::CreateTriangleBatch(const JPH::DebugRenderer::Triangle *inTriangles, int inTriangleCount) {
-	MeshPrimitive id = 0;
+	MeshPrimitive id = this->next_id++;
 	if (callback_data.create_triangle_mesh) {
 		callback_data.create_triangle_mesh(callback_data.ptr, id, (const Saturn::Triangle *)inTriangles, inTriangleCount);
 	}
@@ -60,7 +60,7 @@ JPH::DebugRenderer::Batch CallbackDebugRenderer::CreateTriangleBatch(const JPH::
 }
 
 JPH::DebugRenderer::Batch CallbackDebugRenderer::CreateTriangleBatch(const JPH::DebugRenderer::Vertex *inVertices, int inVertexCount, const JPH::uint32 *inIndices, int inIndexCount) {
-	MeshPrimitive id = 0;
+	MeshPrimitive id = this->next_id++;
 	if (callback_data.create_indexed_mesh) {
 		callback_data.create_indexed_mesh(callback_data.ptr, id, (const Saturn::Vertex *)inVertices, inVertexCount, inIndices, inIndexCount);
 	}
@@ -70,11 +70,24 @@ JPH::DebugRenderer::Batch CallbackDebugRenderer::CreateTriangleBatch(const JPH::
 void CallbackDebugRenderer::DrawGeometry(const JPH::Mat44 &inModelMatrix, const JPH::AABox &inWorldSpaceBounds, float inLODScaleSq, JPH::ColorArg inModelColor, const JPH::DebugRenderer::GeometryRef &inGeometry, JPH::DebugRenderer::ECullMode inCullMode, JPH::DebugRenderer::ECastShadow inCastShadow, JPH::DebugRenderer::EDrawMode inDrawMode) {
 	if (callback_data.draw_geometry) {
 		auto primitive = dynamic_cast<CallbackRenderPrimitive *>(inGeometry->mLODs[0].mTriangleBatch.GetPtr());
+
+		CullMode cull_mode = CULL_MODE_OFF;
+		switch (inCullMode) {
+		case ECullMode::CullBackFace: cull_mode = CULL_MODE_FRONT; break;
+		case ECullMode::CullFrontFace: cull_mode = CULL_MODE_BACK; break;
+		case ECullMode::Off: cull_mode = CULL_MODE_OFF; break;
+		}
+
+		DrawMode draw_mode = DRAW_MODE_SOLID;
+		if (inDrawMode == EDrawMode::Wireframe) {
+			draw_mode = DRAW_MODE_WIREFRAME;
+		}
+
 		DrawGeometryData data{
 			primitive->GetId(),
 			color_from_u32(inModelColor.mU32),
-			0,
-			0,
+			cull_mode,
+			draw_mode,
 			{0.0}};
 		storeMat44(inModelMatrix, data.model_matrix);
 		callback_data.draw_geometry(callback_data.ptr, data); // TODO: figure out lod

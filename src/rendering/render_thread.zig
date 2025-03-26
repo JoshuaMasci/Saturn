@@ -67,7 +67,7 @@ pub const RenderThread = struct {
             .window = window,
             .device = device,
             .scene_renderer = SceneRenderer.init(allocator, device, .{ .color = color_format, .depth = depth_fromat }) catch |err| std.debug.panic("Failed to init renderer: {}", .{err}),
-            .physics_renderer = PhyiscsRenderer.init(allocator, device, .{ .color = color_format, .depth = depth_fromat }),
+            .physics_renderer = PhyiscsRenderer.init(allocator, device, color_format, depth_fromat) catch |err| std.debug.panic("Failed to init renderer: {}", .{err}),
             .temp_allocator = std.heap.ArenaAllocator.init(allocator),
         };
 
@@ -153,6 +153,16 @@ fn renderThreadMain(
                 },
             );
         }
+
+        render_thread_data.physics_renderer.renderFrame(
+            command_buffer,
+            swapchain_target.handle,
+            swapchain_target.size,
+            .{
+                .transform = render_thread_data.camera_transform orelse .{},
+                .camera = render_thread_data.camera orelse DefaultCamera,
+            },
+        );
 
         const zimgui = @import("zimgui");
         zimgui.render();

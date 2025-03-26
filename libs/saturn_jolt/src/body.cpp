@@ -9,10 +9,10 @@
 Body::Body(const BodySettings *settings) {
 	this->body_shape = JPH::EmptyShapeSettings().Create().Get();
 
-	this->position = load_rvec3(settings->position);
-	this->rotation = load_quat(settings->rotation);
-	this->linear_velocity = load_vec3(settings->linear_velocity);
-	this->angular_velocity = load_vec3(settings->angular_velocity);
+	this->position = loadRVec3(settings->position);
+	this->rotation = loadQuat(settings->rotation);
+	this->linear_velocity = loadVec3(settings->linear_velocity);
+	this->angular_velocity = loadVec3(settings->angular_velocity);
 
 	// Sets user_data to ptr so this object can always be accessed
 	this->user_data = settings->user_data;

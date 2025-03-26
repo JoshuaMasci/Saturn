@@ -97,10 +97,12 @@ void debugRendererBuildFrame(World *world_ptr, Transform camera_transform) {
 #ifdef JPH_DEBUG_RENDERER
 	if (JPH::DebugRenderer::sInstance != nullptr && world_ptr != nullptr) {
 		auto renderer = dynamic_cast<CallbackDebugRenderer *>(JPH::DebugRenderer::sInstance);
-		renderer->camera_position = load_rvec3(camera_transform.position);
+		renderer->camera_position = loadRVec3(camera_transform.position);
 
 		JPH::BodyManager::DrawSettings settings;
 		settings.mDrawShape = true;
+		settings.mDrawShapeWireframe = true;
+		settings.mDrawShapeColor = JPH::BodyManager::EShapeColor::SleepColor;
 		world_ptr->physics_system->DrawBodies(settings, JPH::DebugRenderer::sInstance);
 	}
 #endif
@@ -120,7 +122,7 @@ Shape shapeCreateSphere(float radius, float density, UserData user_data) {
 
 Shape shapeCreateBox(const Vec3 half_extent, float density, UserData user_data) {
 	auto settings = JPH::BoxShapeSettings();
-	settings.mHalfExtent = load_vec3(half_extent);
+	settings.mHalfExtent = loadVec3(half_extent);
 	settings.mDensity = density;
 	settings.mUserData = user_data;
 
@@ -162,7 +164,7 @@ Shape shapeCreateCapsule(float half_height, float radius, float density, UserDat
 Shape shapeCreateConvexHull(const Vec3 positions[], size_t position_count, float density, UserData user_data) {
 	JPH::Array<JPH::Vec3> point_list(position_count);
 	for (size_t i = 0; i < position_count; i++) {
-		point_list[i] = load_vec3(positions[i]);
+		point_list[i] = loadVec3(positions[i]);
 	}
 	auto settings = JPH::ConvexHullShapeSettings();
 	settings.mPoints = point_list;
@@ -181,7 +183,7 @@ Shape shapeCreateMesh(const Vec3 positions[], size_t position_count, const uint3
 
 	JPH::VertexList vertex_list;
 	for (size_t i = 0; i < position_count; i++) {
-		vertex_list.push_back(load_float3(positions[i]));
+		vertex_list.push_back(loadFloat3(positions[i]));
 	}
 
 	JPH::IndexedTriangleList triangle_list;
@@ -225,7 +227,7 @@ Shape shapeCreateCompound(const SubShapeSettings sub_shapes[], size_t sub_shape_
 	for (auto i = 0; i < sub_shape_count; i++) {
 		auto subshape = &sub_shapes[i];
 		auto shape_ref = shape_pool->get(subshape->shape);
-		static_shape_settings.AddShape(load_vec3(subshape->position), load_quat(subshape->rotation), shape_ref, i);
+		static_shape_settings.AddShape(loadVec3(subshape->position), loadQuat(subshape->rotation), shape_ref, i);
 	}
 
 	auto shape = static_shape_settings.Create().Get();
@@ -272,7 +274,7 @@ void worldRemoveBody(World *world_ptr, Body *body_ptr) {
 }
 
 bool worldCastRayCloset(World *world_ptr, ObjectLayer object_layer_pattern, const RVec3 origin, const Vec3 direction, RayCastHit *hit_result) {
-	return world_ptr->castRayCloset(object_layer_pattern, load_rvec3(origin), load_vec3(direction), hit_result);
+	return world_ptr->castRayCloset(object_layer_pattern, loadRVec3(origin), loadVec3(direction), hit_result);
 }
 
 bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pattern, Body *ignore_body_ptr, const RVec3 origin, const Vec3 direction, RayCastHit *hit_result) {
@@ -282,14 +284,14 @@ bool worldCastRayClosetIgnoreBody(World *world_ptr, ObjectLayer object_layer_pat
 		ignore_body_id = ignore_body_ptr->body_id;
 	}
 
-	return world_ptr->castRayClosetIgnoreBody(object_layer_pattern, ignore_body_id, load_rvec3(origin), load_vec3(direction), hit_result);
+	return world_ptr->castRayClosetIgnoreBody(object_layer_pattern, ignore_body_id, loadRVec3(origin), loadVec3(direction), hit_result);
 }
 
 void worldCastShape(World *world_ptr, ObjectLayer object_layer_pattern, Shape shape, const Transform *c_transform, ShapeCastCallback callback, void *callback_data) {
 	shape_pool_mutex.lock();
 	auto shape_ref = shape_pool->get(shape);
 	shape_pool_mutex.unlock();
-	world_ptr->castShape(object_layer_pattern, load_rvec3(c_transform->position), load_quat(c_transform->rotation), shape_ref, callback, callback_data);
+	world_ptr->castShape(object_layer_pattern, loadRVec3(c_transform->position), loadQuat(c_transform->rotation), shape_ref, callback, callback_data);
 }
 
 // Body functions
@@ -314,7 +316,7 @@ Transform bodyGetTransform(Body *body_ptr) {
 }
 
 void bodySetTransform(Body *body_ptr, const Transform *c_transform) {
-	body_ptr->setTransform(load_rvec3(c_transform->position), load_quat(c_transform->rotation));
+	body_ptr->setTransform(loadRVec3(c_transform->position), loadQuat(c_transform->rotation));
 }
 
 Velocity bodyGetVelocity(Body *body_ptr) {
@@ -328,7 +330,7 @@ Velocity bodyGetVelocity(Body *body_ptr) {
 }
 
 void bodySetVelocity(Body *body_ptr, const Velocity *c_velocity) {
-	body_ptr->setVelocity(load_vec3(c_velocity->linear), load_vec3(c_velocity->angular));
+	body_ptr->setVelocity(loadVec3(c_velocity->linear), loadVec3(c_velocity->angular));
 }
 
 SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Vec3 position, const Quat rotation, UserData user_data) {
@@ -338,8 +340,8 @@ SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Vec3 position, con
 
 	return body_ptr->addShape(SubShape{
 		shape_ref,
-		load_vec3(position),
-		load_quat(rotation),
+		loadVec3(position),
+		loadQuat(rotation),
 		user_data,
 	});
 }
@@ -349,7 +351,7 @@ void bodyRemoveShape(Body *body_ptr, SubShapeIndex index) {
 }
 
 void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Vec3 position, const Quat rotation) {
-	body_ptr->updateShapeTransform(index, load_vec3(position), load_quat(rotation));
+	body_ptr->updateShapeTransform(index, loadVec3(position), loadQuat(rotation));
 }
 
 void bodyRemoveAllShapes(Body *body_ptr) {

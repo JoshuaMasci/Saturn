@@ -51,6 +51,10 @@ pub fn build(b: *std.Build) !void {
     const zalgebra = b.dependency("zalgebra", .{});
     exe.root_module.addImport("zalgebra", zalgebra.module("zalgebra"));
 
+    // zmath
+    // const zmath = b.dependency("zmath", .{});
+    // exe.root_module.addImport("zmath", zmath.module("root"));
+
     // zgltf
     const zgltf = b.dependency("zgltf", .{});
     exe.root_module.addImport("zgltf", zgltf.module("zgltf"));

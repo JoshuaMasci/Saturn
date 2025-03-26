@@ -166,8 +166,12 @@ pub const App = struct {
             }
         }
 
-        const debug_render_physics = true;
-        if (debug_render_physics) {
+        if (zimgui.begin("Debug", .{})) {
+            _ = zimgui.checkbox("Debug Physics Layer", .{ .v = &self.render_thread.data.physics_renderer.enabled });
+        }
+        zimgui.end();
+
+        if (self.render_thread.data.physics_renderer.enabled) {
             if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
                 if (game_debug_entity.world) |game_world| {
                     const physics = @import("entity/engine/physics.zig");

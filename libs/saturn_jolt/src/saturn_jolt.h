@@ -38,7 +38,7 @@ typedef float Vec2[2];
 typedef float Vec3[3];
 typedef float Vec4[4];
 typedef float Quat[4];
-typedef Vec4 Mat44[4];
+typedef float Mat44[16];
 
 typedef struct Transform {
 	RVec3 position;
@@ -109,11 +109,22 @@ typedef void (*DrawText3DCallback)(void *, DrawTextData);
 typedef void (*CreateTriangleMeshCallback)(void *, MeshPrimitive, const Triangle *, size_t);
 typedef void (*CreateIndexedMeshCallback)(void *, MeshPrimitive, const Vertex *, size_t, const uint32_t *, size_t);
 
+typedef enum CullMode {
+	CULL_MODE_BACK = 0,
+	CULL_MODE_FRONT = 1,
+	CULL_MODE_OFF = 2,
+} CullMode;
+
+typedef enum DrawMode {
+	DRAW_MODE_SOLID = 0,
+	DRAW_MODE_WIREFRAME = 1,
+} DrawMode;
+
 typedef struct DrawGeometryData {
 	MeshPrimitive mesh;
 	Color color;
-	uint32_t cull_mode;
-	uint32_t draw_mode;
+	CullMode cull_mode;
+	DrawMode draw_mode;
 	Mat44 model_matrix;
 } DrawGeometryData;
 typedef void (*DrawGeometryCallback)(void *, DrawGeometryData);

@@ -40,6 +40,7 @@ class CallbackDebugRenderer : public JPH::DebugRenderer {
 	JPH::RVec3 camera_position;
 
   protected:
+	MeshPrimitive next_id = 1;
 	DebugRendererCallbacks callback_data;
 };
 

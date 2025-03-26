@@ -281,6 +281,17 @@ pub const DrawTriangleData = c.DrawTriangleData;
 pub const DrawTextData = c.DrawTextData;
 pub const DrawGeometryData = c.DrawGeometryData;
 
+pub const CullMode = enum(c.CullMode) {
+    back_face = c.CULL_MODE_BACK,
+    front_face = c.CULL_MODE_FRONT,
+    off = c.CULL_MODE_OFF,
+};
+
+pub const DrawMode = enum(c.DrawMode) {
+    solid = c.DRAW_MODE_SOLID,
+    wireframe = c.DRAW_MODE_WIREFRAME,
+};
+
 pub fn initDebugRenderer(debug_renderer: c.DebugRendererCallbacks) void {
     c.debugRendererCreate(debug_renderer);
 }
