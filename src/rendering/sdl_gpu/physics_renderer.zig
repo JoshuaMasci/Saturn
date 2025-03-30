@@ -229,7 +229,6 @@ fn drawGeometryCallback(ptr: ?*anyopaque, data: physics.DrawGeometryData) callco
 }
 
 fn freeMeshPrimitive(ptr: ?*anyopaque, id: physics.MeshPrimitive) callconv(.C) void {
-    std.log.info("freeMeshPrimitive", .{});
     if (ptr == null) return;
     const self: *Self = @ptrCast(@alignCast(ptr));
     if (self.meshes.fetchSwapRemove(id)) |entry| {

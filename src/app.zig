@@ -73,6 +73,8 @@ pub const App = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.render_thread.quit();
+
         self.game_universe.deinit();
 
         physics_system.deinitDebugRenderer();

@@ -85,14 +85,16 @@ pub const RenderThread = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.data.deinit();
+        self.allocator.destroy(self.data);
+        self.allocator.destroy(self.signals);
+    }
+
+    pub fn quit(self: *Self) void {
         //Tell the render thread to quit
         self.signals.quit_thread.store(true, .monotonic);
         self.signals.start_render_semphore.post();
         self.thread.join();
-
-        self.data.deinit();
-        self.allocator.destroy(self.data);
-        self.allocator.destroy(self.signals);
     }
 
     pub fn registerWindow(self: *Self, window: Window) void {
