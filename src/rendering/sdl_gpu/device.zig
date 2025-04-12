@@ -11,7 +11,10 @@ shader_format: c.SDL_GPUShaderFormat,
 
 pub fn init() Self {
     std.debug.assert(c.SDL_Init(c.SDL_INIT_VIDEO));
-    const handle = c.SDL_CreateGPUDevice(c.SDL_GPU_SHADERFORMAT_SPIRV, true, null).?;
+    const handle = c.SDL_CreateGPUDevice(c.SDL_GPU_SHADERFORMAT_SPIRV, false, null);
+    if (handle == null) {
+        std.debug.panic("Failed to init GpuDevice: {s}", .{c.SDL_GetError()});
+    }
 
     const driver_name: [*c]const u8 = c.SDL_GetGPUDeviceDriver(handle);
     const shader_format = c.SDL_GetGPUShaderFormats(handle);
@@ -22,7 +25,7 @@ pub fn init() Self {
     });
 
     return .{
-        .handle = handle,
+        .handle = handle.?,
         .shader_format = shader_format,
     };
 }

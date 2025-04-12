@@ -6,15 +6,15 @@ const c = @import("../../platform/sdl3.zig").c;
 const Device = @import("device.zig");
 const Window = @import("../../platform/sdl3.zig").Window;
 
-const za = @import("zalgebra");
+const zm = @import("zmath");
 
 const Transform = @import("../../transform.zig");
 const Camera = @import("../camera.zig").Camera;
 
 const DrawMeshData = struct {
     mesh_id: physics.MeshPrimitive,
-    model_matrix: za.Mat4,
-    color: za.Vec4,
+    model_matrix: zm.Mat,
+    color: zm.Vec,
 };
 
 const Self = @This();
@@ -120,8 +120,8 @@ pub fn renderFrame(self: *Self, command_buffer: *c.SDL_GPUCommandBuffer, target_
     const height_float: f32 = @floatFromInt(target_size[1]);
     const aspect_ratio: f32 = width_float / height_float;
     const view_matrix = camera.transform.getViewMatrix();
-    const projection_matrix = camera.camera.projection_gl(aspect_ratio); //TODO: this is probably not be the correct matrix for SDL_GPU's clip space
-    const view_projection_matrix = projection_matrix.mul(view_matrix);
+    const projection_matrix = camera.camera.getProjectionMatrix(aspect_ratio);
+    const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
     if (self.draw_solid_meshs.items.len != 0) {
         drawMeshes(&self.meshes, command_buffer, render_pass.?, self.solid_mesh_graphics_pipeline, &view_projection_matrix, self.draw_solid_meshs.items);
@@ -137,16 +137,16 @@ fn drawMeshes(
     command_buffer: *c.SDL_GPUCommandBuffer,
     render_pass: *c.SDL_GPURenderPass,
     pipeline: *c.SDL_GPUGraphicsPipeline,
-    view_projection_matrix: *const za.Mat4,
+    view_projection_matrix: *const zm.Mat,
     draw_list: []DrawMeshData,
 ) void {
     c.SDL_BindGPUGraphicsPipeline(render_pass, pipeline);
-    c.SDL_PushGPUVertexUniformData(command_buffer, 0, view_projection_matrix.getData(), @intCast(@sizeOf(za.Mat4)));
+    c.SDL_PushGPUVertexUniformData(command_buffer, 0, view_projection_matrix, @intCast(@sizeOf(zm.Mat)));
 
     for (draw_list) |draw_mesh| {
         if (mesh_map.get(draw_mesh.mesh_id)) |mesh| {
-            c.SDL_PushGPUVertexUniformData(command_buffer, 1, draw_mesh.model_matrix.getData(), @intCast(@sizeOf(za.Mat4)));
-            c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &draw_mesh.color.toArray(), @intCast(@sizeOf(za.Vec4)));
+            c.SDL_PushGPUVertexUniformData(command_buffer, 1, &draw_mesh.model_matrix, @intCast(@sizeOf(zm.Mat)));
+            c.SDL_PushGPUFragmentUniformData(command_buffer, 0, &draw_mesh.color, @intCast(@sizeOf(zm.Vec)));
 
             const vertex_bindings: []const c.SDL_GPUBufferBinding = &.{
                 .{ .buffer = mesh.vetex_buffer, .offset = 0 },
@@ -212,8 +212,8 @@ fn drawGeometryCallback(ptr: ?*anyopaque, data: physics.DrawGeometryData) callco
     if (ptr == null) return;
     const self: *Self = @ptrCast(@alignCast(ptr));
 
-    const color = za.Vec4.new(@as(f32, @floatFromInt(data.color.r)), @as(f32, @floatFromInt(data.color.g)), @as(f32, @floatFromInt(data.color.b)), @as(f32, @floatFromInt(data.color.a))).scale(1.0 / 255.0);
-    const model_matrix = za.Mat4.fromSlice(&data.model_matrix);
+    const color = zm.f32x4(@floatFromInt(data.color.r), @floatFromInt(data.color.g), @floatFromInt(data.color.b), @floatFromInt(data.color.a)) / zm.splat(zm.Vec, 255.0);
+    const model_matrix = zm.matFromArr(data.model_matrix);
     const draw_data: DrawMeshData = .{
         .color = color,
         .mesh_id = data.mesh,

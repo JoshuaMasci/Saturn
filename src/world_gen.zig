@@ -1,7 +1,7 @@
 const std = @import("std");
 const global = @import("global.zig");
 
-const za = @import("zalgebra");
+const zm = @import("zmath");
 const Transform = @import("transform.zig");
 
 const physics_system = @import("physics");
@@ -35,7 +35,7 @@ pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle, transf
     return entity.handle;
 }
 
-pub fn create_props(universe: *Universe, world_handle: World.Handle, count: usize, position: za.Vec3, scale: f32) void {
+pub fn create_props(universe: *Universe, world_handle: World.Handle, count: usize, position: zm.Vec, scale: f32) void {
     const cube_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/cube.mesh").?;
     const material_handles: []const MaterialAssetHandle = &.{
         MaterialAssetHandle.fromRepoPath("engine:materials/olive.json_mat").?,
@@ -48,7 +48,7 @@ pub fn create_props(universe: *Universe, world_handle: World.Handle, count: usiz
     for (0..count) |i| {
         var cube_entity = universe.createEntity("Cube Entity");
         cube_entity.transform.position = position;
-        cube_entity.transform.scale = za.Vec3.set(scale);
+        cube_entity.transform.scale = zm.splat(zm.Vec, scale);
         cube_entity.systems.add(rendering.StaticMeshComponent{ .mesh = cube_mesh_handle, .material = material_handles[@mod(i, material_handles.len)] });
         cube_entity.systems.add(physics.PhysicsColliderComponent{ .shape = cube_shape });
         cube_entity.systems.add(physics.PhysicsEntitySystem.init(cube_entity.handle, .dynamic));
@@ -88,16 +88,16 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
 
     createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_mesh_handle, grid_material_handle, .{}, false);
     createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{}, false);
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(5.0) }, false);
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(15.0) }, false);
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = za.Vec3.NEG_Z.scale(20.0) }, false);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(0.0, 0.0, -5.0, 0.0) }, false);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(0.0, 0.0, -15.0, 0.0) }, false);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(0.0, 0.0, -20.0, 0.0) }, false);
 
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = za.Vec3.new(5.0, 0.0, -15.0), .rotation = za.Quat.fromEulerAngles(za.Vec3.new(0.0, za.toRadians(@as(f32, 90.0)), 0.0)) }, true);
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_inside_mesh_handle, uv_grid_material_handle, .{ .position = za.Vec3.new(2.5 + 1.25, 0.0, -15.0), .rotation = za.Quat.fromEulerAngles(za.Vec3.new(0.0, za.toRadians(@as(f32, 90.0)), 0.0)) }, true);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(5.0, 0.0, -15.0, 0.0), .rotation = zm.quatFromRollPitchYaw(0.0, std.math.pi / 2.0, 0.0) }, true);
+    createMeshEntity(allocator, universe, ship_inside, ship_outside, airlock_inside_mesh_handle, uv_grid_material_handle, .{ .position = zm.f32x4(2.5 + 1.25, 0.0, -15.0, 0.0), .rotation = zm.quatFromRollPitchYaw(0.0, std.math.pi / 2.0, 0.0) }, true);
 
     // Airlocks
     {
-        const center_transform: Transform = .{ .position = za.Vec3.new(2.5 * 1.5, 0.0, -15.0) };
+        const center_transform: Transform = .{ .position = zm.f32x4(2.5 * 1.5, 0.0, -15.0, 0.0) };
 
         var inside_airlock_center = universe.createEntity("Airlock Inside");
         inside_airlock_center.transform = center_transform;
@@ -111,14 +111,14 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
 
         const mesh = MeshAssetHandle.fromRepoPath("engine:models/cube.mesh").?;
         const material = MaterialAssetHandle.fromRepoPath("engine:materials/teal.json_mat").?;
-        const size = za.Vec3.new(0.2, 1.0, 1.0);
-        const door_box = physics_system.Shape.initBox(size.data, 1.0, 0);
+        const size = zm.f32x4(0.2, 1.0, 1.0, 0.0);
+        const door_box = physics_system.Shape.initBox(zm.vecToArr3(size), 1.0, 0);
 
         var inside_door = universe.createEntity("Airlock Door Inside");
-        inside_door.transform = .{ .position = za.Vec3.new(2.5 * 0.5, 0.0, 0.0), .scale = size };
+        inside_door.transform = .{ .position = zm.f32x4(2.5 * 0.5, 0.0, 0.0, 0.0), .scale = size };
 
         var outside_door = universe.createEntity("Airlock Door Outside");
-        outside_door.transform = .{ .position = za.Vec3.new(-2.5 * 0.5, 0.0, 0.0), .scale = size };
+        outside_door.transform = .{ .position = zm.f32x4(-2.5 * 0.5, 0.0, 0.0, 0.0), .scale = size };
 
         inside_door.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
         inside_door.systems.add(physics.PhysicsColliderComponent{ .shape = door_box });
@@ -138,8 +138,8 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     ship_inside.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(ship_inside);
     ship_outside.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(ship_outside);
 
-    ship_outside.transform.position = za.Vec3.set(100.0);
-    ship_outside.transform.rotation = za.Quat.fromAxis(za.toRadians(@as(f32, 90.0)), za.Vec3.Y);
+    ship_outside.transform.position = zm.splat(zm.Vec, 100.0);
+    ship_outside.transform.rotation = zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0);
 
     inside_world.addEntity(ship_inside);
     outside_world.addEntity(ship_outside);

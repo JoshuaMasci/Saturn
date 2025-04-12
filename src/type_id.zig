@@ -7,6 +7,6 @@ pub inline fn typeId(comptime T: type) TypeId {
         comptime {
             _ = @typeName(T);
         }
-        var id: @typeInfo(TypeId).Pointer.child = undefined;
+        var id: @typeInfo(TypeId).pointer.child = undefined;
     }.id;
 }

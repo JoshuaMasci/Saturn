@@ -288,7 +288,7 @@ const ButtonState = struct {
 const Keyboard = struct {
     const Self = @This();
 
-    button_state: [c.SDL_SCANCODE_COUNT]ButtonState = .{.{}} ** c.SDL_SCANCODE_COUNT,
+    button_state: [c.SDL_SCANCODE_COUNT]ButtonState = @splat(.{}),
 
     fn beginFrame(self: *Self) void {
         for (&self.button_state) |*button_state| {
@@ -359,7 +359,7 @@ const MouseMovementState = union(enum) {
 const Mouse = struct {
     const Self = @This();
 
-    button_state: [5]ButtonState = .{.{}} ** 5,
+    button_state: [5]ButtonState = @splat(.{}),
     axis_state: MouseMovementState = .idle,
 
     captured_window: ?Window = null,
@@ -466,5 +466,5 @@ const Controller = struct {
     joystick: c.SDL_JoystickID,
     gamepad: *c.SDL_Gamepad,
 
-    buttons: [c.SDL_GAMEPAD_BUTTON_COUNT]ButtonState = .{.{}} ** c.SDL_GAMEPAD_BUTTON_COUNT,
+    buttons: [c.SDL_GAMEPAD_BUTTON_COUNT]ButtonState = @splat(.{}),
 };

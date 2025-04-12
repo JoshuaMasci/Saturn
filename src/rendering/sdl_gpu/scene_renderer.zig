@@ -1,5 +1,5 @@
 const std = @import("std");
-const za = @import("zalgebra");
+const zm = @import("zmath");
 const global = @import("../../global.zig");
 
 const Transform = @import("../../transform.zig");
@@ -155,9 +155,9 @@ pub const Renderer = struct {
             const height_float: f32 = @floatFromInt(target_size[1]);
             const aspect_ratio: f32 = width_float / height_float;
             const view_matrix = camera.transform.getViewMatrix();
-            const projection_matrix = camera.camera.projection_gl(aspect_ratio); //TODO: this is probably not be the correct matrix for SDL_GPU's clip space
-            const view_projection_matrix = projection_matrix.mul(view_matrix);
-            c.SDL_PushGPUVertexUniformData(command_buffer, 0, view_projection_matrix.getData(), @intCast(@sizeOf(za.Mat4)));
+            const projection_matrix = camera.camera.getProjectionMatrix(aspect_ratio); //TODO: this is probably not be the correct matrix for SDL_GPU's clip space
+            const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
+            c.SDL_PushGPUVertexUniformData(command_buffer, 0, &view_projection_matrix, @intCast(@sizeOf(zm.Mat)));
         }
 
         for (scene.static_meshes.items, 0..) |static_mesh, i| {
@@ -172,7 +172,7 @@ pub const Renderer = struct {
             if (self.bindMaterial(static_mesh.component.material, command_buffer, render_pass)) {
                 {
                     const model_matrix = static_mesh.transform.getModelMatrix();
-                    c.SDL_PushGPUVertexUniformData(command_buffer, 1, model_matrix.getData(), @intCast(@sizeOf(za.Mat4)));
+                    c.SDL_PushGPUVertexUniformData(command_buffer, 1, &model_matrix, @intCast(@sizeOf(zm.Mat)));
                 }
 
                 self.bindAndDispatchMesh(static_mesh.component.mesh, render_pass);

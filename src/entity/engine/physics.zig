@@ -1,5 +1,5 @@
 const std = @import("std");
-const za = @import("zalgebra");
+const zm = @import("zmath");
 const Transform = @import("../../transform.zig");
 
 const Entity = @import("../entity.zig");
@@ -14,16 +14,16 @@ pub const RayCastHit = struct {
     root_handle: Entity.Handle,
     entity_handle: Entity.Handle,
     distance: f32,
-    ws_position: za.Vec3,
-    ws_normal: za.Vec3,
+    ws_position: zm.Vec,
+    ws_normal: zm.Vec,
 
     fn init(hit: physics.RayCastHit) @This() {
         return .{
             .root_handle = @intCast(hit.body_user_data),
             .entity_handle = @intCast(hit.shape_user_data),
             .distance = hit.distance,
-            .ws_position = za.Vec3.fromArray(hit.ws_position),
-            .ws_normal = za.Vec3.fromArray(hit.ws_normal),
+            .ws_position = zm.loadArr3(hit.ws_position),
+            .ws_normal = zm.loadArr3(hit.ws_normal),
         };
     }
 };
@@ -37,8 +37,8 @@ pub const PhysicsEntitySystem = struct {
 
     body: physics.Body,
 
-    linear_velocity: za.Vec3 = za.Vec3.ZERO,
-    angular_velocity: za.Vec3 = za.Vec3.ZERO,
+    linear_velocity: zm.Vec = zm.splat(zm.Vec, 0.0),
+    angular_velocity: zm.Vec = zm.splat(zm.Vec, 0.0),
 
     pub fn init(entity_handle: Entity.Handle, motion_type: physics.MotionType) Self {
         return .{
@@ -65,8 +65,8 @@ pub const PhysicsEntitySystem = struct {
             const root_transform = entity.getRootTransform();
             _ = body.addShape(
                 collider.shape,
-                root_transform.position.toArray(),
-                root_transform.rotation.toArray(),
+                zm.vecToArr3(root_transform.position),
+                zm.vecToArr4(root_transform.rotation),
                 entity.handle,
             );
         }
@@ -80,21 +80,21 @@ pub const PhysicsEntitySystem = struct {
         _ = delta_time; // autofix
         if (stage == .pre_physics) {
             self.body.setTransform(&.{
-                .position = entity.transform.position.toArray(),
-                .rotation = entity.transform.rotation.norm().toArray(),
+                .position = zm.vecToArr3(entity.transform.position),
+                .rotation = zm.vecToArr4(zm.normalize4(entity.transform.rotation)),
             });
             self.body.setVelocity(&.{
-                .linear = self.linear_velocity.toArray(),
-                .angular = self.angular_velocity.toArray(),
+                .linear = zm.vecToArr3(self.linear_velocity),
+                .angular = zm.vecToArr3(self.angular_velocity),
             });
         } else if (stage == .post_physics) {
             const transform = self.body.getTransform();
-            entity.transform.position = za.Vec3.fromArray(transform.position);
-            entity.transform.rotation = za.Quat.fromArray(transform.rotation).norm();
+            entity.transform.position = zm.loadArr3(transform.position);
+            entity.transform.rotation = zm.normalize4(zm.loadArr4(transform.rotation));
 
             const velocity = self.body.getVelocity();
-            self.linear_velocity = za.Vec3.fromArray(velocity.linear);
-            self.angular_velocity = za.Vec3.fromArray(velocity.angular);
+            self.linear_velocity = zm.loadArr3(velocity.linear);
+            self.angular_velocity = zm.loadArr3(velocity.angular);
         }
     }
 };
@@ -145,18 +145,18 @@ pub const PhysicsWorldSystem = struct {
         self.physics_world.update(delta_time, 1);
     }
 
-    pub fn castRay(self: Self, object_layer: u16, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
-        if (self.physics_world.ray_cast_closest(object_layer, start.toArray(), direction.toArray())) |hit| {
+    pub fn castRay(self: Self, object_layer: u16, start: zm.Vec, direction: zm.Vec) ?RayCastHit {
+        if (self.physics_world.ray_cast_closest(object_layer, zm.vecToArr3(start), zm.vecToArr3(direction))) |hit| {
             return RayCastHit.init(hit);
         }
         return null;
     }
 
-    pub fn castRayIgnoreEntity(self: Self, object_layer: u16, ignore: *Entity, start: za.Vec3, direction: za.Vec3) ?RayCastHit {
+    pub fn castRayIgnoreEntity(self: Self, object_layer: u16, ignore: *Entity, start: zm.Vec, direction: zm.Vec) ?RayCastHit {
         //TODO: this should log error rather than crash?
         const ignore_body = ignore.root.systems.get(PhysicsEntitySystem).?.body;
-        const start_a = start.toArray();
-        const direction_a = direction.toArray();
+        const start_a = zm.vecToArr3(start);
+        const direction_a = zm.vecToArr3(direction);
 
         if (self.physics_world.castRayClosestIgnoreBody(object_layer, ignore_body, start_a, direction_a)) |hit| {
             return RayCastHit.init(hit);
@@ -166,7 +166,7 @@ pub const PhysicsWorldSystem = struct {
 
     pub fn castShape(self: Self, temp_allocator: std.mem.Allocator, object_layer: u16, shape: physics.Shape, transform: Transform) std.ArrayList(Entity.Handle) {
         var callback_list = ShapeCastHitList.init(temp_allocator);
-        self.physics_world.castShape(object_layer, shape, &.{ .position = transform.position.toArray(), .rotation = transform.rotation.toArray() }, &shapeCastCallback, &callback_list);
+        self.physics_world.castShape(object_layer, shape, &.{ .position = zm.vecToArr3(transform.position), .rotation = zm.vecToArr4(transform.rotation) }, &shapeCastCallback, &callback_list);
         return callback_list;
     }
 };

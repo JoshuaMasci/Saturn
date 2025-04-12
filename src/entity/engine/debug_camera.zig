@@ -1,5 +1,5 @@
 const std = @import("std");
-const za = @import("zalgebra");
+const zm = @import("zmath");
 
 const input = @import("../../input.zig");
 
@@ -11,11 +11,11 @@ const UpdateStage = @import("../universe.zig").UpdateStage;
 pub const DebugCameraEntitySystem = struct {
     const Self = @This();
 
-    linear_speed: za.Vec3 = za.Vec3.set(5.0),
-    angular_speed: za.Vec3 = za.Vec3.set(std.math.pi),
+    linear_speed: zm.Vec = zm.splat(zm.Vec, 5.0),
+    angular_speed: zm.Vec = zm.splat(zm.Vec, std.math.pi),
 
-    linear_input: za.Vec3 = za.Vec3.ZERO,
-    angular_input: za.Vec3 = za.Vec3.ZERO,
+    linear_input: zm.Vec = zm.splat(zm.Vec, 0.0),
+    angular_input: zm.Vec = zm.splat(zm.Vec, 0.0),
 
     cast_ray: bool = false,
 
@@ -27,37 +27,37 @@ pub const DebugCameraEntitySystem = struct {
         if (stage != .pre_physics)
             return;
 
-        const linear_speed = entity.transform.rotation.rotateVec(self.linear_input.mul(
-            self.linear_speed,
-        ));
+        const linear_speed = zm.rotate(entity.transform.rotation, self.linear_input * self.linear_speed);
         if (entity.systems.get(physics.PhysicsEntitySystem)) |entity_physics| {
             entity_physics.linear_velocity = linear_speed;
-            entity_physics.angular_velocity = za.Vec3.ZERO;
+            entity_physics.angular_velocity = zm.splat(zm.Vec, 0.0);
         } else {
-            entity.transform.position = entity.transform.position.add(linear_speed.scale(delta_time));
+            entity.transform.position += linear_speed * zm.f32x4s(delta_time);
         }
 
-        const angular_rotation = self.angular_input.mul(self.angular_speed).scale(delta_time);
+        const angular_rotation = self.angular_input * self.angular_speed * zm.f32x4s(delta_time);
 
-        const foward = entity.transform.getForward();
-        const y = foward.y();
-        const xz = foward.swizzle2(.x, .z);
+        const forward = entity.transform.getForward();
+        const x = forward[0];
+        const y = forward[1];
+        const z = forward[2];
+        const xz = zm.loadArr2(.{ x, z });
 
-        const pitch = -std.math.atan2(y, xz.length());
-        const yaw = std.math.atan2(xz.x(), xz.y());
-        var pitch_yaw = za.Vec2.new(pitch, yaw).add(angular_rotation.toVec2());
+        const pitch = -std.math.atan2(y, zm.length2(xz)[0]);
+        const yaw = std.math.atan2(x, z);
+        var pitch_yaw = zm.loadArr2(.{ pitch, yaw }) + angular_rotation;
 
         // Clamp pitch and keep roation between 0->360 degrees
         const pi_2 = std.math.pi * 2.0;
         const max_angle: f32 = std.math.degreesToRadians(89.9);
-        pitch_yaw = za.Vec2.new(std.math.clamp(pitch_yaw.x(), -max_angle, max_angle), @mod(pitch_yaw.y(), pi_2));
+        pitch_yaw = zm.loadArr2(.{ std.math.clamp(pitch_yaw[0], -max_angle, max_angle), @mod(pitch_yaw[1], pi_2) });
 
-        const pitch_quat = za.Quat.fromAxis(pitch_yaw.x(), za.Vec3.X);
-        const yaw_quat = za.Quat.fromAxis(pitch_yaw.y(), za.Vec3.Y);
-        entity.transform.rotation = yaw_quat.mul(pitch_quat).norm();
+        const pitch_quat = zm.quatFromAxisAngle(zm.f32x4(1, 0, 0, 0), pitch_yaw[0]);
+        const yaw_quat = zm.quatFromAxisAngle(zm.f32x4(0, 1, 0, 0), pitch_yaw[1]);
+        entity.transform.rotation = zm.normalize4(zm.qmul(pitch_quat, yaw_quat));
 
         // Axis events should fire each frame they are active, so the input is reset each update
-        self.angular_input = za.Vec3.set(0.0);
+        self.angular_input = zm.splat(zm.Vec, 0.0);
     }
 
     pub fn updateExclusive(self: *Self, stage: UpdateStage, entity: *Entity, delta_time: f32) void {
@@ -72,7 +72,7 @@ pub const DebugCameraEntitySystem = struct {
                         1,
                         entity,
                         entity_transform.position,
-                        entity_transform.getForward().scale(10.0),
+                        entity_transform.getForward() * zm.splat(zm.Vec, 10.0),
                     )) |hit| {
                         const hit_entity = entity.world.?.entities.get(hit.entity_handle).?;
                         if (hit_entity.systems.get(@import("../../game/button.zig").ButtonComponent)) |button| {
@@ -85,35 +85,16 @@ pub const DebugCameraEntitySystem = struct {
         }
     }
 
-    pub fn on_button_event(self: *Self, event: input.ButtonEvent) void {
-        if (event.button == .player_interact and event.state == .pressed) {
-            self.cast_ray = true;
-        }
-    }
-
-    pub fn on_axis_event(self: *Self, event: input.AxisEvent) void {
-        switch (event.axis) {
-            .player_move_left_right => self.linear_input.data[0] = event.get_value(true),
-            .player_move_up_down => self.linear_input.data[1] = event.get_value(true),
-            .player_move_forward_backward => self.linear_input.data[2] = event.get_value(true),
-
-            .player_rotate_pitch => self.angular_input.data[0] = event.get_value(false),
-            .player_rotate_yaw => self.angular_input.data[1] = event.get_value(false),
-
-            //else => {},
-        }
-    }
-
     pub fn onInput(self: *Self, input_context: *const @import("../../input_bindings.zig").DebugCameraInputContext) void {
         if (input_context.getButtonPressed(.interact)) {
             self.cast_ray = true;
         }
 
-        self.linear_input.data[0] = input_context.getAxisValue(.move_left_right, true);
-        self.linear_input.data[1] = input_context.getAxisValue(.move_up_down, true);
-        self.linear_input.data[2] = input_context.getAxisValue(.move_forward_backward, true);
+        self.linear_input[0] = input_context.getAxisValue(.move_left_right, true);
+        self.linear_input[1] = input_context.getAxisValue(.move_up_down, true);
+        self.linear_input[2] = input_context.getAxisValue(.move_forward_backward, true);
 
-        self.angular_input.data[0] = input_context.getAxisValue(.rotate_pitch, true);
-        self.angular_input.data[1] = input_context.getAxisValue(.rotate_yaw, true);
+        self.angular_input[0] = input_context.getAxisValue(.rotate_pitch, true);
+        self.angular_input[1] = input_context.getAxisValue(.rotate_yaw, true);
     }
 };

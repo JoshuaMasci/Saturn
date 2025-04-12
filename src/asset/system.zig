@@ -76,7 +76,7 @@ pub fn AssetSystem(comptime T: type, comptime extesnions: []const []const u8) ty
             asset_hash: HashType,
 
             pub fn fromRepoPath(repo_path: []const u8) ?Handle {
-                var split = std.mem.split(u8, repo_path, ":");
+                var split = std.mem.splitSequence(u8, repo_path, ":");
                 const repo = split.next() orelse return null;
                 const path = split.next() orelse return null;
                 const repo_hash = HashMethod(repo);

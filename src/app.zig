@@ -1,5 +1,5 @@
 const std = @import("std");
-const za = @import("zalgebra");
+const zm = @import("zmath");
 
 const Platform = @import("platform/sdl3.zig").Platform;
 const Window = @import("platform/sdl3.zig").Window;
@@ -58,8 +58,8 @@ pub const App = struct {
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
-        const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside, .{ .position = za.Vec3.new(0.0, 0.0, -15.0) });
-        world_gen.create_props(game_universe, game_worlds.inside, 150, za.Vec3.new(2.5, 0.0, -15.0), 0.15);
+        const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside, .{ .position = zm.f32x4(0.0, 0.0, -15.0, 0.0) });
+        world_gen.create_props(game_universe, game_worlds.inside, 10, zm.f32x4(2.5, 0.0, -15.0, 0.0), 0.15);
 
         return .{
             .should_quit = false,
