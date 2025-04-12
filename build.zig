@@ -37,10 +37,6 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("zimgui", zimgui.module("root"));
     exe.linkLibrary(zimgui.artifact("imgui"));
 
-    // zstbi
-    const zstbi = b.dependency("zstbi", .{});
-    exe.root_module.addImport("zstbi", zstbi.module("root"));
-
     // saturn physics abstraction
     const saturn_jolt = b.dependency("saturn_jolt", .{ .enable_debug_renderer = true });
     exe.root_module.addImport("physics", saturn_jolt.module("root"));
@@ -48,6 +44,10 @@ pub fn build(b: *std.Build) !void {
     // zmath
     const zmath = b.dependency("zmath", .{});
     exe.root_module.addImport("zmath", zmath.module("root"));
+
+    // zstbi
+    const zstbi = b.dependency("zstbi", .{});
+    exe.root_module.addImport("zstbi", zstbi.module("root"));
 
     // zgltf
     const zgltf = b.dependency("zgltf", .{});
@@ -81,8 +81,9 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
         });
 
-        assets_exe.root_module.addImport("zobj", zobj.module("obj"));
         assets_exe.root_module.addImport("zstbi", zstbi.module("root"));
+        assets_exe.root_module.addImport("zobj", zobj.module("obj"));
+        assets_exe.root_module.addImport("zgltf", zgltf.module("zgltf"));
 
         if (build_sdl3) {
             const sdl3 = b.dependency("sdl3", .{

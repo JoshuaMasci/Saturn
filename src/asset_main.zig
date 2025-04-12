@@ -9,6 +9,7 @@ pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: [
 const hlsl = @import("asset/hlsl.zig");
 const obj = @import("asset/obj.zig");
 const stbi = @import("asset/stbi.zig");
+const gltf = @import("asset/gltf.zig");
 
 pub fn main() !void {
     if (hlsl.init()) {
@@ -46,6 +47,7 @@ pub fn main() !void {
     try process_fns.put(".png", processStb);
     try process_fns.put(".json_mat", processMaterial);
     try process_fns.put(".hlsl", processShader);
+    try process_fns.put(".glb", processGltf);
 
     var failed: u32 = 0;
 
@@ -193,5 +195,12 @@ fn processShader(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]co
     shader.serialize(output_file.writer()) catch |err|
         return errorString(allocator, "Failed to serialize file: {}", .{err});
 
+    return null;
+}
+
+fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
+    const file_path = removeExt(meta_file_path);
+    var gltf_file = gltf.File.load(allocator, input_dir, file_path) catch |err| return errorString(allocator, "Failed to load gltf file: {}", .{err});
+    defer gltf_file.deinit();
     return null;
 }
