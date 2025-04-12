@@ -88,7 +88,7 @@ pub fn build(b: *std.Build) !void {
             const sdl3 = b.dependency("sdl3", .{
                 .target = target,
                 .optimize = optimize,
-                .preferred_link_mode = .static,
+                .preferred_link_mode = .dynamic,
             });
             assets_exe.linkLibrary(sdl3.artifact("SDL3"));
         } else {

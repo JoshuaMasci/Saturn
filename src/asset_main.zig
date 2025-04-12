@@ -7,6 +7,8 @@ pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: [
 
 //Asset Types
 const hlsl = @import("asset/hlsl.zig");
+const obj = @import("asset/obj.zig");
+const stbi = @import("asset/stbi.zig");
 
 pub fn main() !void {
     if (hlsl.init()) {
@@ -108,7 +110,6 @@ fn errorString(allocator: std.mem.Allocator, comptime fmt: []const u8, args: any
 fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);
 
-    const obj = @import("asset/obj.zig");
     const processed_mesh = obj.loadObjMesh(allocator, input_dir, file_path) catch |err|
         return errorString(allocator, "Failed to open obj({s}): {}", .{ file_path, err });
 
@@ -131,7 +132,6 @@ fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
 fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);
 
-    const stbi = @import("asset/stbi.zig");
     const texture = stbi.loadTexture2d(allocator, input_dir, file_path) catch |err|
         return errorString(allocator, "Failed to open file({s}): {}", .{ file_path, err });
 
