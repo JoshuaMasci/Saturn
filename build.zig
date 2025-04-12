@@ -44,7 +44,6 @@ pub fn build(b: *std.Build) !void {
     // saturn physics abstraction
     const saturn_jolt = b.dependency("saturn_jolt", .{ .enable_debug_renderer = true });
     exe.root_module.addImport("physics", saturn_jolt.module("root"));
-    exe.linkLibrary(saturn_jolt.artifact("saturn_jolt"));
 
     // zmath
     const zmath = b.dependency("zmath", .{});
