@@ -48,6 +48,7 @@ pub fn main() !void {
     try process_fns.put(".json_mat", processMaterial);
     try process_fns.put(".hlsl", processShader);
     try process_fns.put(".glb", processGltf);
+    try process_fns.put(".gltf", processGltf);
 
     var failed: u32 = 0;
 
@@ -134,7 +135,7 @@ fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
 fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);
 
-    const texture = stbi.loadTexture2d(allocator, input_dir, file_path) catch |err|
+    const texture = stbi.loadFromFile(allocator, input_dir, file_path) catch |err|
         return errorString(allocator, "Failed to open file({s}): {}", .{ file_path, err });
 
     const new_path = replaceExt(allocator, file_path, ".tex2d") catch |err|
@@ -202,5 +203,52 @@ fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]cons
     const file_path = removeExt(meta_file_path);
     var gltf_file = gltf.File.load(allocator, input_dir, file_path) catch |err| return errorString(allocator, "Failed to load gltf file: {}", .{err});
     defer gltf_file.deinit();
+
+    const gltf_dir_path = removeExt((file_path));
+    var gltf_dir = output_dir.makeOpenPath(gltf_dir_path, .{}) catch |err| return errorString(allocator, "Failed to open gltf dir: {}", .{err});
+    defer gltf_dir.close();
+
+    // Meshes
+    if (gltf_file.meshes.len != 0) {
+        var mesh_dir = gltf_dir.makeOpenPath("meshes", .{}) catch |err| return errorString(allocator, "Failed to open gltf mesh dir: {}", .{err});
+        defer mesh_dir.close();
+
+        for (gltf_file.meshes) |mesh_opt| {
+            if (mesh_opt) |mesh| {
+                const mesh_file_name = std.fmt.allocPrint(allocator, "{s}.mesh", .{mesh.name}) catch |err|
+                    return errorString(allocator, "Failed to format string: {}", .{err});
+                defer allocator.free(mesh_file_name);
+
+                const output_file = mesh_dir.createFile(mesh_file_name, .{}) catch |err|
+                    return errorString(allocator, "Failed to create file: {}", .{err});
+                defer output_file.close();
+
+                mesh.serialize(output_file.writer()) catch |err|
+                    return errorString(allocator, "Failed to serialize file: {}", .{err});
+            }
+        }
+    }
+
+    // Textures
+    if (gltf_file.textures.len != 0) {
+        var texture_dir = gltf_dir.makeOpenPath("textures", .{}) catch |err| return errorString(allocator, "Failed to open gltf texture dir: {}", .{err});
+        defer texture_dir.close();
+
+        for (gltf_file.textures) |texture_opt| {
+            if (texture_opt) |texture| {
+                const texture_file_name = std.fmt.allocPrint(allocator, "{s}.tex2d", .{texture.name}) catch |err|
+                    return errorString(allocator, "Failed to format string: {}", .{err});
+                defer allocator.free(texture_file_name);
+
+                const output_file = texture_dir.createFile(texture_file_name, .{}) catch |err|
+                    return errorString(allocator, "Failed to create file: {}", .{err});
+                defer output_file.close();
+
+                texture.serialize(output_file.writer()) catch |err|
+                    return errorString(allocator, "Failed to serialize file: {}", .{err});
+            }
+        }
+    }
+
     return null;
 }

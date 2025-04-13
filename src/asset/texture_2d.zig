@@ -18,6 +18,7 @@ pub const ColorSpace = enum(u32) {
 
 const Self = @This();
 
+name: []u8,
 format: Format,
 color_space: ColorSpace = .linear,
 width: u32,
@@ -26,11 +27,13 @@ data: []u8,
 //TODO: mip data
 
 pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+    allocator.free(self.name);
     allocator.free(self.data);
 }
 
 pub fn serialize(self: Self, writer: anytype) !void {
     try writer.writeAll(&MAGIC);
+    try serde.serialzieSlice(u8, writer, self.name);
     try writer.writeInt(u32, @intFromEnum(self.format), .little);
     try writer.writeInt(u32, @intFromEnum(self.color_space), .little);
     try writer.writeInt(u32, self.width, .little);
@@ -45,6 +48,7 @@ pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
         return error.InvalidMagic;
     }
 
+    const name = try serde.deserialzieSlice(allocator, u8, reader);
     const format: Format = @enumFromInt(try reader.readInt(u32, .little));
     const color_space: ColorSpace = @enumFromInt(try reader.readInt(u32, .little));
     const width = try reader.readInt(u32, .little);
@@ -52,6 +56,7 @@ pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     const data = try serde.deserialzieSlice(allocator, u8, reader);
 
     return .{
+        .name = name,
         .format = format,
         .color_space = color_space,
         .width = width,
