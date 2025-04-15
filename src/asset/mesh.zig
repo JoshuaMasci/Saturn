@@ -19,7 +19,7 @@ pub const Primitive = struct {
 
 const Self = @This();
 
-name: []u8,
+name: []const u8,
 primitives: []Primitive,
 positions: []VertexPositions,
 attributes: []VertexAttributes,

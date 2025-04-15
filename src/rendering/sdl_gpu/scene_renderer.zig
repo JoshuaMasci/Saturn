@@ -32,6 +32,7 @@ pub const Renderer = struct {
 
     mesh_graphics_pipeline: *c.SDL_GPUGraphicsPipeline,
     linear_sampler: *c.SDL_GPUSampler,
+    empty_texture: Texture,
 
     static_mesh_map: std.AutoHashMap(MeshAsset.Registry.Handle, Mesh),
     texture_map: std.AutoHashMap(Texture2dAsset.Registry.Handle, Texture),
@@ -73,6 +74,16 @@ pub const Renderer = struct {
             .address_mode_w = c.SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
         }).?;
 
+        const empty_asset: Texture2dAsset = .{
+            .name = "empty texture",
+            .format = .rgba8,
+            .width = 2,
+            .height = 2,
+            .data = &(.{0} ** 16),
+        };
+
+        const empty_texture = Texture.init_2d(gpu_device.handle, &empty_asset);
+
         const static_mesh_map = std.AutoHashMap(MeshAsset.Registry.Handle, Mesh).init(allocator);
         const texture_map = std.AutoHashMap(Texture2dAsset.Registry.Handle, Texture).init(allocator);
         const material_map = std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset).init(allocator);
@@ -83,6 +94,7 @@ pub const Renderer = struct {
             .depth_format = formats.depth,
             .mesh_graphics_pipeline = mesh_graphics_pipeline,
             .linear_sampler = linear_sampler,
+            .empty_texture = empty_texture,
             .static_mesh_map = static_mesh_map,
             .texture_map = texture_map,
             .material_map = material_map,
@@ -110,6 +122,7 @@ pub const Renderer = struct {
 
         c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device.handle, self.mesh_graphics_pipeline);
         c.SDL_ReleaseGPUSampler(self.gpu_device.handle, self.linear_sampler);
+        self.empty_texture.deinit();
     }
 
     pub fn render(self: *Self, temp_allocator: std.mem.Allocator, command_buffer: *c.SDL_GPUCommandBuffer, target_hande: ?*c.SDL_GPUTexture, target_size: [2]u32, scene: *const RenderScene, camera: struct {
@@ -221,6 +234,8 @@ pub const Renderer = struct {
 
         if (material.base_color_texture) |texture_handle| {
             uniform_data.base_color_texture_enable = @intFromBool(self.bindTexture(texture_handle, render_pass, 0));
+        } else {
+            self.bindEmptyTexture(render_pass, 0);
         }
 
         const uniform_data_bytes: []const u8 = std.mem.sliceAsBytes((&uniform_data)[0..1]);
@@ -235,13 +250,29 @@ pub const Renderer = struct {
         render_pass: ?*c.SDL_GPURenderPass,
         slot: u32,
     ) bool {
-        const texture = self.texture_map.get(handle) orelse return false;
+        if (self.texture_map.get(handle)) |texture| {
+            const bindings: []const c.SDL_GPUTextureSamplerBinding = &.{.{
+                .sampler = self.linear_sampler,
+                .texture = texture.handle,
+            }};
+            c.SDL_BindGPUFragmentSamplers(render_pass, slot, bindings.ptr, @intCast(bindings.len));
+            return true;
+        } else {
+            self.bindEmptyTexture(render_pass, slot);
+            return false;
+        }
+    }
+
+    fn bindEmptyTexture(
+        self: *Self,
+        render_pass: ?*c.SDL_GPURenderPass,
+        slot: u32,
+    ) void {
         const bindings: []const c.SDL_GPUTextureSamplerBinding = &.{.{
             .sampler = self.linear_sampler,
-            .texture = texture.handle,
+            .texture = self.empty_texture.handle,
         }};
         c.SDL_BindGPUFragmentSamplers(render_pass, slot, bindings.ptr, @intCast(bindings.len));
-        return true;
     }
 
     pub fn tryLoadMesh(self: *Self, allocator: std.mem.Allocator, handle: MeshAsset.Registry.Handle) void {

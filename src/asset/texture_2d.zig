@@ -18,12 +18,12 @@ pub const ColorSpace = enum(u32) {
 
 const Self = @This();
 
-name: []u8,
+name: []const u8,
 format: Format,
 color_space: ColorSpace = .linear,
 width: u32,
 height: u32,
-data: []u8,
+data: []const u8,
 //TODO: mip data
 
 pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {

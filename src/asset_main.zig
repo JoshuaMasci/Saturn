@@ -1,11 +1,14 @@
 const std = @import("std");
 
+var repo_name: []const u8 = &.{};
 var input_dir: std.fs.Dir = undefined;
 var output_dir: std.fs.Dir = undefined;
 
 pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8;
 
-//Asset Types
+const Material = @import("asset/material.zig");
+
+//Asset Loaders
 const hlsl = @import("asset/hlsl.zig");
 const obj = @import("asset/obj.zig");
 const stbi = @import("asset/stbi.zig");
@@ -23,6 +26,7 @@ pub fn main() !void {
 
     var args = std.process.args();
     _ = args.next() orelse std.debug.panic("Failed to read process name, honestly IDK how this happens", .{});
+    repo_name = args.next() orelse std.debug.panic("Failed to read asset repo name", .{});
     const input_path = args.next() orelse std.debug.panic("Failed to read input path", .{});
     const output_path = args.next() orelse std.debug.panic("Failed to read output path", .{});
 
@@ -156,12 +160,12 @@ fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
 fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);
 
-    const file_buffer = input_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null) catch |err|
-        return errorString(allocator, "Failed to read file({s}): {}", .{ file_path, err });
+    const json_material = Material.Json.read(allocator, input_dir, file_path) catch |err|
+        return errorString(allocator, "Failed to parse json material({s}): {}", .{ file_path, err });
+    defer json_material.deinit();
+    const material = Material.initFromJson(&json_material.value);
 
-    defer allocator.free(file_buffer);
-
-    const new_path = replaceExt(allocator, file_path, ".json_mat") catch |err|
+    const new_path = replaceExt(allocator, file_path, ".mat") catch |err|
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
@@ -170,10 +174,8 @@ fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]
         return errorString(allocator, "Failed to create file: {}", .{err});
     defer output_file.close();
 
-    // Just write the pure json file for now
-    // TODO: at least convert from source asset path to AssetRegistry strings?
-    output_file.writeAll(file_buffer) catch |err|
-        return errorString(allocator, "Failed to write file: {}", .{err});
+    material.serialize(output_file.writer()) catch |err|
+        return errorString(allocator, "Failed to serialize file: {}", .{err});
 
     return null;
 }
@@ -199,6 +201,7 @@ fn processShader(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]co
     return null;
 }
 
+//TODO: thread each part of this load
 fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);
     var gltf_file = gltf.File.load(allocator, input_dir, file_path) catch |err| return errorString(allocator, "Failed to load gltf file: {}", .{err});
@@ -249,6 +252,13 @@ fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]cons
             }
         }
     }
+
+    // Materials
+    // for (gltf_file.materials) |material_opt| {
+    //     if (material_opt) |material| {
+    //         _ = material; // autofix
+    //     }
+    // }
 
     return null;
 }

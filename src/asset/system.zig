@@ -83,6 +83,17 @@ pub fn AssetSystem(comptime T: type, comptime extesnions: []const []const u8) ty
                 const asset_hash = HashMethod(path);
                 return .{ .repo_hash = repo_hash, .asset_hash = asset_hash };
             }
+
+            pub fn toU64(self: Handle) u64 {
+                return (@as(u64, self.repo_hash) << 32) | @as(u64, self.asset_hash);
+            }
+
+            pub fn fromU64(id: u64) Handle {
+                return .{
+                    .repo_hash = @intCast(id >> 32),
+                    .asset_hash = @intCast(id & 0xFFFF_FFFF),
+                };
+            }
         };
 
         allocator: std.mem.Allocator,
