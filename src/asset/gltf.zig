@@ -94,7 +94,7 @@ pub fn getMaterialCount(self: Self) usize {
     return self.gltf_file.data.materials.items.len;
 }
 
-pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, mesh: Mesh } {
+pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, value: Mesh } {
     if (gltf_index >= self.gltf_file.data.meshes.items.len) {
         return error.indexOutOfRange;
     }
@@ -132,7 +132,7 @@ pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !st
 
     return .{
         .output_path = self.asset_info.meshes[gltf_index].path,
-        .mesh = .{
+        .value = .{
             .name = mesh_name,
             .primitives = primitives,
             .positions = try positions.toOwnedSlice(),
@@ -142,7 +142,7 @@ pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !st
     };
 }
 
-pub fn loadTexture(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, texture: Texture2D } {
+pub fn loadTexture(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, value: Texture2D } {
     if (gltf_index >= self.gltf_file.data.images.items.len) {
         return error.indexOutOfRange;
     }
@@ -151,21 +151,21 @@ pub fn loadTexture(self: Self, allocator: std.mem.Allocator, gltf_index: usize) 
     if (gltf_image.data) |data| {
         return .{
             .output_path = self.asset_info.images[gltf_index].path,
-            .texture = try stbi.load(allocator, self.asset_info.images[gltf_index].name, data),
+            .value = try stbi.load(allocator, self.asset_info.images[gltf_index].name, data),
         };
     }
 
     if (gltf_image.uri) |uri| {
         return .{
             .output_path = self.asset_info.images[gltf_index].path,
-            .texture = try stbi.loadFromFile(allocator, self.parent_dir, self.asset_info.images[gltf_index].name, uri),
+            .value = try stbi.loadFromFile(allocator, self.parent_dir, self.asset_info.images[gltf_index].name, uri),
         };
     }
 
     return error.NoImageSource;
 }
 
-pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, material: Material } {
+pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, value: Material } {
     if (gltf_index >= self.gltf_file.data.materials.items.len) {
         return error.indexOutOfRange;
     }
@@ -189,7 +189,7 @@ pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize)
 
     return .{
         .output_path = self.asset_info.materials[gltf_index].path,
-        .material = material,
+        .value = material,
     };
 }
 
@@ -222,8 +222,8 @@ fn AssetInfo(comptime Handle: type, comptime sub_path: []const u8, comptime file
 
 const AssetHandles = struct {
     const MeshAssetInfo = AssetInfo(Mesh.Registry.Handle, "/meshes/", ".mesh");
-    const ImageAssetInfo = AssetInfo(Texture2D.Registry.Handle, "/textures/", ".mesh");
-    const MaterialAssetInfo = AssetInfo(Material.Registry.Handle, "/materials/", ".mesh");
+    const ImageAssetInfo = AssetInfo(Texture2D.Registry.Handle, "/textures/", ".tex2d");
+    const MaterialAssetInfo = AssetInfo(Material.Registry.Handle, "/materials/", ".mat");
 
     allocator: std.mem.Allocator,
 
@@ -351,13 +351,13 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
     errdefer positions.deinit();
 
     var normals = std.ArrayList([3]f32).init(allocator);
-    defer positions.deinit();
+    defer normals.deinit();
 
     var tangents = std.ArrayList([4]f32).init(allocator);
-    defer positions.deinit();
+    defer tangents.deinit();
 
     var uvs = std.ArrayList([2]f32).init(allocator);
-    defer positions.deinit();
+    defer uvs.deinit();
 
     for (gltf_primitive.attributes.items) |attribute| {
         switch (attribute) {

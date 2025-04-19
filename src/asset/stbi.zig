@@ -2,10 +2,15 @@ const std = @import("std");
 const zstbi = @import("zstbi");
 const Texture = @import("texture_2d.zig");
 
-pub fn load(allocator: std.mem.Allocator, texture_name: []const u8, file_buffer: []const u8) !Texture {
+pub fn init(allocator: std.mem.Allocator) void {
     zstbi.init(allocator);
-    defer zstbi.deinit();
+}
 
+pub fn deinit() void {
+    zstbi.deinit();
+}
+
+pub fn load(allocator: std.mem.Allocator, texture_name: []const u8, file_buffer: []const u8) !Texture {
     var stb_image = try zstbi.Image.loadFromMemory(file_buffer, 0);
     defer stb_image.deinit();
 
