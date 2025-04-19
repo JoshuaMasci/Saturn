@@ -98,7 +98,7 @@ pub fn main() !void {
         }
     }
 
-    wait_group.wait();
+    thread_pool.waitAndWork(&wait_group);
 
     const failed = error_count.load(.monotonic);
     if (failed > 0) {
@@ -283,7 +283,7 @@ fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]cons
         thread_pool.spawnWg(&wait_group, material_thread_worker, .{ &gltf_file, allocator, i });
     }
 
-    wait_group.wait();
+    thread_pool.waitAndWork(&wait_group);
 
     return null;
 }
