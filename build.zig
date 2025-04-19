@@ -84,6 +84,7 @@ pub fn build(b: *std.Build) !void {
         assets_exe.root_module.addImport("zstbi", zstbi.module("root"));
         assets_exe.root_module.addImport("zobj", zobj.module("obj"));
         assets_exe.root_module.addImport("zgltf", zgltf.module("zgltf"));
+        assets_exe.root_module.addImport("zmath", zmath.module("root"));
 
         if (build_sdl3) {
             const sdl3 = b.dependency("sdl3", .{

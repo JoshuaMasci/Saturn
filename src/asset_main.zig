@@ -237,7 +237,7 @@ fn GltfResourceWorker(comptime load_fn: anytype, comptime asset_name: []const u8
                 const output_file_path = result.output_path;
                 makePath(output_dir, output_file_path);
 
-                const output_file = output_dir.createFile(result.output_path, .{}) catch |err| {
+                const output_file = output_dir.createFile(output_file_path, .{}) catch |err| {
                     std.log.err("Failed to create file: {}", .{err});
                     return;
                 };
@@ -281,6 +281,19 @@ fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]cons
     const material_count = gltf_file.getMaterialCount();
     for (0..material_count) |i| {
         thread_pool.spawnWg(&wait_group, material_thread_worker, .{ &gltf_file, allocator, i });
+    }
+
+    if (gltf_file.gltf_file.data.scene) |default_scene| {
+        const scene = gltf_file.loadScene(allocator, default_scene) catch |err| return errorString(allocator, "Failed to load gltf scene: {}", .{err});
+        defer scene.deinit(allocator);
+
+        const output_file_path = "scene.json";
+        makePath(gltf_dir, output_file_path);
+
+        const output_file = gltf_dir.createFile(output_file_path, .{}) catch |err| return errorString(allocator, "Failed to create file: {}", .{err});
+        defer output_file.close();
+
+        scene.serialize(output_file.writer()) catch |err| return errorString(allocator, "Failed to serialize file: {}", .{err});
     }
 
     thread_pool.waitAndWork(&wait_group);

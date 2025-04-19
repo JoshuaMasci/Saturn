@@ -1,8 +1,12 @@
 const std = @import("std");
 
+const zm = @import("zmath");
+const Transform = @import("../transform.zig");
+
 const Mesh = @import("mesh.zig");
 const Texture2D = @import("texture_2d.zig");
 const Material = @import("material.zig");
+const Scene = @import("scene.zig");
 
 const stbi = @import("stbi.zig");
 const zgltf = @import("zgltf");
@@ -201,6 +205,92 @@ pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize)
         .output_path = self.asset_info.materials[gltf_index].path,
         .value = material,
     };
+}
+
+pub fn loadScene(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !Scene {
+    if (gltf_index >= self.gltf_file.data.scenes.items.len) {
+        return error.indexOutOfRange;
+    }
+    const gltf_scene = self.gltf_file.data.scenes.items[gltf_index];
+
+    var name: []const u8 = &.{};
+    if (gltf_scene.name) |gltf_name| {
+        name = try allocator.dupe(u8, gltf_name);
+    } else {
+        name = try std.fmt.allocPrint(allocator, "scene_{}", .{gltf_index});
+    }
+    errdefer allocator.free(name);
+
+    var nodes = std.ArrayList(Scene.Node).init(allocator);
+    defer nodes.deinit();
+
+    var root_nodes: []usize = &.{};
+    if (gltf_scene.nodes) |gltf_root_nodes| {
+        root_nodes = try allocator.alloc(usize, gltf_root_nodes.items.len);
+        errdefer allocator.free(root_nodes);
+        for (gltf_root_nodes.items, 0..) |child_index, list_index| {
+            root_nodes[list_index] = try self.loadNode(allocator, child_index, &nodes);
+        }
+    }
+
+    return .{
+        .name = name,
+        .root_nodes = root_nodes,
+        .nodes = try nodes.toOwnedSlice(),
+    };
+}
+
+fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: *std.ArrayList(Scene.Node)) !usize {
+    if (gltf_index >= self.gltf_file.data.nodes.items.len) {
+        return error.indexOutOfRange;
+    }
+    const gltf_node = self.gltf_file.data.nodes.items[gltf_index];
+
+    const node_index = nodes.items.len;
+
+    var name: []const u8 = &.{};
+    if (gltf_node.name) |gltf_name| {
+        name = try allocator.dupe(u8, gltf_name);
+    } else {
+        name = try std.fmt.allocPrint(allocator, "node_{}", .{gltf_index});
+    }
+    errdefer allocator.free(name);
+
+    const transform: Transform = .{
+        .position = zm.loadArr3(gltf_node.translation),
+        .rotation = zm.loadArr4(gltf_node.rotation),
+        .scale = zm.loadArr3(gltf_node.scale),
+    };
+
+    var mesh: ?Scene.Mesh = null;
+    if (gltf_node.mesh) |mesh_index| {
+        const gltf_mesh = self.gltf_file.data.meshes.items[mesh_index];
+        var materials = try allocator.alloc(Material.Registry.Handle, gltf_mesh.primitives.items.len);
+        errdefer allocator.free(materials);
+
+        for (gltf_mesh.primitives.items, 0..) |prim, i| {
+            materials[i] = self.asset_info.materials[prim.material.?].handle;
+        }
+
+        mesh = .{
+            .mesh = self.asset_info.meshes[mesh_index].handle,
+            .materials = materials,
+        };
+    }
+
+    const children = try allocator.alloc(usize, gltf_node.children.items.len);
+    errdefer allocator.free(children);
+    for (gltf_node.children.items, 0..) |child_index, list_index| {
+        children[list_index] = try self.loadNode(allocator, child_index, nodes);
+    }
+
+    try nodes.append(.{
+        .name = name,
+        .local_transform = transform,
+        .mesh = mesh,
+        .children = children,
+    });
+    return node_index;
 }
 
 fn AssetInfo(comptime Handle: type, comptime sub_path: []const u8, comptime file_ext: []const u8) type {
