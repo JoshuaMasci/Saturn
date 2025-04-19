@@ -171,6 +171,12 @@ pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize)
     }
     const gltf_material = self.gltf_file.data.materials.items[gltf_index];
 
+    const alpha_mode: Material.AlphaMode = switch (gltf_material.alpha_mode) {
+        .@"opaque" => .alpha_opaque,
+        .mask => .alpha_mask,
+        .blend => .alpha_blend,
+    };
+
     var base_color_texture: ?Texture2D.Registry.Handle = null;
     if (gltf_material.metallic_roughness.base_color_texture) |texture| {
         if (self.gltf_file.data.textures.items[texture.index].source) |texture_index| {
@@ -180,6 +186,10 @@ pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize)
 
     const material: Material = .{
         .name = try allocator.dupe(u8, self.asset_info.materials[gltf_index].name),
+
+        .alpha_mode = alpha_mode,
+        .alpha_cutoff = gltf_material.alpha_cutoff,
+
         .base_color_factor = gltf_material.metallic_roughness.base_color_factor,
         .base_color_texture = base_color_texture,
 
