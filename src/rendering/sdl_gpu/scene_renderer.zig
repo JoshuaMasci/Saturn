@@ -25,6 +25,8 @@ const Window = @import("../../platform/sdl3.zig").Window;
 pub const Renderer = struct {
     const Self = @This();
 
+    allocator: std.mem.Allocator,
+
     gpu_device: Device,
 
     color_format: c.SDL_GPUTextureFormat,
@@ -89,6 +91,7 @@ pub const Renderer = struct {
         const material_map = std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset).init(allocator);
 
         return .{
+            .allocator = allocator,
             .gpu_device = gpu_device,
             .color_format = formats.color,
             .depth_format = formats.depth,
@@ -118,7 +121,13 @@ pub const Renderer = struct {
             self.texture_map.deinit();
         }
 
-        self.material_map.deinit();
+        {
+            var iter = self.material_map.valueIterator();
+            while (iter.next()) |material| {
+                material.deinit(self.allocator);
+            }
+            self.material_map.deinit();
+        }
 
         c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device.handle, self.mesh_graphics_pipeline);
         c.SDL_ReleaseGPUSampler(self.gpu_device.handle, self.linear_sampler);
@@ -308,7 +317,8 @@ pub const Renderer = struct {
 
     pub fn tryLoadMaterial(self: *Self, allocator: std.mem.Allocator, handle: MaterialAsset.Registry.Handle) void {
         if (!self.material_map.contains(handle)) {
-            if (global.assets.materials.loadAsset(allocator, handle)) |material| {
+            //Need to load the asset using the non temp allocator, otherwise the name will be invalid
+            if (global.assets.materials.loadAsset(self.allocator, handle)) |material| {
                 if (material.base_color_texture) |texture_handle|
                     self.tryLoadTexture(allocator, texture_handle);
 

@@ -2,7 +2,7 @@ const std = @import("std");
 const zstbi = @import("zstbi");
 const Texture = @import("texture_2d.zig");
 
-pub fn load(allocator: std.mem.Allocator, file_name: []const u8, file_buffer: []const u8) !Texture {
+pub fn load(allocator: std.mem.Allocator, texture_name: []const u8, file_buffer: []const u8) !Texture {
     zstbi.init(allocator);
     defer zstbi.deinit();
 
@@ -15,7 +15,7 @@ pub fn load(allocator: std.mem.Allocator, file_name: []const u8, file_buffer: []
         stb_image = try zstbi.Image.loadFromMemory(file_buffer, 4);
     }
 
-    const name = try allocator.dupe(u8, file_name);
+    const name = try allocator.dupe(u8, texture_name);
     errdefer allocator.free(name);
 
     const data = try allocator.dupe(u8, stb_image.data);
@@ -37,8 +37,8 @@ pub fn load(allocator: std.mem.Allocator, file_name: []const u8, file_buffer: []
     };
 }
 
-pub fn loadFromFile(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !Texture {
+pub fn loadFromFile(allocator: std.mem.Allocator, dir: std.fs.Dir, texture_name: []const u8, file_path: []const u8) !Texture {
     const file_buffer = try dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
     defer allocator.free(file_buffer);
-    return load(allocator, std.fs.path.stem(file_path), file_buffer);
+    return load(allocator, texture_name, file_buffer);
 }

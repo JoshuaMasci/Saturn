@@ -14,6 +14,7 @@ pub const AlphaMode = enum(u32) {
 };
 
 pub const Json = struct {
+    name: []const u8,
     alpha_mode: AlphaMode = .alpha_opaque,
     alpha_cutoff: f32 = 0.0,
 
@@ -47,6 +48,8 @@ pub const Json = struct {
 
 const Self = @This();
 
+name: []const u8,
+
 alpha_mode: AlphaMode = .alpha_opaque,
 alpha_cutoff: f32 = 0.0,
 
@@ -62,7 +65,9 @@ emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
 occlusion_texture: ?TextureAssetHandle = null,
 normal_texture: ?TextureAssetHandle = null,
 
-pub fn initFromJson(json: *const Json) Self {
+pub fn initFromJson(allocator: std.mem.Allocator, json: *const Json) !Self {
+    const name = try allocator.dupe(u8, json.name);
+
     var base_color_texture: ?TextureAssetHandle = null;
     if (json.base_color_texture) |texture_string|
         base_color_texture = TextureAssetHandle.fromRepoPath(texture_string);
@@ -84,6 +89,8 @@ pub fn initFromJson(json: *const Json) Self {
         normal_texture = TextureAssetHandle.fromRepoPath(texture_string);
 
     return .{
+        .name = name,
+
         .alpha_mode = json.alpha_mode,
         .base_color_texture = base_color_texture,
         .base_color_factor = json.base_color_factor,
@@ -99,20 +106,26 @@ pub fn initFromJson(json: *const Json) Self {
     };
 }
 
+pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+    allocator.free(self.name);
+}
+
 pub fn serialize(self: Self, writer: std.fs.File.Writer) !void {
     try writer.writeAll(&MAGIC);
+    try serde.serialzieSlice(u8, writer, self.name);
     try writer.writeStructEndian(PackedMaterial.pack(self), .little);
 }
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !Self {
-    _ = allocator; // autofix
-
     var magic: [8]u8 = undefined;
     try reader.readNoEof(&magic);
     if (!std.mem.eql(u8, &MAGIC, &magic)) {
         return error.InvalidMagic;
     }
-    return (try reader.readStruct(PackedMaterial)).unpack();
+    const name = try serde.deserialzieSlice(allocator, u8, reader);
+    var value = (try reader.readStruct(PackedMaterial)).unpack();
+    value.name = name;
+    return value;
 }
 
 const PackedMaterial = extern struct {
@@ -170,6 +183,8 @@ const PackedMaterial = extern struct {
 
     pub fn unpack(material: *const PackedMaterial) Self {
         return .{
+            .name = &.{},
+
             .alpha_mode = @enumFromInt(material.alpha_mode),
             .alpha_cutoff = material.alpha_cutoff,
 

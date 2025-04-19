@@ -12,7 +12,7 @@ const Material = @import("asset/material.zig");
 const hlsl = @import("asset/hlsl.zig");
 const obj = @import("asset/obj.zig");
 const stbi = @import("asset/stbi.zig");
-const gltf = @import("asset/gltf.zig");
+const Gltf = @import("asset/gltf.zig");
 
 pub fn main() !void {
     if (hlsl.init()) {
@@ -139,7 +139,7 @@ fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
 fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);
 
-    const texture = stbi.loadFromFile(allocator, input_dir, file_path) catch |err|
+    const texture = stbi.loadFromFile(allocator, input_dir, std.fs.path.stem(file_path), file_path) catch |err|
         return errorString(allocator, "Failed to open file({s}): {}", .{ file_path, err });
 
     const new_path = replaceExt(allocator, file_path, ".tex2d") catch |err|
@@ -163,7 +163,8 @@ fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]
     const json_material = Material.Json.read(allocator, input_dir, file_path) catch |err|
         return errorString(allocator, "Failed to parse json material({s}): {}", .{ file_path, err });
     defer json_material.deinit();
-    const material = Material.initFromJson(&json_material.value);
+    const material = Material.initFromJson(allocator, &json_material.value) catch |err|
+        return errorString(allocator, "Failed to parse create material({s}): {}", .{ file_path, err });
 
     const new_path = replaceExt(allocator, file_path, ".mat") catch |err|
         return errorString(allocator, "Failed to allocate string: {}", .{err});
@@ -204,61 +205,69 @@ fn processShader(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]co
 //TODO: thread each part of this load
 fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);
-    var gltf_file = gltf.File.load(allocator, input_dir, file_path) catch |err| return errorString(allocator, "Failed to load gltf file: {}", .{err});
+    const gltf_dir_path = removeExt((file_path));
+    var gltf_file = Gltf.init(allocator, input_dir, file_path, repo_name, removeExt(file_path)) catch |err| return errorString(allocator, "Failed to load gltf file: {}", .{err});
     defer gltf_file.deinit();
 
-    const gltf_dir_path = removeExt((file_path));
     var gltf_dir = output_dir.makeOpenPath(gltf_dir_path, .{}) catch |err| return errorString(allocator, "Failed to open gltf dir: {}", .{err});
     defer gltf_dir.close();
 
-    // Meshes
-    if (gltf_file.meshes.len != 0) {
-        var mesh_dir = gltf_dir.makeOpenPath("meshes", .{}) catch |err| return errorString(allocator, "Failed to open gltf mesh dir: {}", .{err});
-        defer mesh_dir.close();
+    const mesh_count = gltf_file.getMeshCount();
+    for (0..mesh_count) |i| {
+        if (gltf_file.loadMesh(allocator, i)) |result| {
+            defer result.mesh.deinit(allocator);
 
-        for (gltf_file.meshes) |mesh_opt| {
-            if (mesh_opt) |mesh| {
-                const mesh_file_name = std.fmt.allocPrint(allocator, "{s}.mesh", .{mesh.name}) catch |err|
-                    return errorString(allocator, "Failed to format string: {}", .{err});
-                defer allocator.free(mesh_file_name);
+            const output_file_path = result.output_path;
+            makePath(output_dir, output_file_path);
 
-                const output_file = mesh_dir.createFile(mesh_file_name, .{}) catch |err|
-                    return errorString(allocator, "Failed to create file: {}", .{err});
-                defer output_file.close();
+            const output_file = output_dir.createFile(result.output_path, .{}) catch |err|
+                return errorString(allocator, "Failed to create file: {}", .{err});
+            defer output_file.close();
 
-                mesh.serialize(output_file.writer()) catch |err|
-                    return errorString(allocator, "Failed to serialize file: {}", .{err});
-            }
+            result.mesh.serialize(output_file.writer()) catch |err|
+                return errorString(allocator, "Failed to serialize file: {}", .{err});
+        } else |err| {
+            std.log.err("Failed to load mesh {}: {}", .{ i, err });
         }
     }
 
-    // Textures
-    if (gltf_file.textures.len != 0) {
-        var texture_dir = gltf_dir.makeOpenPath("textures", .{}) catch |err| return errorString(allocator, "Failed to open gltf texture dir: {}", .{err});
-        defer texture_dir.close();
+    const texture_count = gltf_file.getTextureCount();
+    for (0..texture_count) |i| {
+        if (gltf_file.loadTexture(allocator, i)) |result| {
+            defer result.texture.deinit(allocator);
 
-        for (gltf_file.textures) |texture_opt| {
-            if (texture_opt) |texture| {
-                const texture_file_name = std.fmt.allocPrint(allocator, "{s}.tex2d", .{texture.name}) catch |err|
-                    return errorString(allocator, "Failed to format string: {}", .{err});
-                defer allocator.free(texture_file_name);
+            const output_file_path = result.output_path;
+            makePath(output_dir, output_file_path);
 
-                const output_file = texture_dir.createFile(texture_file_name, .{}) catch |err|
-                    return errorString(allocator, "Failed to create file: {}", .{err});
-                defer output_file.close();
+            const output_file = output_dir.createFile(result.output_path, .{}) catch |err|
+                return errorString(allocator, "Failed to create file: {}", .{err});
+            defer output_file.close();
 
-                texture.serialize(output_file.writer()) catch |err|
-                    return errorString(allocator, "Failed to serialize file: {}", .{err});
-            }
+            result.texture.serialize(output_file.writer()) catch |err|
+                return errorString(allocator, "Failed to serialize file: {}", .{err});
+        } else |err| {
+            std.log.err("Failed to load texture {}: {}", .{ i, err });
         }
     }
 
-    // Materials
-    // for (gltf_file.materials) |material_opt| {
-    //     if (material_opt) |material| {
-    //         _ = material; // autofix
-    //     }
-    // }
+    const material_count = gltf_file.getMaterialCount();
+    for (0..material_count) |i| {
+        if (gltf_file.loadMaterial(allocator, i)) |result| {
+            defer result.material.deinit(allocator);
+
+            const output_file_path = result.output_path;
+            makePath(output_dir, output_file_path);
+
+            const output_file = output_dir.createFile(result.output_path, .{}) catch |err|
+                return errorString(allocator, "Failed to create file: {}", .{err});
+            defer output_file.close();
+
+            result.material.serialize(output_file.writer()) catch |err|
+                return errorString(allocator, "Failed to serialize file: {}", .{err});
+        } else |err| {
+            std.log.err("Failed to load material {}: {}", .{ i, err });
+        }
+    }
 
     return null;
 }

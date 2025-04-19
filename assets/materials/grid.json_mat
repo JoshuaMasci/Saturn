@@ -1,3 +1,4 @@
 {
+    "name": "grid",
     "base_color_texture": "engine:textures/grid.tex2d"
 }

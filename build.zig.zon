@@ -25,8 +25,8 @@
             .hash = "zmath-0.11.0-dev-wjwivZY1AwDO7yxNmZ5HWoU03f9mFBet8LN9-oYc3i29",
         },
         .zgltf = .{
-            .url = "git+https://github.com/kooparse/zgltf.git#ee153a493a773d1a8c4893f117d593ea21e4db93",
-            .hash = "zgltf-0.1.0-sX6QAtwJAgB_Qb8QNfJyvGVAVqsH8ABMmyDt6L4D_Cyw",
+            .url = "git+https://github.com/JoshuaMasci/zgltf.git#41ee56340664e20e7d9f3699a76702c124c0ba6f",
+            .hash = "zgltf-0.1.0-sX6QAswGAgBcYNNhNXbrCw45plFQRiYOXkv_jFhZhZVD",
         },
         .zobj = .{
             .url = "git+https://github.com/chip2n/zig-obj.git#a2965b5860220538241fad5a5aa290312ca4e08a",

@@ -1,11 +1,13 @@
 const std = @import("std");
 
-const Texture2D = @import("texture_2d.zig");
 const Mesh = @import("mesh.zig");
-const stbi = @import("stbi.zig");
+const Texture2D = @import("texture_2d.zig");
+const Material = @import("material.zig");
 
+const stbi = @import("stbi.zig");
 const zgltf = @import("zgltf");
 
+//TODO: move to a string utils
 fn replaceExt(allocator: std.mem.Allocator, path: []const u8, new_ext: []const u8) ![]const u8 {
     const current_ext = std.fs.path.extension(path);
     if (current_ext.len == 0) {
@@ -20,117 +22,85 @@ fn replaceExt(allocator: std.mem.Allocator, path: []const u8, new_ext: []const u
     }
 }
 
-pub const File = struct {
-    const Self = @This();
+const Self = @This();
 
+allocator: std.mem.Allocator,
+
+file_buffer: []align(4) const u8,
+bin_buffer: ?[]align(4) const u8,
+
+gltf_file: zgltf,
+parent_dir: std.fs.Dir,
+asset_info: AssetHandles,
+
+pub fn init(
     allocator: std.mem.Allocator,
+    file_dir: std.fs.Dir,
+    file_path: []const u8,
+    repo_name: []const u8,
+    output_path: []const u8,
+) !Self {
+    var gltf_file = zgltf.init(allocator);
 
-    scenes: []?Scene,
-    meshes: []?Mesh,
-    textures: []?Texture2D,
+    const parent_path = std.fs.path.dirname(file_path) orelse ".";
+    const parent_dir = try file_dir.openDir(parent_path, .{});
 
-    default_scene: ?usize = null,
+    const file_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+    try gltf_file.parse(file_buffer);
 
-    pub fn load(allocator: std.mem.Allocator, file_dir: std.fs.Dir, file_path: []const u8) !Self {
-        var gltf_file = zgltf.init(allocator);
-        defer gltf_file.deinit();
+    var bin_buffer: ?[]align(4) const u8 = null;
+    if (gltf_file.glb_binary == null) {
+        const bin_path = try replaceExt(allocator, file_path, ".bin");
+        defer allocator.free(bin_path);
 
-        const parent_path = std.fs.path.dirname(file_path) orelse ".";
-        const parent_dir = try file_dir.openDir(parent_path, .{});
-
-        const file_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
-        defer allocator.free(file_buffer);
-        try gltf_file.parse(file_buffer);
-
-        //TODO: load .bin if not .glb
-        var bin_buffer: []align(4) const u8 = &.{};
-        defer allocator.free(bin_buffer);
-        if (gltf_file.glb_binary == null) {
-            const bin_path = try replaceExt(allocator, file_path, ".bin");
-            defer allocator.free(bin_path);
-
-            bin_buffer = try file_dir.readFileAllocOptions(allocator, bin_path, std.math.maxInt(usize), null, 4, null);
-            gltf_file.glb_binary = bin_buffer;
-        }
-
-        var meshes = try allocator.alloc(?Mesh, gltf_file.data.meshes.items.len);
-        for (gltf_file.data.meshes.items, 0..) |*gltf_mesh, i| {
-            meshes[i] = loadGltfMesh(allocator, &gltf_file, gltf_mesh) catch |err| val: {
-                std.log.err("Failed to load {s} mesh {}: {}", .{ file_path, i, err });
-                break :val null;
-            };
-        }
-
-        var textures = try allocator.alloc(?Texture2D, gltf_file.data.images.items.len);
-        for (gltf_file.data.images.items, 0..) |*gltf_image, i| {
-            textures[i] = loadGltfTexture(allocator, parent_dir, gltf_image, i) catch |err| val: {
-                std.log.err("Failed to load {s} textures {}: {}", .{ file_path, i, err });
-                break :val null;
-            };
-        }
-
-        var scenes = try allocator.alloc(?Scene, gltf_file.data.scenes.items.len);
-        for (gltf_file.data.scenes.items, 0..) |*glft_scene, i| {
-            scenes[i] = Scene.init(allocator, &gltf_file.data, glft_scene) catch |err| val: {
-                std.log.err("Failed to load {s} scene {}: {}", .{ file_path, i, err });
-                break :val null;
-            };
-        }
-
-        return .{
-            .allocator = allocator,
-            .meshes = meshes,
-            .textures = textures,
-            .scenes = scenes,
-            .default_scene = gltf_file.data.scene,
-        };
+        bin_buffer = try file_dir.readFileAllocOptions(allocator, bin_path, std.math.maxInt(usize), null, 4, null);
+        gltf_file.glb_binary = bin_buffer.?;
     }
 
-    pub fn deinit(self: *Self) void {
-        for (self.scenes) |scene_opt| {
-            if (scene_opt) |scene| {
-                scene.deinit(self.allocator);
-            }
-        }
-        self.allocator.free(self.scenes);
+    const asset_info = try AssetHandles.init(allocator, repo_name, output_path, &gltf_file.data);
 
-        for (self.meshes) |mesh_opt| {
-            if (mesh_opt) |mesh| {
-                mesh.deinit(self.allocator);
-            }
-        }
-        self.allocator.free(self.meshes);
+    return .{
+        .allocator = allocator,
+        .file_buffer = file_buffer,
+        .bin_buffer = bin_buffer,
 
-        for (self.textures) |texture_opt| {
-            if (texture_opt) |texture| {
-                texture.deinit(self.allocator);
-            }
-        }
-        self.allocator.free(self.textures);
+        .gltf_file = gltf_file,
+        .parent_dir = parent_dir,
+        .asset_info = asset_info,
+    };
+}
+
+pub fn deinit(self: *Self) void {
+    self.parent_dir.close();
+    self.gltf_file.deinit();
+    self.asset_info.deinit();
+
+    if (self.bin_buffer) |buffer| {
+        self.allocator.free(buffer);
+        self.gltf_file.glb_binary = null;
     }
-};
+    self.allocator.free(self.file_buffer);
+}
 
-pub const Scene = struct {
-    const Self = @This();
+pub fn getMeshCount(self: Self) usize {
+    return self.gltf_file.data.meshes.items.len;
+}
 
-    name: []u8,
+pub fn getTextureCount(self: Self) usize {
+    return self.gltf_file.data.images.items.len;
+}
 
-    fn init(allocator: std.mem.Allocator, gltf_data: *const zgltf.Data, gltf_scene: *const zgltf.Scene) !Self {
-        _ = gltf_data;
+pub fn getMaterialCount(self: Self) usize {
+    return self.gltf_file.data.materials.items.len;
+}
 
-        return .{
-            .name = try allocator.dupe(u8, gltf_scene.name),
-        };
+pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, mesh: Mesh } {
+    if (gltf_index >= self.gltf_file.data.meshes.items.len) {
+        return error.indexOutOfRange;
     }
+    const gltf_mesh = self.gltf_file.data.meshes.items[gltf_index];
 
-    fn deinit(self: Self, allocator: std.mem.Allocator) void {
-        allocator.free(self.name);
-    }
-};
-
-fn loadGltfMesh(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf_mesh: *const zgltf.Mesh) !Mesh {
-    var name = try std.ArrayList(u8).initCapacity(allocator, gltf_mesh.name.len);
-    name.appendSliceAssumeCapacity(gltf_mesh.name);
+    const mesh_name: []const u8 = try allocator.dupe(u8, self.asset_info.meshes[gltf_index].name);
 
     const primitives = try allocator.alloc(Mesh.Primitive, gltf_mesh.primitives.items.len);
     errdefer allocator.free(primitives);
@@ -140,7 +110,7 @@ fn loadGltfMesh(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf_mesh
     var indices: std.ArrayList(u32) = .init(allocator);
 
     for (gltf_mesh.primitives.items, 0..) |primitive, i| {
-        var mesh_primitive = try loadGltfPrimitive(allocator, gltf_file, &primitive);
+        var mesh_primitive = try loadGltfPrimitive(allocator, &self.gltf_file, &primitive);
         defer mesh_primitive.deinit();
 
         const vertex_offset: u32 = @intCast(positions.items.len);
@@ -161,27 +131,170 @@ fn loadGltfMesh(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf_mesh
     }
 
     return .{
-        .name = try allocator.dupe(u8, gltf_mesh.name),
-        .primitives = primitives,
-        .positions = try positions.toOwnedSlice(),
-        .attributes = try attributes.toOwnedSlice(),
-        .indices = try indices.toOwnedSlice(),
+        .output_path = self.asset_info.meshes[gltf_index].path,
+        .mesh = .{
+            .name = mesh_name,
+            .primitives = primitives,
+            .positions = try positions.toOwnedSlice(),
+            .attributes = try attributes.toOwnedSlice(),
+            .indices = try indices.toOwnedSlice(),
+        },
     };
 }
 
-fn loadGltfTexture(allocator: std.mem.Allocator, parent_dir: std.fs.Dir, gltf_image: *const zgltf.Image, index: usize) !Texture2D {
+pub fn loadTexture(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, texture: Texture2D } {
+    if (gltf_index >= self.gltf_file.data.images.items.len) {
+        return error.indexOutOfRange;
+    }
+    const gltf_image = self.gltf_file.data.images.items[gltf_index];
+
     if (gltf_image.data) |data| {
-        const image_name = try std.fmt.allocPrint(allocator, "image_{}", .{index});
-        defer allocator.free(image_name);
-        return stbi.load(allocator, gltf_image.uri orelse image_name, data);
+        return .{
+            .output_path = self.asset_info.images[gltf_index].path,
+            .texture = try stbi.load(allocator, self.asset_info.images[gltf_index].name, data),
+        };
     }
 
     if (gltf_image.uri) |uri| {
-        return stbi.loadFromFile(allocator, parent_dir, uri);
+        return .{
+            .output_path = self.asset_info.images[gltf_index].path,
+            .texture = try stbi.loadFromFile(allocator, self.parent_dir, self.asset_info.images[gltf_index].name, uri),
+        };
     }
 
     return error.NoImageSource;
 }
+
+pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, material: Material } {
+    if (gltf_index >= self.gltf_file.data.materials.items.len) {
+        return error.indexOutOfRange;
+    }
+    const gltf_material = self.gltf_file.data.materials.items[gltf_index];
+
+    var base_color_texture: ?Texture2D.Registry.Handle = null;
+    if (gltf_material.metallic_roughness.base_color_texture) |texture| {
+        if (self.gltf_file.data.textures.items[texture.index].source) |texture_index| {
+            base_color_texture = self.asset_info.images[texture_index].handle;
+        }
+    }
+
+    const material: Material = .{
+        .name = try allocator.dupe(u8, self.asset_info.materials[gltf_index].name),
+        .base_color_factor = gltf_material.metallic_roughness.base_color_factor,
+        .base_color_texture = base_color_texture,
+
+        .metallic_roughness_factor = .{ gltf_material.metallic_roughness.metallic_factor, gltf_material.metallic_roughness.roughness_factor },
+        .emissive_factor = gltf_material.emissive_factor,
+    };
+
+    return .{
+        .output_path = self.asset_info.materials[gltf_index].path,
+        .material = material,
+    };
+}
+
+fn AssetInfo(comptime Handle: type, comptime sub_path: []const u8, comptime file_ext: []const u8) type {
+    return struct {
+        name: []const u8,
+        path: []const u8,
+        handle: Handle,
+
+        fn init(
+            allocator: std.mem.Allocator,
+            repo: []const u8,
+            dir_path: []const u8,
+            asset_name: []const u8,
+        ) !@This() {
+            const path = try std.fmt.allocPrint(allocator, "{s}{s}{s}{s}", .{ dir_path, sub_path, asset_name, file_ext });
+            return .{
+                .name = asset_name,
+                .path = path,
+                .handle = .fromRepoPathSeprate(repo, path),
+            };
+        }
+
+        fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+            allocator.free(self.name);
+            allocator.free(self.path);
+        }
+    };
+}
+
+const AssetHandles = struct {
+    const MeshAssetInfo = AssetInfo(Mesh.Registry.Handle, "/meshes/", ".mesh");
+    const ImageAssetInfo = AssetInfo(Texture2D.Registry.Handle, "/textures/", ".mesh");
+    const MaterialAssetInfo = AssetInfo(Material.Registry.Handle, "/materials/", ".mesh");
+
+    allocator: std.mem.Allocator,
+
+    meshes: []MeshAssetInfo,
+    images: []ImageAssetInfo,
+    materials: []MaterialAssetInfo,
+
+    fn init(allocator: std.mem.Allocator, repo: []const u8, output_path: []const u8, gltf: *zgltf.Data) !@This() {
+        var meshes = try allocator.alloc(MeshAssetInfo, gltf.meshes.items.len);
+        errdefer allocator.free(meshes);
+        for (gltf.meshes.items, 0..) |mesh, i| {
+            var mesh_name: []const u8 = &.{};
+            if (mesh.name) |name| {
+                mesh_name = try allocator.dupe(u8, name);
+            } else {
+                mesh_name = try std.fmt.allocPrint(allocator, "mesh_{}", .{i});
+            }
+            meshes[i] = try MeshAssetInfo.init(allocator, repo, output_path, mesh_name);
+        }
+
+        var images = try allocator.alloc(ImageAssetInfo, gltf.images.items.len);
+        errdefer allocator.free(images);
+        for (gltf.images.items, 0..) |image, i| {
+            var image_name: []const u8 = &.{};
+            if (image.uri) |uri| {
+                image_name = try allocator.dupe(u8, std.fs.path.stem(uri));
+            } else if (image.name) |name| {
+                image_name = try allocator.dupe(u8, name);
+            } else {
+                image_name = try std.fmt.allocPrint(allocator, "image_{}", .{i});
+            }
+            images[i] = try ImageAssetInfo.init(allocator, repo, output_path, image_name);
+        }
+
+        var materials = try allocator.alloc(MaterialAssetInfo, gltf.materials.items.len);
+        errdefer allocator.free(materials);
+        for (gltf.materials.items, 0..) |material, i| {
+            var material_name: []const u8 = &.{};
+            if (material.name) |name| {
+                material_name = try allocator.dupe(u8, name);
+            } else {
+                material_name = try std.fmt.allocPrint(allocator, "material_{}", .{i});
+            }
+            materials[i] = try MaterialAssetInfo.init(allocator, repo, output_path, material_name);
+        }
+
+        return .{
+            .allocator = allocator,
+            .meshes = meshes,
+            .images = images,
+            .materials = materials,
+        };
+    }
+
+    fn deinit(self: @This()) void {
+        for (self.meshes) |mesh| {
+            mesh.deinit(self.allocator);
+        }
+        self.allocator.free(self.meshes);
+
+        for (self.images) |image| {
+            image.deinit(self.allocator);
+        }
+        self.allocator.free(self.images);
+
+        for (self.materials) |material| {
+            material.deinit(self.allocator);
+        }
+        self.allocator.free(self.materials);
+    }
+};
 
 const PrimitiveData = struct {
     default_material: ?usize = null,

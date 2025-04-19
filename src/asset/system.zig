@@ -84,6 +84,12 @@ pub fn AssetSystem(comptime T: type, comptime extesnions: []const []const u8) ty
                 return .{ .repo_hash = repo_hash, .asset_hash = asset_hash };
             }
 
+            pub fn fromRepoPathSeprate(repo: []const u8, path: []const u8) Handle {
+                const repo_hash = HashMethod(repo);
+                const asset_hash = HashMethod(path);
+                return .{ .repo_hash = repo_hash, .asset_hash = asset_hash };
+            }
+
             pub fn toU64(self: Handle) u64 {
                 return (@as(u64, self.repo_hash) << 32) | @as(u64, self.asset_hash);
             }

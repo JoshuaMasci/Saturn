@@ -1,3 +1,4 @@
 {
+    "name": "uv_grid",
     "base_color_texture": "engine:textures/color_grid.tex2d"
 }
