@@ -29,13 +29,11 @@ pub fn serialize(self: Self, writer: anytype) !void {
     try std.json.stringify(self, .{ .whitespace = .indent_tab }, writer);
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !std.json.Parsed(Self) {
     const data = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(data);
 
-    const json = try std.json.parseFromSlice(Self, allocator, data, .{ .allocate = .alloc_always });
-    _ = json; // autofix
-    return .{};
+    return try std.json.parseFromSlice(Self, allocator, data, .{ .allocate = .alloc_always });
 }
 
 pub const Node = struct {

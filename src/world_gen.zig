@@ -77,6 +77,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
 
     const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
     const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge_glass.mesh").?;
+    _ = bridge_glass_mesh_handle; // autofix
     const hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/hull.mesh").?;
     const l_hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/l_hull.mesh").?;
     const engine_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/engine.mesh").?;
@@ -87,7 +88,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     const uv_grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/uv_grid.mat").?;
 
     createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_mesh_handle, grid_material_handle, .{}, false);
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{}, false);
+    //createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{}, false);
     createMeshEntity(allocator, universe, ship_inside, ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(0.0, 0.0, -5.0, 0.0) }, false);
     createMeshEntity(allocator, universe, ship_inside, ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(0.0, 0.0, -15.0, 0.0) }, false);
     createMeshEntity(allocator, universe, ship_inside, ship_outside, engine_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(0.0, 0.0, -20.0, 0.0) }, false);
@@ -196,4 +197,45 @@ fn createMeshEntity(allocator: std.mem.Allocator, universe: *Universe, inside_pa
     if (outside_parent) |outside_entity| {
         outside_entity.addChild(outside);
     }
+}
+
+const Scene = @import("asset/scene.zig");
+pub fn loadScene(allocator: std.mem.Allocator, universe: *Universe, world_handle: World.Handle, scene_path: []const u8, root_transform: Transform) !void {
+    var scene_json: std.json.Parsed(Scene) = undefined;
+    {
+        var file = try std.fs.cwd().openFile(scene_path, .{ .mode = .read_only });
+        defer file.close();
+        scene_json = try Scene.deserialzie(allocator, file.reader());
+    }
+    defer scene_json.deinit();
+    const scene = &scene_json.value;
+
+    var base_root = universe.createEntity("Root Entity");
+    base_root.transform = root_transform;
+
+    for (scene.root_nodes) |node_index| {
+        const child = loadNode(universe, scene.nodes, node_index);
+        base_root.addChild(child);
+    }
+
+    var world = universe.worlds.get(world_handle).?;
+    world.addEntity(base_root);
+}
+
+fn loadNode(universe: *Universe, nodes: []const Scene.Node, node_index: usize) *Entity {
+    const node = &nodes[node_index];
+
+    var entity = universe.createEntity(node.name);
+    entity.transform = node.local_transform;
+
+    if (node.mesh) |mesh| {
+        entity.systems.add(rendering.StaticMeshComponent{ .mesh = mesh.mesh, .material = mesh.materials[0] });
+    }
+
+    for (node.children) |child_index| {
+        const child = loadNode(universe, nodes, child_index);
+        entity.addChild(child);
+    }
+
+    return entity;
 }

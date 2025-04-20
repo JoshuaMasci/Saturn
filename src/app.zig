@@ -61,6 +61,8 @@ pub const App = struct {
         const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside, .{ .position = zm.f32x4(0.0, 0.0, -15.0, 0.0) });
         world_gen.create_props(game_universe, game_worlds.inside, 10, zm.f32x4(2.5, 0.0, -15.0, 0.0), 0.15);
 
+        //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/assets/Sponza/NewSponza_Main_glTF_002/scene.json", .{});
+
         return .{
             .should_quit = false,
             .platform = platform,

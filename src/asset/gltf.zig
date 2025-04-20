@@ -246,8 +246,6 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
     }
     const gltf_node = self.gltf_file.data.nodes.items[gltf_index];
 
-    const node_index = nodes.items.len;
-
     var name: []const u8 = &.{};
     if (gltf_node.name) |gltf_name| {
         name = try allocator.dupe(u8, gltf_name);
@@ -284,6 +282,7 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
         children[list_index] = try self.loadNode(allocator, child_index, nodes);
     }
 
+    const node_index = nodes.items.len;
     try nodes.append(.{
         .name = name,
         .local_transform = transform,
