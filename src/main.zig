@@ -3,8 +3,7 @@ const App = @import("app.zig").App;
 const global = @import("global.zig");
 
 pub fn main() !void {
-    const GeneralPurposeAllocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true });
-    var general_purpose_allocator = GeneralPurposeAllocator{};
+    var general_purpose_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }){};
     defer if (general_purpose_allocator.deinit() == .leak) {
         std.log.err("GeneralPurposeAllocator has a memory leak!", .{});
     };

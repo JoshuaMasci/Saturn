@@ -13,7 +13,8 @@ const physics = @import("entity/engine/physics.zig");
 const rendering = @import("entity/engine/rendering.zig");
 const DebugCameraEntitySystem = @import("entity/engine//debug_camera.zig").DebugCameraEntitySystem;
 
-const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
+const Mesh = @import("asset/mesh.zig");
+const MeshAssetHandle = Mesh.Registry.Handle;
 const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
 
 pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle, transform: Transform) !Entity.Handle {
@@ -76,6 +77,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     ship_outside.systems.add(physics.PhysicsEntitySystem.init(ship_outside.handle, .dynamic));
 
     const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
+    _ = bridge_mesh_handle; // autofix
     const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge_glass.mesh").?;
     _ = bridge_glass_mesh_handle; // autofix
     const hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/hull.mesh").?;
@@ -87,7 +89,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     const grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/grid.mat").?;
     const uv_grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/uv_grid.mat").?;
 
-    createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_mesh_handle, grid_material_handle, .{}, false);
+    //createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_mesh_handle, grid_material_handle, .{}, false);
     //createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{}, false);
     createMeshEntity(allocator, universe, ship_inside, ship_outside, hull_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(0.0, 0.0, -5.0, 0.0) }, false);
     createMeshEntity(allocator, universe, ship_inside, ship_outside, l_hull_mesh_handle, grid_material_handle, .{ .position = zm.f32x4(0.0, 0.0, -15.0, 0.0) }, false);
@@ -159,17 +161,67 @@ const PhysicsMeshes = struct {
         var mesh = try global.assets.meshes.loadAsset(allocator, handle);
         defer mesh.deinit(allocator);
 
-        var convex_shape = physics_system.Shape.initConvexHull(mesh.positions, 1.0, 0);
+        // Converts mesh to physics formats, since they no longer match
+        var physics_mesh = try PhysicsMesh.fromMesh(allocator, mesh);
+        defer physics_mesh.deinit(allocator);
+
+        var convex_shape = physics_system.Shape.initConvexHull(physics_mesh.positions, 1.0, 0);
 
         const mesh_shape = if (dynamic_mesh_shape)
-            physics_system.Shape.initMeshWithMass(mesh.positions, mesh.indices, convex_shape.getMassProperties(), 0)
+            physics_system.Shape.initMeshWithMass(physics_mesh.positions, physics_mesh.indices, convex_shape.getMassProperties(), 0)
         else
-            physics_system.Shape.initMeshStatic(mesh.positions, mesh.indices, 0);
+            physics_system.Shape.initMeshStatic(physics_mesh.positions, physics_mesh.indices, 0);
 
         return .{
             .convex_shape = convex_shape,
             .mesh_shape = mesh_shape,
         };
+    }
+};
+
+//TODO: save seprate physics meshes as asset?
+const PhysicsMesh = struct {
+    positions: [][3]f32,
+    indices: []u32,
+
+    fn fromMesh(allocator: std.mem.Allocator, mesh: Mesh) !@This() {
+        var pos_count: usize = 0;
+        var index_count: usize = 0;
+        for (mesh.primitives) |prim| {
+            pos_count += prim.vertices.len;
+            index_count += prim.indices.len;
+        }
+
+        const positions = try allocator.alloc([3]f32, pos_count);
+        errdefer allocator.free(positions);
+
+        const indices = try allocator.alloc(u32, index_count);
+        errdefer allocator.free(indices);
+
+        var p_index: usize = 0;
+        var i_index: usize = 0;
+        for (mesh.primitives) |prim| {
+            for (prim.vertices, 0..) |vertex, i| {
+                positions[p_index + i] = vertex.position;
+            }
+
+            for (prim.indices, 0..) |idx, i| {
+                indices[i_index + i] = idx + @as(u32, @intCast(p_index));
+            }
+
+            p_index += prim.vertices.len;
+            i_index += prim.indices.len;
+        }
+
+        return .{
+            .positions = positions,
+            .indices = indices,
+        };
+    }
+
+    fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.positions);
+        allocator.free(self.indices);
     }
 };
 

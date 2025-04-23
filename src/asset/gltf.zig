@@ -109,29 +109,8 @@ pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !st
     const primitives = try allocator.alloc(Mesh.Primitive, gltf_mesh.primitives.items.len);
     errdefer allocator.free(primitives);
 
-    var positions: std.ArrayList(Mesh.VertexPositions) = .init(allocator);
-    var attributes: std.ArrayList(Mesh.VertexAttributes) = .init(allocator);
-    var indices: std.ArrayList(u32) = .init(allocator);
-
     for (gltf_mesh.primitives.items, 0..) |primitive, i| {
-        var mesh_primitive = try loadGltfPrimitive(allocator, &self.gltf_file, &primitive);
-        defer mesh_primitive.deinit();
-
-        const vertex_offset: u32 = @intCast(positions.items.len);
-        const index_offset: u32 = @intCast(indices.items.len);
-        const index_count: u32 = @intCast(mesh_primitive.indices.items.len);
-
-        try positions.appendSlice(mesh_primitive.positions.items);
-        try attributes.appendSlice(mesh_primitive.attributes.items);
-        try indices.ensureTotalCapacity(indices.items.len + mesh_primitive.indices.items.len);
-        for (mesh_primitive.indices.items) |index| {
-            indices.appendAssumeCapacity(index + vertex_offset);
-        }
-
-        primitives[i] = .{
-            .index_offset = index_offset,
-            .index_count = index_count,
-        };
+        primitives[i] = try loadGltfPrimitive(allocator, &self.gltf_file, &primitive);
     }
 
     return .{
@@ -139,9 +118,6 @@ pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !st
         .value = .{
             .name = mesh_name,
             .primitives = primitives,
-            .positions = try positions.toOwnedSlice(),
-            .attributes = try attributes.toOwnedSlice(),
-            .indices = try indices.toOwnedSlice(),
         },
     };
 }
@@ -395,22 +371,9 @@ const AssetHandles = struct {
     }
 };
 
-const PrimitiveData = struct {
-    default_material: ?usize = null,
-    positions: std.ArrayList(Mesh.VertexPositions),
-    attributes: std.ArrayList(Mesh.VertexAttributes),
-    indices: std.ArrayList(u32),
-
-    fn deinit(self: *@This()) void {
-        self.positions.deinit();
-        self.attributes.deinit();
-        self.indices.deinit();
-    }
-};
-
-fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf_primitive: *const zgltf.Primitive) !PrimitiveData {
-    var indices = std.ArrayList(u32).init(allocator);
-    errdefer indices.deinit();
+fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf_primitive: *const zgltf.Primitive) !Mesh.Primitive {
+    var indices: []u32 = &.{};
+    errdefer allocator.free(indices);
 
     if (gltf_primitive.indices) |indices_index| {
         const accessor = gltf_file.data.accessors.items[indices_index];
@@ -419,125 +382,156 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
         switch (accessor.component_type) {
             .unsigned_byte => {
                 var it = accessor.iterator(u8, gltf_file, gltf_file.glb_binary.?);
-                try indices.ensureTotalCapacity(it.total_count);
+                indices = try allocator.alloc(u32, it.total_count);
+                var i: usize = 0;
                 while (it.next()) |indices_slice| {
                     for (indices_slice) |indexes| {
-                        indices.appendAssumeCapacity(@intCast(indexes));
+                        indices[i] = @intCast(indexes);
+                        i += 1;
                     }
                 }
             },
             .unsigned_short => {
                 var it = accessor.iterator(u16, gltf_file, gltf_file.glb_binary.?);
-                try indices.ensureTotalCapacity(it.total_count);
+                indices = try allocator.alloc(u32, it.total_count);
+                var i: usize = 0;
                 while (it.next()) |indices_slice| {
                     for (indices_slice) |indexes| {
-                        indices.appendAssumeCapacity(@intCast(indexes));
+                        indices[i] = @intCast(indexes);
+                        i += 1;
                     }
                 }
             },
             .unsigned_integer => {
                 var it = accessor.iterator(u32, gltf_file, gltf_file.glb_binary.?);
-                try indices.ensureTotalCapacity(it.total_count);
+                indices = try allocator.alloc(u32, it.total_count);
+                var i: usize = 0;
                 while (it.next()) |indices_slice| {
-                    indices.appendUnalignedSliceAssumeCapacity(indices_slice);
+                    for (indices_slice) |indexes| {
+                        indices[i] = @intCast(indexes);
+                        i += 1;
+                    }
                 }
             },
-            else => unreachable,
+            else => |unknown_type| std.log.err("Unknown Index type: {}", .{unknown_type}),
         }
     }
 
-    var positions = std.ArrayList([3]f32).init(allocator);
-    errdefer positions.deinit();
+    var positions: [][3]f32 = &.{};
+    defer allocator.free(positions);
 
-    var normals = std.ArrayList([3]f32).init(allocator);
-    defer normals.deinit();
+    var normals: [][3]f32 = &.{};
+    defer allocator.free(normals);
 
-    var tangents = std.ArrayList([4]f32).init(allocator);
-    defer tangents.deinit();
+    var tangents: [][4]f32 = &.{};
+    defer allocator.free(tangents);
 
-    var uvs = std.ArrayList([2]f32).init(allocator);
-    defer uvs.deinit();
+    var uv_arrays = try std.BoundedArray([][2]f32, 8).init(0);
+    defer for (uv_arrays.slice()) |uv_array| {
+        allocator.free(uv_array);
+    };
 
     for (gltf_primitive.attributes.items) |attribute| {
         switch (attribute) {
             .position => |index| {
-                std.debug.assert(positions.items.len == 0);
+                std.debug.assert(positions.len == 0);
                 const accessor = gltf_file.data.accessors.items[index];
                 std.debug.assert(accessor.type == .vec3);
                 std.debug.assert(accessor.component_type == .float);
                 var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
-                try positions.ensureTotalCapacity(it.total_count);
+
+                positions = try allocator.alloc([3]f32, it.total_count);
+                var i: usize = 0;
                 while (it.next()) |position_slice| {
-                    positions.appendAssumeCapacity(.{ position_slice[0], position_slice[1], position_slice[2] });
+                    positions[i] = .{ position_slice[0], position_slice[1], position_slice[2] };
+                    i += 1;
                 }
             },
             .normal => |index| {
-                std.debug.assert(normals.items.len == 0);
+                std.debug.assert(normals.len == 0);
                 const accessor = gltf_file.data.accessors.items[index];
                 std.debug.assert(accessor.type == .vec3);
                 std.debug.assert(accessor.component_type == .float);
                 var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
-                try normals.ensureTotalCapacity(it.total_count);
+
+                normals = try allocator.alloc([3]f32, it.total_count);
+                var i: usize = 0;
                 while (it.next()) |normal_slice| {
-                    normals.appendAssumeCapacity(.{ normal_slice[0], normal_slice[1], normal_slice[2] });
+                    normals[i] = .{ normal_slice[0], normal_slice[1], normal_slice[2] };
+                    i += 1;
                 }
             },
             .tangent => |index| {
-                std.debug.assert(tangents.items.len == 0);
+                std.debug.assert(tangents.len == 0);
                 const accessor = gltf_file.data.accessors.items[index];
                 std.debug.assert(accessor.type == .vec4);
                 std.debug.assert(accessor.component_type == .float);
                 var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
-                try tangents.ensureTotalCapacity(it.total_count);
+
+                tangents = try allocator.alloc([4]f32, it.total_count);
+                var i: usize = 0;
                 while (it.next()) |tangent_slice| {
-                    tangents.appendAssumeCapacity(.{ tangent_slice[0], tangent_slice[1], tangent_slice[2], tangent_slice[3] });
+                    tangents[i] = .{ tangent_slice[0], tangent_slice[1], tangent_slice[2], tangent_slice[3] };
+                    i += 1;
                 }
             },
             .texcoord => |index| {
-                // Uv2s not supported yet
-                if (uvs.items.len != 0)
-                    continue;
-
-                std.debug.assert(uvs.items.len == 0);
                 const accessor = gltf_file.data.accessors.items[index];
                 std.debug.assert(accessor.type == .vec2);
                 std.debug.assert(accessor.component_type == .float);
                 var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
-                try uvs.ensureTotalCapacity(it.total_count);
+
+                var uvs = try allocator.alloc([2]f32, it.total_count);
+                var i: usize = 0;
                 while (it.next()) |uv_slice| {
-                    uvs.appendAssumeCapacity(.{ uv_slice[0], uv_slice[1] });
+                    uvs[i] = .{ uv_slice[0], uv_slice[1] };
+                    i += 1;
                 }
+                uv_arrays.appendAssumeCapacity(uvs);
             },
             else => {},
         }
     }
 
-    var attributes = std.ArrayList(Mesh.VertexAttributes).init(allocator);
-    errdefer attributes.deinit();
-    try attributes.resize(positions.items.len);
+    const vertices = try allocator.alloc(Mesh.Vertex, positions.len);
+    errdefer allocator.free(vertices);
 
-    for (attributes.items, normals.items) |*attribute, normal| {
-        attribute.normal = normal;
+    for (vertices, positions) |*vertex, position| {
+        vertex.position = position;
     }
 
-    if (tangents.items.len != 0) {
-        for (attributes.items, tangents.items) |*attribute, tangent| {
-            attribute.tangent = tangent;
+    for (vertices, normals) |*vertex, normal| {
+        vertex.normal = normal;
+    }
+
+    if (tangents.len != 0) {
+        for (vertices, tangents) |*vertex, tangent| {
+            vertex.tangent = tangent;
         }
     } else {
         //TODO: gen tangets if non are provided
-        for (attributes.items) |*attribute| {
-            attribute.tangent = .{ 0, 0, 0, 0 };
+        for (vertices) |*vertex| {
+            vertex.tangent = .{ 0, 0, 0, 1 };
         }
     }
 
-    for (attributes.items, uvs.items) |*attribute, uv| {
-        attribute.uv0 = uv;
+    if (uv_arrays.len >= 1) {
+        const uv0s = uv_arrays.get(0);
+        for (vertices, uv0s) |*vertex, uv| {
+            vertex.uv0 = uv;
+        }
+    }
+
+    if (uv_arrays.len >= 2) {
+        const uv1s = uv_arrays.get(0);
+        for (vertices, uv1s) |*vertex, uv| {
+            vertex.uv1 = uv;
+        }
     }
 
     return .{
-        .positions = positions,
-        .attributes = attributes,
+        .sphere_pos_radius = .{ 0, 0, 0, 0 },
+        .vertices = vertices,
         .indices = indices,
     };
 }

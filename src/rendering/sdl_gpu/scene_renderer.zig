@@ -32,7 +32,9 @@ pub const Renderer = struct {
     color_format: c.SDL_GPUTextureFormat,
     depth_format: c.SDL_GPUTextureFormat,
 
-    mesh_graphics_pipeline: *c.SDL_GPUGraphicsPipeline,
+    opaque_mesh_pipeline: *c.SDL_GPUGraphicsPipeline,
+    mask_mesh_pipeline: *c.SDL_GPUGraphicsPipeline,
+
     linear_sampler: *c.SDL_GPUSampler,
     empty_texture: Texture,
 
@@ -48,16 +50,32 @@ pub const Renderer = struct {
             depth: c.SDL_GPUTextureFormat,
         },
     ) !Self {
-        const vertex_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/test.vert.shader").?);
+        const vertex_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/static_mesh.vert.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device.handle, vertex_shader);
 
-        const fragment_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/test.frag.shader").?);
-        defer c.SDL_ReleaseGPUShader(gpu_device.handle, fragment_shader);
+        const opaque_fragment_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/opaque.frag.shader").?);
+        defer c.SDL_ReleaseGPUShader(gpu_device.handle, opaque_fragment_shader);
 
-        const mesh_graphics_pipeline = try loadGraphicsPipeline(
+        const opaque_mesh_pipeline = try loadGraphicsPipeline(
             gpu_device.handle,
             vertex_shader,
-            fragment_shader,
+            opaque_fragment_shader,
+            formats.color,
+            formats.depth,
+            .{
+                .compare_op = c.SDL_GPU_COMPAREOP_LESS,
+                .depth_test = true,
+                .depth_write = true,
+            },
+        );
+
+        const mask_fragment_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/alpha_mask.frag.shader").?);
+        defer c.SDL_ReleaseGPUShader(gpu_device.handle, mask_fragment_shader);
+
+        const mask_mesh_pipeline = try loadGraphicsPipeline(
+            gpu_device.handle,
+            vertex_shader,
+            mask_fragment_shader,
             formats.color,
             formats.depth,
             .{
@@ -95,7 +113,10 @@ pub const Renderer = struct {
             .gpu_device = gpu_device,
             .color_format = formats.color,
             .depth_format = formats.depth,
-            .mesh_graphics_pipeline = mesh_graphics_pipeline,
+
+            .opaque_mesh_pipeline = opaque_mesh_pipeline,
+            .mask_mesh_pipeline = mask_mesh_pipeline,
+
             .linear_sampler = linear_sampler,
             .empty_texture = empty_texture,
             .static_mesh_map = static_mesh_map,
@@ -129,7 +150,8 @@ pub const Renderer = struct {
             self.material_map.deinit();
         }
 
-        c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device.handle, self.mesh_graphics_pipeline);
+        c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device.handle, self.opaque_mesh_pipeline);
+        c.SDL_ReleaseGPUGraphicsPipeline(self.gpu_device.handle, self.mask_mesh_pipeline);
         c.SDL_ReleaseGPUSampler(self.gpu_device.handle, self.linear_sampler);
         self.empty_texture.deinit();
     }
@@ -169,8 +191,6 @@ pub const Renderer = struct {
         const render_pass = c.SDL_BeginGPURenderPass(command_buffer, &color_target, 1, &depth_target);
         defer c.SDL_EndGPURenderPass(render_pass);
 
-        c.SDL_BindGPUGraphicsPipeline(render_pass, self.mesh_graphics_pipeline);
-
         //Write ViewProjection Matrix
         {
             const width_float: f32 = @floatFromInt(target_size[0]);
@@ -208,18 +228,18 @@ pub const Renderer = struct {
         render_pass: ?*c.SDL_GPURenderPass,
     ) void {
         const mesh = self.static_mesh_map.get(handle) orelse return;
+        const primitive = mesh.primitives[0];
 
         const vertex_bindings: []const c.SDL_GPUBufferBinding = &.{
-            .{ .buffer = mesh.position_buffer, .offset = 0 },
-            .{ .buffer = mesh.attribute_buffer, .offset = 0 },
+            .{ .buffer = primitive.vertex_buffer, .offset = 0 },
         };
         c.SDL_BindGPUVertexBuffers(render_pass, 0, vertex_bindings.ptr, @intCast(vertex_bindings.len));
 
-        if (mesh.index_buffer) |index_buffer| {
+        if (primitive.index_buffer) |index_buffer| {
             c.SDL_BindGPUIndexBuffer(render_pass, &.{ .buffer = index_buffer, .offset = 0 }, c.SDL_GPU_INDEXELEMENTSIZE_32BIT);
-            c.SDL_DrawGPUIndexedPrimitives(render_pass, mesh.index_count, 1, 0, 0, 0);
+            c.SDL_DrawGPUIndexedPrimitives(render_pass, primitive.index_count, 1, 0, 0, 0);
         } else {
-            c.SDL_DrawGPUPrimitives(render_pass, mesh.vertex_count, 1, 0, 0);
+            c.SDL_DrawGPUPrimitives(render_pass, primitive.vertex_count, 1, 0, 0);
         }
     }
 
@@ -231,14 +251,22 @@ pub const Renderer = struct {
     ) bool {
         const material = self.material_map.get(handle) orelse return false;
 
-        const UniformData = struct {
+        switch (material.alpha_mode) {
+            .alpha_opaque => c.SDL_BindGPUGraphicsPipeline(render_pass, self.opaque_mesh_pipeline),
+            .alpha_mask => c.SDL_BindGPUGraphicsPipeline(render_pass, self.mask_mesh_pipeline),
+            else => return false,
+        }
+
+        const UniformData = extern struct {
             base_color_factor: [4]f32,
             base_color_texture_enable: i32,
+            alpha_cutoff: f32,
         };
 
         var uniform_data: UniformData = .{
             .base_color_factor = material.base_color_factor,
             .base_color_texture_enable = 0,
+            .alpha_cutoff = material.alpha_cutoff,
         };
 
         if (material.base_color_texture) |texture_handle| {
@@ -288,7 +316,7 @@ pub const Renderer = struct {
         if (!self.static_mesh_map.contains(handle)) {
             if (global.assets.meshes.loadAsset(allocator, handle)) |mesh| {
                 defer mesh.deinit(allocator);
-                const gpu_mesh = Mesh.init(self.gpu_device.handle, &mesh);
+                const gpu_mesh = Mesh.init(self.allocator, self.gpu_device.handle, &mesh) catch return;
                 self.static_mesh_map.put(handle, gpu_mesh) catch |err| {
                     gpu_mesh.deinit();
                     std.log.err("Failed to append static mesh to list {}", .{err});
@@ -384,13 +412,7 @@ fn loadGraphicsPipeline(
             .slot = 0,
             .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX,
             .instance_step_rate = 0,
-            .pitch = @sizeOf(MeshAsset.VertexPositions),
-        },
-        .{
-            .slot = 1,
-            .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX,
-            .instance_step_rate = 0,
-            .pitch = @sizeOf(MeshAsset.VertexAttributes),
+            .pitch = @sizeOf(MeshAsset.Vertex),
         },
     };
     const vertex_attributes: []const c.SDL_GPUVertexAttribute = &.{
@@ -398,25 +420,31 @@ fn loadGraphicsPipeline(
             .buffer_slot = 0,
             .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
             .location = 0,
-            .offset = 0,
+            .offset = @offsetOf(MeshAsset.Vertex, "position"),
         },
         .{
-            .buffer_slot = 1,
+            .buffer_slot = 0,
             .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
             .location = 1,
-            .offset = @offsetOf(MeshAsset.VertexAttributes, "normal"),
+            .offset = @offsetOf(MeshAsset.Vertex, "normal"),
         },
         .{
-            .buffer_slot = 1,
+            .buffer_slot = 0,
             .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
             .location = 2,
-            .offset = @offsetOf(MeshAsset.VertexAttributes, "tangent"),
+            .offset = @offsetOf(MeshAsset.Vertex, "tangent"),
         },
         .{
-            .buffer_slot = 1,
+            .buffer_slot = 0,
             .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
             .location = 3,
-            .offset = @offsetOf(MeshAsset.VertexAttributes, "uv0"),
+            .offset = @offsetOf(MeshAsset.Vertex, "uv0"),
+        },
+        .{
+            .buffer_slot = 0,
+            .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+            .location = 4,
+            .offset = @offsetOf(MeshAsset.Vertex, "uv1"),
         },
     };
 

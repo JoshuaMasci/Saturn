@@ -4,41 +4,51 @@ const MeshAsset = @import("../../asset/mesh.zig");
 
 const c = @import("../../platform/sdl3.zig").c;
 
+pub const Primitive = struct {
+    vertex_buffer: *c.SDL_GPUBuffer,
+    index_buffer: ?*c.SDL_GPUBuffer,
+
+    vertex_count: u32,
+    index_count: u32,
+};
+
 const Self = @This();
 
+allocator: std.mem.Allocator,
 device: *c.SDL_GPUDevice,
-position_buffer: *c.SDL_GPUBuffer,
-attribute_buffer: *c.SDL_GPUBuffer,
-index_buffer: ?*c.SDL_GPUBuffer,
+primitives: []Primitive,
 
-vertex_count: u32,
-index_count: u32,
+pub fn init(allocator: std.mem.Allocator, device: *c.SDL_GPUDevice, mesh: *const MeshAsset) !Self {
+    var primitives = try allocator.alloc(Primitive, mesh.primitives.len);
+    for (mesh.primitives, 0..) |primitive, i| {
+        const vertex_buffer = createBufferFromSlice(device, MeshAsset.Vertex, primitive.vertices, c.SDL_GPU_BUFFERUSAGE_VERTEX);
 
-pub fn init(device: *c.SDL_GPUDevice, mesh: *const MeshAsset) Self {
-    const position = createBufferFromSlice(device, MeshAsset.VertexPositions, mesh.positions, c.SDL_GPU_BUFFERUSAGE_VERTEX);
-    const attribute = createBufferFromSlice(device, MeshAsset.VertexAttributes, mesh.attributes, c.SDL_GPU_BUFFERUSAGE_VERTEX);
+        var index_buffer: ?*c.SDL_GPUBuffer = null;
+        if (mesh.primitives[0].indices.len != 0) {
+            index_buffer = createBufferFromSlice(device, u32, primitive.indices, c.SDL_GPU_BUFFERUSAGE_INDEX);
+        }
 
-    var index_buffer: ?*c.SDL_GPUBuffer = null;
-    if (mesh.indices.len != 0) {
-        index_buffer = createBufferFromSlice(device, u32, mesh.indices, c.SDL_GPU_BUFFERUSAGE_INDEX);
+        primitives[i] = .{
+            .vertex_buffer = vertex_buffer,
+            .index_buffer = index_buffer,
+            .vertex_count = @intCast(primitive.vertices.len),
+            .index_count = @intCast(primitive.indices.len),
+        };
     }
 
     return .{
+        .allocator = allocator,
         .device = device,
-
-        .position_buffer = position,
-        .attribute_buffer = attribute,
-        .index_buffer = index_buffer,
-
-        .vertex_count = @intCast(mesh.positions.len),
-        .index_count = @intCast(mesh.indices.len),
+        .primitives = primitives,
     };
 }
 
 pub fn deinit(self: Self) void {
-    c.SDL_ReleaseGPUBuffer(self.device, self.position_buffer);
-    c.SDL_ReleaseGPUBuffer(self.device, self.attribute_buffer);
-    c.SDL_ReleaseGPUBuffer(self.device, self.index_buffer);
+    for (self.primitives) |primitive| {
+        c.SDL_ReleaseGPUBuffer(self.device, primitive.vertex_buffer);
+        c.SDL_ReleaseGPUBuffer(self.device, primitive.index_buffer);
+    }
+    self.allocator.free(self.primitives);
 }
 
 //TODO: don't upload during creation
