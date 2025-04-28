@@ -204,22 +204,16 @@ pub const Renderer = struct {
             }
 
             self.tryLoadMesh(temp_allocator, static_mesh.component.mesh);
-            const mesh = self.static_mesh_map.get(static_mesh.component.mesh) orelse continue;
+            if (self.static_mesh_map.get(static_mesh.component.mesh)) |mesh| {
+                const model_matrix = static_mesh.transform.getModelMatrix();
+                c.SDL_PushGPUVertexUniformData(command_buffer, 1, &model_matrix, @intCast(@sizeOf(zm.Mat)));
 
-            const model_matrix = static_mesh.transform.getModelMatrix();
-            c.SDL_PushGPUVertexUniformData(command_buffer, 1, &model_matrix, @intCast(@sizeOf(zm.Mat)));
-
-            const materials = static_mesh.component.materials.constSlice();
-            for (materials) |mat| {
-                if (!global.assets.materials.isValid(mat)) {
-                    std.debug.panic("Invalid Material {} from {any}", .{ mat, materials });
-                }
-            }
-
-            for (mesh.primitives, materials) |primtive, material| {
-                self.tryLoadMaterial(temp_allocator, material);
-                if (self.bindMaterial(material, command_buffer, render_pass)) {
-                    bindAndDispatchPrimitive(render_pass, primtive);
+                const materials = static_mesh.component.materials.constSlice();
+                for (mesh.primitives, materials) |primtive, material| {
+                    self.tryLoadMaterial(temp_allocator, material);
+                    if (self.bindMaterial(material, command_buffer, render_pass)) {
+                        bindAndDispatchPrimitive(render_pass, primtive);
+                    }
                 }
             }
         }
@@ -253,7 +247,7 @@ pub const Renderer = struct {
         switch (material.alpha_mode) {
             .alpha_opaque => c.SDL_BindGPUGraphicsPipeline(render_pass, self.opaque_mesh_pipeline),
             .alpha_mask => c.SDL_BindGPUGraphicsPipeline(render_pass, self.mask_mesh_pipeline),
-            else => return false,
+            .alpha_blend => c.SDL_BindGPUGraphicsPipeline(render_pass, self.opaque_mesh_pipeline),
         }
 
         const UniformData = extern struct {

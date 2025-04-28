@@ -1,19 +1,17 @@
 const std = @import("std");
-const World = @import("world.zig");
-
-const Universe = @import("universe.zig");
-const UpdateStage = Universe.UpdateStage;
 
 const Transform = @import("../transform.zig");
 const utils = @import("../utils.zig");
-
 const EntitySystem = @import("entity_system.zig");
+const Universe = @import("universe.zig");
+const UpdateStage = Universe.UpdateStage;
+const World = @import("world.zig");
 
 pub const Handle = u64;
 
 const Self = @This();
 
-//TODO: heap alloc name
+allocator: std.mem.Allocator,
 name: ?[]const u8 = null,
 
 handle: Handle,
@@ -31,9 +29,20 @@ children: std.AutoArrayHashMap(Handle, *Self),
 //cached_root_transform: ?Transform = null,
 //cached_world_transform: ?Transform = null,
 
-pub fn init(allocator: std.mem.Allocator, universe: *Universe, handle: Handle, name: ?[]const u8) Self {
+pub fn init(allocator: std.mem.Allocator, universe: *Universe, handle: Handle, name_opt: ?[]const u8) Self {
+    var name_dupe: ?[]const u8 = null;
+
+    if (name_opt) |name| {
+        if (allocator.dupe(u8, name)) |alloc_name| {
+            name_dupe = alloc_name;
+        } else |err| {
+            std.log.err("Failed to alloc entity name: {}", .{err});
+        }
+    }
+
     return .{
-        .name = name,
+        .allocator = allocator,
+        .name = name_dupe,
         .universe = universe,
         .handle = handle,
         .systems = EntitySystem.Systems.init(allocator),
@@ -43,11 +52,11 @@ pub fn init(allocator: std.mem.Allocator, universe: *Universe, handle: Handle, n
 
 pub fn deinit(self: *Self) void {
     self.children.deinit();
-
-    // if (self.name) |name| {
-    //     name.deinit();
-    // }
     self.systems.deinit();
+
+    if (self.name) |name| {
+        self.allocator.free(name);
+    }
 }
 
 pub fn addChild(self: *Self, child: *Self) void {

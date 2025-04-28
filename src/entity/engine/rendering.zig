@@ -43,7 +43,7 @@ pub const RenderWorldSystem = struct {
         self.scene.clear();
 
         for (world.entities.values()) |entity| {
-            updateEntityInstances(&self.scene, entity) catch |err| std.debug.panic("Failed to update scene entity: {}", .{err});
+            updateEntityInstances(&self.scene, entity) catch |err| std.log.err("Failed to update scene entity: {}", .{err});
         }
     }
 
@@ -54,10 +54,6 @@ pub const RenderWorldSystem = struct {
                 .transform = world_transform,
                 .component = static_mesh_component.*,
             });
-        }
-
-        for (entity.children.values()) |child| {
-            try updateEntityInstances(scene, child);
         }
     }
 };
