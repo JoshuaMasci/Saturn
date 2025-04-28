@@ -1,9 +1,11 @@
 const std = @import("std");
-const Entity = @import("../entity.zig");
-const World = @import("../world.zig");
-const UpdateStage = @import("../universe.zig").UpdateStage;
 
 const rendering_scene = @import("../../rendering/scene.zig");
+pub const MaterialArray = rendering_scene.MaterialArray;
+pub const StaticMeshComponent = rendering_scene.StaticMeshComponent;
+const Entity = @import("../entity.zig");
+const UpdateStage = @import("../universe.zig").UpdateStage;
+const World = @import("../world.zig");
 
 pub const RenderWorldSystem = struct {
     const Self = @This();
@@ -59,5 +61,3 @@ pub const RenderWorldSystem = struct {
         }
     }
 };
-
-pub const StaticMeshComponent = rendering_scene.StaticMeshComponent;

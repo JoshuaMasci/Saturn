@@ -1,23 +1,19 @@
 const std = @import("std");
-const zm = @import("zmath");
-
-const Platform = @import("platform/sdl3.zig").Platform;
-const Window = @import("platform/sdl3.zig").Window;
-const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 
 const physics_system = @import("physics");
 const zimgui = @import("zimgui");
+const zm = @import("zmath");
 
-const input = @import("input.zig");
-
-const world_gen = @import("world_gen.zig");
+const Entity = @import("entity/entity.zig");
 const Universe = @import("entity/universe.zig");
 const World = @import("entity/world.zig");
-const Entity = @import("entity/entity.zig");
-
 const global = @import("global.zig");
-
+const input = @import("input.zig");
+const Platform = @import("platform/sdl3.zig").Platform;
+const Window = @import("platform/sdl3.zig").Window;
+const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 const PhysicsRenderer = @import("rendering/sdl_gpu/physics_renderer.zig");
+const world_gen = @import("world_gen.zig");
 
 pub const App = struct {
     const Self = @This();

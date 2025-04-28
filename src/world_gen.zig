@@ -1,21 +1,20 @@
 const std = @import("std");
-const global = @import("global.zig");
-
-const zm = @import("zmath");
-const Transform = @import("transform.zig");
 
 const physics_system = @import("physics");
+const zm = @import("zmath");
 
-const Universe = @import("entity/universe.zig");
-const World = @import("entity/world.zig");
-const Entity = @import("entity/entity.zig");
-const physics = @import("entity/engine/physics.zig");
-const rendering = @import("entity/engine/rendering.zig");
-const DebugCameraEntitySystem = @import("entity/engine//debug_camera.zig").DebugCameraEntitySystem;
-
+const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
 const Mesh = @import("asset/mesh.zig");
 const MeshAssetHandle = Mesh.Registry.Handle;
-const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
+const Scene = @import("asset/scene.zig");
+const DebugCameraEntitySystem = @import("entity/engine//debug_camera.zig").DebugCameraEntitySystem;
+const physics = @import("entity/engine/physics.zig");
+const rendering = @import("entity/engine/rendering.zig");
+const Entity = @import("entity/entity.zig");
+const Universe = @import("entity/universe.zig");
+const World = @import("entity/world.zig");
+const global = @import("global.zig");
+const Transform = @import("transform.zig");
 
 pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle, transform: Transform) !Entity.Handle {
     var entity = universe.createEntity("Debug Camera");
@@ -50,7 +49,7 @@ pub fn create_props(universe: *Universe, world_handle: World.Handle, count: usiz
         var cube_entity = universe.createEntity("Cube Entity");
         cube_entity.transform.position = position;
         cube_entity.transform.scale = zm.splat(zm.Vec, scale);
-        cube_entity.systems.add(rendering.StaticMeshComponent{ .mesh = cube_mesh_handle, .material = material_handles[@mod(i, material_handles.len)] });
+        cube_entity.systems.add(rendering.StaticMeshComponent{ .mesh = cube_mesh_handle, .materials = rendering.MaterialArray.fromSlice(&.{material_handles[@mod(i, material_handles.len)]}) });
         cube_entity.systems.add(physics.PhysicsColliderComponent{ .shape = cube_shape });
         cube_entity.systems.add(physics.PhysicsEntitySystem.init(cube_entity.handle, .dynamic));
         cube_entity.systems.get(physics.PhysicsEntitySystem).?.rebuildShape(cube_entity);
@@ -123,11 +122,11 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
         var outside_door = universe.createEntity("Airlock Door Outside");
         outside_door.transform = .{ .position = zm.f32x4(-2.5 * 0.5, 0.0, 0.0, 0.0), .scale = size };
 
-        inside_door.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+        inside_door.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .materials = rendering.MaterialArray.fromSlice(&.{material}) });
         inside_door.systems.add(physics.PhysicsColliderComponent{ .shape = door_box });
         inside_door.systems.add(@import("game/button.zig").ButtonComponent{ .target = inside_airlock_center.handle });
 
-        outside_door.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+        outside_door.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .materials = rendering.MaterialArray.fromSlice(&.{material}) });
         outside_door.systems.add(physics.PhysicsColliderComponent{ .shape = door_box });
         outside_door.systems.add(@import("game/button.zig").ButtonComponent{ .target = outside_airlock_center.handle });
 
@@ -232,14 +231,14 @@ fn createMeshEntity(allocator: std.mem.Allocator, universe: *Universe, inside_pa
 
     var inside = universe.createEntity("Mesh Entity Inside");
     inside.transform = transform;
-    inside.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+    inside.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .materials = rendering.MaterialArray.fromSlice(&.{material}) });
     inside.systems.add(physics.PhysicsColliderComponent{ .shape = mesh_shapes.mesh_shape });
 
     const outside_shape = if (use_dynamic_static_mesh) mesh_shapes.mesh_shape else mesh_shapes.convex_shape;
 
     var outside = universe.createEntity("Mesh Entity Outside");
     outside.transform = transform;
-    outside.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .material = material });
+    outside.systems.add(rendering.StaticMeshComponent{ .mesh = mesh, .materials = rendering.MaterialArray.fromSlice(&.{material}) });
     outside.systems.add(physics.PhysicsColliderComponent{ .shape = outside_shape });
 
     if (inside_parent) |inside_entity| {
@@ -251,7 +250,6 @@ fn createMeshEntity(allocator: std.mem.Allocator, universe: *Universe, inside_pa
     }
 }
 
-const Scene = @import("asset/scene.zig");
 pub fn loadScene(allocator: std.mem.Allocator, universe: *Universe, world_handle: World.Handle, scene_path: []const u8, root_transform: Transform) !void {
     var scene_json: std.json.Parsed(Scene) = undefined;
     {
@@ -281,7 +279,7 @@ fn loadNode(universe: *Universe, nodes: []const Scene.Node, node_index: usize) *
     entity.transform = node.local_transform;
 
     if (node.mesh) |mesh| {
-        entity.systems.add(rendering.StaticMeshComponent{ .mesh = mesh.mesh, .material = mesh.materials[0] });
+        entity.systems.add(rendering.StaticMeshComponent{ .mesh = mesh.mesh, .materials = rendering.MaterialArray.fromSlice(mesh.materials) });
     }
 
     for (node.children) |child_index| {

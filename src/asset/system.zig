@@ -1,9 +1,8 @@
 const std = @import("std");
 const testing = std.testing;
-
-const HashType = u32;
 pub const HashMethod = std.hash.Fnv1a_32.hash;
 
+const HashType = u32;
 fn doesStringContain(strings: []const []const u8, key: []const u8) bool {
     for (strings) |pattern| {
         if (std.mem.eql(u8, pattern, key))
@@ -137,9 +136,12 @@ pub fn AssetSystem(comptime T: type, comptime extesnions: []const []const u8) ty
                 if (try repository.getAssetFile(handle.asset_hash)) |asset_file| {
                     defer asset_file.close();
                     return try T.deserialzie(allocator, asset_file.reader());
+                } else {
+                    return error.InvalidAssetHash;
                 }
+            } else {
+                return error.InvalidRepoHash;
             }
-            return error.InvaildAsset;
         }
     };
 }

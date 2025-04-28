@@ -1,10 +1,10 @@
 const std = @import("std");
 
-const AssetSystem = @import("asset/system.zig");
-const MeshRegistry = @import("asset/mesh.zig").Registry;
-const TextureRegistry = @import("asset/texture_2d.zig").Registry;
 const MaterialRegistry = @import("asset/material.zig").Registry;
+const MeshRegistry = @import("asset/mesh.zig").Registry;
 const ShaderRegistry = @import("asset/shader.zig").Registry;
+const AssetSystem = @import("asset/system.zig");
+const TextureRegistry = @import("asset/texture_2d.zig").Registry;
 
 pub var global_allocator: std.mem.Allocator = undefined;
 

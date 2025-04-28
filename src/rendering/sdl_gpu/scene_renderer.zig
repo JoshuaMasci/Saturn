@@ -1,26 +1,22 @@
 const std = @import("std");
-const zm = @import("zmath");
-const global = @import("../../global.zig");
 
+const zm = @import("zmath");
+
+const MaterialAsset = @import("../../asset/material.zig");
+const MeshAsset = @import("../../asset/mesh.zig");
+const ShaderAsset = @import("../../asset/shader.zig");
+const ShaderAssetHandle = ShaderAsset.Registry.Handle;
+const Texture2dAsset = @import("../../asset/texture_2d.zig");
+const global = @import("../../global.zig");
+const c = @import("../../platform/sdl3.zig").c;
+const Window = @import("../../platform/sdl3.zig").Window;
+const Settings = @import("../../rendering/settings.zig");
 const Transform = @import("../../transform.zig");
 const Camera = @import("../camera.zig").Camera;
 const RenderScene = @import("../scene.zig").RenderScene;
-
-const Settings = @import("../../rendering/settings.zig");
-
-const MeshAsset = @import("../../asset/mesh.zig");
-const Texture2dAsset = @import("../../asset/texture_2d.zig");
-const MaterialAsset = @import("../../asset/material.zig");
-
-const ShaderAsset = @import("../../asset/shader.zig");
-const ShaderAssetHandle = ShaderAsset.Registry.Handle;
-
+const Device = @import("device.zig");
 const Mesh = @import("mesh.zig");
 const Texture = @import("texture.zig");
-
-const c = @import("../../platform/sdl3.zig").c;
-const Device = @import("device.zig");
-const Window = @import("../../platform/sdl3.zig").Window;
 
 pub const Renderer = struct {
     const Self = @This();
@@ -202,34 +198,37 @@ pub const Renderer = struct {
             c.SDL_PushGPUVertexUniformData(command_buffer, 0, &view_projection_matrix, @intCast(@sizeOf(zm.Mat)));
         }
 
-        for (scene.static_meshes.items, 0..) |static_mesh, i| {
-            _ = i; // autofix
+        for (scene.static_meshes.items) |static_mesh| {
             if (static_mesh.component.visable == false) {
                 continue;
             }
 
             self.tryLoadMesh(temp_allocator, static_mesh.component.mesh);
-            self.tryLoadMaterial(temp_allocator, static_mesh.component.material);
+            const mesh = self.static_mesh_map.get(static_mesh.component.mesh) orelse continue;
 
-            if (self.bindMaterial(static_mesh.component.material, command_buffer, render_pass)) {
-                {
-                    const model_matrix = static_mesh.transform.getModelMatrix();
-                    c.SDL_PushGPUVertexUniformData(command_buffer, 1, &model_matrix, @intCast(@sizeOf(zm.Mat)));
+            const model_matrix = static_mesh.transform.getModelMatrix();
+            c.SDL_PushGPUVertexUniformData(command_buffer, 1, &model_matrix, @intCast(@sizeOf(zm.Mat)));
+
+            const materials = static_mesh.component.materials.constSlice();
+            for (materials) |mat| {
+                if (!global.assets.materials.isValid(mat)) {
+                    std.debug.panic("Invalid Material {} from {any}", .{ mat, materials });
                 }
+            }
 
-                self.bindAndDispatchMesh(static_mesh.component.mesh, render_pass);
+            for (mesh.primitives, materials) |primtive, material| {
+                self.tryLoadMaterial(temp_allocator, material);
+                if (self.bindMaterial(material, command_buffer, render_pass)) {
+                    bindAndDispatchPrimitive(render_pass, primtive);
+                }
             }
         }
     }
 
-    fn bindAndDispatchMesh(
-        self: *Self,
-        handle: MeshAsset.Registry.Handle,
+    fn bindAndDispatchPrimitive(
         render_pass: ?*c.SDL_GPURenderPass,
+        primitive: Mesh.Primitive,
     ) void {
-        const mesh = self.static_mesh_map.get(handle) orelse return;
-        const primitive = mesh.primitives[0];
-
         const vertex_bindings: []const c.SDL_GPUBufferBinding = &.{
             .{ .buffer = primitive.vertex_buffer, .offset = 0 },
         };
