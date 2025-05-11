@@ -247,7 +247,7 @@ pub const Renderer = struct {
         switch (material.alpha_mode) {
             .alpha_opaque => c.SDL_BindGPUGraphicsPipeline(render_pass, self.opaque_mesh_pipeline),
             .alpha_mask => c.SDL_BindGPUGraphicsPipeline(render_pass, self.mask_mesh_pipeline),
-            .alpha_blend => c.SDL_BindGPUGraphicsPipeline(render_pass, self.opaque_mesh_pipeline),
+            .alpha_blend => return false,
         }
 
         const UniformData = extern struct {

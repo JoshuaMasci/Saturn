@@ -1,18 +1,17 @@
 const std = @import("std");
-const global = @import("../global.zig");
 
+const global = @import("../global.zig");
+const c = @import("../platform/sdl3.zig").c;
+const Platform = @import("../platform/sdl3.zig");
+const Window = Platform.Window;
+const Vulkan = Platform.Vulkan;
 const Transform = @import("../transform.zig");
 const Camera = @import("camera.zig").Camera;
-
-const RenderSettings = @import("settings.zig").RenderSettings;
-
-const c = @import("../platform/sdl3.zig").c;
-const Window = @import("../platform/sdl3.zig").Window;
-const Device = @import("sdl_gpu/device.zig");
-const SceneRenderer = @import("sdl_gpu/scene_renderer.zig").Renderer;
-const PhyiscsRenderer = @import("sdl_gpu/physics_renderer.zig");
-
 const rendering_scene = @import("scene.zig");
+const RenderSettings = @import("settings.zig").RenderSettings;
+const Device = @import("sdl_gpu/device.zig");
+const PhyiscsRenderer = @import("sdl_gpu/physics_renderer.zig");
+const SceneRenderer = @import("sdl_gpu/scene_renderer.zig").Renderer;
 
 pub const RenderThreadData = struct {
     const Self = @This();
@@ -56,6 +55,22 @@ pub const RenderThread = struct {
     should_reload: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, window: Window) !Self {
+        {
+            const VkInstance = @import("vulkan/instance.zig");
+            const Swapchain = @import("vulkan/swapchain.zig");
+            const instance = try VkInstance.init(allocator, Vulkan.getProcInstanceFunction().?, Vulkan.getInstanceExtensions(), .{ .name = "Saturn Engine", .version = VkInstance.makeVersion(0, 0, 0, 1) });
+            defer instance.deinit();
+
+            const surface = Vulkan.createSurface(instance.instance.handle, window, null).?;
+            defer Vulkan.destroySurface(instance.instance.handle, surface, null);
+
+            const device = try instance.createDevice(0);
+            defer device.deinit();
+
+            const swapchain = try Swapchain.init(device, surface, null);
+            defer swapchain.denit();
+        }
+
         const device = Device.init();
         device.claimWindow(window);
 

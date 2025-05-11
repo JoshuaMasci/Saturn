@@ -57,6 +57,13 @@ pub fn build(b: *std.Build) !void {
     const zobj = b.dependency("zobj", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("zobj", zobj.module("obj"));
 
+    // vulkan
+    const vulkan_headers = b.dependency("vulkan_headers", .{});
+    const vulkan = b.dependency("vulkan_zig", .{
+        .registry = vulkan_headers.path("registry/vk.xml"),
+    }).module("vulkan-zig");
+    exe.root_module.addImport("vulkan", vulkan);
+
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

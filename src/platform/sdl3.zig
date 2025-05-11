@@ -1,17 +1,16 @@
 const std = @import("std");
 
-const input = @import("../input.zig");
 const App = @import("../app.zig").App;
-
+const input = @import("../input.zig");
 const Settings = @import("../rendering/settings.zig");
 
 pub const c = @cImport({
     @cDefine("SDL_DISABLE_OLD_NAMES", {});
     @cInclude("SDL3/SDL.h");
     @cInclude("SDL3/SDL_revision.h");
+    @cInclude("SDL3/SDL_vulkan.h");
 
     @cDefine("SDL_MAIN_HANDLED", {});
-    @cInclude("SDL3/SDL_main.h");
 });
 
 pub const Platform = struct {
@@ -70,7 +69,7 @@ pub const Platform = struct {
         _ = self; // autofix
         var window_width: i32 = 0;
         var window_height: i32 = 0;
-        var window_flags = c.SDL_WINDOW_RESIZABLE;
+        var window_flags = c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_VULKAN;
 
         switch (size) {
             .windowed => |window_size| {
@@ -467,4 +466,36 @@ const Controller = struct {
     gamepad: *c.SDL_Gamepad,
 
     buttons: [c.SDL_GAMEPAD_BUTTON_COUNT]ButtonState = @splat(.{}),
+};
+
+pub const Vulkan = struct {
+    const vk = @import("vulkan");
+
+    pub fn getProcInstanceFunction() ?vk.PfnGetInstanceProcAddr {
+        return @ptrCast(c.SDL_Vulkan_GetVkGetInstanceProcAddr());
+    }
+
+    pub fn getInstanceExtensions() []const [*c]const u8 {
+        var array_len: u32 = 0;
+        const array = c.SDL_Vulkan_GetInstanceExtensions(&array_len);
+        return array[0..array_len];
+    }
+
+    pub fn createSurface(instance: vk.Instance, window: Window, allocator: ?*const vk.AllocationCallbacks) ?vk.SurfaceKHR {
+        var c_surface: c.VkSurfaceKHR = undefined;
+        const c_instance: c.VkInstance = @ptrFromInt(@intFromEnum(instance));
+        const c_allocator: ?*c.VkAllocationCallbacks = @constCast(@ptrCast(allocator));
+
+        if (c.SDL_Vulkan_CreateSurface(window.handle, c_instance, c_allocator, &c_surface)) {
+            const surface: vk.SurfaceKHR = @enumFromInt(@intFromPtr(c_surface));
+            return surface;
+        }
+        return null;
+    }
+
+    pub fn destroySurface(instance: vk.Instance, surface: vk.SurfaceKHR, allocator: ?*const vk.AllocationCallbacks) void {
+        const c_instance: c.VkInstance = @ptrFromInt(@intFromEnum(instance));
+        const c_allocator: ?*c.VkAllocationCallbacks = @constCast(@ptrCast(allocator));
+        c.SDL_Vulkan_DestroySurface(c_instance, @ptrFromInt(@intFromEnum(surface)), c_allocator);
+    }
 };
