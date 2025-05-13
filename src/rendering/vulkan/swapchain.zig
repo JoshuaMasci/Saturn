@@ -8,7 +8,7 @@ const MAX_IMAGE_COUNT: u32 = 8;
 
 const Self = @This();
 
-device: Device,
+device: *Device,
 surface: vk.SurfaceKHR,
 handle: vk.SwapchainKHR,
 
@@ -22,7 +22,7 @@ transform: vk.SurfaceTransformFlagsKHR,
 composite_alpha: vk.CompositeAlphaFlagsKHR,
 present_mode: vk.PresentModeKHR,
 
-pub fn init(device: Device, surface: vk.SurfaceKHR, old_swapchain: ?vk.SwapchainKHR) !Self {
+pub fn init(device: *Device, surface: vk.SurfaceKHR, old_swapchain: ?vk.SwapchainKHR) !Self {
     const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface);
 
     const image_count = std.math.clamp(3, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));

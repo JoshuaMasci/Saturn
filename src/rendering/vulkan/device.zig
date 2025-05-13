@@ -2,16 +2,21 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
+const GpuAllocator = @import("gpu_allocator.zig");
+
 const Self = @This();
 
 allocator: std.mem.Allocator,
+
 instance: vk.InstanceProxy,
-physical_device: vk.PhysicalDevice,
 device: vk.DeviceProxy,
+
+physical_device: vk.PhysicalDevice,
 graphics_queue: vk.Queue,
 
-pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_device: vk.PhysicalDevice) !Self {
+gpu_allocator: GpuAllocator,
 
+pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_device: vk.PhysicalDevice) !Self {
     //TODO: have physical_device pick these
     const queue_priority = [_]f32{1.0};
     const graphics_queue_index: u32 = 0;
@@ -51,10 +56,12 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .physical_device = physical_device,
         .device = device,
         .graphics_queue = graphics_queue,
+        .gpu_allocator = GpuAllocator.init(physical_device, instance, device),
     };
 }
 
 pub fn deinit(self: Self) void {
+    self.gpu_allocator.deinit();
     self.device.destroyDevice(null);
     self.allocator.destroy(self.device.wrapper);
 }

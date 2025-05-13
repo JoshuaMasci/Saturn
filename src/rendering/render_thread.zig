@@ -58,16 +58,21 @@ pub const RenderThread = struct {
         {
             const VkInstance = @import("vulkan/instance.zig");
             const Swapchain = @import("vulkan/swapchain.zig");
+            const Buffer = @import("vulkan/buffer.zig");
+
             const instance = try VkInstance.init(allocator, Vulkan.getProcInstanceFunction().?, Vulkan.getInstanceExtensions(), .{ .name = "Saturn Engine", .version = VkInstance.makeVersion(0, 0, 0, 1) });
             defer instance.deinit();
 
             const surface = Vulkan.createSurface(instance.instance.handle, window, null).?;
             defer Vulkan.destroySurface(instance.instance.handle, surface, null);
 
-            const device = try instance.createDevice(0);
+            var device = try instance.createDevice(0);
             defer device.deinit();
 
-            const swapchain = try Swapchain.init(device, surface, null);
+            var buffer = try Buffer.init(&device, 4096, .{ .uniform_buffer_bit = true }, .gpu_mappable);
+            defer buffer.deinit();
+
+            const swapchain = try Swapchain.init(&device, surface, null);
             defer swapchain.denit();
         }
 
