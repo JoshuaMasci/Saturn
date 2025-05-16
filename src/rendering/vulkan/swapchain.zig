@@ -7,6 +7,7 @@ const Device = @import("device.zig");
 const MAX_IMAGE_COUNT: u32 = 8;
 
 pub const SwapchainImage = struct {
+    swapchain: vk.SwapchainKHR,
     index: u32,
     image: vk.Image,
 };
@@ -93,17 +94,17 @@ pub fn denit(self: Self) void {
     self.device.device.destroySwapchainKHR(self.handle, null);
 }
 
-pub fn some(
+pub fn acquireNextImage(
     self: *Self,
-    timeout: u64,
+    timeout: ?u64,
     wait_semaphore: vk.Semaphore,
     wait_fence: vk.Fence,
 ) !SwapchainImage {
     const result = try self.device.device.acquireNextImageKHR(
         self.handle,
-        timeout,
-        wait_fence,
+        timeout orelse std.math.maxInt(u64),
         wait_semaphore,
+        wait_fence,
     );
 
     if (result.result == .suboptimal_khr) {
@@ -111,6 +112,7 @@ pub fn some(
     }
 
     return .{
+        .swapchain = self.handle,
         .index = result.image_index,
         .image = self.images[result.image_index],
     };

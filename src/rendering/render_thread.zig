@@ -83,11 +83,11 @@ pub const RenderThread = struct {
             var image = try @import("vulkan/image.zig").init2D(&device, .{ 4096, 4096 }, .r8g8b8a8_unorm, .{ .sampled_bit = true, .color_attachment_bit = true }, .gpu_mappable);
             defer image.deinit();
 
-            const swapchain = try Swapchain.init(&device, surface, null);
+            var swapchain = try Swapchain.init(&device, surface, null);
             defer swapchain.denit();
 
-            for (0..100) |_| {
-                device.render() catch {};
+            for (0..1000) |_| {
+                device.render(&swapchain) catch break;
             }
         }
 

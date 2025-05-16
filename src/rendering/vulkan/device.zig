@@ -90,24 +90,77 @@ pub fn deinit(self: Self) void {
     self.allocator.destroy(self.device.wrapper);
 }
 
-pub fn render(self: Self) !void {
+pub fn render(self: Self, swapchain: *@import("swapchain.zig")) !void {
     const fence = try self.device.createFence(&.{}, null);
     defer self.device.destroyFence(fence, null);
+
+    const wait_semaphore = try self.device.createSemaphore(&.{}, null);
+    defer self.device.destroySemaphore(wait_semaphore, null);
+
+    const present_semaphore = try self.device.createSemaphore(&.{}, null);
+    defer self.device.destroySemaphore(present_semaphore, null);
 
     var command_buffers: [1]vk.CommandBuffer = undefined;
     try self.device.allocateCommandBuffers(&.{ .command_buffer_count = @intCast(command_buffers.len), .command_pool = self.graphics_queue.command_pool, .level = .primary }, &command_buffers);
     defer self.device.freeCommandBuffers(self.graphics_queue.command_pool, @intCast(command_buffers.len), &command_buffers);
 
-    const command_buffer = command_buffers[0];
+    const swapchain_image = try swapchain.acquireNextImage(null, wait_semaphore, .null_handle);
 
+    const command_buffer = command_buffers[0];
     try self.device.beginCommandBuffer(command_buffer, &.{});
+
+    self.device.cmdPipelineBarrier(
+        command_buffer,
+        .{ .all_commands_bit = true },
+        .{ .all_commands_bit = true },
+        .{},
+        0,
+        null,
+        0,
+        null,
+        1,
+        @ptrCast(&vk.ImageMemoryBarrier{
+            .image = swapchain_image.image,
+            .old_layout = .undefined,
+            .new_layout = .present_src_khr,
+            .src_access_mask = .{},
+            .dst_access_mask = .{},
+            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .subresource_range = .{
+                .aspect_mask = .{ .color_bit = true },
+                .base_array_layer = 0,
+                .layer_count = 1,
+                .base_mip_level = 0,
+                .level_count = 1,
+            },
+        }),
+    );
+
     try self.device.endCommandBuffer(command_buffer);
 
-    const submit_infos: [1]vk.SubmitInfo = .{.{
+    const wait_dst_stage_mask: vk.PipelineStageFlags = .{ .all_commands_bit = true };
+
+    const submit_infos: [1]vk.SubmitInfo = .{vk.SubmitInfo{
         .command_buffer_count = @intCast(command_buffers.len),
         .p_command_buffers = &command_buffers,
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = @ptrCast(&wait_semaphore),
+        .p_wait_dst_stage_mask = @ptrCast(&wait_dst_stage_mask),
+        .signal_semaphore_count = 1,
+        .p_signal_semaphores = @ptrCast(&present_semaphore),
     }};
 
     try self.device.queueSubmit(self.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
-    _ = try self.device.waitForFences(1, &.{fence}, 1, std.math.maxInt(u64));
+
+    _ = try self.device.queuePresentKHR(self.graphics_queue.handle, &.{
+        .swapchain_count = 1,
+        .p_image_indices = @ptrCast(&swapchain_image.index),
+        .p_swapchains = @ptrCast(&swapchain_image.swapchain),
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = @ptrCast(&present_semaphore),
+    });
+
+    _ = try self.device.waitForFences(1, @ptrCast(&fence), 1, std.math.maxInt(u64));
+    _ = self.device.queueWaitIdle(self.graphics_queue.handle) catch {};
 }
