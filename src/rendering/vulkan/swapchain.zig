@@ -6,8 +6,14 @@ const Device = @import("device.zig");
 
 const MAX_IMAGE_COUNT: u32 = 8;
 
+pub const SwapchainImage = struct {
+    index: u32,
+    image: vk.Image,
+};
+
 const Self = @This();
 
+out_of_date: bool = false,
 device: *Device,
 surface: vk.SurfaceKHR,
 handle: vk.SwapchainKHR,
@@ -85,4 +91,27 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, old_swapchain: ?vk.Swapchai
 
 pub fn denit(self: Self) void {
     self.device.device.destroySwapchainKHR(self.handle, null);
+}
+
+pub fn some(
+    self: *Self,
+    timeout: u64,
+    wait_semaphore: vk.Semaphore,
+    wait_fence: vk.Fence,
+) !SwapchainImage {
+    const result = try self.device.device.acquireNextImageKHR(
+        self.handle,
+        timeout,
+        wait_fence,
+        wait_semaphore,
+    );
+
+    if (result.result == .suboptimal_khr) {
+        self.out_of_date = true;
+    }
+
+    return .{
+        .index = result.image_index,
+        .image = self.images[result.image_index],
+    };
 }

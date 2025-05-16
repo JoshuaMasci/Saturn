@@ -69,11 +69,26 @@ pub const RenderThread = struct {
             var device = try instance.createDevice(0);
             defer device.deinit();
 
-            var buffer = try Buffer.init(&device, 4096, .{ .uniform_buffer_bit = true }, .gpu_mappable);
+            const FLOAT_COUNT = 4064;
+            var buffer = try Buffer.init(&device, FLOAT_COUNT * @sizeOf(f32), .{ .uniform_buffer_bit = true }, .gpu_mappable);
             defer buffer.deinit();
+
+            const ptr = buffer.allocation.mapped_ptr.?;
+            const float_ptr: [*]f32 = @ptrCast(@alignCast(ptr));
+            const float_slice: []f32 = float_ptr[0..FLOAT_COUNT];
+            for (float_slice, 0..) |*float, i| {
+                float.* = @floatFromInt(i);
+            }
+
+            var image = try @import("vulkan/image.zig").init2D(&device, .{ 4096, 4096 }, .r8g8b8a8_unorm, .{ .sampled_bit = true, .color_attachment_bit = true }, .gpu_mappable);
+            defer image.deinit();
 
             const swapchain = try Swapchain.init(&device, surface, null);
             defer swapchain.denit();
+
+            for (0..100) |_| {
+                device.render() catch {};
+            }
         }
 
         const device = Device.init();

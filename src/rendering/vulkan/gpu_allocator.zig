@@ -12,6 +12,7 @@ pub const Allocation = struct {
     memory: vk.DeviceMemory,
     offset: vk.DeviceSize,
     location: MemoryLocation,
+    mapped_ptr: ?*anyopaque,
 };
 
 const Self = @This();
@@ -59,10 +60,21 @@ pub fn alloc(
     };
 
     const memory = try self.device.allocateMemory(&alloc_info, null);
-    return .{ .memory = memory, .offset = 0, .location = location };
+    const offset: vk.DeviceSize = 0;
+
+    const mapped_ptr = switch (location) {
+        .gpu_mappable, .cpu_only => try self.device.mapMemory(memory, offset, alloc_info.allocation_size, .{}),
+        .gpu_only => null,
+    };
+
+    return .{ .memory = memory, .offset = 0, .location = location, .mapped_ptr = mapped_ptr };
 }
 
 pub fn free(self: *Self, allocation: Allocation) void {
+    if (allocation.mapped_ptr) |_| {
+        self.device.unmapMemory(allocation.memory);
+    }
+
     self.device.freeMemory(allocation.memory, null);
 }
 

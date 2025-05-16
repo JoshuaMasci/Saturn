@@ -21,7 +21,6 @@ pub fn init(device: *Device, size: usize, usage: vk.BufferUsageFlags, memory_loc
 
     const allocation = try device.gpu_allocator.alloc(device.device.getBufferMemoryRequirements(handle), memory_location);
     errdefer device.gpu_allocator.free(allocation);
-
     try device.device.bindBufferMemory(handle, allocation.memory, allocation.offset);
 
     return .{
