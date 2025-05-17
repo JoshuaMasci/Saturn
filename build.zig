@@ -110,13 +110,22 @@ pub fn build(b: *std.Build) !void {
         assets_exe.linkSystemLibrary("dxcompiler");
 
         b.installArtifact(assets_exe);
-        const run_assets_cmd = b.addRunArtifact(assets_exe);
-        run_assets_cmd.step.dependOn(b.getInstallStep());
-        run_assets_cmd.addArg("engine");
-        run_assets_cmd.addArg("assets/");
-        run_assets_cmd.addArg("zig-out/assets"); //TODO: get this path from builder
+        const build_engine_assets = b.addRunArtifact(assets_exe);
+        build_engine_assets.step.dependOn(b.getInstallStep());
+        build_engine_assets.addArg("engine");
+        build_engine_assets.addArg("assets/");
+        build_engine_assets.addArg("zig-out/assets");
+
+        const build_game_assets = b.addRunArtifact(assets_exe);
+        build_game_assets.step.dependOn(b.getInstallStep());
+        build_game_assets.addArg("game");
+        build_game_assets.addArg("game-assets/");
+        build_game_assets.addArg("zig-out/game-assets");
+
+        //TODO: get this path from builder
         const run_assets_step = b.step("assets", "Process assets");
-        run_assets_step.dependOn(&run_assets_cmd.step);
+        run_assets_step.dependOn(&build_engine_assets.step);
+        run_assets_step.dependOn(&build_game_assets.step);
     }
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
