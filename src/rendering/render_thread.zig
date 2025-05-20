@@ -57,9 +57,6 @@ pub const RenderThread = struct {
     pub fn init(allocator: std.mem.Allocator, window: Window) !Self {
         {
             const VkInstance = @import("vulkan/instance.zig");
-            const Swapchain = @import("vulkan/swapchain.zig");
-            const Buffer = @import("vulkan/buffer.zig");
-
             const instance = try VkInstance.init(allocator, Vulkan.getProcInstanceFunction().?, Vulkan.getInstanceExtensions(), .{ .name = "Saturn Engine", .version = VkInstance.makeVersion(0, 0, 0, 1) });
             defer instance.deinit();
 
@@ -69,8 +66,16 @@ pub const RenderThread = struct {
             var device = try instance.createDevice(0);
             defer device.deinit();
 
-            const FLOAT_COUNT = 4064;
-            var buffer = try Buffer.init(&device, FLOAT_COUNT * @sizeOf(f32), .{ .uniform_buffer_bit = true }, .gpu_mappable);
+            var bindless_descriptor = try @import("vulkan/bindless_descriptor.zig").init(&device, .{
+                .uniform_buffers = 1024,
+                .storage_buffers = 1024,
+                .sampled_images = 1024,
+                .storage_images = 1024,
+            });
+            defer bindless_descriptor.deinit();
+
+            const FLOAT_COUNT = 4096;
+            var buffer = try @import("vulkan/buffer.zig").init(&device, FLOAT_COUNT * @sizeOf(f32), .{ .uniform_buffer_bit = true }, .cpu_only);
             defer buffer.deinit();
 
             const ptr = buffer.allocation.mapped_ptr.?;
@@ -80,10 +85,10 @@ pub const RenderThread = struct {
                 float.* = @floatFromInt(i);
             }
 
-            var image = try @import("vulkan/image.zig").init2D(&device, .{ 4096, 4096 }, .r8g8b8a8_unorm, .{ .sampled_bit = true, .color_attachment_bit = true }, .gpu_mappable);
+            var image = try @import("vulkan/image.zig").init2D(&device, .{ 4096, 4096 }, .r8g8b8a8_unorm, .{ .sampled_bit = true, .color_attachment_bit = true }, .gpu_only);
             defer image.deinit();
 
-            var swapchain = try Swapchain.init(&device, surface, null);
+            var swapchain = try @import("vulkan/swapchain.zig").init(&device, surface, null);
             defer swapchain.denit();
 
             for (0..1000) |_| {

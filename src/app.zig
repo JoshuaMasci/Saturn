@@ -33,6 +33,7 @@ pub const App = struct {
 
     pub fn init() !Self {
         try global.assets.addDir("engine", "zig-out/assets");
+        try global.assets.addDir("game", "zig-out/game-assets");
 
         var platform = try Platform.init(global.global_allocator);
         const window = platform.createWindow("Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
@@ -58,7 +59,7 @@ pub const App = struct {
         world_gen.create_props(game_universe, game_worlds.inside, 10, zm.f32x4(2.5, 0.0, -15.0, 0.0), 0.15);
 
         //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/assets/Sponza/NewSponza_Main_glTF_002/scene.json", .{ .position = zm.f32x4(0, -1, 0, 0) });
-        try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/assets/Bistro/scene.json", .{ .position = zm.f32x4(0, -50, 0, 0) });
+        try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Bistro/scene.json", .{ .position = zm.f32x4(0, -50, 0, 0) });
 
         return .{
             .should_quit = false,
