@@ -111,6 +111,10 @@ pub const Platform = struct {
     pub fn proccessEvents(self: *Self) !void {
         self.keyboard_mouse_device.beginFrame();
 
+        for (self.controllers.values()) |controller| {
+            controller.beginFrame();
+        }
+
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event)) {
 
@@ -135,6 +139,16 @@ pub const Platform = struct {
                         mouse.proccessEvent(&event);
                     }
                 },
+                c.SDL_EVENT_GAMEPAD_BUTTON_UP, c.SDL_EVENT_GAMEPAD_BUTTON_DOWN => {
+                    if (self.controllers.get(event.gbutton.which)) |controller| {
+                        controller.proccessEvent(&event);
+                    }
+                },
+                c.SDL_EVENT_GAMEPAD_AXIS_MOTION => {
+                    if (self.controllers.get(event.gaxis.which)) |controller| {
+                        controller.proccessEvent(&event);
+                    }
+                },
                 c.SDL_EVENT_GAMEPAD_ADDED => {
                     if (!self.controllers.contains(event.gdevice.which)) {
                         const gamepad = c.SDL_OpenGamepad(event.gdevice.which).?;
@@ -151,6 +165,7 @@ pub const Platform = struct {
 
                         try self.controllers.put(controller.joystick, controller);
                     }
+                    try self.rebuildInputDevices();
                 },
                 c.SDL_EVENT_GAMEPAD_REMOVED => {
                     if (self.controllers.fetchSwapRemove(event.gdevice.which)) |entry| {
@@ -158,9 +173,18 @@ pub const Platform = struct {
                         self.allocator.free(entry.value.name);
                         self.allocator.destroy(entry.value);
                     }
+                    try self.rebuildInputDevices();
                 },
                 else => {},
             }
+        }
+    }
+
+    fn rebuildInputDevices(self: *Self) !void {
+        self.input_devices.clearRetainingCapacity();
+        try self.input_devices.append(self.keyboard_mouse_device.getInputDevice());
+        for (self.controllers.values()) |controller| {
+            try self.input_devices.append(controller.getInputDevice());
         }
     }
 
@@ -465,7 +489,72 @@ const Controller = struct {
     joystick: c.SDL_JoystickID,
     gamepad: *c.SDL_Gamepad,
 
-    buttons: [c.SDL_GAMEPAD_BUTTON_COUNT]ButtonState = @splat(.{}),
+    button_state: [c.SDL_GAMEPAD_BUTTON_COUNT]ButtonState = @splat(.{}),
+    axis_state: [c.SDL_GAMEPAD_AXIS_COUNT]input.DeviceAxisState = @splat(.{}),
+
+    fn beginFrame(self: *Self) void {
+        for (&self.button_state) |*button_state| {
+            button_state.was_pressed_last_frame = button_state.is_pressed;
+        }
+    }
+
+    fn proccessEvent(self: *Self, event: *c.SDL_Event) void {
+        switch (event.type) {
+            c.SDL_EVENT_GAMEPAD_BUTTON_UP, c.SDL_EVENT_GAMEPAD_BUTTON_DOWN => {
+                self.button_state[event.gbutton.button].timestamp = event.gbutton.timestamp;
+                self.button_state[event.gbutton.button].is_pressed = event.gbutton.down;
+            },
+            c.SDL_EVENT_GAMEPAD_AXIS_MOTION => {
+                const i_value: f32 = @floatFromInt(event.gaxis.value);
+                const f_value: f32 = i_value / std.math.maxInt(i16);
+                self.axis_state[event.gaxis.axis].timestamp = event.gaxis.timestamp;
+                self.axis_state[event.gaxis.axis].value = f_value;
+            },
+            else => {},
+        }
+    }
+
+    fn getButton(ptr: *anyopaque, context_hash: u32, button: u32) ?input.DeviceButtonState {
+        _ = context_hash; // autofix
+
+        const self: *Self = @alignCast(@ptrCast(ptr));
+        if (button == 0) {
+            return self.button_state[c.SDL_GAMEPAD_BUTTON_SOUTH].toDeviceState();
+        }
+
+        return null;
+    }
+
+    fn getAxis(ptr: *anyopaque, context_hash: u32, axis: u32) ?input.DeviceAxisState {
+        _ = context_hash; // autofix
+
+        const self: *Self = @alignCast(@ptrCast(ptr));
+
+        var state_opt: ?input.DeviceAxisState = switch (axis) {
+            0 => self.axis_state[c.SDL_GAMEPAD_AXIS_LEFTX],
+            2 => self.axis_state[c.SDL_GAMEPAD_AXIS_LEFTY],
+            3 => self.axis_state[c.SDL_GAMEPAD_AXIS_RIGHTX],
+            4 => .{ .timestamp = self.axis_state[c.SDL_GAMEPAD_AXIS_RIGHTY].timestamp, .value = -self.axis_state[c.SDL_GAMEPAD_AXIS_RIGHTY].value },
+            else => null,
+        };
+
+        if (state_opt) |*state| {
+            state.value *= -1.0;
+            if (@abs(state.value) <= 0.1) {
+                state.value = 0.0;
+            }
+        }
+
+        return state_opt;
+    }
+
+    pub fn getInputDevice(self: *Self) input.InputDevice {
+        return .{
+            .ptr = @ptrCast(self),
+            .get_button_state = &Self.getButton,
+            .get_axis_state = &Self.getAxis,
+        };
+    }
 };
 
 pub const Vulkan = struct {
