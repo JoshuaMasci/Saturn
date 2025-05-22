@@ -91,8 +91,8 @@ pub const RenderThread = struct {
             var swapchain = try @import("vulkan/swapchain.zig").init(&device, surface, null);
             defer swapchain.denit();
 
-            for (0..1000) |_| {
-                device.render(&swapchain) catch break;
+            for (0..100) |_| {
+                device.render(&swapchain, &bindless_descriptor) catch break;
             }
         }
 

@@ -1,7 +1,10 @@
 const std = @import("std");
 
 const vk = @import("vulkan");
+
+const Buffer = @import("buffer.zig");
 const Device = @import("device.zig");
+const Image = @import("image.zig");
 
 pub const DescriptorCounts = struct {
     uniform_buffers: u32,
@@ -15,6 +18,8 @@ const Self = @This();
 
 device: *Device,
 layout: vk.DescriptorSetLayout,
+pipeline_layout: vk.PipelineLayout,
+
 pool: vk.DescriptorPool,
 set: vk.DescriptorSet,
 
@@ -60,9 +65,15 @@ pub fn init(device: *Device, descriptor_counts: DescriptorCounts) !Self {
         // },
     };
 
-    var layout = try device.device.createDescriptorSetLayout(&.{
+    const layout = try device.device.createDescriptorSetLayout(&.{
         .binding_count = bindings.len,
         .p_bindings = &bindings,
+    }, null);
+
+    //TODO: remove temp pipeline layout
+    const pipeline_layout = try device.device.createPipelineLayout(&.{
+        .set_layout_count = 1,
+        .p_set_layouts = (&layout)[0..1],
     }, null);
 
     const pool_sizes = [_]vk.DescriptorPoolSize{
@@ -81,6 +92,7 @@ pub fn init(device: *Device, descriptor_counts: DescriptorCounts) !Self {
     return Self{
         .device = device,
         .layout = layout,
+        .pipeline_layout = pipeline_layout,
         .pool = pool,
         .set = set,
     };
@@ -88,5 +100,19 @@ pub fn init(device: *Device, descriptor_counts: DescriptorCounts) !Self {
 
 pub fn deinit(self: Self) void {
     self.device.device.destroyDescriptorPool(self.pool, null);
+    self.device.device.destroyPipelineLayout(self.pipeline_layout, null);
     self.device.device.destroyDescriptorSetLayout(self.layout, null);
+}
+
+pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy) void {
+    const bind_points = [_]vk.PipelineBindPoint{ .graphics, .compute };
+    for (bind_points) |bind_point| {
+        command_buffer.bindDescriptorSets(bind_point, self.pipeline_layout, 0, 1, (&self.set)[0..1], 0, null);
+    }
+}
+
+pub fn writeTest(self: Self) void {
+    const descriptor_updates = []vk.WriteDescriptorSet{};
+
+    self.device.device.updateDescriptorSets(@intCast(descriptor_updates.len), &descriptor_updates, 0, null);
 }
