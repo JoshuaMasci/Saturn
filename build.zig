@@ -4,7 +4,8 @@ const builtin = @import("builtin");
 pub fn build(b: *std.Build) !void {
     var option_step = b.addOptions();
 
-    const build_sdl3 = b.option(bool, "build_sdl3", "build and link sdl3 from source instead") orelse false;
+    const build_sdl3 = b.option(bool, "build_sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
+    const no_assets = b.option(bool, "no_assets", "Don't compile asset pipeline") orelse false;
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -80,7 +81,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     // Asset processing exe
-    {
+    if (!no_assets) {
         const assets_exe = b.addExecutable(.{
             .name = "saturn_assets",
             .root_source_file = b.path("src/asset_main.zig"),
