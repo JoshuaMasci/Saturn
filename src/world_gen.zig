@@ -112,7 +112,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
         outside_airlock_center.systems.add(@import("game/airlock.zig").AirLockComponent{ .cast_layer = 1, .cast_shape = airlock_volume.convex_shape, .linked_entity = inside_airlock_center.handle });
 
         const mesh = MeshAssetHandle.fromRepoPath("game:models/cube.mesh").?;
-        const material = MaterialAssetHandle.fromRepoPath("game:materials/teal.mat").?;
+        const material = MaterialAssetHandle.fromRepoPath("engine:materials/teal.mat").?;
         const size = zm.f32x4(0.2, 1.0, 1.0, 0.0);
         const door_box = physics_system.Shape.initBox(zm.vecToArr3(size), 1.0, 0);
 
