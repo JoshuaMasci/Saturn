@@ -36,7 +36,7 @@ pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle, transf
 }
 
 pub fn create_props(universe: *Universe, world_handle: World.Handle, count: usize, position: zm.Vec, scale: f32) void {
-    const cube_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/cube.mesh").?;
+    const cube_mesh_handle = MeshAssetHandle.fromRepoPath("game:models/cube.mesh").?;
     const material_handles: []const MaterialAssetHandle = &.{
         MaterialAssetHandle.fromRepoPath("engine:materials/olive.mat").?,
         MaterialAssetHandle.fromRepoPath("engine:materials/purple.mat").?,
@@ -75,18 +75,18 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     var ship_outside = universe.createEntity("Ship Outside Root");
     ship_outside.systems.add(physics.PhysicsEntitySystem.init(ship_outside.handle, .dynamic));
 
-    const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge.mesh").?;
+    const bridge_mesh_handle = MeshAssetHandle.fromRepoPath("game:models/bridge.mesh").?;
     _ = bridge_mesh_handle; // autofix
-    const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/bridge_glass.mesh").?;
+    const bridge_glass_mesh_handle = MeshAssetHandle.fromRepoPath("game:models/bridge_glass.mesh").?;
     _ = bridge_glass_mesh_handle; // autofix
-    const hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/hull.mesh").?;
-    const l_hull_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/l_hull.mesh").?;
-    const engine_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/engine.mesh").?;
-    const airlock_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/airlock2.mesh").?;
-    const airlock_inside_mesh_handle = MeshAssetHandle.fromRepoPath("engine:models/airlock2_inside.mesh").?;
+    const hull_mesh_handle = MeshAssetHandle.fromRepoPath("game:models/hull.mesh").?;
+    const l_hull_mesh_handle = MeshAssetHandle.fromRepoPath("game:models/l_hull.mesh").?;
+    const engine_mesh_handle = MeshAssetHandle.fromRepoPath("game:models/engine.mesh").?;
+    const airlock_mesh_handle = MeshAssetHandle.fromRepoPath("game:models/airlock2.mesh").?;
+    const airlock_inside_mesh_handle = MeshAssetHandle.fromRepoPath("game:models/airlock2_inside.mesh").?;
 
-    const grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/grid.mat").?;
-    const uv_grid_material_handle = MaterialAssetHandle.fromRepoPath("engine:materials/uv_grid.mat").?;
+    const grid_material_handle = MaterialAssetHandle.fromRepoPath("game:materials/grid.mat").?;
+    const uv_grid_material_handle = MaterialAssetHandle.fromRepoPath("game:materials/uv_grid.mat").?;
 
     //createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_mesh_handle, grid_material_handle, .{}, false);
     //createMeshEntity(allocator, universe, ship_inside, ship_outside, bridge_glass_mesh_handle, grid_material_handle, .{}, false);
@@ -111,8 +111,8 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
         inside_airlock_center.systems.add(@import("game/airlock.zig").AirLockComponent{ .cast_layer = 1, .cast_shape = airlock_volume.convex_shape, .linked_entity = outside_airlock_center.handle });
         outside_airlock_center.systems.add(@import("game/airlock.zig").AirLockComponent{ .cast_layer = 1, .cast_shape = airlock_volume.convex_shape, .linked_entity = inside_airlock_center.handle });
 
-        const mesh = MeshAssetHandle.fromRepoPath("engine:models/cube.mesh").?;
-        const material = MaterialAssetHandle.fromRepoPath("engine:materials/teal.mat").?;
+        const mesh = MeshAssetHandle.fromRepoPath("game:models/cube.mesh").?;
+        const material = MaterialAssetHandle.fromRepoPath("game:materials/teal.mat").?;
         const size = zm.f32x4(0.2, 1.0, 1.0, 0.0);
         const door_box = physics_system.Shape.initBox(zm.vecToArr3(size), 1.0, 0);
 
