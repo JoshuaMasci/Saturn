@@ -69,7 +69,8 @@ pub const Platform = struct {
         _ = self; // autofix
         var window_width: i32 = 0;
         var window_height: i32 = 0;
-        var window_flags = c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_VULKAN;
+        //var window_flags = c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_VULKAN;
+        var window_flags = c.SDL_WINDOW_VULKAN;
 
         switch (size) {
             .windowed => |window_size| {
@@ -119,7 +120,7 @@ pub const Platform = struct {
         while (c.SDL_PollEvent(&event)) {
 
             //TODO: only update when input is in "Menu" mode, aka mouse not captured
-            _ = @import("zimgui").backend.processEvent(&event);
+            //_ = @import("zimgui").backend.processEvent(&event);
             switch (event.type) {
                 c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
                     self.should_quit = true;

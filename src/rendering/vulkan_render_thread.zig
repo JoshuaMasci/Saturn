@@ -10,10 +10,10 @@ const Camera = @import("camera.zig").Camera;
 const rendering_scene = @import("scene.zig");
 const RenderSettings = @import("settings.zig").RenderSettings;
 
-//SDL3
-const Device = @import("sdl_gpu/device.zig");
-const PhyiscsRenderer = @import("sdl_gpu/physics_renderer.zig");
-const SceneRenderer = @import("sdl_gpu/scene_renderer.zig").Renderer;
+//Vulkan
+const Device = @import("vulkan/backend.zig");
+const SceneRenderer = @import("vulkan/scene_renderer.zig");
+// const PhyiscsRenderer = @import("sdl_gpu/physics_renderer.zig");
 
 pub const RenderThreadData = struct {
     const Self = @This();
@@ -22,7 +22,6 @@ pub const RenderThreadData = struct {
 
     device: Device,
     scene_renderer: SceneRenderer,
-    physics_renderer: PhyiscsRenderer,
 
     //Per Frame Data
     temp_allocator: std.heap.ArenaAllocator,
@@ -32,7 +31,7 @@ pub const RenderThreadData = struct {
 
     pub fn deinit(self: *Self) void {
         self.scene_renderer.deinit();
-        self.physics_renderer.deinit();
+        // self.physics_renderer.deinit();
         self.device.releaseWindow(self.window);
         self.device.deinit();
         self.temp_allocator.deinit();
@@ -58,18 +57,22 @@ pub const RenderThread = struct {
     should_reload: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, window: Window) !Self {
-        const device = Device.init();
-        device.claimWindow(window);
+        var device = try Device.init(allocator);
+        try device.claimWindow(window);
 
-        const color_format = c.SDL_GetGPUSwapchainTextureFormat(device.handle, window.handle);
-        const depth_fromat = device.getLargestDepthFormat();
+        // const color_format = c.SDL_GetGPUSwapchainTextureFormat(device.handle, window.handle);
+        // _ = color_format; // autofix
+        // const depth_fromat = device.getLargestDepthFormat();
+        // _ = depth_fromat; // autofix
+
+        const scene_renderer = SceneRenderer.init(allocator, device.device) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
 
         const render_thread_data = try allocator.create(RenderThreadData);
         render_thread_data.* = .{
             .window = window,
             .device = device,
-            .scene_renderer = SceneRenderer.init(allocator, device, .{ .color = color_format, .depth = depth_fromat }) catch |err| std.debug.panic("Failed to init renderer: {}", .{err}),
-            .physics_renderer = PhyiscsRenderer.init(allocator, device, color_format, depth_fromat) catch |err| std.debug.panic("Failed to init renderer: {}", .{err}),
+            .scene_renderer = scene_renderer,
+            // .physics_renderer = PhyiscsRenderer.init(allocator, device, color_format, depth_fromat) catch |err| std.debug.panic("Failed to init renderer: {}", .{err}),
             .temp_allocator = std.heap.ArenaAllocator.init(allocator),
         };
 
@@ -138,52 +141,12 @@ fn renderThreadMain(
             return; //TODO: deinit
         }
 
-        const command_buffer = render_thread_data.device.startCommandBuffer();
-
-        const swapchain_target = render_thread_data.device.acquireSwapchainTexture(render_thread_data.window, command_buffer).?;
-
-        //TODO: default camera fov should be set by render settings
-        const DefaultCamera = Camera.Default;
-        if (render_thread_data.scene) |*scene| {
-            render_thread_data.scene_renderer.render(
-                render_thread_data.temp_allocator.allocator(),
-                command_buffer,
-                swapchain_target.handle,
-                swapchain_target.size,
-                scene,
-                .{
-                    .transform = render_thread_data.camera_transform orelse .{},
-                    .camera = render_thread_data.camera orelse DefaultCamera,
-                },
-            );
+        if (render_thread_data.scene) |scene| {
+            render_thread_data.scene_renderer.loadSceneData(render_thread_data.temp_allocator.allocator(), &scene);
+            render_thread_data.device.render(render_thread_data.window, null, null) catch |err| std.log.err("Failed to render frame: {}", .{err});
+        } else {
+            render_thread_data.device.render(render_thread_data.window, null, null) catch |err| std.log.err("Failed to render frame: {}", .{err});
         }
-
-        render_thread_data.physics_renderer.renderFrame(
-            command_buffer,
-            swapchain_target.handle,
-            swapchain_target.size,
-            .{
-                .transform = render_thread_data.camera_transform orelse .{},
-                .camera = render_thread_data.camera orelse DefaultCamera,
-            },
-        );
-
-        const zimgui = @import("zimgui");
-        zimgui.render();
-        zimgui.backend.prepareDrawData(command_buffer);
-        {
-            const color_target: c.SDL_GPUColorTargetInfo = .{
-                .texture = swapchain_target.handle,
-                .load_op = c.SDL_GPU_LOADOP_LOAD,
-                .store_op = c.SDL_GPU_STOREOP_STORE,
-            };
-            const render_pass = c.SDL_BeginGPURenderPass(command_buffer, &color_target, 1, null);
-            defer c.SDL_EndGPURenderPass(render_pass);
-
-            zimgui.backend.renderDrawData(command_buffer, render_pass.?, null);
-        }
-
-        render_thread_data.device.endCommandBuffer(command_buffer);
 
         render_signals.render_done_semaphore.post();
         if (render_signals.quit_thread.load(.monotonic)) {

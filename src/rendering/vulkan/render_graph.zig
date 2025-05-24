@@ -8,9 +8,9 @@ pub const QueueType = enum {
     prefer_async_transfer,
 };
 
-pub const BufferHandle = u32;
-pub const ImageHandle = u32;
-pub const SwapchainHandle = u64;
+pub const BufferHandle = usize;
+pub const ImageHandle = usize;
+pub const SwapchainHandle = usize;
 
 pub const BufferUsageInfo = struct {
     access_flags: vk.AccessFlags,
@@ -51,7 +51,7 @@ pub const ImageDefinition = union(enum) {
 
 pub const CommandBufferBuildFn = *const fn (
     device: vk.Device,
-    command_buffer: vk.CommandBuffer,
+    command_buffer: vk.CommandBufferProxy,
     user_data: ?*anyopaque,
 ) void;
 
@@ -76,7 +76,22 @@ pub const RenderPassDefinition = struct {
 
 pub const RenderGraphInput = struct {
     allocator: std.mem.Allocator,
-    buffers: []const BufferDefinition,
-    images: []const ImageDefinition,
-    render_passes: []const RenderPassDefinition,
+    buffers: std.ArrayList(BufferDefinition),
+    images: std.ArrayList(ImageDefinition),
+    render_passes: std.ArrayList(RenderPassDefinition),
+
+    pub fn init(allocator: std.mem.Allocator) @This() {
+        return .{
+            .allocator = allocator,
+            .buffers = .init(allocator),
+            .images = .init(allocator),
+            .render_passes = .init(allocator),
+        };
+    }
+
+    pub fn deinit(self: @This()) void {
+        self.buffers.deinit();
+        self.images.deinit();
+        self.render_passes.deinit();
+    }
 };

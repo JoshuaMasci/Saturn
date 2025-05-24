@@ -121,7 +121,10 @@ pub fn deinit(self: Self) void {
     self.allocator.destroy(self.device.wrapper);
 }
 
-pub fn render(self: Self, swapchain: *@import("swapchain.zig"), bindless_descriptor: *@import("bindless_descriptor.zig")) !void {
+const Swapchain = @import("swapchain.zig");
+const BindlessDescriptor = @import("bindless_descriptor.zig");
+
+pub fn render(self: Self, swapchain: *Swapchain, layout: vk.PipelineLayout, bindless_descriptor: *BindlessDescriptor) !void {
     const fence = try self.device.createFence(&.{}, null);
     defer self.device.destroyFence(fence, null);
 
@@ -142,7 +145,7 @@ pub fn render(self: Self, swapchain: *@import("swapchain.zig"), bindless_descrip
 
     try command_buffer.beginCommandBuffer(&.{});
 
-    bindless_descriptor.bind(command_buffer);
+    bindless_descriptor.bind(command_buffer, layout);
 
     command_buffer.pipelineBarrier(
         .{ .all_commands_bit = true },
@@ -156,6 +159,55 @@ pub fn render(self: Self, swapchain: *@import("swapchain.zig"), bindless_descrip
         @ptrCast(&vk.ImageMemoryBarrier{
             .image = swapchain_image.image,
             .old_layout = .undefined,
+            .new_layout = .color_attachment_optimal,
+            .src_access_mask = .{},
+            .dst_access_mask = .{},
+            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .subresource_range = .{
+                .aspect_mask = .{ .color_bit = true },
+                .base_array_layer = 0,
+                .layer_count = 1,
+                .base_mip_level = 0,
+                .level_count = 1,
+            },
+        }),
+    );
+
+    const render_area: vk.Rect2D = .{ .offset = .{ .x = 0, .y = 0 }, .extent = swapchain.size };
+
+    command_buffer.beginRendering(&.{
+        .render_area = render_area,
+        .layer_count = 1,
+        .view_mask = 0,
+        .color_attachment_count = 1,
+        .p_color_attachments = (&vk.RenderingAttachmentInfo{
+            .image_view = swapchain_image.image_view,
+            .image_layout = .color_attachment_optimal,
+            .resolve_mode = .{},
+            .resolve_image_layout = .undefined,
+            .load_op = .clear,
+            .store_op = .store,
+            .clear_value = .{ .color = .{ .float_32 = .{ 0.0, 0.1, 0.1, 0.0 } } },
+        })[0..1],
+        .p_depth_attachment = null,
+        .p_stencil_attachment = null,
+    });
+
+    command_buffer.endRendering();
+
+    command_buffer.pipelineBarrier(
+        .{ .all_commands_bit = true },
+        .{ .all_commands_bit = true },
+        .{},
+        0,
+        null,
+        0,
+        null,
+        1,
+        @ptrCast(&vk.ImageMemoryBarrier{
+            .image = swapchain_image.image,
+            .old_layout = .color_attachment_optimal,
             .new_layout = .present_src_khr,
             .src_access_mask = .{},
             .dst_access_mask = .{},
@@ -187,13 +239,18 @@ pub fn render(self: Self, swapchain: *@import("swapchain.zig"), bindless_descrip
 
     try self.device.queueSubmit(self.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
 
-    _ = try self.device.queuePresentKHR(self.graphics_queue.handle, &.{
+    const present_result = try self.device.queuePresentKHR(self.graphics_queue.handle, &.{
         .swapchain_count = 1,
         .p_image_indices = @ptrCast(&swapchain_image.index),
         .p_swapchains = @ptrCast(&swapchain_image.swapchain),
         .wait_semaphore_count = 1,
         .p_wait_semaphores = @ptrCast(&present_semaphore),
     });
+
+    if (present_result == .suboptimal_khr) {
+        std.log.warn("Swapchain Suboptimal", .{});
+        swapchain.out_of_date = true;
+    }
 
     _ = try self.device.waitForFences(1, @ptrCast(&fence), 1, std.math.maxInt(u64));
     _ = self.device.queueWaitIdle(self.graphics_queue.handle) catch {};

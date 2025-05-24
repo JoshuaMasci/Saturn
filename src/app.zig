@@ -11,8 +11,7 @@ const global = @import("global.zig");
 const input = @import("input.zig");
 const Platform = @import("platform/sdl3.zig").Platform;
 const Window = @import("platform/sdl3.zig").Window;
-const RenderThread = @import("rendering/render_thread.zig").RenderThread;
-const PhysicsRenderer = @import("rendering/sdl_gpu/physics_renderer.zig");
+const RenderThread = @import("rendering/vulkan_render_thread.zig").RenderThread;
 const world_gen = @import("world_gen.zig");
 
 pub const App = struct {
@@ -40,18 +39,18 @@ pub const App = struct {
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
-        physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
+        //physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
 
-        zimgui.init(global.global_allocator);
-        zimgui.backend.init(
-            window.handle,
-            .{
-                .device = render_thread.data.device.handle,
-                .color_target_format = render_thread.data.scene_renderer.color_format,
-                .msaa_samples = 0, // 1 Sample
-            },
-        );
-        zimgui.io.setConfigFlags(.{ .dock_enable = true });
+        // zimgui.init(global.global_allocator);
+        // zimgui.backend.init(
+        //     window.handle,
+        //     .{
+        //         .device = render_thread.data.device.handle,
+        //         .color_target_format = render_thread.data.scene_renderer.color_format,
+        //         .msaa_samples = 0, // 1 Sample
+        //     },
+        // );
+        // zimgui.io.setConfigFlags(.{ .dock_enable = true });
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
@@ -80,8 +79,8 @@ pub const App = struct {
         physics_system.deinitDebugRenderer();
         physics_system.deinit();
 
-        zimgui.backend.deinit();
-        zimgui.deinit();
+        // zimgui.backend.deinit();
+        // zimgui.deinit();
 
         self.render_thread.deinit();
         self.platform.destroyWindow(self.window);
@@ -93,7 +92,9 @@ pub const App = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
+        _ = mem_usage_opt; // autofix
         const frame_allocator = global.global_allocator; //TODO: move to arena allocator
+        _ = frame_allocator; // autofix
 
         {
             self.timer += delta_time;
@@ -128,33 +129,33 @@ pub const App = struct {
 
         self.render_thread.beginFrame();
 
-        {
-            const window_size = self.window.getSize();
-            zimgui.backend.newFrame(window_size[0], window_size[1], 1.0);
+        // {
+        //     const window_size = self.window.getSize();
+        //     zimgui.backend.newFrame(window_size[0], window_size[1], 1.0);
 
-            createFullscreenDockspace();
-            defer zimgui.end();
+        //     createFullscreenDockspace();
+        //     defer zimgui.end();
 
-            if (zimgui.begin("Performance", .{})) {
-                zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
-                zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
-                if (mem_usage_opt) |mem_usage| {
-                    if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
-                        defer frame_allocator.free(mem_usage_string);
-                        zimgui.text("Memory Usage {s}", .{mem_usage_string});
-                    }
-                }
-            }
-            zimgui.end();
+        //     if (zimgui.begin("Performance", .{})) {
+        //         zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
+        //         zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
+        //         if (mem_usage_opt) |mem_usage| {
+        //             if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+        //                 defer frame_allocator.free(mem_usage_string);
+        //                 zimgui.text("Memory Usage {s}", .{mem_usage_string});
+        //             }
+        //         }
+        //     }
+        //     zimgui.end();
 
-            if (!self.platform.isMouseCaptured() and
-                !zimgui.isWindowHovered(.{ .any_window = true }) and
-                zimgui.isMouseClicked(zimgui.MouseButton.left) and
-                !zimgui.isAnyItemHovered())
-            {
-                self.platform.captureMouse(self.window);
-            }
-        }
+        //     if (!self.platform.isMouseCaptured() and
+        //         !zimgui.isWindowHovered(.{ .any_window = true }) and
+        //         zimgui.isMouseClicked(zimgui.MouseButton.left) and
+        //         !zimgui.isAnyItemHovered())
+        //     {
+        //         self.platform.captureMouse(self.window);
+        //     }
+        // }
 
         self.render_thread.data.scene = null;
         if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
@@ -168,21 +169,21 @@ pub const App = struct {
             }
         }
 
-        if (zimgui.begin("Debug", .{})) {
-            _ = zimgui.checkbox("Debug Physics Layer", .{ .v = &self.render_thread.data.physics_renderer.enabled });
-        }
-        zimgui.end();
+        // if (zimgui.begin("Debug", .{})) {
+        //     _ = zimgui.checkbox("Debug Physics Layer", .{ .v = &self.render_thread.data.physics_renderer.enabled });
+        // }
+        // zimgui.end();
 
-        if (self.render_thread.data.physics_renderer.enabled) {
-            if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-                if (game_debug_entity.world) |game_world| {
-                    const physics = @import("entity/engine/physics.zig");
-                    if (game_world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
-                        self.render_thread.data.physics_renderer.buildFrame(&physics_world.physics_world, .{});
-                    }
-                }
-            }
-        }
+        // if (self.render_thread.data.physics_renderer.enabled) {
+        //     if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
+        //         if (game_debug_entity.world) |game_world| {
+        //             const physics = @import("entity/engine/physics.zig");
+        //             if (game_world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
+        //                 self.render_thread.data.physics_renderer.buildFrame(&physics_world.physics_world, .{});
+        //             }
+        //         }
+        //     }
+        // }
 
         self.render_thread.submitFrame();
 

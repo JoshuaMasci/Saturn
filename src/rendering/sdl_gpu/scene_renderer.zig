@@ -100,10 +100,6 @@ pub const Renderer = struct {
 
         const empty_texture = Texture.init_2d(gpu_device.handle, &empty_asset);
 
-        const static_mesh_map = std.AutoHashMap(MeshAsset.Registry.Handle, Mesh).init(allocator);
-        const texture_map = std.AutoHashMap(Texture2dAsset.Registry.Handle, Texture).init(allocator);
-        const material_map = std.AutoHashMap(MaterialAsset.Registry.Handle, MaterialAsset).init(allocator);
-
         return .{
             .allocator = allocator,
             .gpu_device = gpu_device,
@@ -115,9 +111,9 @@ pub const Renderer = struct {
 
             .linear_sampler = linear_sampler,
             .empty_texture = empty_texture,
-            .static_mesh_map = static_mesh_map,
-            .texture_map = texture_map,
-            .material_map = material_map,
+            .static_mesh_map = .init(allocator),
+            .texture_map = .init(allocator),
+            .material_map = .init(allocator),
         };
     }
 

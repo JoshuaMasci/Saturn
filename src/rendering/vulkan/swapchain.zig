@@ -6,10 +6,16 @@ const Device = @import("device.zig");
 
 const MAX_IMAGE_COUNT: u32 = 8;
 
+const Image = struct {
+    handle: vk.Image,
+    view_handle: vk.ImageView,
+};
+
 pub const SwapchainImage = struct {
     swapchain: vk.SwapchainKHR,
     index: u32,
     image: vk.Image,
+    image_view: vk.ImageView,
 };
 
 const Self = @This();
@@ -20,7 +26,7 @@ surface: vk.SurfaceKHR,
 handle: vk.SwapchainKHR,
 
 image_count: usize,
-images: [MAX_IMAGE_COUNT]vk.Image, //TODO: replace this with some common image struct
+images: [MAX_IMAGE_COUNT]Image, //TODO: replace this with some common image struct
 
 size: vk.Extent2D,
 format: vk.Format,
@@ -29,13 +35,13 @@ transform: vk.SurfaceTransformFlagsKHR,
 composite_alpha: vk.CompositeAlphaFlagsKHR,
 present_mode: vk.PresentModeKHR,
 
-pub fn init(device: *Device, surface: vk.SurfaceKHR, old_swapchain: ?vk.SwapchainKHR) !Self {
+pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, old_swapchain: ?vk.SwapchainKHR) !Self {
     const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface);
 
     const image_count = std.math.clamp(3, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
     const size: vk.Extent2D = .{
-        .width = std.math.clamp(surface_capabilities.current_extent.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
-        .height = std.math.clamp(surface_capabilities.current_extent.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),
+        .width = std.math.clamp(window_size.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
+        .height = std.math.clamp(window_size.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),
     };
     const format = .b8g8r8a8_srgb;
     const color_space = .srgb_nonlinear_khr;
@@ -72,8 +78,26 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, old_swapchain: ?vk.Swapchai
         return error.TooManyImages;
     }
 
-    var images: [MAX_IMAGE_COUNT]vk.Image = undefined;
-    _ = try device.device.getSwapchainImagesKHR(handle, &actual_image_count, &images);
+    var image_handles: [MAX_IMAGE_COUNT]vk.Image = undefined;
+    _ = try device.device.getSwapchainImagesKHR(handle, &actual_image_count, &image_handles);
+
+    var images: [MAX_IMAGE_COUNT]Image = undefined;
+    for (image_handles[0..actual_image_count], 0..) |image_handle, i| {
+        const view_handle = try device.device.createImageView(&.{
+            .view_type = .@"2d",
+            .image = image_handle,
+            .format = format,
+            .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
+            .subresource_range = .{
+                .aspect_mask = .{ .color_bit = true },
+                .base_mip_level = 0,
+                .level_count = 1,
+                .base_array_layer = 0,
+                .layer_count = 1,
+            },
+        }, null);
+        images[i] = .{ .handle = image_handle, .view_handle = view_handle };
+    }
 
     return .{
         .device = device,
@@ -90,7 +114,11 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, old_swapchain: ?vk.Swapchai
     };
 }
 
-pub fn denit(self: Self) void {
+pub fn deinit(self: Self) void {
+    for (self.images[0..self.image_count]) |image| {
+        self.device.device.destroyImageView(image.view_handle, null);
+    }
+
     self.device.device.destroySwapchainKHR(self.handle, null);
 }
 
@@ -108,12 +136,14 @@ pub fn acquireNextImage(
     );
 
     if (result.result == .suboptimal_khr) {
+        std.log.warn("Swapchain Suboptimal", .{});
         self.out_of_date = true;
     }
 
     return .{
         .swapchain = self.handle,
         .index = result.image_index,
-        .image = self.images[result.image_index],
+        .image = self.images[result.image_index].handle,
+        .image_view = self.images[result.image_index].view_handle,
     };
 }

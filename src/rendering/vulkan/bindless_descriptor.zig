@@ -5,6 +5,7 @@ const vk = @import("vulkan");
 const Buffer = @import("buffer.zig");
 const Device = @import("device.zig");
 const Image = @import("image.zig");
+const Sampler = @import("sampler.zig");
 
 pub const DescriptorCounts = struct {
     uniform_buffers: u32,
@@ -18,10 +19,11 @@ const Self = @This();
 
 device: *Device,
 layout: vk.DescriptorSetLayout,
-pipeline_layout: vk.PipelineLayout,
 
 pool: vk.DescriptorPool,
 set: vk.DescriptorSet,
+
+next_sampled_texture_id: u16 = 1,
 
 pub fn init(device: *Device, descriptor_counts: DescriptorCounts) !Self {
 
@@ -70,12 +72,6 @@ pub fn init(device: *Device, descriptor_counts: DescriptorCounts) !Self {
         .p_bindings = &bindings,
     }, null);
 
-    //TODO: remove temp pipeline layout
-    const pipeline_layout = try device.device.createPipelineLayout(&.{
-        .set_layout_count = 1,
-        .p_set_layouts = (&layout)[0..1],
-    }, null);
-
     const pool_sizes = [_]vk.DescriptorPoolSize{
         .{ .type = .uniform_buffer, .descriptor_count = descriptor_counts.uniform_buffers },
         .{ .type = .storage_buffer, .descriptor_count = descriptor_counts.storage_buffers },
@@ -92,7 +88,6 @@ pub fn init(device: *Device, descriptor_counts: DescriptorCounts) !Self {
     return Self{
         .device = device,
         .layout = layout,
-        .pipeline_layout = pipeline_layout,
         .pool = pool,
         .set = set,
     };
@@ -100,19 +95,38 @@ pub fn init(device: *Device, descriptor_counts: DescriptorCounts) !Self {
 
 pub fn deinit(self: Self) void {
     self.device.device.destroyDescriptorPool(self.pool, null);
-    self.device.device.destroyPipelineLayout(self.pipeline_layout, null);
     self.device.device.destroyDescriptorSetLayout(self.layout, null);
 }
 
-pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy) void {
+pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy, layout: vk.PipelineLayout) void {
     const bind_points = [_]vk.PipelineBindPoint{ .graphics, .compute };
     for (bind_points) |bind_point| {
-        command_buffer.bindDescriptorSets(bind_point, self.pipeline_layout, 0, 1, (&self.set)[0..1], 0, null);
+        command_buffer.bindDescriptorSets(bind_point, layout, 0, 1, (&self.set)[0..1], 0, null);
     }
 }
 
-pub fn writeTest(self: Self) void {
-    const descriptor_updates = []vk.WriteDescriptorSet{};
+pub fn bindSampledImage(self: *Self, image: Image, sampler: Sampler) u16 {
+    const index = self.next_sampled_texture_id;
+    self.next_sampled_texture_id += 1;
 
-    self.device.device.updateDescriptorSets(@intCast(descriptor_updates.len), &descriptor_updates, 0, null);
+    const image_info = vk.DescriptorImageInfo{
+        .image_layout = .shader_read_only_optimal,
+        .image_view = image.view_handle,
+        .sampler = sampler.handle,
+    };
+
+    const descriptor_update = vk.WriteDescriptorSet{
+        .descriptor_count = 1,
+        .descriptor_type = .combined_image_sampler,
+        .dst_set = self.set,
+        .dst_binding = 2,
+        .dst_array_element = @intCast(index),
+        .p_buffer_info = undefined,
+        .p_image_info = (&image_info)[0..1],
+        .p_texel_buffer_view = undefined,
+    };
+
+    self.device.device.updateDescriptorSets(1, (&descriptor_update)[0..1], 0, null);
+
+    return index;
 }
