@@ -11,6 +11,7 @@
     },
     .dependencies = .{
         .saturn_jolt = .{ .path = "libs/saturn_jolt" },
+        .zdxc = .{ .path = "libs/zdxc" },
 
         .sdl3 = .{
             .url = "git+https://github.com/castholm/SDL.git#0ab7c9830bf17c1a2404461a88c0fdedf95309a4",
@@ -43,6 +44,10 @@
         .vulkan_headers = .{
             .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#e2e53a724677f6eba8ff0ce1ccb64ee321785cbd",
             .hash = "N-V-__8AAMjV7gGH3DKcxHoM9tIKAxu9ypDzlJHSgEhQ8v_f",
+        },
+        .dxcompiler = .{
+            .path = "../mach-dxcompiler",
+            .lazy = true,
         },
     },
 }

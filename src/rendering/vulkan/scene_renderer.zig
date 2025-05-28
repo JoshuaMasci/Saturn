@@ -18,19 +18,49 @@ const RenderScene = @import("../scene.zig").RenderScene;
 
 const Device = @import("device.zig");
 const Mesh = @import("mesh.zig");
+const Pipeline = @import("pipeline.zig");
+
+pub const BuildCommandBufferData = struct {
+    self: *const Self,
+    scene: *const RenderScene,
+    camera: Camera,
+    camera_transform: Transform,
+};
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 device: *Device,
 
+mesh_pipeline: vk.Pipeline,
+
 static_mesh_map: std.AutoArrayHashMap(MeshAsset.Registry.Handle, Mesh),
 material_map: std.AutoArrayHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
-pub fn init(allocator: std.mem.Allocator, device: *Device) !Self {
+pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Format, depth_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
+    const vertex_shader = try loadGraphicsShader(allocator, device.device, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/static_mesh.vert.shader").?);
+    defer device.device.destroyShaderModule(vertex_shader, null);
+
+    const opaque_fragment_shader = try loadGraphicsShader(allocator, device.device, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/opaque.frag.shader").?);
+    defer device.device.destroyShaderModule(opaque_fragment_shader, null);
+
+    const mesh_pipeline = try Pipeline.createGraphicsPipeline(
+        allocator,
+        device.device,
+        pipeline_layout,
+        .{
+            .color_format = color_format,
+            .depth_format = depth_format,
+            .cull_mode = .{},
+        },
+        vertex_shader,
+        opaque_fragment_shader,
+    );
+
     return .{
         .allocator = allocator,
         .device = device,
+        .mesh_pipeline = mesh_pipeline,
         .static_mesh_map = .init(allocator),
         .material_map = .init(allocator),
     };
@@ -46,17 +76,91 @@ pub fn deinit(self: *Self) void {
         material.deinit(self.allocator);
     }
     self.material_map.deinit();
+
+    self.device.device.destroyPipeline(self.mesh_pipeline, null);
 }
 
-pub fn render(self: *Self, command_buffer: vk.CommandBufferProxy, target_size: [2]u32, scene: *const RenderScene, camera: struct {
-    transform: Transform,
-    camera: Camera,
-}) void {
-    _ = self; // autofix
-    _ = command_buffer; // autofix
-    _ = target_size; // autofix
-    _ = scene; // autofix
-    _ = camera; // autofix
+pub fn buildCommandBuffer(data_ptr: ?*anyopaque, device: vk.DeviceProxy, command_buffer: vk.CommandBufferProxy, layout: vk.PipelineLayout, target_size: vk.Extent2D) void {
+    _ = device; // autofix
+
+    const data: *BuildCommandBufferData = @ptrCast(@alignCast(data_ptr.?));
+    const self = data.self;
+
+    const width_float: f32 = @floatFromInt(target_size.width);
+    const height_float: f32 = @floatFromInt(target_size.height);
+    const aspect_ratio: f32 = width_float / height_float;
+    const view_matrix = data.camera_transform.getViewMatrix();
+    var projection_matrix = data.camera.getProjectionMatrix(aspect_ratio);
+    projection_matrix[1][1] *= -1.0;
+    const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
+
+    command_buffer.bindPipeline(.graphics, self.mesh_pipeline);
+
+    const viewport = vk.Viewport{
+        .x = 0.0,
+        .y = 0.0,
+        .width = @floatFromInt(target_size.width),
+        .height = @floatFromInt(target_size.height),
+        .min_depth = 0.0,
+        .max_depth = 1.0,
+    };
+    command_buffer.setViewport(0, 1, (&viewport)[0..1]);
+    const scissor = vk.Rect2D{
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = target_size,
+    };
+    command_buffer.setScissor(0, 1, (&scissor)[0..1]);
+
+    for (data.scene.static_meshes.items) |static_mesh| {
+        if (static_mesh.component.visable == false) {
+            continue;
+        }
+
+        if (self.static_mesh_map.get(static_mesh.component.mesh)) |mesh| {
+            const model_matrix = static_mesh.transform.getModelMatrix();
+
+            const materials = static_mesh.component.materials.constSlice();
+            for (mesh.primitives, materials) |primtive, material| {
+                const PushData = extern struct {
+                    view_projection_matrix: zm.Mat,
+                    model_matrix: zm.Mat,
+                    base_color_factor: zm.Vec,
+                };
+
+                var base_color_factor: zm.Vec = .{ 1.0, 0.27, 0.63, 1.0 };
+                if (self.material_map.get(material)) |mat| {
+                    base_color_factor = mat.base_color_factor;
+                }
+
+                const push_data = PushData{
+                    .view_projection_matrix = view_projection_matrix,
+                    .model_matrix = model_matrix,
+                    .base_color_factor = base_color_factor,
+                };
+
+                command_buffer.pushConstants(layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
+
+                drawPrimitive(command_buffer, primtive);
+            }
+        }
+    }
+}
+
+pub fn drawPrimitive(
+    command_buffer: vk.CommandBufferProxy,
+    primitive: anytype, // Your primitive struct
+) void {
+    const vertex_buffers = [_]vk.Buffer{primitive.vertex_buffer.handle};
+    const vertex_offsets = [_]vk.DeviceSize{0};
+
+    command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
+
+    if (primitive.index_buffer) |index_buffer| {
+        command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
+        command_buffer.drawIndexed(primitive.index_count, 1, 0, 0, 0);
+    } else {
+        command_buffer.draw(primitive.vertex_count, 1, 0, 0);
+    }
 }
 
 pub fn loadSceneData(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) void {
@@ -129,4 +233,19 @@ pub fn tryLoadMaterial(self: *Self, allocator: std.mem.Allocator, handle: Materi
             std.log.err("Failed to load material {}", .{err});
         }
     }
+}
+
+fn loadGraphicsShader(allocator: std.mem.Allocator, device: vk.DeviceProxy, handle: ShaderAssetHandle) !vk.ShaderModule {
+    var shader = try global.assets.shaders.loadAsset(allocator, handle);
+    defer shader.deinit(allocator);
+
+    if (shader.target != .vulkan) {
+        return error.InvalidShaderTarget;
+    }
+
+    return try device.createShaderModule(&.{
+        .flags = .{},
+        .code_size = shader.spirv_code.len * @sizeOf(u32), //Code size is in bytes, despite the p_code being a u32ptr
+        .p_code = @alignCast(@ptrCast(shader.spirv_code.ptr)),
+    }, null);
 }

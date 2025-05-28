@@ -30,7 +30,7 @@ pub const PerspectiveCamera = struct {
     far: f32 = 1000.0,
 
     pub fn getPerspectiveMatrix(self: Self, aspect_ratio: f32) zm.Mat {
-        return zm.perspectiveFovRhGl(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far);
+        return zm.perspectiveFovRh(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far);
     }
 };
 

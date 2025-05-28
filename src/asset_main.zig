@@ -25,6 +25,7 @@ pub fn thread_worker(process_fn: ProcessFn, path: []const u8) void {
     if (process_fn(global_allocator, path)) |err| {
         std.log.err("Failed to process file {s} -> {s}", .{ path, err });
         _ = error_count.fetchAnd(1, .monotonic);
+        global_allocator.free(err);
     } else {
         std.log.info("Succesfully processed file {s}", .{path});
     }
@@ -72,12 +73,25 @@ pub fn main() !void {
     var process_fns = std.StringHashMap(ProcessFn).init(global_allocator);
     defer process_fns.deinit();
 
-    try process_fns.put(".obj", processObj);
+    //Textures
     try process_fns.put(".png", processStb);
+
+    //Materials
     try process_fns.put(".json_mat", processMaterial);
-    try process_fns.put(".hlsl", processShader);
-    try process_fns.put(".glb", processGltf);
-    try process_fns.put(".gltf", processGltf);
+
+    //Shaders
+    {
+        try process_fns.put(".vert", processShader);
+        try process_fns.put(".frag", processShader);
+        try process_fns.put(".comp", processShader);
+    }
+
+    //Meshes
+    {
+        try process_fns.put(".obj", processObj);
+        try process_fns.put(".glb", processGltf);
+        try process_fns.put(".gltf", processGltf);
+    }
 
     var wait_group = std.Thread.WaitGroup{};
 
@@ -207,13 +221,12 @@ fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]
 }
 
 fn processShader(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
-    const file_path = removeExt(meta_file_path);
-
-    const shader = hlsl.compileShader(allocator, input_dir, file_path) catch |err|
+    const shader = hlsl.compileShader(allocator, input_dir, meta_file_path) catch |err|
         return errorString(allocator, "Failed to compile shader: {}", .{err});
     defer shader.deinit(allocator);
 
-    const new_path = replaceExt(allocator, file_path, ".shader") catch |err|
+    const file_path = removeExt(meta_file_path);
+    const new_path = std.fmt.allocPrint(allocator, "{s}.shader", .{file_path}) catch |err|
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 

@@ -60,12 +60,13 @@ pub const RenderThread = struct {
         var device = try Device.init(allocator);
         try device.claimWindow(window);
 
-        // const color_format = c.SDL_GetGPUSwapchainTextureFormat(device.handle, window.handle);
-        // _ = color_format; // autofix
-        // const depth_fromat = device.getLargestDepthFormat();
-        // _ = depth_fromat; // autofix
-
-        const scene_renderer = SceneRenderer.init(allocator, device.device) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
+        const scene_renderer = SceneRenderer.init(
+            allocator,
+            device.device,
+            .b8g8r8a8_srgb,
+            .d16_unorm,
+            device.bindless_layout,
+        ) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
 
         const render_thread_data = try allocator.create(RenderThreadData);
         render_thread_data.* = .{
@@ -141,9 +142,16 @@ fn renderThreadMain(
             return; //TODO: deinit
         }
 
-        if (render_thread_data.scene) |scene| {
-            render_thread_data.scene_renderer.loadSceneData(render_thread_data.temp_allocator.allocator(), &scene);
-            render_thread_data.device.render(render_thread_data.window, null, null) catch |err| std.log.err("Failed to render frame: {}", .{err});
+        if (render_thread_data.scene) |*scene| {
+            render_thread_data.scene_renderer.loadSceneData(render_thread_data.temp_allocator.allocator(), scene);
+            var build_data = SceneRenderer.BuildCommandBufferData{
+                .self = &render_thread_data.scene_renderer,
+                .scene = scene,
+                .camera = render_thread_data.camera orelse .Default,
+                .camera_transform = render_thread_data.camera_transform orelse .{},
+            };
+
+            render_thread_data.device.render(render_thread_data.window, SceneRenderer.buildCommandBuffer, @ptrCast(&build_data)) catch |err| std.log.err("Failed to render frame: {}", .{err});
         } else {
             render_thread_data.device.render(render_thread_data.window, null, null) catch |err| std.log.err("Failed to render frame: {}", .{err});
         }

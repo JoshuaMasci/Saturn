@@ -109,15 +109,19 @@ pub fn releaseWindow(self: *Self, window: Window) void {
 }
 
 pub const CommandBufferBuildFn = *const fn (
-    user_data: ?*anyopaque,
+    data_ptr: ?*anyopaque,
     device: vk.DeviceProxy,
     command_buffer: vk.CommandBufferProxy,
+    layout: vk.PipelineLayout,
     target_size: vk.Extent2D,
 ) void;
 
 pub fn render(self: Self, window: Window, build_fn_opt: ?CommandBufferBuildFn, build_data: ?*anyopaque) !void {
     const surface_swapchain = self.swapchains.getPtr(window) orelse return;
     var swapchain = surface_swapchain.swapchain;
+
+    const depth_image = try @import("image.zig").init2D(self.device, .{ swapchain.size.width, swapchain.size.height }, .d16_unorm, .{ .depth_stencil_attachment_bit = true }, .gpu_only);
+    defer depth_image.deinit();
 
     const fence = try self.device.device.createFence(&.{}, null);
     defer self.device.device.destroyFence(fence, null);
@@ -141,16 +145,8 @@ pub fn render(self: Self, window: Window, build_fn_opt: ?CommandBufferBuildFn, b
 
     self.bindless_descriptor.bind(command_buffer, self.bindless_layout);
 
-    command_buffer.pipelineBarrier(
-        .{ .all_commands_bit = true },
-        .{ .all_commands_bit = true },
-        .{},
-        0,
-        null,
-        0,
-        null,
-        1,
-        @ptrCast(&vk.ImageMemoryBarrier{
+    const image_barriers: []const vk.ImageMemoryBarrier = &.{
+        .{
             .image = swapchain_image.image,
             .old_layout = .undefined,
             .new_layout = .color_attachment_optimal,
@@ -165,7 +161,35 @@ pub fn render(self: Self, window: Window, build_fn_opt: ?CommandBufferBuildFn, b
                 .base_mip_level = 0,
                 .level_count = 1,
             },
-        }),
+        },
+        .{
+            .image = depth_image.handle,
+            .old_layout = .undefined,
+            .new_layout = .depth_attachment_optimal,
+            .src_access_mask = .{},
+            .dst_access_mask = .{},
+            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .subresource_range = .{
+                .aspect_mask = .{ .depth_bit = true },
+                .base_array_layer = 0,
+                .layer_count = 1,
+                .base_mip_level = 0,
+                .level_count = 1,
+            },
+        },
+    };
+
+    command_buffer.pipelineBarrier(
+        .{ .all_commands_bit = true },
+        .{ .all_commands_bit = true },
+        .{},
+        0,
+        null,
+        0,
+        null,
+        @intCast(image_barriers.len),
+        image_barriers.ptr,
     );
 
     const render_area: vk.Rect2D = .{ .offset = .{ .x = 0, .y = 0 }, .extent = swapchain.size };
@@ -184,12 +208,20 @@ pub fn render(self: Self, window: Window, build_fn_opt: ?CommandBufferBuildFn, b
             .store_op = .store,
             .clear_value = .{ .color = .{ .float_32 = .{ 0.0, 0.1, 0.1, 0.0 } } },
         })[0..1],
-        .p_depth_attachment = null,
+        .p_depth_attachment = &.{
+            .image_view = depth_image.view_handle,
+            .image_layout = .depth_attachment_optimal,
+            .resolve_mode = .{},
+            .resolve_image_layout = .undefined,
+            .load_op = .clear,
+            .store_op = .dont_care,
+            .clear_value = .{ .depth_stencil = .{ .depth = 1.0, .stencil = 0 } },
+        },
         .p_stencil_attachment = null,
     });
 
     if (build_fn_opt) |build_fn| {
-        build_fn(build_data, self.device.device, command_buffer, render_area.extent);
+        build_fn(build_data, self.device.device, command_buffer, self.bindless_layout, render_area.extent);
     }
 
     command_buffer.endRendering();

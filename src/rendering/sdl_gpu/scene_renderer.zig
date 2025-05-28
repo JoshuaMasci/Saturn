@@ -46,10 +46,10 @@ pub const Renderer = struct {
             depth: c.SDL_GPUTextureFormat,
         },
     ) !Self {
-        const vertex_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/static_mesh.vert.shader").?);
+        const vertex_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/sdl_gpu/static_mesh.vert.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device.handle, vertex_shader);
 
-        const opaque_fragment_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/opaque.frag.shader").?);
+        const opaque_fragment_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/sdl_gpu/opaque.frag.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device.handle, opaque_fragment_shader);
 
         const opaque_mesh_pipeline = try loadGraphicsPipeline(
@@ -65,7 +65,7 @@ pub const Renderer = struct {
             },
         );
 
-        const mask_fragment_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/alpha_mask.frag.shader").?);
+        const mask_fragment_shader = try loadGraphicsShader(allocator, gpu_device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/sdl_gpu/alpha_mask.frag.shader").?);
         defer c.SDL_ReleaseGPUShader(gpu_device.handle, mask_fragment_shader);
 
         const mask_mesh_pipeline = try loadGraphicsPipeline(
@@ -189,7 +189,7 @@ pub const Renderer = struct {
             const height_float: f32 = @floatFromInt(target_size[1]);
             const aspect_ratio: f32 = width_float / height_float;
             const view_matrix = camera.transform.getViewMatrix();
-            const projection_matrix = camera.camera.getProjectionMatrix(aspect_ratio); //TODO: this is probably not be the correct matrix for SDL_GPU's clip space
+            const projection_matrix = camera.camera.getProjectionMatrix(aspect_ratio);
             const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
             c.SDL_PushGPUVertexUniformData(command_buffer, 0, &view_projection_matrix, @intCast(@sizeOf(zm.Mat)));
         }
@@ -365,9 +365,13 @@ fn loadGraphicsShader(allocator: std.mem.Allocator, device: *c.SDL_GPUDevice, ha
     var shader = try global.assets.shaders.loadAsset(allocator, handle);
     defer shader.deinit(allocator);
 
+    if (shader.target != .sdl_gpu) {
+        return error.InvalidShaderTarget;
+    }
+
     const create_info = c.SDL_GPUShaderCreateInfo{
-        .code = shader.spirv_code.ptr,
-        .code_size = shader.spirv_code.len,
+        .code = @ptrCast(shader.spirv_code.ptr),
+        .code_size = shader.spirv_code.len * @sizeOf(u32),
         .entrypoint = "main",
         .format = c.SDL_GPU_SHADERFORMAT_SPIRV,
         .stage = switch (shader.stage) {

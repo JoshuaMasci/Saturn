@@ -168,20 +168,20 @@ fn renderThreadMain(
             },
         );
 
-        const zimgui = @import("zimgui");
-        zimgui.render();
-        zimgui.backend.prepareDrawData(command_buffer);
-        {
-            const color_target: c.SDL_GPUColorTargetInfo = .{
-                .texture = swapchain_target.handle,
-                .load_op = c.SDL_GPU_LOADOP_LOAD,
-                .store_op = c.SDL_GPU_STOREOP_STORE,
-            };
-            const render_pass = c.SDL_BeginGPURenderPass(command_buffer, &color_target, 1, null);
-            defer c.SDL_EndGPURenderPass(render_pass);
+        // const zimgui = @import("zimgui");
+        // zimgui.render();
+        // zimgui.backend.prepareDrawData(command_buffer);
+        // {
+        //     const color_target: c.SDL_GPUColorTargetInfo = .{
+        //         .texture = swapchain_target.handle,
+        //         .load_op = c.SDL_GPU_LOADOP_LOAD,
+        //         .store_op = c.SDL_GPU_STOREOP_STORE,
+        //     };
+        //     const render_pass = c.SDL_BeginGPURenderPass(command_buffer, &color_target, 1, null);
+        //     defer c.SDL_EndGPURenderPass(render_pass);
 
-            zimgui.backend.renderDrawData(command_buffer, render_pass.?, null);
-        }
+        //     zimgui.backend.renderDrawData(command_buffer, render_pass.?, null);
+        // }
 
         render_thread_data.device.endCommandBuffer(command_buffer);
 

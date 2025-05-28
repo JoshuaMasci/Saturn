@@ -42,7 +42,7 @@ pub fn init2D(device: *Device, size: [2]u32, format: vk.Format, usage: vk.ImageU
         .format = format,
         .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
         .subresource_range = .{
-            .aspect_mask = .{ .color_bit = true },
+            .aspect_mask = getFormatAspectMask(format),
             .base_mip_level = 0,
             .level_count = 1,
             .base_array_layer = 0,
@@ -66,4 +66,20 @@ pub fn deinit(self: Self) void {
     self.device.device.destroyImageView(self.view_handle, null);
     self.device.device.destroyImage(self.handle, null);
     self.device.gpu_allocator.free(self.allocation);
+}
+
+pub fn getFormatAspectMask(format: vk.Format) vk.ImageAspectFlags {
+    return switch (format) {
+        // Depth-only formats
+        .d16_unorm, .d32_sfloat, .x8_d24_unorm_pack32 => .{ .depth_bit = true },
+
+        // Stencil-only formats
+        .s8_uint => .{ .stencil_bit = true },
+
+        // Depth-stencil formats
+        .d16_unorm_s8_uint, .d24_unorm_s8_uint, .d32_sfloat_s8_uint => .{ .depth_bit = true, .stencil_bit = true },
+
+        // All other formats (color formats)
+        else => .{ .color_bit = true },
+    };
 }

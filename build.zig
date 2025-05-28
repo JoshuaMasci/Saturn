@@ -65,6 +65,13 @@ pub fn build(b: *std.Build) !void {
     }).module("vulkan-zig");
     exe.root_module.addImport("vulkan", vulkan);
 
+    const dxcompiler = b.lazyDependency("dxcompiler", .{
+        .target = target,
+        .optimize = optimize,
+        .skip_tests = true,
+    });
+    _ = dxcompiler; // autofix
+
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
@@ -93,6 +100,12 @@ pub fn build(b: *std.Build) !void {
         assets_exe.root_module.addImport("zobj", zobj.module("obj"));
         assets_exe.root_module.addImport("zgltf", zgltf.module("zgltf"));
         assets_exe.root_module.addImport("zmath", zmath.module("root"));
+
+        const zdxc = b.dependency("zdxc", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        assets_exe.root_module.addImport("dxc", zdxc.module("dxc"));
 
         if (build_sdl3) {
             const sdl3 = b.dependency("sdl3", .{

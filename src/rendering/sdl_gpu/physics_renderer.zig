@@ -40,10 +40,10 @@ pub fn init(
     color_format: c.SDL_GPUTextureFormat,
     depth_format: c.SDL_GPUTextureFormat,
 ) !Self {
-    const vertex_shader = try loadGraphicsShader(allocator, device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/physics_mesh.vert.shader").?);
+    const vertex_shader = try loadGraphicsShader(allocator, device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/sdl_gpu/physics_mesh.vert.shader").?);
     defer c.SDL_ReleaseGPUShader(device.handle, vertex_shader);
 
-    const fragment_shader = try loadGraphicsShader(allocator, device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/physics_mesh.frag.shader").?);
+    const fragment_shader = try loadGraphicsShader(allocator, device.handle, ShaderAssetHandle.fromRepoPath("engine:shaders/sdl_gpu/physics_mesh.frag.shader").?);
     defer c.SDL_ReleaseGPUShader(device.handle, fragment_shader);
 
     const solid_mesh_graphics_pipeline = try createMeshPipeline(device.handle, .{ .color = color_format, .depth = depth_format }, vertex_shader, fragment_shader, false);
@@ -321,8 +321,8 @@ fn loadGraphicsShader(allocator: std.mem.Allocator, device: *c.SDL_GPUDevice, ha
     defer shader.deinit(allocator);
 
     const create_info = c.SDL_GPUShaderCreateInfo{
-        .code = shader.spirv_code.ptr,
-        .code_size = shader.spirv_code.len,
+        .code = @ptrCast(shader.spirv_code.ptr),
+        .code_size = shader.spirv_code.len * @sizeOf(u32),
         .entrypoint = "main",
         .format = c.SDL_GPU_SHADERFORMAT_SPIRV,
         .stage = switch (shader.stage) {
