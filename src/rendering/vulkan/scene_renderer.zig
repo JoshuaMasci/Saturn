@@ -19,6 +19,7 @@ const RenderScene = @import("../scene.zig").RenderScene;
 const Device = @import("device.zig");
 const Mesh = @import("mesh.zig");
 const Pipeline = @import("pipeline.zig");
+const Image = @import("image.zig");
 
 pub const BuildCommandBufferData = struct {
     self: *const Self,
@@ -35,6 +36,7 @@ device: *Device,
 mesh_pipeline: vk.Pipeline,
 
 static_mesh_map: std.AutoArrayHashMap(MeshAsset.Registry.Handle, Mesh),
+texture_map: std.AutoArrayHashMap(Texture2dAsset.Registry.Handle, Image),
 material_map: std.AutoArrayHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
 pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Format, depth_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
@@ -62,6 +64,7 @@ pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Form
         .device = device,
         .mesh_pipeline = mesh_pipeline,
         .static_mesh_map = .init(allocator),
+        .texture_map = .init(allocator),
         .material_map = .init(allocator),
     };
 }
@@ -71,6 +74,11 @@ pub fn deinit(self: *Self) void {
         mesh.deinit();
     }
     self.static_mesh_map.deinit();
+
+    for (self.texture_map.values()) |texture| {
+        texture.deinit();
+    }
+    self.texture_map.deinit();
 
     for (self.material_map.values()) |material| {
         material.deinit(self.allocator);
@@ -189,22 +197,41 @@ pub fn tryLoadMesh(self: *Self, allocator: std.mem.Allocator, handle: MeshAsset.
 }
 
 pub fn tryLoadTexture(self: *Self, allocator: std.mem.Allocator, handle: Texture2dAsset.Registry.Handle) void {
-    _ = self; // autofix
-    _ = handle; // autofix
-    _ = allocator; // autofix
-    // if (!self.texture_map.contains(handle)) {
-    //     if (global.assets.textures.loadAsset(allocator, handle)) |texture| {
-    //         defer texture.deinit(allocator);
+    if (!self.texture_map.contains(handle)) {
+        if (global.assets.textures.loadAsset(allocator, handle)) |texture| {
+            defer texture.deinit(allocator);
 
-    //         const gpu_texture = Texture.init_2d(self.gpu_device.handle, &texture);
-    //         self.texture_map.put(handle, gpu_texture) catch |err| {
-    //             gpu_texture.deinit();
-    //             std.log.err("Failed to append texture to list {}", .{err});
-    //         };
-    //     } else |err| {
-    //         std.log.err("Failed to load texture {}", .{err});
-    //     }
-    // }
+            const format: vk.Format = switch (texture.format) {
+                .r8 => .r8_unorm,
+                .rg8 => .r8g8_unorm,
+                .rgba8 => .r8g8b8a8_unorm,
+            };
+
+            var gpu_texture = Image.init2D(
+                self.device,
+                .{ texture.width, texture.height },
+                format,
+                .{ .transfer_dst_bit = true, .sampled_bit = true },
+                .gpu_only,
+            ) catch |err| {
+                std.log.err("Failed to create texture {}", .{err});
+                return;
+            };
+
+            gpu_texture.uploadImageData(self.device, self.device.graphics_queue, .shader_read_only_optimal, texture.data) catch |err| {
+                gpu_texture.deinit();
+                std.log.err("Failed to upload texture data {}", .{err});
+                return;
+            };
+
+            self.texture_map.put(handle, gpu_texture) catch |err| {
+                gpu_texture.deinit();
+                std.log.err("Failed to append texture to list {}", .{err});
+            };
+        } else |err| {
+            std.log.err("Failed to load texture {}", .{err});
+        }
+    }
 }
 
 pub fn tryLoadMaterial(self: *Self, allocator: std.mem.Allocator, handle: MaterialAsset.Registry.Handle) void {

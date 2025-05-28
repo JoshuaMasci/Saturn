@@ -4,7 +4,7 @@ const vk = @import("vulkan");
 
 const GpuAllocator = @import("gpu_allocator.zig");
 
-const Queue = struct {
+pub const Queue = struct {
     family_index: u32,
     handle: vk.Queue,
     command_pool: vk.CommandPool,

@@ -83,3 +83,121 @@ pub fn getFormatAspectMask(format: vk.Format) vk.ImageAspectFlags {
         else => .{ .color_bit = true },
     };
 }
+
+pub fn uploadImageData(
+    self: *Self,
+    device: *Device,
+    queue: Device.Queue,
+    final_layout: vk.ImageLayout,
+    data: []const u8,
+) !void {
+    var command_buffers: [1]vk.CommandBuffer = undefined;
+    try device.device.allocateCommandBuffers(&.{
+        .command_pool = queue.command_pool,
+        .level = vk.CommandBufferLevel.primary,
+        .command_buffer_count = 1,
+    }, &command_buffers);
+    defer device.device.freeCommandBuffers(queue.command_pool, @intCast(command_buffers.len), &command_buffers);
+    const command_buffer = command_buffers[0];
+
+    const fence = try device.device.createFence(&.{}, null);
+    defer device.device.destroyFence(fence, null);
+
+    try device.device.beginCommandBuffer(command_buffer, &.{
+        .flags = .{ .one_time_submit_bit = true },
+    });
+
+    const subresource_range = vk.ImageSubresourceRange{
+        .aspect_mask = getFormatAspectMask(self.format),
+        .base_mip_level = 0,
+        .level_count = 1,
+        .base_array_layer = 0,
+        .layer_count = 1,
+    };
+
+    const barrier_to_transfer_dst = vk.ImageMemoryBarrier{
+        .src_access_mask = .{},
+        .dst_access_mask = .{ .transfer_write_bit = true },
+        .old_layout = .undefined,
+        .new_layout = .transfer_dst_optimal,
+        .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+        .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+        .image = self.handle,
+        .subresource_range = subresource_range,
+    };
+    device.device.cmdPipelineBarrier(
+        command_buffer,
+        .{ .top_of_pipe_bit = true },
+        .{ .transfer_bit = true },
+        .{},
+        0,
+        null,
+        0,
+        null,
+        1,
+        (&barrier_to_transfer_dst)[0..1],
+    );
+
+    const Buffer = @import("buffer.zig");
+    const buffer = try Buffer.init(device, data.len, .{ .transfer_src_bit = true }, .cpu_only);
+    defer buffer.deinit();
+
+    const byte_ptr: [*]u8 = @ptrCast(buffer.allocation.mapped_ptr.?);
+    @memcpy(byte_ptr[0..data.len], data);
+
+    const buffer_image_copy = vk.BufferImageCopy{
+        .buffer_offset = 0,
+        .buffer_row_length = 0,
+        .buffer_image_height = 0,
+        .image_subresource = vk.ImageSubresourceLayers{
+            .aspect_mask = getFormatAspectMask(self.format),
+            .mip_level = 0,
+            .base_array_layer = 0,
+            .layer_count = 1,
+        },
+        .image_offset = .{ .x = 0, .y = 0, .z = 0 },
+        .image_extent = .{ .width = self.size[0], .height = self.size[1], .depth = 1 },
+    };
+
+    device.device.cmdCopyBufferToImage(
+        command_buffer,
+        buffer.handle,
+        self.handle,
+        .transfer_dst_optimal,
+        1,
+        (&buffer_image_copy)[0..1],
+    );
+
+    const barrier_to_shader_read = vk.ImageMemoryBarrier{
+        .src_access_mask = .{ .transfer_write_bit = true },
+        .dst_access_mask = .{ .shader_read_bit = true },
+        .old_layout = .transfer_dst_optimal,
+        .new_layout = final_layout,
+        .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+        .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+        .image = self.handle,
+        .subresource_range = subresource_range,
+    };
+
+    device.device.cmdPipelineBarrier(
+        command_buffer,
+        .{ .transfer_bit = true },
+        .{ .all_commands_bit = true },
+        .{},
+        0,
+        null,
+        0,
+        null,
+        1,
+        (&barrier_to_shader_read)[0..1],
+    );
+
+    try device.device.endCommandBuffer(command_buffer);
+
+    const submit_info = vk.SubmitInfo{
+        .command_buffer_count = 1,
+        .p_command_buffers = &command_buffers,
+    };
+    try device.device.queueSubmit(queue.handle, 1, (&submit_info)[0..1], fence);
+    _ = try device.device.waitForFences(1, (&fence)[0..1], 1, std.math.maxInt(u64));
+}
