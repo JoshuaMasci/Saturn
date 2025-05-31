@@ -65,13 +65,6 @@ pub fn build(b: *std.Build) !void {
     }).module("vulkan-zig");
     exe.root_module.addImport("vulkan", vulkan);
 
-    const dxcompiler = b.lazyDependency("dxcompiler", .{
-        .target = target,
-        .optimize = optimize,
-        .skip_tests = true,
-    });
-    _ = dxcompiler; // autofix
-
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

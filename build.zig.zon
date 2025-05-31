@@ -45,9 +45,5 @@
             .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#e2e53a724677f6eba8ff0ce1ccb64ee321785cbd",
             .hash = "N-V-__8AAMjV7gGH3DKcxHoM9tIKAxu9ypDzlJHSgEhQ8v_f",
         },
-        .dxcompiler = .{
-            .path = "../mach-dxcompiler",
-            .lazy = true,
-        },
     },
 }
