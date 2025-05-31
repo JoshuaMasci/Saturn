@@ -15,11 +15,10 @@ const Settings = @import("../../rendering/settings.zig");
 const Transform = @import("../../transform.zig");
 const Camera = @import("../camera.zig").Camera;
 const RenderScene = @import("../scene.zig").RenderScene;
-
 const Backend = @import("backend.zig");
+const Image = @import("image.zig");
 const Mesh = @import("mesh.zig");
 const Pipeline = @import("pipeline.zig");
-const Image = @import("image.zig");
 
 pub const BuildCommandBufferData = struct {
     self: *const Self,
@@ -186,6 +185,9 @@ pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: MeshA
         if (global.assets.meshes.loadAsset(temp_allocator, handle)) |mesh| {
             defer mesh.deinit(temp_allocator);
             const gpu_mesh = Mesh.init(self.allocator, self.backend, &mesh) catch return;
+
+            std.log.info("Loaded Mesh {s}", .{mesh.name});
+
             self.static_mesh_map.put(handle, gpu_mesh) catch |err| {
                 gpu_mesh.deinit();
                 std.log.err("Failed to append static mesh to list {}", .{err});
@@ -208,6 +210,8 @@ pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: Te
             };
 
             const image = self.backend.createImageWithData(.{ texture.width, texture.height }, format, .{ .transfer_dst_bit = true, .sampled_bit = true }, texture.data) catch return;
+
+            std.log.info("Loaded Texture {s}", .{texture.name});
 
             self.texture_map.put(handle, image) catch |err| {
                 self.backend.destroyImage(image);

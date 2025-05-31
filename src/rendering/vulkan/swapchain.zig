@@ -3,19 +3,14 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const Device = @import("device.zig");
+const ImageInterface = @import("image.zig").Interface;
 
 const MAX_IMAGE_COUNT: u32 = 8;
-
-const Image = struct {
-    handle: vk.Image,
-    view_handle: vk.ImageView,
-};
 
 pub const SwapchainImage = struct {
     swapchain: vk.SwapchainKHR,
     index: u32,
-    image: vk.Image,
-    image_view: vk.ImageView,
+    image: ImageInterface,
 };
 
 const Self = @This();
@@ -26,7 +21,7 @@ surface: vk.SurfaceKHR,
 handle: vk.SwapchainKHR,
 
 image_count: usize,
-images: [MAX_IMAGE_COUNT]Image, //TODO: replace this with some common image struct
+images: [MAX_IMAGE_COUNT]ImageInterface,
 
 size: vk.Extent2D,
 format: vk.Format,
@@ -38,12 +33,20 @@ present_mode: vk.PresentModeKHR,
 pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, old_swapchain: ?vk.SwapchainKHR) !Self {
     const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface);
 
+    //TODO: take all of this in from settings
     const image_count = std.math.clamp(3, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
     const size: vk.Extent2D = .{
         .width = std.math.clamp(window_size.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
         .height = std.math.clamp(window_size.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),
     };
     const format = .b8g8r8a8_srgb;
+    const usage = vk.ImageUsageFlags{
+        .transfer_src_bit = false,
+        .transfer_dst_bit = false,
+        .sampled_bit = true,
+        .color_attachment_bit = true,
+    };
+
     const color_space = .srgb_nonlinear_khr;
     const transform = surface_capabilities.current_transform;
     const composite_alpha: vk.CompositeAlphaFlagsKHR = .{ .opaque_bit_khr = true };
@@ -57,12 +60,7 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, o
         .image_color_space = color_space,
         .image_extent = size,
         .image_array_layers = 1,
-        .image_usage = vk.ImageUsageFlags{
-            .transfer_src_bit = false,
-            .transfer_dst_bit = false,
-            .sampled_bit = true,
-            .color_attachment_bit = true,
-        },
+        .image_usage = usage,
         .image_sharing_mode = .exclusive,
         .pre_transform = transform,
         .composite_alpha = composite_alpha,
@@ -81,8 +79,8 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, o
     var image_handles: [MAX_IMAGE_COUNT]vk.Image = undefined;
     _ = try device.device.getSwapchainImagesKHR(handle, &actual_image_count, &image_handles);
 
-    var images: [MAX_IMAGE_COUNT]Image = undefined;
-    for (image_handles[0..actual_image_count], 0..) |image_handle, i| {
+    var images: [MAX_IMAGE_COUNT]ImageInterface = undefined;
+    for (image_handles[0..actual_image_count], images[0..actual_image_count]) |image_handle, *swapchain_image| {
         const view_handle = try device.device.createImageView(&.{
             .view_type = .@"2d",
             .image = image_handle,
@@ -96,7 +94,15 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, o
                 .layer_count = 1,
             },
         }, null);
-        images[i] = .{ .handle = image_handle, .view_handle = view_handle };
+        swapchain_image.* = .{
+            .layout = .undefined,
+            .size = size,
+            .format = format,
+            .usage = usage,
+            .handle = image_handle,
+            .view_handle = view_handle,
+            .sampled_binding = null, //TODO: bind swapchain if requested
+        };
     }
 
     return .{
@@ -143,7 +149,6 @@ pub fn acquireNextImage(
     return .{
         .swapchain = self.handle,
         .index = result.image_index,
-        .image = self.images[result.image_index].handle,
-        .image_view = self.images[result.image_index].view_handle,
+        .image = self.images[result.image_index],
     };
 }

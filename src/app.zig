@@ -35,7 +35,7 @@ pub const App = struct {
         try global.assets.addDir("game", "zig-out/game-assets");
 
         var platform = try Platform.init(global.global_allocator);
-        const window = platform.createWindow("Saturn Engine", .{ .windowed = .{ 1920, 1080 } });
+        const window = platform.createWindow("Saturn Engine", .{ .windowed = .{ 1600, 900 } });
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);

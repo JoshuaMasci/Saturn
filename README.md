@@ -22,6 +22,7 @@
 - Add meshoptimizer to asset processing
 - Custom Vulkan renderer
 	- Add debug labels
+	- swapchain rebuilds
 - Switch libaeries (SDL, Vulkan, and zdxc) to use zig allocator
 
 ### V0.3

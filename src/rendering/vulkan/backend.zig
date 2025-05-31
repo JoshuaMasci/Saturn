@@ -2,17 +2,18 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
+const HandlePool = @import("../../containers.zig").HandlePool;
 const sdl3 = @import("../../platform/sdl3.zig");
 const Vulkan = sdl3.Vulkan;
 const Window = sdl3.Window;
 const BindlessDescriptor = @import("bindless_descriptor.zig");
-const Device = @import("device.zig");
-const Instance = @import("instance.zig");
-const Swapchain = @import("swapchain.zig");
-const HandlePool = @import("../../containers.zig").HandlePool;
 const Buffer = @import("buffer.zig");
+const Device = @import("device.zig");
 const Image = @import("image.zig");
+const Instance = @import("instance.zig");
+const RenderGraphDefinition = @import("render_graph.zig").RenderGraphDefinition;
 const Sampler = @import("sampler.zig");
+const Swapchain = @import("swapchain.zig");
 
 const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
@@ -21,7 +22,7 @@ pub const ImageHandle = ImagePool.Handle;
 
 const SurfaceSwapchain = struct {
     surface: vk.SurfaceKHR,
-    swapchain: Swapchain,
+    swapchain: *Swapchain,
 };
 
 const Self = @This();
@@ -119,7 +120,10 @@ pub fn claimWindow(self: *Self, window: Window) !void {
     errdefer Vulkan.destroySurface(self.instance.instance.handle, surface, null);
 
     const window_size = window.getSize();
-    const swapchain = try Swapchain.init(self.device, surface, .{ .width = window_size[0], .height = window_size[1] }, null);
+    const swapchain = try self.allocator.create(Swapchain);
+    errdefer self.allocator.destroy(swapchain);
+
+    swapchain.* = try Swapchain.init(self.device, surface, .{ .width = window_size[0], .height = window_size[1] }, null);
     errdefer swapchain.deinit();
 
     try self.swapchains.put(window, .{ .surface = surface, .swapchain = swapchain });
@@ -129,6 +133,7 @@ pub fn releaseWindow(self: *Self, window: Window) void {
     if (self.swapchains.fetchSwapRemove(window)) |entry| {
         entry.value.swapchain.deinit();
         Vulkan.destroySurface(self.instance.instance.handle, entry.value.surface, null);
+        self.allocator.destroy(entry.value.swapchain);
     }
 }
 
@@ -164,7 +169,7 @@ pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
 }
 
 pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags) !ImagePool.Handle {
-    var image: Image = try .init2D(self.device, size, format, usage, .gpu_only);
+    var image: Image = try .init2D(self.device, .{ .width = size[0], .height = size[1] }, format, usage, .gpu_only);
     errdefer image.deinit();
 
     //TOOD: image bindings
@@ -175,7 +180,7 @@ pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.Image
     return self.images.insert(image);
 }
 pub fn createImageWithData(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags, data: []const u8) !ImagePool.Handle {
-    var image: Image = try .init2D(self.device, size, format, usage, .gpu_only);
+    var image: Image = try .init2D(self.device, .{ .width = size[0], .height = size[1] }, format, usage, .gpu_only);
     errdefer image.deinit();
 
     //TODO: use host_image_copy if avalible
@@ -192,17 +197,19 @@ pub fn destroyImage(self: *Self, handle: ImagePool.Handle) void {
 }
 
 const SwapchainImageInfo = struct {
-    image: Swapchain.SwapchainImage,
+    swapchain: *Swapchain,
+    index: u32,
+    image: Image.Interface,
     wait_semaphore: vk.Semaphore,
     present_semaphore: vk.Semaphore,
     last_layout: vk.ImageLayout = .undefined,
 };
 
-const RenderGraphDefinition = @import("render_graph.zig").RenderGraphDefinition;
 pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: RenderGraphDefinition) !void {
     const fence = try self.device.device.createFence(&.{}, null);
     defer self.device.device.destroyFence(fence, null);
 
+    // Transient Images
     const transient_images = try temp_allocator.alloc(ImageHandle, render_graph.transient_textures.items.len);
     defer temp_allocator.free(transient_images);
     defer for (transient_images) |transient_image| {
@@ -213,26 +220,34 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
         transient_image.* = try self.createImage(info.extent, info.format, info.usage);
     }
 
-    const swapchain_images = try temp_allocator.alloc(SwapchainImageInfo, render_graph.swapchains.items.len);
-    defer temp_allocator.free(swapchain_images);
-    defer for (swapchain_images) |swapchain_info| {
+    // Swapchain Images
+    const swapchain_infos = try temp_allocator.alloc(SwapchainImageInfo, render_graph.swapchains.items.len);
+    defer temp_allocator.free(swapchain_infos);
+    defer for (swapchain_infos) |swapchain_info| {
         defer self.device.device.destroySemaphore(swapchain_info.wait_semaphore, null);
         defer self.device.device.destroySemaphore(swapchain_info.present_semaphore, null);
     };
 
-    for (render_graph.swapchains.items, swapchain_images) |window, *swapchain_info| {
+    for (render_graph.swapchains.items, swapchain_infos) |window, *swapchain_info| {
         const surface_swapchain = self.swapchains.getPtr(window) orelse return error.InvalidWindow;
         var swapchain = surface_swapchain.swapchain;
 
         const wait_semaphore = try self.device.device.createSemaphore(&.{}, null);
         const present_semaphore = try self.device.device.createSemaphore(&.{}, null);
+        const swapchain_image = try swapchain.acquireNextImage(null, wait_semaphore, .null_handle);
 
         swapchain_info.* = .{
-            .image = try swapchain.acquireNextImage(null, wait_semaphore, .null_handle),
+            .swapchain = surface_swapchain.swapchain,
+            .index = swapchain_image.index,
+            .image = swapchain_image.image,
             .wait_semaphore = wait_semaphore,
             .present_semaphore = present_semaphore,
         };
     }
+
+    //Resources
+    const images = try temp_allocator.alloc(u32, render_graph.textures.items.len);
+    defer temp_allocator.free(images);
 
     var command_buffers: [1]vk.CommandBuffer = undefined;
     try self.device.device.allocateCommandBuffers(&.{ .command_buffer_count = @intCast(command_buffers.len), .command_pool = self.device.graphics_queue.command_pool, .level = .primary }, &command_buffers);
@@ -245,15 +260,21 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     self.bindless_descriptor.bind(command_buffer, self.bindless_layout);
 
     //TODO: render here
+    for (render_graph.render_passes.items) |render_pass| {
+        if (render_pass.raster_pass) |raster_pass| {
+            _ = raster_pass; // autofix
+
+        }
+    }
 
     //Transitioning Swapchains to final formats
     {
-        const swapchain_transitions = try temp_allocator.alloc(vk.ImageMemoryBarrier, swapchain_images.len);
+        const swapchain_transitions = try temp_allocator.alloc(vk.ImageMemoryBarrier, swapchain_infos.len);
         defer temp_allocator.free(swapchain_transitions);
 
-        for (swapchain_images, swapchain_transitions) |swapchain_info, *memory_barrier| {
+        for (swapchain_infos, swapchain_transitions) |swapchain_info, *memory_barrier| {
             memory_barrier.* = .{
-                .image = swapchain_info.image.image,
+                .image = swapchain_info.image.handle,
                 .old_layout = swapchain_info.last_layout,
                 .new_layout = .present_src_khr,
                 .src_access_mask = .{},
@@ -286,16 +307,16 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     try command_buffer.endCommandBuffer();
     const wait_dst_stage_mask: vk.PipelineStageFlags = .{ .all_commands_bit = true };
 
-    const wait_semaphores = try temp_allocator.alloc(vk.Semaphore, swapchain_images.len);
+    const wait_semaphores = try temp_allocator.alloc(vk.Semaphore, swapchain_infos.len);
     defer temp_allocator.free(wait_semaphores);
 
-    const wait_dst_stage_masks = try temp_allocator.alloc(vk.PipelineStageFlags, swapchain_images.len);
+    const wait_dst_stage_masks = try temp_allocator.alloc(vk.PipelineStageFlags, swapchain_infos.len);
     defer temp_allocator.free(wait_dst_stage_masks);
 
-    const signal_semaphores = try temp_allocator.alloc(vk.Semaphore, swapchain_images.len);
+    const signal_semaphores = try temp_allocator.alloc(vk.Semaphore, swapchain_infos.len);
     defer temp_allocator.free(signal_semaphores);
 
-    for (swapchain_images, 0..) |swapchain_info, i| {
+    for (swapchain_infos, 0..) |swapchain_info, i| {
         wait_semaphores[i] = swapchain_info.wait_semaphore;
         wait_dst_stage_masks[i] = wait_dst_stage_mask;
         signal_semaphores[i] = swapchain_info.present_semaphore;
@@ -313,11 +334,11 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
 
     try self.device.device.queueSubmit(self.device.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
 
-    for (swapchain_images) |swapchain_info| {
+    for (swapchain_infos) |swapchain_info| {
         const present_result = try self.device.device.queuePresentKHR(self.device.graphics_queue.handle, &.{
             .swapchain_count = 1,
-            .p_image_indices = @ptrCast(&swapchain_info.image.index),
-            .p_swapchains = @ptrCast(&swapchain_info.image.swapchain),
+            .p_image_indices = @ptrCast(&swapchain_info.index),
+            .p_swapchains = @ptrCast(&swapchain_info.swapchain.handle),
             .wait_semaphore_count = 1,
             .p_wait_semaphores = @ptrCast(&swapchain_info.present_semaphore),
         });

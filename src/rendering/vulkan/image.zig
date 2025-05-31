@@ -5,11 +5,22 @@ const vk = @import("vulkan");
 const Device = @import("device.zig");
 const GpuAllocator = @import("gpu_allocator.zig");
 
+pub const Interface = struct {
+    layout: vk.ImageLayout,
+    size: vk.Extent2D,
+    format: vk.Format,
+    usage: vk.ImageUsageFlags,
+    handle: vk.Image,
+    view_handle: vk.ImageView,
+    sampled_binding: ?u32 = null,
+};
+
 const Self = @This();
 
 device: *Device,
 
-size: [2]u32,
+layout: vk.ImageLayout = .undefined,
+size: vk.Extent2D,
 format: vk.Format,
 usage: vk.ImageUsageFlags,
 
@@ -19,11 +30,11 @@ allocation: GpuAllocator.Allocation,
 
 sampled_binding: ?u32 = null,
 
-pub fn init2D(device: *Device, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
+pub fn init2D(device: *Device, size: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
     const handle = try device.device.createImage(&.{
         .image_type = .@"2d",
         .format = format,
-        .extent = .{ .width = size[0], .height = size[1], .depth = 1 },
+        .extent = .{ .width = size.width, .height = size.height, .depth = 1 },
         .mip_levels = 1,
         .array_layers = 1,
         .samples = .{ .@"1_bit" = true },
@@ -158,7 +169,7 @@ pub fn uploadImageData(
             .layer_count = 1,
         },
         .image_offset = .{ .x = 0, .y = 0, .z = 0 },
-        .image_extent = .{ .width = self.size[0], .height = self.size[1], .depth = 1 },
+        .image_extent = .{ .width = self.size.width, .height = self.size.width, .depth = 1 },
     };
 
     device.device.cmdCopyBufferToImage(
@@ -202,4 +213,6 @@ pub fn uploadImageData(
     };
     try device.device.queueSubmit(queue.handle, 1, (&submit_info)[0..1], fence);
     _ = try device.device.waitForFences(1, (&fence)[0..1], 1, std.math.maxInt(u64));
+
+    self.layout = final_layout;
 }
