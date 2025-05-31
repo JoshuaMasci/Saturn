@@ -59,13 +59,18 @@ pub fn alloc(
         .memory_type_index = memory_type_index,
     };
 
-    const memory = try self.device.allocateMemory(&alloc_info, null);
     const offset: vk.DeviceSize = 0;
+    const memory = try self.device.allocateMemory(&alloc_info, null);
 
-    const mapped_ptr = switch (location) {
-        .gpu_mappable, .cpu_only => try self.device.mapMemory(memory, offset, alloc_info.allocation_size, .{}),
-        .gpu_only => null,
-    };
+    var mapped_ptr: ?*anyopaque = null;
+    if (self.memory_properties.memory_types[memory_type_index].property_flags.contains(
+        .{
+            .host_visible_bit = true,
+            .host_coherent_bit = true,
+        },
+    )) {
+        mapped_ptr = try self.device.mapMemory(memory, offset, alloc_info.allocation_size, .{});
+    }
 
     return .{ .memory = memory, .offset = 0, .location = location, .mapped_ptr = mapped_ptr };
 }
