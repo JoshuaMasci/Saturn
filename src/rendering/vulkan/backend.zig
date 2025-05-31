@@ -133,7 +133,7 @@ pub fn releaseWindow(self: *Self, window: Window) void {
 }
 
 pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !BufferPool.Handle {
-    const buffer: Buffer = try .init(self.device, size, usage, .gpu_mappable);
+    const buffer: Buffer = try .init(self.device, size, usage, .gpu_only);
     errdefer buffer.deinit();
 
     //TOOD: buffer bindings
@@ -141,7 +141,7 @@ pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !Buffe
     return self.buffers.insert(buffer);
 }
 pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []const u8) !BufferPool.Handle {
-    const buffer: Buffer = try .init(self.device, data.len, usage, .gpu_mappable);
+    var buffer: Buffer = try .init(self.device, data.len, usage, .gpu_only);
     errdefer buffer.deinit();
 
     if (buffer.allocation.mapped_ptr) |buffer_ptr| {
@@ -150,7 +150,7 @@ pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []con
         @memcpy(buffer_slice, data);
     } else {
         //TODO: slow transfer upload
-        unreachable;
+        try buffer.uploadBufferData(self.device, self.device.graphics_queue, data);
     }
 
     return self.buffers.insert(buffer);

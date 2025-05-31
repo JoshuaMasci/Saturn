@@ -24,11 +24,11 @@ primitives: []Primitive,
 pub fn init(allocator: std.mem.Allocator, backend: *Backend, mesh: *const MeshAsset) !Self {
     var primitives = try allocator.alloc(Primitive, mesh.primitives.len);
     for (mesh.primitives, 0..) |primitive, i| {
-        const vertex_buffer = try backend.createBufferWithData(.{ .vertex_buffer_bit = true }, std.mem.sliceAsBytes(primitive.vertices));
+        const vertex_buffer = try backend.createBufferWithData(.{ .vertex_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(primitive.vertices));
 
         var index_buffer: ?Backend.BufferHandle = null;
         if (mesh.primitives[0].indices.len != 0) {
-            index_buffer = try backend.createBufferWithData(.{ .index_buffer_bit = true }, std.mem.sliceAsBytes(primitive.indices));
+            index_buffer = try backend.createBufferWithData(.{ .index_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(primitive.indices));
         }
 
         primitives[i] = .{

@@ -164,7 +164,7 @@ fn renderThreadMain(
         };
         _ = swapchain_texture; // autofix
 
-        const depth_texture = render_graph.createTransientTexture(.{ .extent = .{ 1920, 1080 }, .format = .d16_unorm, .usage = .{ .depth_stencil_attachment_bit = true, .sampled_bit = true } }) catch |err| {
+        const depth_texture = render_graph.createTransientTexture(.{ .extent = .{ 1920, 1080 }, .format = .d16_unorm, .usage = .{ .depth_stencil_attachment_bit = true } }) catch |err| {
             std.log.err("failed to create transient texture: {}", .{err});
             continue;
         };
