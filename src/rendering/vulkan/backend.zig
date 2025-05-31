@@ -9,6 +9,15 @@ const BindlessDescriptor = @import("bindless_descriptor.zig");
 const Device = @import("device.zig");
 const Instance = @import("instance.zig");
 const Swapchain = @import("swapchain.zig");
+const HandlePool = @import("../../containers.zig").HandlePool;
+const Buffer = @import("buffer.zig");
+const Image = @import("image.zig");
+const Sampler = @import("sampler.zig");
+
+const BufferPool = HandlePool(Buffer);
+const ImagePool = HandlePool(Image);
+pub const BufferHandle = BufferPool.Handle;
+pub const ImageHandle = ImagePool.Handle;
 
 const SurfaceSwapchain = struct {
     surface: vk.SurfaceKHR,
@@ -25,7 +34,15 @@ bindless_layout: vk.PipelineLayout,
 
 swapchains: std.AutoArrayHashMap(Window, SurfaceSwapchain),
 
-pub fn init(allocator: std.mem.Allocator) !Self {
+buffers: BufferPool,
+images: ImagePool,
+linear_sampler: Sampler,
+
+pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
+    if (frames_in_flight_count == 0) {
+        return error.InvalidFramesInFlightCount;
+    }
+
     const instance = try Instance.init(allocator, Vulkan.getProcInstanceFunction().?, Vulkan.getInstanceExtensions(), .{ .name = "Saturn Engine", .version = Instance.makeVersion(0, 0, 0, 1) });
     errdefer instance.deinit();
 
@@ -72,6 +89,9 @@ pub fn init(allocator: std.mem.Allocator) !Self {
         .bindless_descriptor = bindless_descriptor,
         .bindless_layout = bindless_layout,
         .swapchains = .init(allocator),
+        .buffers = .init(allocator),
+        .images = .init(allocator),
+        .linear_sampler = try .init(device, .linear, .repeat),
     };
 }
 
@@ -81,6 +101,10 @@ pub fn deinit(self: *Self) void {
         Vulkan.destroySurface(self.instance.instance.handle, surface_swapchain.surface, null);
     }
     self.swapchains.deinit();
+
+    self.linear_sampler.deinit();
+    self.buffers.deinit_with_entries();
+    self.images.deinit_with_entries();
 
     self.device.device.destroyPipelineLayout(self.bindless_layout, null);
     self.bindless_descriptor.deinit();
@@ -108,178 +132,200 @@ pub fn releaseWindow(self: *Self, window: Window) void {
     }
 }
 
-pub const CommandBufferBuildFn = *const fn (
-    data_ptr: ?*anyopaque,
-    device: vk.DeviceProxy,
-    command_buffer: vk.CommandBufferProxy,
-    layout: vk.PipelineLayout,
-    target_size: vk.Extent2D,
-) void;
+pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !BufferPool.Handle {
+    const buffer: Buffer = try .init(self.device, size, usage, .gpu_mappable);
+    errdefer buffer.deinit();
 
-pub fn render(self: Self, window: Window, build_fn_opt: ?CommandBufferBuildFn, build_data: ?*anyopaque) !void {
-    const surface_swapchain = self.swapchains.getPtr(window) orelse return;
-    var swapchain = surface_swapchain.swapchain;
+    //TOOD: buffer bindings
 
-    const depth_image = try @import("image.zig").init2D(self.device, .{ swapchain.size.width, swapchain.size.height }, .d16_unorm, .{ .depth_stencil_attachment_bit = true }, .gpu_only);
-    defer depth_image.deinit();
+    return self.buffers.insert(buffer);
+}
+pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []const u8) !BufferPool.Handle {
+    const buffer: Buffer = try .init(self.device, data.len, usage, .gpu_mappable);
+    errdefer buffer.deinit();
 
+    if (buffer.allocation.mapped_ptr) |buffer_ptr| {
+        const buffer_slice_ptr: [*]u8 = @ptrCast(@alignCast(buffer_ptr));
+        const buffer_slice: []u8 = buffer_slice_ptr[0..data.len];
+        @memcpy(buffer_slice, data);
+    } else {
+        //TODO: slow transfer upload
+        unreachable;
+    }
+
+    return self.buffers.insert(buffer);
+}
+pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
+    if (self.buffers.remove(handle)) |buffer| {
+        buffer.deinit(); //TODO: delete after buffer has left pipeline
+    } else {
+        std.log.err("Invalid Buffer Handle: {}", .{handle});
+    }
+}
+
+pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags) !ImagePool.Handle {
+    var image: Image = try .init2D(self.device, size, format, usage, .gpu_only);
+    errdefer image.deinit();
+
+    //TOOD: image bindings
+    if (usage.contains(.{ .sampled_bit = true })) {
+        image.sampled_binding = self.bindless_descriptor.bindSampledImage(image, self.linear_sampler);
+    }
+
+    return self.images.insert(image);
+}
+pub fn createImageWithData(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags, data: []const u8) !ImagePool.Handle {
+    var image: Image = try .init2D(self.device, size, format, usage, .gpu_only);
+    errdefer image.deinit();
+
+    //TODO: use host_image_copy if avalible
+    try image.uploadImageData(self.device, self.device.graphics_queue, .shader_read_only_optimal, data);
+
+    return self.images.insert(image);
+}
+pub fn destroyImage(self: *Self, handle: ImagePool.Handle) void {
+    if (self.images.remove(handle)) |image| {
+        image.deinit(); //TODO: delete after image has left pipeline
+    } else {
+        std.log.err("Invalid Image Handle: {}", .{handle});
+    }
+}
+
+const SwapchainImageInfo = struct {
+    image: Swapchain.SwapchainImage,
+    wait_semaphore: vk.Semaphore,
+    present_semaphore: vk.Semaphore,
+    last_layout: vk.ImageLayout = .undefined,
+};
+
+const RenderGraphDefinition = @import("render_graph.zig").RenderGraphDefinition;
+pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: RenderGraphDefinition) !void {
     const fence = try self.device.device.createFence(&.{}, null);
     defer self.device.device.destroyFence(fence, null);
 
-    const wait_semaphore = try self.device.device.createSemaphore(&.{}, null);
-    defer self.device.device.destroySemaphore(wait_semaphore, null);
+    const transient_images = try temp_allocator.alloc(ImageHandle, render_graph.transient_textures.items.len);
+    defer temp_allocator.free(transient_images);
+    defer for (transient_images) |transient_image| {
+        self.destroyImage(transient_image);
+    };
 
-    const present_semaphore = try self.device.device.createSemaphore(&.{}, null);
-    defer self.device.device.destroySemaphore(present_semaphore, null);
+    for (render_graph.transient_textures.items, transient_images) |info, *transient_image| {
+        transient_image.* = try self.createImage(info.extent, info.format, info.usage);
+    }
+
+    const swapchain_images = try temp_allocator.alloc(SwapchainImageInfo, render_graph.swapchains.items.len);
+    defer temp_allocator.free(swapchain_images);
+    defer for (swapchain_images) |swapchain_info| {
+        defer self.device.device.destroySemaphore(swapchain_info.wait_semaphore, null);
+        defer self.device.device.destroySemaphore(swapchain_info.present_semaphore, null);
+    };
+
+    for (render_graph.swapchains.items, swapchain_images) |window, *swapchain_info| {
+        const surface_swapchain = self.swapchains.getPtr(window) orelse return error.InvalidWindow;
+        var swapchain = surface_swapchain.swapchain;
+
+        const wait_semaphore = try self.device.device.createSemaphore(&.{}, null);
+        const present_semaphore = try self.device.device.createSemaphore(&.{}, null);
+
+        swapchain_info.* = .{
+            .image = try swapchain.acquireNextImage(null, wait_semaphore, .null_handle),
+            .wait_semaphore = wait_semaphore,
+            .present_semaphore = present_semaphore,
+        };
+    }
 
     var command_buffers: [1]vk.CommandBuffer = undefined;
     try self.device.device.allocateCommandBuffers(&.{ .command_buffer_count = @intCast(command_buffers.len), .command_pool = self.device.graphics_queue.command_pool, .level = .primary }, &command_buffers);
     defer self.device.device.freeCommandBuffers(self.device.graphics_queue.command_pool, @intCast(command_buffers.len), &command_buffers);
 
-    const swapchain_image = try swapchain.acquireNextImage(null, wait_semaphore, .null_handle);
-
     const command_buffer_handle = command_buffers[0];
     const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.device.wrapper);
 
     try command_buffer.beginCommandBuffer(&.{});
-
     self.bindless_descriptor.bind(command_buffer, self.bindless_layout);
 
-    const image_barriers: []const vk.ImageMemoryBarrier = &.{
-        .{
-            .image = swapchain_image.image,
-            .old_layout = .undefined,
-            .new_layout = .color_attachment_optimal,
-            .src_access_mask = .{},
-            .dst_access_mask = .{},
-            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .subresource_range = .{
-                .aspect_mask = .{ .color_bit = true },
-                .base_array_layer = 0,
-                .layer_count = 1,
-                .base_mip_level = 0,
-                .level_count = 1,
-            },
-        },
-        .{
-            .image = depth_image.handle,
-            .old_layout = .undefined,
-            .new_layout = .depth_attachment_optimal,
-            .src_access_mask = .{},
-            .dst_access_mask = .{},
-            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .subresource_range = .{
-                .aspect_mask = .{ .depth_bit = true },
-                .base_array_layer = 0,
-                .layer_count = 1,
-                .base_mip_level = 0,
-                .level_count = 1,
-            },
-        },
-    };
+    //TODO: render here
 
-    command_buffer.pipelineBarrier(
-        .{ .all_commands_bit = true },
-        .{ .all_commands_bit = true },
-        .{},
-        0,
-        null,
-        0,
-        null,
-        @intCast(image_barriers.len),
-        image_barriers.ptr,
-    );
+    //Transitioning Swapchains to final formats
+    {
+        const swapchain_transitions = try temp_allocator.alloc(vk.ImageMemoryBarrier, swapchain_images.len);
+        defer temp_allocator.free(swapchain_transitions);
 
-    const render_area: vk.Rect2D = .{ .offset = .{ .x = 0, .y = 0 }, .extent = swapchain.size };
+        for (swapchain_images, swapchain_transitions) |swapchain_info, *memory_barrier| {
+            memory_barrier.* = .{
+                .image = swapchain_info.image.image,
+                .old_layout = swapchain_info.last_layout,
+                .new_layout = .present_src_khr,
+                .src_access_mask = .{},
+                .dst_access_mask = .{},
+                .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .subresource_range = .{
+                    .aspect_mask = .{ .color_bit = true },
+                    .base_array_layer = 0,
+                    .layer_count = 1,
+                    .base_mip_level = 0,
+                    .level_count = 1,
+                },
+            };
+        }
 
-    command_buffer.beginRendering(&.{
-        .render_area = render_area,
-        .layer_count = 1,
-        .view_mask = 0,
-        .color_attachment_count = 1,
-        .p_color_attachments = (&vk.RenderingAttachmentInfo{
-            .image_view = swapchain_image.image_view,
-            .image_layout = .color_attachment_optimal,
-            .resolve_mode = .{},
-            .resolve_image_layout = .undefined,
-            .load_op = .clear,
-            .store_op = .store,
-            .clear_value = .{ .color = .{ .float_32 = .{ 0.0, 0.1, 0.1, 0.0 } } },
-        })[0..1],
-        .p_depth_attachment = &.{
-            .image_view = depth_image.view_handle,
-            .image_layout = .depth_attachment_optimal,
-            .resolve_mode = .{},
-            .resolve_image_layout = .undefined,
-            .load_op = .clear,
-            .store_op = .dont_care,
-            .clear_value = .{ .depth_stencil = .{ .depth = 1.0, .stencil = 0 } },
-        },
-        .p_stencil_attachment = null,
-    });
-
-    if (build_fn_opt) |build_fn| {
-        build_fn(build_data, self.device.device, command_buffer, self.bindless_layout, render_area.extent);
+        command_buffer.pipelineBarrier(
+            .{ .all_commands_bit = true },
+            .{ .all_commands_bit = true },
+            .{},
+            0,
+            null,
+            0,
+            null,
+            @intCast(swapchain_transitions.len),
+            swapchain_transitions.ptr,
+        );
     }
 
-    command_buffer.endRendering();
-
-    command_buffer.pipelineBarrier(
-        .{ .all_commands_bit = true },
-        .{ .all_commands_bit = true },
-        .{},
-        0,
-        null,
-        0,
-        null,
-        1,
-        @ptrCast(&vk.ImageMemoryBarrier{
-            .image = swapchain_image.image,
-            .old_layout = .color_attachment_optimal,
-            .new_layout = .present_src_khr,
-            .src_access_mask = .{},
-            .dst_access_mask = .{},
-            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .subresource_range = .{
-                .aspect_mask = .{ .color_bit = true },
-                .base_array_layer = 0,
-                .layer_count = 1,
-                .base_mip_level = 0,
-                .level_count = 1,
-            },
-        }),
-    );
-
     try command_buffer.endCommandBuffer();
-
     const wait_dst_stage_mask: vk.PipelineStageFlags = .{ .all_commands_bit = true };
+
+    const wait_semaphores = try temp_allocator.alloc(vk.Semaphore, swapchain_images.len);
+    defer temp_allocator.free(wait_semaphores);
+
+    const wait_dst_stage_masks = try temp_allocator.alloc(vk.PipelineStageFlags, swapchain_images.len);
+    defer temp_allocator.free(wait_dst_stage_masks);
+
+    const signal_semaphores = try temp_allocator.alloc(vk.Semaphore, swapchain_images.len);
+    defer temp_allocator.free(signal_semaphores);
+
+    for (swapchain_images, 0..) |swapchain_info, i| {
+        wait_semaphores[i] = swapchain_info.wait_semaphore;
+        wait_dst_stage_masks[i] = wait_dst_stage_mask;
+        signal_semaphores[i] = swapchain_info.present_semaphore;
+    }
 
     const submit_infos: [1]vk.SubmitInfo = .{vk.SubmitInfo{
         .command_buffer_count = @intCast(command_buffers.len),
         .p_command_buffers = &command_buffers,
-        .wait_semaphore_count = 1,
-        .p_wait_semaphores = @ptrCast(&wait_semaphore),
-        .p_wait_dst_stage_mask = @ptrCast(&wait_dst_stage_mask),
-        .signal_semaphore_count = 1,
-        .p_signal_semaphores = @ptrCast(&present_semaphore),
+        .wait_semaphore_count = @intCast(wait_semaphores.len),
+        .p_wait_semaphores = wait_semaphores.ptr,
+        .p_wait_dst_stage_mask = wait_dst_stage_masks.ptr,
+        .signal_semaphore_count = @intCast(signal_semaphores.len),
+        .p_signal_semaphores = signal_semaphores.ptr,
     }};
 
     try self.device.device.queueSubmit(self.device.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
 
-    const present_result = try self.device.device.queuePresentKHR(self.device.graphics_queue.handle, &.{
-        .swapchain_count = 1,
-        .p_image_indices = @ptrCast(&swapchain_image.index),
-        .p_swapchains = @ptrCast(&swapchain_image.swapchain),
-        .wait_semaphore_count = 1,
-        .p_wait_semaphores = @ptrCast(&present_semaphore),
-    });
+    for (swapchain_images) |swapchain_info| {
+        const present_result = try self.device.device.queuePresentKHR(self.device.graphics_queue.handle, &.{
+            .swapchain_count = 1,
+            .p_image_indices = @ptrCast(&swapchain_info.image.index),
+            .p_swapchains = @ptrCast(&swapchain_info.image.swapchain),
+            .wait_semaphore_count = 1,
+            .p_wait_semaphores = @ptrCast(&swapchain_info.present_semaphore),
+        });
 
-    if (present_result == .suboptimal_khr) {
-        std.log.warn("Swapchain Suboptimal", .{});
-        swapchain.out_of_date = true;
+        if (present_result == .suboptimal_khr) {
+            std.log.warn("Swapchain Suboptimal", .{});
+            //TODO: mark as out of data
+        }
     }
 
     _ = try self.device.device.waitForFences(1, @ptrCast(&fence), 1, std.math.maxInt(u64));

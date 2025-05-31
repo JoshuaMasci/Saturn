@@ -2,7 +2,7 @@
 
 ## RoadMap (Subject to change)
 
-### V0.1
+### V0.1 (Done)
 - Move entities between worlds
 - Global entity list + entity create/delete in systems
 - Comptime hash based entity components/systems
@@ -15,21 +15,24 @@
 	- SDL_GPU rendering
 	- Dear imgui (using sdl3 backend)
 - Physics Debug Renderer
+- Rewrite physics allocator functions to get rid of hashmap
 
 ### V0.2
-- Audio (Either from Sdl3 or SteamAudio)
-- First pass on lighting/shading
 - Job System for game/physics
-- Add meshoptimizer to asset processing 
-- Rewrite physics allocator functions to get rid of hashmap
+- Add meshoptimizer to asset processing
+- Custom Vulkan renderer
+	- Add debug labels
+- Switch libaeries (SDL, Vulkan, and zdxc) to use zig allocator
 
 ### V0.3
 - Switch subsystems to zig modules
+- Audio (Either from Sdl3 or SteamAudio)
+- First pass on lighting/shading
 - Networking (Either from Sdl3 or SteamNetworking)
 - Save/Load system
 - Example projects
 
 ### Someday Maybe
-- Custom Vulkan renderer
-	- using meshshading, rtx, workgraphs
 - Android build target
+- Metal Rendering, IOS build target (If I buy a Mac)
+- meshshading, rtx, workgraphs

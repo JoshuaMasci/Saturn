@@ -15,6 +15,21 @@ pub const DescriptorCounts = struct {
     //accleration_structures: u32,
 };
 
+// fn Binding(comptime BindingType: u16) type {
+//     return struct {
+//         index: u16,
+//         pub fn toU32(self: @This()) u32 {
+//             const u32_index: u32 = @intCast(self.index);
+//             return BindingType | (u32_index >> 16);
+//         }
+//     };
+// }
+
+// pub const UniformBufferBinding = Binding(1);
+// pub const StorageBufferBinding = Binding(2);
+// pub const SampledImageBinding = Binding(3);
+// pub const StorageImageBinding = Binding(4);
+
 const Self = @This();
 
 device: *Device,
@@ -105,7 +120,7 @@ pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy, layout: vk.Pipeli
     }
 }
 
-pub fn bindSampledImage(self: *Self, image: Image, sampler: Sampler) u16 {
+pub fn bindSampledImage(self: *Self, image: Image, sampler: Sampler) u32 {
     const index = self.next_sampled_texture_id;
     self.next_sampled_texture_id += 1;
 
@@ -128,5 +143,5 @@ pub fn bindSampledImage(self: *Self, image: Image, sampler: Sampler) u16 {
 
     self.device.device.updateDescriptorSets(1, (&descriptor_update)[0..1], 0, null);
 
-    return index;
+    return @intCast(index);
 }

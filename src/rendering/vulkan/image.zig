@@ -17,6 +17,8 @@ handle: vk.Image,
 view_handle: vk.ImageView,
 allocation: GpuAllocator.Allocation,
 
+sampled_binding: ?u32 = null,
+
 pub fn init2D(device: *Device, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
     const handle = try device.device.createImage(&.{
         .image_type = .@"2d",

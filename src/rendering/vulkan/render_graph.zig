@@ -1,6 +1,9 @@
 const std = @import("std");
 
 const vk = @import("vulkan");
+const BufferHandle = @import("backend.zig").BufferHandle;
+const ImageHandle = @import("backend.zig").ImageHandle;
+const Window = @import("../../platform/sdl3.zig").Window;
 
 pub const QueueType = enum {
     graphics,
@@ -8,45 +11,39 @@ pub const QueueType = enum {
     prefer_async_transfer,
 };
 
-pub const BufferHandle = usize;
-pub const ImageHandle = usize;
-pub const SwapchainHandle = usize;
-
 pub const BufferUsageInfo = struct {
     access_flags: vk.AccessFlags,
     pipeline_stages: vk.PipelineStageFlags,
     read_only: bool,
 };
 
-pub const ImageUsageInfo = struct {
+pub const TextureUsageInfo = struct {
     access_flags: vk.AccessFlags,
     pipeline_stages: vk.PipelineStageFlags,
     layout: vk.ImageLayout,
     read_only: bool,
 };
 
-pub const BufferDefinition = union(enum) {
-    transient: struct {
-        size: usize,
-        usage: vk.BufferUsageFlags,
-    },
+pub const TransientBufferDefinition = struct {
+    size: usize,
+    usage: vk.BufferUsageFlags,
+};
+
+pub const TransientTextureDefinition = struct {
+    extent: [2]u32,
+    format: vk.Format,
+    usage: vk.ImageUsageFlags,
+};
+
+pub const RenderGraphBuffer = union(enum) {
+    transient: usize,
     persistent: BufferHandle,
 };
 
-pub const ImageExtent = struct {
-    width: u32,
-    height: u32,
-    depth: u32 = 1,
-};
-
-pub const ImageDefinition = union(enum) {
-    transient: struct {
-        extent: ImageExtent,
-        format: vk.Format,
-        usage: vk.ImageUsageFlags,
-    },
+pub const RenderGraphTexture = union(enum) {
+    transient: usize,
     persistent: ImageHandle,
-    swapchain: SwapchainHandle,
+    swapchain: usize,
 };
 
 pub const CommandBufferBuildFn = *const fn (
@@ -55,43 +52,56 @@ pub const CommandBufferBuildFn = *const fn (
     user_data: ?*anyopaque,
 ) void;
 
-pub const RenderPassBuffer = struct {
-    buffer_index: usize,
+pub const RenderPassBufferUsage = struct {
+    buffer: RenderGraphBuffer,
     usage_info: BufferUsageInfo,
 };
 
-pub const RenderPassImage = struct {
-    image_index: usize,
-    usage_info: ImageUsageInfo,
+pub const RenderPassTextureUsage = struct {
+    image: RenderGraphTexture,
+    usage_info: TextureUsageInfo,
 };
 
 pub const RenderPassDefinition = struct {
     name: []const u8,
-    queue_type: QueueType,
-    buffers: []const RenderPassBuffer,
-    images: []const RenderPassImage,
-    build_commands: CommandBufferBuildFn,
-    user_data: ?*anyopaque = null,
+    queue_type: QueueType = .graphics,
+
+    // buffer_usage: []const RenderPassBufferUsage,
+    // texture_usage: []const RenderPassTextureUsage,
+    // build_commands: ?CommandBufferBuildFn = null,
+    // user_data: ?*anyopaque = null,
 };
 
-pub const RenderGraphInput = struct {
-    allocator: std.mem.Allocator,
-    buffers: std.ArrayList(BufferDefinition),
-    images: std.ArrayList(ImageDefinition),
-    render_passes: std.ArrayList(RenderPassDefinition),
+pub const RenderGraphDefinition = struct {
+    const Self = @This();
 
-    pub fn init(allocator: std.mem.Allocator) @This() {
+    allocator: std.mem.Allocator,
+    transient_buffers: std.ArrayList(TransientBufferDefinition),
+    transient_textures: std.ArrayList(TransientTextureDefinition),
+    swapchains: std.ArrayList(Window),
+
+    pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .buffers = .init(allocator),
-            .images = .init(allocator),
-            .render_passes = .init(allocator),
+            .transient_buffers = .init(allocator),
+            .transient_textures = .init(allocator),
+            .swapchains = .init(allocator),
         };
     }
 
-    pub fn deinit(self: @This()) void {
-        self.buffers.deinit();
-        self.images.deinit();
-        self.render_passes.deinit();
+    pub fn deinit(self: Self) void {
+        self.transient_buffers.deinit();
+        self.transient_buffers.deinit();
+        self.swapchains.deinit();
+    }
+
+    pub fn acquireSwapchainTexture(self: *Self, window: Window) !RenderGraphTexture {
+        try self.swapchains.append(window);
+        return .{ .swapchain = self.swapchains.items.len };
+    }
+
+    pub fn createTransientTexture(self: *Self, definition: TransientTextureDefinition) !RenderGraphTexture {
+        try self.transient_textures.append(definition);
+        return .{ .transient = self.transient_textures.items.len };
     }
 };
