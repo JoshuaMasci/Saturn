@@ -80,7 +80,6 @@ pub const RenderThread = struct {
             .window = window,
             .backend = backend,
             .scene_renderer = scene_renderer,
-            // .physics_renderer = PhyiscsRenderer.init(allocator, device, color_format, depth_fromat) catch |err| std.debug.panic("Failed to init renderer: {}", .{err}),
             .temp_allocator = std.heap.ArenaAllocator.init(allocator),
         };
 
@@ -155,20 +154,40 @@ fn renderThreadMain(
             render_thread_data.scene_renderer.loadSceneData(temp_allocator, scene);
         }
 
-        var render_graph = @import("vulkan/render_graph.zig").RenderGraphDefinition.init(temp_allocator);
+        const RenderGraph = @import("vulkan/render_graph.zig");
+        var render_graph = RenderGraph.RenderGraphDefinition.init(temp_allocator);
         defer render_graph.deinit();
 
         const swapchain_texture = render_graph.acquireSwapchainTexture(render_thread_data.window) catch |err| {
             std.log.err("failed to append swapchain: {}", .{err});
             continue;
         };
-        _ = swapchain_texture; // autofix
 
-        const depth_texture = render_graph.createTransientTexture(.{ .extent = .{ 1920, 1080 }, .format = .d16_unorm, .usage = .{ .depth_stencil_attachment_bit = true } }) catch |err| {
+        const depth_texture = render_graph.createTransientTexture(.{ .extent = render_thread_data.window.getSize(), .format = .d16_unorm, .usage = .{ .depth_stencil_attachment_bit = true } }) catch |err| {
             std.log.err("failed to create transient texture: {}", .{err});
             continue;
         };
-        _ = depth_texture; // autofix
+
+        const render_pass = RenderGraph.RenderPassDefinition{
+            .name = "Test Pass",
+            .raster_pass = .{
+                .color_attachments = &.{.{
+                    .texture = swapchain_texture,
+                    .clear = .{ .float_32 = .{ 0.576, 0.439, 0.859, 1.0 } },
+                    .store = true,
+                }},
+                .depth_attachment = .{
+                    .texture = depth_texture,
+                    .clear = 1.0,
+                    .store = true,
+                },
+            },
+        };
+
+        render_graph.render_passes.append(render_pass) catch |err| {
+            std.log.err("failed to append render_pass: {}", .{err});
+            continue;
+        };
 
         render_thread_data.backend.render(temp_allocator, render_graph) catch |err| std.log.err("Failed to render frame: {}", .{err});
 

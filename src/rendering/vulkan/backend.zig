@@ -246,8 +246,15 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     }
 
     //Resources
-    const images = try temp_allocator.alloc(u32, render_graph.textures.items.len);
+    const images = try temp_allocator.alloc(Image.Interface, render_graph.textures.items.len);
     defer temp_allocator.free(images);
+    for (images, render_graph.textures.items) |*image, texture| {
+        image.* = switch (texture) {
+            .persistent => |handle| self.images.get(handle).?.interface(),
+            .transient => |index| self.images.get(transient_images[index]).?.interface(),
+            .swapchain => |index| swapchain_infos[index].image,
+        };
+    }
 
     var command_buffers: [1]vk.CommandBuffer = undefined;
     try self.device.device.allocateCommandBuffers(&.{ .command_buffer_count = @intCast(command_buffers.len), .command_pool = self.device.graphics_queue.command_pool, .level = .primary }, &command_buffers);
@@ -261,9 +268,89 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
 
     //TODO: render here
     for (render_graph.render_passes.items) |render_pass| {
-        if (render_pass.raster_pass) |raster_pass| {
-            _ = raster_pass; // autofix
+        var render_extent: ?vk.Extent2D = null;
 
+        if (render_pass.raster_pass) |raster_pass| {
+            var image_barriers: std.ArrayList(vk.ImageMemoryBarrier) = try .initCapacity(temp_allocator, raster_pass.color_attachments.len + 1);
+            defer image_barriers.deinit();
+
+            const color_attachments = try temp_allocator.alloc(vk.RenderingAttachmentInfo, raster_pass.color_attachments.len);
+            defer temp_allocator.free(color_attachments);
+
+            for (color_attachments, raster_pass.color_attachments) |*vk_attachment, attachment| {
+                const interface = &images[attachment.texture.texture_index];
+
+                if (interface.transitionLazy(.color_attachment_optimal)) |barrier| {
+                    image_barriers.appendAssumeCapacity(barrier);
+                }
+
+                if (render_extent) |extent| {
+                    if (extent.width != interface.size.width or extent.height != interface.size.height) {
+                        return error.AttachmentsExtentDoNoMatch;
+                    }
+                } else {
+                    render_extent = interface.size;
+                }
+
+                vk_attachment.* = .{
+                    .image_view = interface.view_handle,
+                    .image_layout = .color_attachment_optimal,
+                    .resolve_mode = .{},
+                    .resolve_image_layout = .undefined,
+                    .load_op = if (attachment.clear != null) .clear else .load,
+                    .store_op = if (attachment.store) .store else .dont_care,
+                    .clear_value = .{ .color = attachment.clear orelse undefined },
+                };
+            }
+
+            var depth_attachment: ?vk.RenderingAttachmentInfo = null;
+            if (raster_pass.depth_attachment) |attachment| {
+                const interface = &images[attachment.texture.texture_index];
+
+                if (interface.transitionLazy(.depth_attachment_stencil_read_only_optimal)) |barrier| {
+                    image_barriers.appendAssumeCapacity(barrier);
+                }
+
+                if (render_extent) |extent| {
+                    if (extent.width != interface.size.width or extent.height != interface.size.height) {
+                        return error.AttachmentsExtentDoNoMatch;
+                    }
+                } else {
+                    render_extent = interface.size;
+                }
+
+                depth_attachment = .{
+                    .image_view = interface.view_handle,
+                    .image_layout = .depth_attachment_stencil_read_only_optimal,
+                    .resolve_mode = .{},
+                    .resolve_image_layout = .undefined,
+                    .load_op = if (attachment.clear != null) .clear else .load,
+                    .store_op = if (attachment.store) .store else .dont_care,
+                    .clear_value = .{ .depth_stencil = .{ .depth = attachment.clear orelse undefined, .stencil = 0 } },
+                };
+            }
+
+            command_buffer.pipelineBarrier(
+                .{ .all_commands_bit = true },
+                .{ .all_commands_bit = true },
+                .{},
+                0,
+                null,
+                0,
+                null,
+                @intCast(image_barriers.items.len),
+                image_barriers.items.ptr,
+            );
+
+            command_buffer.beginRendering(&.{
+                .render_area = .{ .extent = render_extent.?, .offset = .{ .x = 0, .y = 0 } },
+                .layer_count = 1,
+                .view_mask = 0,
+                .color_attachment_count = @intCast(color_attachments.len),
+                .p_color_attachments = color_attachments.ptr,
+                .p_depth_attachment = if (depth_attachment) |attachment| @ptrCast(&attachment) else null,
+            });
+            command_buffer.endRendering();
         }
     }
 

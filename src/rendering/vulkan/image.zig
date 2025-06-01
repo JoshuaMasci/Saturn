@@ -13,6 +13,32 @@ pub const Interface = struct {
     handle: vk.Image,
     view_handle: vk.ImageView,
     sampled_binding: ?u32 = null,
+
+    pub fn transitionLazy(self: *@This(), new_layout: vk.ImageLayout) ?vk.ImageMemoryBarrier {
+        if (new_layout == self.layout) {
+            return null;
+        }
+
+        const old_layout = self.layout;
+        self.layout = new_layout;
+
+        return .{
+            .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+            .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+            .old_layout = old_layout,
+            .new_layout = new_layout,
+            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .image = self.handle,
+            .subresource_range = .{
+                .aspect_mask = getFormatAspectMask(self.format),
+                .base_array_layer = 0,
+                .layer_count = 1,
+                .base_mip_level = 0,
+                .level_count = 1,
+            },
+        };
+    }
 };
 
 const Self = @This();
@@ -94,6 +120,18 @@ pub fn getFormatAspectMask(format: vk.Format) vk.ImageAspectFlags {
 
         // All other formats (color formats)
         else => .{ .color_bit = true },
+    };
+}
+
+pub fn interface(self: Self) Interface {
+    return .{
+        .layout = self.layout,
+        .size = self.size,
+        .format = self.format,
+        .usage = self.usage,
+        .handle = self.handle,
+        .view_handle = self.view_handle,
+        .sampled_binding = self.sampled_binding,
     };
 }
 

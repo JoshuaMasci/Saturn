@@ -23,6 +23,8 @@
 - Custom Vulkan renderer
 	- Add debug labels
 	- swapchain rebuilds
+	- sync2
+	- host_image_copy
 - Switch libaeries (SDL, Vulkan, and zdxc) to use zig allocator
 
 ### V0.3

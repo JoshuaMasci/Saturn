@@ -12,18 +12,34 @@ pub const QueueType = enum {
     prefer_async_transfer,
 };
 
-pub const BufferUsageInfo = struct {
-    access_flags: vk.AccessFlags,
-    pipeline_stages: vk.PipelineStageFlags,
-    read_only: bool,
-};
+// pub const BufferUsageInfo = struct {
+//     access_flags: vk.AccessFlags,
+//     pipeline_stages: vk.PipelineStageFlags,
+//     read_only: bool,
+// };
 
-pub const TextureUsageInfo = struct {
-    access_flags: vk.AccessFlags,
-    pipeline_stages: vk.PipelineStageFlags,
-    layout: vk.ImageLayout,
-    read_only: bool,
-};
+// pub const TextureUsageInfo = struct {
+//     access_flags: vk.AccessFlags,
+//     pipeline_stages: vk.PipelineStageFlags,
+//     layout: vk.ImageLayout,
+//     read_only: bool,
+// };
+
+// pub const CommandBufferBuildFn = *const fn (
+//     device: vk.Device,
+//     command_buffer: vk.CommandBufferProxy,
+//     user_data: ?*anyopaque,
+// ) void;
+
+// pub const RenderPassBufferUsage = struct {
+//     buffer: RenderGraphBuffer,
+//     usage_info: BufferUsageInfo,
+// };
+
+// pub const RenderPassTextureUsage = struct {
+//     texture: RenderGraphTextureHandle,
+//     usage_info: TextureUsageInfo,
+// };
 
 pub const TransientBufferDefinition = struct {
     size: usize,
@@ -48,22 +64,6 @@ pub const RenderGraphTexture = union(enum) {
 };
 pub const RenderGraphTextureHandle = struct { texture_index: usize };
 
-pub const CommandBufferBuildFn = *const fn (
-    device: vk.Device,
-    command_buffer: vk.CommandBufferProxy,
-    user_data: ?*anyopaque,
-) void;
-
-pub const RenderPassBufferUsage = struct {
-    buffer: RenderGraphBuffer,
-    usage_info: BufferUsageInfo,
-};
-
-pub const RenderPassTextureUsage = struct {
-    texture: RenderGraphTextureHandle,
-    usage_info: TextureUsageInfo,
-};
-
 pub const ColorAttachment = struct {
     texture: RenderGraphTextureHandle,
     clear: ?vk.ClearColorValue = null,
@@ -77,7 +77,7 @@ pub const DepthAttachment = struct {
 };
 
 pub const RasterPassDefinition = struct {
-    color_attachments: []ColorAttachment,
+    color_attachments: []const ColorAttachment,
     depth_attachment: ?DepthAttachment,
 };
 
