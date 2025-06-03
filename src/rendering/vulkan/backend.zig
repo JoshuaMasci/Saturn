@@ -209,17 +209,6 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     const fence = try self.device.device.createFence(&.{}, null);
     defer self.device.device.destroyFence(fence, null);
 
-    // Transient Images
-    const transient_images = try temp_allocator.alloc(ImageHandle, render_graph.transient_textures.items.len);
-    defer temp_allocator.free(transient_images);
-    defer for (transient_images) |transient_image| {
-        self.destroyImage(transient_image);
-    };
-
-    for (render_graph.transient_textures.items, transient_images) |info, *transient_image| {
-        transient_image.* = try self.createImage(info.extent, info.format, info.usage);
-    }
-
     // Swapchain Images
     const swapchain_infos = try temp_allocator.alloc(SwapchainImageInfo, render_graph.swapchains.items.len);
     defer temp_allocator.free(swapchain_infos);
@@ -231,6 +220,20 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     for (render_graph.swapchains.items, swapchain_infos) |window, *swapchain_info| {
         const surface_swapchain = self.swapchains.getPtr(window) orelse return error.InvalidWindow;
         var swapchain = surface_swapchain.swapchain;
+
+        if (swapchain.out_of_date) {
+            std.log.info("Rebuilding Swapchain", .{});
+            //_ = self.device.device.deviceWaitIdle() catch {};
+            const window_size = window.getSize();
+            const new_swapchain = try Swapchain.init(
+                self.device,
+                surface_swapchain.surface,
+                .{ .width = window_size[0], .height = window_size[1] },
+                swapchain.handle,
+            );
+            swapchain.deinit();
+            swapchain.* = new_swapchain;
+        }
 
         const wait_semaphore = try self.device.device.createSemaphore(&.{}, null);
         const present_semaphore = try self.device.device.createSemaphore(&.{}, null);
@@ -248,11 +251,29 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     //Resources
     const images = try temp_allocator.alloc(Image.Interface, render_graph.textures.items.len);
     defer temp_allocator.free(images);
+
+    // Transient Images
+    const transient_images = try temp_allocator.alloc(ImageHandle, render_graph.transient_textures.items.len);
+    defer temp_allocator.free(transient_images);
+    defer for (transient_images) |transient_image| {
+        self.destroyImage(transient_image);
+    };
+
     for (images, render_graph.textures.items) |*image, texture| {
         image.* = switch (texture) {
             .persistent => |handle| self.images.get(handle).?.interface(),
-            .transient => |index| self.images.get(transient_images[index]).?.interface(),
             .swapchain => |index| swapchain_infos[index].image,
+            .transient => |transient_index| img: {
+                // This currently relies on the fact that transient textures can only referance a RenderGraphImage that was create before this one,
+                // therefor ealier in the list and already filled in the array.
+                const transient_desc = render_graph.transient_textures.items[transient_index];
+                const extent: vk.Extent2D = switch (transient_desc.extent) {
+                    .fixed => |extent| extent,
+                    .relative => |r| images[r.texture_index].extent,
+                };
+                transient_images[transient_index] = try self.createImage(.{ extent.width, extent.height }, transient_desc.format, transient_desc.usage);
+                break :img self.images.get(transient_images[transient_index]).?.interface();
+            },
         };
     }
 
@@ -285,11 +306,11 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
                 }
 
                 if (render_extent) |extent| {
-                    if (extent.width != interface.size.width or extent.height != interface.size.height) {
+                    if (extent.width != interface.extent.width or extent.height != interface.extent.height) {
                         return error.AttachmentsExtentDoNoMatch;
                     }
                 } else {
-                    render_extent = interface.size;
+                    render_extent = interface.extent;
                 }
 
                 vk_attachment.* = .{
@@ -312,11 +333,11 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
                 }
 
                 if (render_extent) |extent| {
-                    if (extent.width != interface.size.width or extent.height != interface.size.height) {
+                    if (extent.width != interface.extent.width or extent.height != interface.extent.height) {
                         return error.AttachmentsExtentDoNoMatch;
                     }
                 } else {
-                    render_extent = interface.size;
+                    render_extent = interface.extent;
                 }
 
                 depth_attachment = .{
@@ -422,18 +443,11 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     try self.device.device.queueSubmit(self.device.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
 
     for (swapchain_infos) |swapchain_info| {
-        const present_result = try self.device.device.queuePresentKHR(self.device.graphics_queue.handle, &.{
-            .swapchain_count = 1,
-            .p_image_indices = @ptrCast(&swapchain_info.index),
-            .p_swapchains = @ptrCast(&swapchain_info.swapchain.handle),
-            .wait_semaphore_count = 1,
-            .p_wait_semaphores = @ptrCast(&swapchain_info.present_semaphore),
-        });
-
-        if (present_result == .suboptimal_khr) {
-            std.log.warn("Swapchain Suboptimal", .{});
-            //TODO: mark as out of data
-        }
+        try swapchain_info.swapchain.queuePresent(
+            self.device.graphics_queue.handle,
+            swapchain_info.index,
+            swapchain_info.present_semaphore,
+        );
     }
 
     _ = try self.device.device.waitForFences(1, @ptrCast(&fence), 1, std.math.maxInt(u64));

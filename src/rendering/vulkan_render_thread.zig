@@ -163,7 +163,7 @@ fn renderThreadMain(
             continue;
         };
 
-        const depth_texture = render_graph.createTransientTexture(.{ .extent = render_thread_data.window.getSize(), .format = .d16_unorm, .usage = .{ .depth_stencil_attachment_bit = true } }) catch |err| {
+        const depth_texture = render_graph.createTransientTexture(.{ .extent = .{ .relative = swapchain_texture }, .format = .d16_unorm, .usage = .{ .depth_stencil_attachment_bit = true } }) catch |err| {
             std.log.err("failed to create transient texture: {}", .{err});
             continue;
         };

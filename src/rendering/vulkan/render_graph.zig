@@ -46,8 +46,13 @@ pub const TransientBufferDefinition = struct {
     usage: vk.BufferUsageFlags,
 };
 
+pub const TextureExtent = union(enum) {
+    fixed: vk.Extent2D,
+    relative: RenderGraphTextureHandle,
+};
+
 pub const TransientTextureDefinition = struct {
-    extent: [2]u32,
+    extent: TextureExtent,
     format: vk.Format,
     usage: vk.ImageUsageFlags,
 };
@@ -77,8 +82,8 @@ pub const DepthAttachment = struct {
 };
 
 pub const RasterPassDefinition = struct {
-    color_attachments: []const ColorAttachment,
-    depth_attachment: ?DepthAttachment,
+    color_attachments: []const ColorAttachment = &.{},
+    depth_attachment: ?DepthAttachment = null,
 };
 
 pub const RenderPassDefinition = struct {

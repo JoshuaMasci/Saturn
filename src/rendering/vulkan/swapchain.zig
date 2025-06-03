@@ -23,21 +23,21 @@ handle: vk.SwapchainKHR,
 image_count: usize,
 images: [MAX_IMAGE_COUNT]ImageInterface,
 
-size: vk.Extent2D,
+extent: vk.Extent2D,
 format: vk.Format,
 color_space: vk.ColorSpaceKHR,
 transform: vk.SurfaceTransformFlagsKHR,
 composite_alpha: vk.CompositeAlphaFlagsKHR,
 present_mode: vk.PresentModeKHR,
 
-pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, old_swapchain: ?vk.SwapchainKHR) !Self {
+pub fn init(device: *Device, surface: vk.SurfaceKHR, window_extent: vk.Extent2D, old_swapchain: ?vk.SwapchainKHR) !Self {
     const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface);
 
     //TODO: take all of this in from settings
     const image_count = std.math.clamp(3, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
-    const size: vk.Extent2D = .{
-        .width = std.math.clamp(window_size.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
-        .height = std.math.clamp(window_size.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),
+    const extent: vk.Extent2D = .{
+        .width = std.math.clamp(window_extent.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
+        .height = std.math.clamp(window_extent.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),
     };
     const format = .b8g8r8a8_srgb;
     const usage = vk.ImageUsageFlags{
@@ -58,7 +58,7 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, o
         .min_image_count = image_count,
         .image_format = format,
         .image_color_space = color_space,
-        .image_extent = size,
+        .image_extent = extent,
         .image_array_layers = 1,
         .image_usage = usage,
         .image_sharing_mode = .exclusive,
@@ -96,7 +96,7 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, o
         }, null);
         swapchain_image.* = .{
             .layout = .undefined,
-            .size = size,
+            .extent = extent,
             .format = format,
             .usage = usage,
             .handle = image_handle,
@@ -111,7 +111,7 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, window_size: vk.Extent2D, o
         .handle = handle,
         .image_count = actual_image_count,
         .images = images,
-        .size = size,
+        .extent = extent,
         .format = format,
         .color_space = color_space,
         .transform = transform,
@@ -142,7 +142,7 @@ pub fn acquireNextImage(
     );
 
     if (result.result == .suboptimal_khr) {
-        std.log.warn("Swapchain Suboptimal", .{});
+        std.log.warn("acquireNextImageKHR Swapchain Suboptimal", .{});
         self.out_of_date = true;
     }
 
@@ -151,4 +151,24 @@ pub fn acquireNextImage(
         .index = result.image_index,
         .image = self.images[result.image_index],
     };
+}
+
+pub fn queuePresent(
+    self: *Self,
+    queue: vk.Queue,
+    index: u32,
+    present_semaphore: vk.Semaphore,
+) !void {
+    const present_result = try self.device.device.queuePresentKHR(queue, &.{
+        .swapchain_count = 1,
+        .p_image_indices = @ptrCast(&index),
+        .p_swapchains = @ptrCast(&self.handle),
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = @ptrCast(&present_semaphore),
+    });
+
+    if (present_result == .suboptimal_khr) {
+        std.log.warn("queuePresentKHR Swapchain Suboptimal", .{});
+        self.out_of_date = true;
+    }
 }

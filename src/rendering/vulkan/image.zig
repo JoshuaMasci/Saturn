@@ -6,12 +6,12 @@ const Device = @import("device.zig");
 const GpuAllocator = @import("gpu_allocator.zig");
 
 pub const Interface = struct {
-    layout: vk.ImageLayout,
-    size: vk.Extent2D,
-    format: vk.Format,
-    usage: vk.ImageUsageFlags,
-    handle: vk.Image,
-    view_handle: vk.ImageView,
+    layout: vk.ImageLayout = .undefined,
+    extent: vk.Extent2D = .{ .width = 0, .height = 0 },
+    format: vk.Format = .undefined,
+    usage: vk.ImageUsageFlags = .{},
+    handle: vk.Image = .null_handle,
+    view_handle: vk.ImageView = .null_handle,
     sampled_binding: ?u32 = null,
 
     pub fn transitionLazy(self: *@This(), new_layout: vk.ImageLayout) ?vk.ImageMemoryBarrier {
@@ -46,7 +46,7 @@ const Self = @This();
 device: *Device,
 
 layout: vk.ImageLayout = .undefined,
-size: vk.Extent2D,
+extent: vk.Extent2D,
 format: vk.Format,
 usage: vk.ImageUsageFlags,
 
@@ -56,11 +56,11 @@ allocation: GpuAllocator.Allocation,
 
 sampled_binding: ?u32 = null,
 
-pub fn init2D(device: *Device, size: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
+pub fn init2D(device: *Device, extent: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
     const handle = try device.device.createImage(&.{
         .image_type = .@"2d",
         .format = format,
-        .extent = .{ .width = size.width, .height = size.height, .depth = 1 },
+        .extent = .{ .width = extent.width, .height = extent.height, .depth = 1 },
         .mip_levels = 1,
         .array_layers = 1,
         .samples = .{ .@"1_bit" = true },
@@ -92,7 +92,7 @@ pub fn init2D(device: *Device, size: vk.Extent2D, format: vk.Format, usage: vk.I
 
     return .{
         .device = device,
-        .size = size,
+        .extent = extent,
         .format = format,
         .usage = usage,
         .handle = handle,
@@ -126,7 +126,7 @@ pub fn getFormatAspectMask(format: vk.Format) vk.ImageAspectFlags {
 pub fn interface(self: Self) Interface {
     return .{
         .layout = self.layout,
-        .size = self.size,
+        .extent = self.extent,
         .format = self.format,
         .usage = self.usage,
         .handle = self.handle,
@@ -207,7 +207,7 @@ pub fn uploadImageData(
             .layer_count = 1,
         },
         .image_offset = .{ .x = 0, .y = 0, .z = 0 },
-        .image_extent = .{ .width = self.size.width, .height = self.size.width, .depth = 1 },
+        .image_extent = .{ .width = self.extent.width, .height = self.extent.height, .depth = 1 },
     };
 
     device.device.cmdCopyBufferToImage(

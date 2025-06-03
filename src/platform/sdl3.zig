@@ -69,8 +69,7 @@ pub const Platform = struct {
         _ = self; // autofix
         var window_width: i32 = 0;
         var window_height: i32 = 0;
-        //var window_flags = c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_VULKAN;
-        var window_flags = c.SDL_WINDOW_VULKAN;
+        var window_flags = c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_VULKAN;
 
         switch (size) {
             .windowed => |window_size| {
