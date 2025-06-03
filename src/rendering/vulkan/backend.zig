@@ -371,6 +371,13 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
                 .p_color_attachments = color_attachments.ptr,
                 .p_depth_attachment = if (depth_attachment) |attachment| @ptrCast(&attachment) else null,
             });
+        }
+
+        if (render_pass.build_fn) |build_fn| {
+            build_fn(self, command_buffer, render_extent, render_pass.build_data);
+        }
+
+        if (render_pass.raster_pass != null) {
             command_buffer.endRendering();
         }
     }

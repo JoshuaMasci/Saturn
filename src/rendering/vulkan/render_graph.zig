@@ -86,6 +86,13 @@ pub const RasterPassDefinition = struct {
     depth_attachment: ?DepthAttachment = null,
 };
 
+pub const CommandBufferBuildFn = *const fn (
+    backend: *@import("backend.zig"),
+    command_buffer: vk.CommandBufferProxy,
+    raster_pass_extent: ?vk.Extent2D,
+    user_data: ?*anyopaque,
+) void;
+
 pub const RenderPassDefinition = struct {
     name: []const u8,
     queue_type: QueueType = .graphics,
@@ -93,8 +100,8 @@ pub const RenderPassDefinition = struct {
 
     // buffer_usage: []const RenderPassBufferUsage,
     // texture_usage: []const RenderPassTextureUsage,
-    // build_commands: ?CommandBufferBuildFn = null,
-    // user_data: ?*anyopaque = null,
+    build_fn: ?CommandBufferBuildFn = null,
+    build_data: ?*anyopaque = null,
 };
 
 pub const RenderGraphDefinition = struct {

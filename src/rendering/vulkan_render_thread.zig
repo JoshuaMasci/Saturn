@@ -150,13 +150,23 @@ fn renderThreadMain(
             return; //TODO: deinit
         }
 
-        if (render_thread_data.scene) |*scene| {
-            render_thread_data.scene_renderer.loadSceneData(temp_allocator, scene);
-        }
-
         const RenderGraph = @import("vulkan/render_graph.zig");
         var render_graph = RenderGraph.RenderGraphDefinition.init(temp_allocator);
         defer render_graph.deinit();
+
+        var scene_build_fn: ?RenderGraph.CommandBufferBuildFn = null;
+        var scene_build_data: SceneRenderer.BuildCommandBufferData = undefined;
+
+        if (render_thread_data.scene) |*scene| {
+            render_thread_data.scene_renderer.loadSceneData(temp_allocator, scene);
+            scene_build_fn = SceneRenderer.buildCommandBuffer;
+            scene_build_data = .{
+                .self = &render_thread_data.scene_renderer,
+                .camera = render_thread_data.camera orelse .Default,
+                .camera_transform = render_thread_data.camera_transform orelse .{},
+                .scene = scene,
+            };
+        }
 
         const swapchain_texture = render_graph.acquireSwapchainTexture(render_thread_data.window) catch |err| {
             std.log.err("failed to append swapchain: {}", .{err});
@@ -169,7 +179,7 @@ fn renderThreadMain(
         };
 
         const render_pass = RenderGraph.RenderPassDefinition{
-            .name = "Test Pass",
+            .name = "Scene Pass",
             .raster_pass = .{
                 .color_attachments = &.{.{
                     .texture = swapchain_texture,
@@ -182,6 +192,8 @@ fn renderThreadMain(
                     .store = true,
                 },
             },
+            .build_fn = scene_build_fn,
+            .build_data = &scene_build_data,
         };
 
         render_graph.render_passes.append(render_pass) catch |err| {

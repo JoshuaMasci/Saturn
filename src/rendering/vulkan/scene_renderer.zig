@@ -87,88 +87,91 @@ pub fn deinit(self: *Self) void {
     self.backend.device.device.destroyPipeline(self.mesh_pipeline, null);
 }
 
-// pub fn buildCommandBuffer(data_ptr: ?*anyopaque, device: vk.DeviceProxy, command_buffer: vk.CommandBufferProxy, layout: vk.PipelineLayout, target_size: vk.Extent2D) void {
-//     _ = device; // autofix
+pub fn buildCommandBuffer(backend: *Backend, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D, user_data: ?*anyopaque) void {
+    const data: *BuildCommandBufferData = @ptrCast(@alignCast(user_data.?));
+    const self = data.self;
 
-//     const data: *BuildCommandBufferData = @ptrCast(@alignCast(data_ptr.?));
-//     const self = data.self;
+    const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
+    const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
+    const aspect_ratio: f32 = width_float / height_float;
+    const view_matrix = data.camera_transform.getViewMatrix();
+    var projection_matrix = data.camera.getProjectionMatrix(aspect_ratio);
+    projection_matrix[1][1] *= -1.0;
+    const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
-//     const width_float: f32 = @floatFromInt(target_size.width);
-//     const height_float: f32 = @floatFromInt(target_size.height);
-//     const aspect_ratio: f32 = width_float / height_float;
-//     const view_matrix = data.camera_transform.getViewMatrix();
-//     var projection_matrix = data.camera.getProjectionMatrix(aspect_ratio);
-//     projection_matrix[1][1] *= -1.0;
-//     const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
+    command_buffer.bindPipeline(.graphics, self.mesh_pipeline);
 
-//     command_buffer.bindPipeline(.graphics, self.mesh_pipeline);
+    const viewport = vk.Viewport{
+        .x = 0.0,
+        .y = 0.0,
+        .width = @floatFromInt(raster_pass_extent.?.width),
+        .height = @floatFromInt(raster_pass_extent.?.height),
+        .min_depth = 0.0,
+        .max_depth = 1.0,
+    };
+    command_buffer.setViewport(0, 1, (&viewport)[0..1]);
+    const scissor = vk.Rect2D{
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = raster_pass_extent.?,
+    };
+    command_buffer.setScissor(0, 1, (&scissor)[0..1]);
 
-//     const viewport = vk.Viewport{
-//         .x = 0.0,
-//         .y = 0.0,
-//         .width = @floatFromInt(target_size.width),
-//         .height = @floatFromInt(target_size.height),
-//         .min_depth = 0.0,
-//         .max_depth = 1.0,
-//     };
-//     command_buffer.setViewport(0, 1, (&viewport)[0..1]);
-//     const scissor = vk.Rect2D{
-//         .offset = .{ .x = 0, .y = 0 },
-//         .extent = target_size,
-//     };
-//     command_buffer.setScissor(0, 1, (&scissor)[0..1]);
+    for (data.scene.static_meshes.items) |static_mesh| {
+        if (static_mesh.component.visable == false) {
+            continue;
+        }
 
-//     for (data.scene.static_meshes.items) |static_mesh| {
-//         if (static_mesh.component.visable == false) {
-//             continue;
-//         }
+        if (self.static_mesh_map.get(static_mesh.component.mesh)) |mesh| {
+            const model_matrix = static_mesh.transform.getModelMatrix();
 
-//         if (self.static_mesh_map.get(static_mesh.component.mesh)) |mesh| {
-//             const model_matrix = static_mesh.transform.getModelMatrix();
+            const materials = static_mesh.component.materials.constSlice();
+            for (mesh.primitives, materials) |primtive, material| {
+                const PushData = extern struct {
+                    view_projection_matrix: zm.Mat,
+                    model_matrix: zm.Mat,
+                    base_color_factor: zm.Vec,
+                };
 
-//             const materials = static_mesh.component.materials.constSlice();
-//             for (mesh.primitives, materials) |primtive, material| {
-//                 const PushData = extern struct {
-//                     view_projection_matrix: zm.Mat,
-//                     model_matrix: zm.Mat,
-//                     base_color_factor: zm.Vec,
-//                 };
+                var base_color_factor: zm.Vec = .{ 1.0, 0.27, 0.63, 1.0 };
+                if (self.material_map.get(material)) |mat| {
+                    base_color_factor = mat.base_color_factor;
+                }
 
-//                 var base_color_factor: zm.Vec = .{ 1.0, 0.27, 0.63, 1.0 };
-//                 if (self.material_map.get(material)) |mat| {
-//                     base_color_factor = mat.base_color_factor;
-//                 }
+                const push_data = PushData{
+                    .view_projection_matrix = view_projection_matrix,
+                    .model_matrix = model_matrix,
+                    .base_color_factor = base_color_factor,
+                };
 
-//                 const push_data = PushData{
-//                     .view_projection_matrix = view_projection_matrix,
-//                     .model_matrix = model_matrix,
-//                     .base_color_factor = base_color_factor,
-//                 };
+                command_buffer.pushConstants(backend.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
 
-//                 command_buffer.pushConstants(layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
+                drawPrimitive(backend, command_buffer, primtive);
+            }
+        }
+    }
+}
 
-//                 drawPrimitive(command_buffer, primtive);
-//             }
-//         }
-//     }
-// }
+pub fn drawPrimitive(
+    backend: *Backend,
+    command_buffer: vk.CommandBufferProxy,
+    primitive: anytype, // Your primitive struct
+) void {
+    const vertex_buffer = backend.buffers.get(primitive.vertex_buffer) orelse return;
 
-// pub fn drawPrimitive(
-//     command_buffer: vk.CommandBufferProxy,
-//     primitive: anytype, // Your primitive struct
-// ) void {
-//     const vertex_buffers = [_]vk.Buffer{primitive.vertex_buffer.handle};
-//     const vertex_offsets = [_]vk.DeviceSize{0};
+    const vertex_buffers = [_]vk.Buffer{vertex_buffer.handle};
+    const vertex_offsets = [_]vk.DeviceSize{0};
 
-//     command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
+    command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
 
-//     if (primitive.index_buffer) |index_buffer| {
-//         command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
-//         command_buffer.drawIndexed(primitive.index_count, 1, 0, 0, 0);
-//     } else {
-//         command_buffer.draw(primitive.vertex_count, 1, 0, 0);
-//     }
-// }
+    if (primitive.index_buffer) |index_buffer_handle| {
+        const index_buffer = backend.buffers.get(index_buffer_handle) orelse return;
+
+        command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
+        command_buffer.drawIndexed(primitive.index_count, 1, 0, 0, 0);
+    } else {
+        command_buffer.draw(primitive.vertex_count, 1, 0, 0);
+    }
+}
 
 pub fn loadSceneData(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) void {
     for (scene.static_meshes.items) |static_mesh| {
