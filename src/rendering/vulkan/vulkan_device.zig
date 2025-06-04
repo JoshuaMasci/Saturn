@@ -11,7 +11,7 @@ const Self = @This();
 allocator: std.mem.Allocator,
 
 instance: vk.InstanceProxy,
-device: vk.DeviceProxy,
+proxy: vk.DeviceProxy,
 
 physical_device: vk.PhysicalDevice,
 graphics_queue: Queue,
@@ -80,25 +80,25 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     errdefer allocator.destroy(device_wrapper);
     device_wrapper.* = vk.DeviceWrapper.load(device_handle, instance.wrapper.dispatch.vkGetDeviceProcAddr.?);
 
-    const device = vk.DeviceProxy.init(device_handle, device_wrapper);
+    const proxy = vk.DeviceProxy.init(device_handle, device_wrapper);
 
-    const graphics_queue = try Queue.init(device, graphics_queue_index);
+    const graphics_queue = try Queue.init(proxy, graphics_queue_index);
 
     return .{
         .allocator = allocator,
         .instance = instance,
         .physical_device = physical_device,
-        .device = device,
+        .proxy = proxy,
         .graphics_queue = graphics_queue,
-        .gpu_allocator = GpuAllocator.init(physical_device, instance, device),
+        .gpu_allocator = GpuAllocator.init(physical_device, instance, proxy),
     };
 }
 
 pub fn deinit(self: Self) void {
     self.gpu_allocator.deinit();
 
-    self.graphics_queue.deinit(self.device);
+    self.graphics_queue.deinit(self.proxy);
 
-    self.device.destroyDevice(null);
-    self.allocator.destroy(self.device.wrapper);
+    self.proxy.destroyDevice(null);
+    self.allocator.destroy(self.proxy.wrapper);
 }

@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) !void {
     // dear imgui
     const zimgui = b.dependency("zgui", .{
         .shared = false,
-        .backend = .sdl3_gpu,
+        .backend = .no_backend,
         .with_gizmo = true,
     });
     exe.root_module.addImport("zimgui", zimgui.module("root"));

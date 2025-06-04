@@ -39,15 +39,15 @@ texture_map: std.AutoArrayHashMap(Texture2dAsset.Registry.Handle, Device.ImageHa
 material_map: std.AutoArrayHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
 pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Format, depth_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
-    const vertex_shader = try loadGraphicsShader(allocator, device.device.device, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/static_mesh.vert.shader").?);
-    defer device.device.device.destroyShaderModule(vertex_shader, null);
+    const vertex_shader = try loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/static_mesh.vert.shader").?);
+    defer device.device.proxy.destroyShaderModule(vertex_shader, null);
 
-    const opaque_fragment_shader = try loadGraphicsShader(allocator, device.device.device, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/opaque.frag.shader").?);
-    defer device.device.device.destroyShaderModule(opaque_fragment_shader, null);
+    const opaque_fragment_shader = try loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/opaque.frag.shader").?);
+    defer device.device.proxy.destroyShaderModule(opaque_fragment_shader, null);
 
     const mesh_pipeline = try Pipeline.createGraphicsPipeline(
         allocator,
-        device.device.device,
+        device.device.proxy,
         pipeline_layout,
         .{
             .color_format = color_format,
@@ -84,7 +84,7 @@ pub fn deinit(self: *Self) void {
     }
     self.material_map.deinit();
 
-    self.device.device.device.destroyPipeline(self.mesh_pipeline, null);
+    self.device.device.proxy.destroyPipeline(self.mesh_pipeline, null);
 }
 
 pub fn buildCommandBuffer(device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D, user_data: ?*anyopaque) void {

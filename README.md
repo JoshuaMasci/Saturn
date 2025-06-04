@@ -25,8 +25,10 @@
 	- Sync2
 	- host_image_copy
 	- Imgui
+	- Physics Debug Renderer
 - Switch libraries (SDL, Vulkan, and zdxc) to use zig allocator in place of libc malloc/free
 - Input binding config files
+
 
 ### V0.3
 - Switch subsystems to zig modules

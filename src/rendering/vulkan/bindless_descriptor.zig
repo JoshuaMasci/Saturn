@@ -82,7 +82,7 @@ pub fn init(device: *VkDevice, descriptor_counts: DescriptorCounts) !Self {
         // },
     };
 
-    const layout = try device.device.createDescriptorSetLayout(&.{
+    const layout = try device.proxy.createDescriptorSetLayout(&.{
         .binding_count = bindings.len,
         .p_bindings = &bindings,
     }, null);
@@ -95,10 +95,10 @@ pub fn init(device: *VkDevice, descriptor_counts: DescriptorCounts) !Self {
         //.{ .type = .acceleration_structure_khr, .descriptor_count = descriptor_counts.accleration_structures },
     };
 
-    const pool = try device.device.createDescriptorPool(&.{ .max_sets = 1, .pool_size_count = pool_sizes.len, .p_pool_sizes = &pool_sizes }, null);
+    const pool = try device.proxy.createDescriptorPool(&.{ .max_sets = 1, .pool_size_count = pool_sizes.len, .p_pool_sizes = &pool_sizes }, null);
 
     var set: vk.DescriptorSet = .null_handle;
-    try device.device.allocateDescriptorSets(&.{ .descriptor_pool = pool, .descriptor_set_count = 1, .p_set_layouts = (&layout)[0..1] }, (&set)[0..1]);
+    try device.proxy.allocateDescriptorSets(&.{ .descriptor_pool = pool, .descriptor_set_count = 1, .p_set_layouts = (&layout)[0..1] }, (&set)[0..1]);
 
     return Self{
         .device = device,
@@ -109,8 +109,8 @@ pub fn init(device: *VkDevice, descriptor_counts: DescriptorCounts) !Self {
 }
 
 pub fn deinit(self: Self) void {
-    self.device.device.destroyDescriptorPool(self.pool, null);
-    self.device.device.destroyDescriptorSetLayout(self.layout, null);
+    self.device.proxy.destroyDescriptorPool(self.pool, null);
+    self.device.proxy.destroyDescriptorSetLayout(self.layout, null);
 }
 
 pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy, layout: vk.PipelineLayout) void {
@@ -141,7 +141,7 @@ pub fn bindSampledImage(self: *Self, image: Image, sampler: Sampler) u32 {
         .p_texel_buffer_view = undefined,
     };
 
-    self.device.device.updateDescriptorSets(1, (&descriptor_update)[0..1], 0, null);
+    self.device.proxy.updateDescriptorSets(1, (&descriptor_update)[0..1], 0, null);
 
     return @intCast(index);
 }

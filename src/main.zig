@@ -3,11 +3,11 @@ const App = @import("app.zig").App;
 const global = @import("global.zig");
 
 pub fn main() !void {
-    var general_purpose_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }){};
-    defer if (general_purpose_allocator.deinit() == .leak) {
-        std.log.err("GeneralPurposeAllocator has a memory leak!", .{});
+    var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }){};
+    defer if (debug_allocator.deinit() == .leak) {
+        std.log.err("DebugAllocator has a memory leak!", .{});
     };
-    const allocator = general_purpose_allocator.allocator();
+    const allocator = debug_allocator.allocator();
 
     try global.init(allocator);
     defer global.deinit();
@@ -27,6 +27,6 @@ pub fn main() !void {
         const delta_time_s = @as(f32, @floatFromInt(delta_time_ns)) / std.time.ns_per_s;
         last_frame_time_ns = current_time_ns;
 
-        try app.update(delta_time_s, general_purpose_allocator.total_requested_bytes);
+        try app.update(delta_time_s, debug_allocator.total_requested_bytes);
     }
 }

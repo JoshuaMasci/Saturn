@@ -17,12 +17,28 @@ const Swapchain = @import("swapchain.zig");
 
 const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
+const object_pools = @import("object_pools.zig");
+
 pub const BufferHandle = BufferPool.Handle;
 pub const ImageHandle = ImagePool.Handle;
 
 const SurfaceSwapchain = struct {
     surface: vk.SurfaceKHR,
     swapchain: *Swapchain,
+};
+
+const PerFrameData = struct {
+    frame_wait_fences: std.ArrayList(vk.Fence),
+    graphics_command_pool: object_pools.CommandBufferPool,
+    semaphore_pool: object_pools.SemaphorePool,
+    fence_pool: object_pools.FencePool,
+
+    pub fn reset(self: *@This()) void {
+        self.frame_wait_fences.clearRetainingCapacity();
+        self.graphics_command_pool.reset();
+        self.semaphore_pool.reset();
+        self.fence_pool.reset();
+    }
 };
 
 const Self = @This();
@@ -38,6 +54,9 @@ swapchains: std.AutoArrayHashMap(Window, SurfaceSwapchain),
 buffers: BufferPool,
 images: ImagePool,
 linear_sampler: Sampler,
+
+frame_index: usize = 0,
+frame_data: []PerFrameData,
 
 pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     if (frames_in_flight_count == 0) {
@@ -71,7 +90,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
         .compute_bit = true,
     };
 
-    const bindless_layout = try device.device.createPipelineLayout(&.{
+    const bindless_layout = try device.proxy.createPipelineLayout(&.{
         .set_layout_count = 1,
         .p_set_layouts = (&bindless_descriptor.layout)[0..1],
         .push_constant_range_count = 1,
@@ -81,7 +100,19 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
             .size = 256,
         })[0..1],
     }, null);
-    errdefer device.device.destroyPipelineLayout(bindless_layout, null);
+    errdefer device.proxy.destroyPipelineLayout(bindless_layout, null);
+
+    const frame_data = try allocator.alloc(PerFrameData, @intCast(frames_in_flight_count));
+    errdefer allocator.free(frame_data);
+
+    for (frame_data) |*data| {
+        data.* = .{
+            .frame_wait_fences = .init(allocator),
+            .graphics_command_pool = try .init(allocator, device, device.graphics_queue),
+            .semaphore_pool = .init(allocator, device, .binary, 0),
+            .fence_pool = .init(allocator, device, .{}),
+        };
+    }
 
     return .{
         .allocator = allocator,
@@ -93,10 +124,23 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
         .buffers = .init(allocator),
         .images = .init(allocator),
         .linear_sampler = try .init(device, .linear, .repeat),
+
+        .frame_data = frame_data,
     };
 }
 
 pub fn deinit(self: *Self) void {
+    _ = self.device.proxy.deviceWaitIdle() catch {};
+
+    for (self.frame_data) |*data| {
+        data.frame_wait_fences.deinit();
+        data.graphics_command_pool.deinit();
+        data.semaphore_pool.deinit();
+        data.fence_pool.deinit();
+    }
+
+    self.allocator.free(self.frame_data);
+
     for (self.swapchains.values()) |surface_swapchain| {
         surface_swapchain.swapchain.deinit();
         Vulkan.destroySurface(self.instance.instance.handle, surface_swapchain.surface, null);
@@ -107,7 +151,7 @@ pub fn deinit(self: *Self) void {
     self.buffers.deinit_with_entries();
     self.images.deinit_with_entries();
 
-    self.device.device.destroyPipelineLayout(self.bindless_layout, null);
+    self.device.proxy.destroyPipelineLayout(self.bindless_layout, null);
     self.bindless_descriptor.deinit();
     self.allocator.destroy(self.bindless_descriptor);
     self.device.deinit();
@@ -211,16 +255,22 @@ const SwapchainImageInfo = struct {
 };
 
 pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: RenderGraphDefinition) !void {
-    const fence = try self.device.device.createFence(&.{}, null);
-    defer self.device.device.destroyFence(fence, null);
+    self.frame_index = @mod(self.frame_index + 1, self.frame_data.len);
+    const frame_data = &self.frame_data[self.frame_index];
+
+    //Wait for previous frame to finish
+    if (frame_data.frame_wait_fences.items.len > 0) {
+        _ = try self.device.proxy.waitForFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr, 1, std.math.maxInt(u64));
+        frame_data.frame_wait_fences.clearRetainingCapacity();
+    }
+    frame_data.reset();
+
+    const fence = try frame_data.fence_pool.get();
+    try frame_data.frame_wait_fences.append(fence);
 
     // Swapchain Images
     const swapchain_infos = try temp_allocator.alloc(SwapchainImageInfo, render_graph.swapchains.items.len);
     defer temp_allocator.free(swapchain_infos);
-    defer for (swapchain_infos) |swapchain_info| {
-        defer self.device.device.destroySemaphore(swapchain_info.wait_semaphore, null);
-        defer self.device.device.destroySemaphore(swapchain_info.present_semaphore, null);
-    };
 
     for (render_graph.swapchains.items, swapchain_infos) |window, *swapchain_info| {
         const surface_swapchain = self.swapchains.getPtr(window) orelse return error.InvalidWindow;
@@ -228,7 +278,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
 
         if (swapchain.out_of_date) {
             std.log.info("Rebuilding Swapchain", .{});
-            //_ = self.device.device.deviceWaitIdle() catch {};
+            //_ = self.device.proxy.deviceWaitIdle() catch {};
             const window_size = window.getSize();
             const new_swapchain = try Swapchain.init(
                 self.device,
@@ -240,8 +290,8 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
             swapchain.* = new_swapchain;
         }
 
-        const wait_semaphore = try self.device.device.createSemaphore(&.{}, null);
-        const present_semaphore = try self.device.device.createSemaphore(&.{}, null);
+        const wait_semaphore = try frame_data.semaphore_pool.get();
+        const present_semaphore = try frame_data.semaphore_pool.get();
         const swapchain_image = try swapchain.acquireNextImage(null, wait_semaphore, .null_handle);
 
         swapchain_info.* = .{
@@ -282,12 +332,8 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
         };
     }
 
-    var command_buffers: [1]vk.CommandBuffer = undefined;
-    try self.device.device.allocateCommandBuffers(&.{ .command_buffer_count = @intCast(command_buffers.len), .command_pool = self.device.graphics_queue.command_pool, .level = .primary }, &command_buffers);
-    defer self.device.device.freeCommandBuffers(self.device.graphics_queue.command_pool, @intCast(command_buffers.len), &command_buffers);
-
-    const command_buffer_handle = command_buffers[0];
-    const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.device.wrapper);
+    const command_buffer_handle = try frame_data.graphics_command_pool.get();
+    const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.proxy.wrapper);
 
     try command_buffer.beginCommandBuffer(&.{});
     self.bindless_descriptor.bind(command_buffer, self.bindless_layout);
@@ -443,8 +489,8 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     }
 
     const submit_infos: [1]vk.SubmitInfo = .{vk.SubmitInfo{
-        .command_buffer_count = @intCast(command_buffers.len),
-        .p_command_buffers = &command_buffers,
+        .command_buffer_count = 1,
+        .p_command_buffers = (&command_buffer_handle)[0..1],
         .wait_semaphore_count = @intCast(wait_semaphores.len),
         .p_wait_semaphores = wait_semaphores.ptr,
         .p_wait_dst_stage_mask = wait_dst_stage_masks.ptr,
@@ -452,7 +498,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
         .p_signal_semaphores = signal_semaphores.ptr,
     }};
 
-    try self.device.device.queueSubmit(self.device.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
+    try self.device.proxy.queueSubmit(self.device.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
 
     for (swapchain_infos) |swapchain_info| {
         try swapchain_info.swapchain.queuePresent(
@@ -461,7 +507,4 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
             swapchain_info.present_semaphore,
         );
     }
-
-    _ = try self.device.device.waitForFences(1, @ptrCast(&fence), 1, std.math.maxInt(u64));
-    _ = self.device.device.queueWaitIdle(self.device.graphics_queue.handle) catch {};
 }

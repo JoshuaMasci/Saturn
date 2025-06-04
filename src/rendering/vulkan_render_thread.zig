@@ -31,6 +31,7 @@ pub const RenderThreadData = struct {
     camera: ?Camera = null,
 
     pub fn deinit(self: *Self) void {
+        _ = self.device.device.proxy.deviceWaitIdle() catch {};
         self.scene_renderer.deinit();
         self.device.releaseWindow(self.window);
         self.device.deinit();

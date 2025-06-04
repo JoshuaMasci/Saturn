@@ -58,7 +58,7 @@ allocation: GpuAllocator.Allocation,
 sampled_binding: ?u32 = null,
 
 pub fn init2D(device: *VkDevice, extent: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
-    const handle = try device.device.createImage(&.{
+    const handle = try device.proxy.createImage(&.{
         .image_type = .@"2d",
         .format = format,
         .extent = .{ .width = extent.width, .height = extent.height, .depth = 1 },
@@ -70,13 +70,13 @@ pub fn init2D(device: *VkDevice, extent: vk.Extent2D, format: vk.Format, usage: 
         .sharing_mode = .exclusive,
         .initial_layout = .undefined,
     }, null);
-    errdefer device.device.destroyImage(handle, null);
+    errdefer device.proxy.destroyImage(handle, null);
 
-    const allocation = try device.gpu_allocator.alloc(device.device.getImageMemoryRequirements(handle), memory_location);
+    const allocation = try device.gpu_allocator.alloc(device.proxy.getImageMemoryRequirements(handle), memory_location);
     errdefer device.gpu_allocator.free(allocation);
-    try device.device.bindImageMemory(handle, allocation.memory, allocation.offset);
+    try device.proxy.bindImageMemory(handle, allocation.memory, allocation.offset);
 
-    const view_handle = try device.device.createImageView(&.{
+    const view_handle = try device.proxy.createImageView(&.{
         .view_type = .@"2d",
         .image = handle,
         .format = format,
@@ -89,7 +89,7 @@ pub fn init2D(device: *VkDevice, extent: vk.Extent2D, format: vk.Format, usage: 
             .layer_count = 1,
         },
     }, null);
-    errdefer device.device.destroyImageView(view_handle, null);
+    errdefer device.proxy.destroyImageView(view_handle, null);
 
     return .{
         .device = device,
@@ -103,8 +103,8 @@ pub fn init2D(device: *VkDevice, extent: vk.Extent2D, format: vk.Format, usage: 
 }
 
 pub fn deinit(self: Self) void {
-    self.device.device.destroyImageView(self.view_handle, null);
-    self.device.device.destroyImage(self.handle, null);
+    self.device.proxy.destroyImageView(self.view_handle, null);
+    self.device.proxy.destroyImage(self.handle, null);
     self.device.gpu_allocator.free(self.allocation);
 }
 
@@ -144,18 +144,18 @@ pub fn uploadImageData(
     data: []const u8,
 ) !void {
     var command_buffers: [1]vk.CommandBuffer = undefined;
-    try device.device.allocateCommandBuffers(&.{
+    try device.proxy.allocateCommandBuffers(&.{
         .command_pool = queue.command_pool,
         .level = vk.CommandBufferLevel.primary,
         .command_buffer_count = 1,
     }, &command_buffers);
-    defer device.device.freeCommandBuffers(queue.command_pool, @intCast(command_buffers.len), &command_buffers);
+    defer device.proxy.freeCommandBuffers(queue.command_pool, @intCast(command_buffers.len), &command_buffers);
     const command_buffer = command_buffers[0];
 
-    const fence = try device.device.createFence(&.{}, null);
-    defer device.device.destroyFence(fence, null);
+    const fence = try device.proxy.createFence(&.{}, null);
+    defer device.proxy.destroyFence(fence, null);
 
-    try device.device.beginCommandBuffer(command_buffer, &.{
+    try device.proxy.beginCommandBuffer(command_buffer, &.{
         .flags = .{ .one_time_submit_bit = true },
     });
 
@@ -177,7 +177,7 @@ pub fn uploadImageData(
         .image = self.handle,
         .subresource_range = subresource_range,
     };
-    device.device.cmdPipelineBarrier(
+    device.proxy.cmdPipelineBarrier(
         command_buffer,
         .{ .top_of_pipe_bit = true },
         .{ .transfer_bit = true },
@@ -211,7 +211,7 @@ pub fn uploadImageData(
         .image_extent = .{ .width = self.extent.width, .height = self.extent.height, .depth = 1 },
     };
 
-    device.device.cmdCopyBufferToImage(
+    device.proxy.cmdCopyBufferToImage(
         command_buffer,
         buffer.handle,
         self.handle,
@@ -231,7 +231,7 @@ pub fn uploadImageData(
         .subresource_range = subresource_range,
     };
 
-    device.device.cmdPipelineBarrier(
+    device.proxy.cmdPipelineBarrier(
         command_buffer,
         .{ .transfer_bit = true },
         .{ .all_commands_bit = true },
@@ -244,14 +244,14 @@ pub fn uploadImageData(
         (&barrier_to_shader_read)[0..1],
     );
 
-    try device.device.endCommandBuffer(command_buffer);
+    try device.proxy.endCommandBuffer(command_buffer);
 
     const submit_info = vk.SubmitInfo{
         .command_buffer_count = 1,
         .p_command_buffers = &command_buffers,
     };
-    try device.device.queueSubmit(queue.handle, 1, (&submit_info)[0..1], fence);
-    _ = try device.device.waitForFences(1, (&fence)[0..1], 1, std.math.maxInt(u64));
+    try device.proxy.queueSubmit(queue.handle, 1, (&submit_info)[0..1], fence);
+    _ = try device.proxy.waitForFences(1, (&fence)[0..1], 1, std.math.maxInt(u64));
 
     self.layout = final_layout;
 }

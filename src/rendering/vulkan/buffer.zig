@@ -17,12 +17,12 @@ handle: vk.Buffer,
 allocation: GpuAllocator.Allocation,
 
 pub fn init(device: *VkDevice, size: usize, usage: vk.BufferUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
-    const handle = try device.device.createBuffer(&.{ .size = size, .usage = usage, .sharing_mode = .exclusive }, null);
-    errdefer device.device.destroyBuffer(handle, null);
+    const handle = try device.proxy.createBuffer(&.{ .size = size, .usage = usage, .sharing_mode = .exclusive }, null);
+    errdefer device.proxy.destroyBuffer(handle, null);
 
-    const allocation = try device.gpu_allocator.alloc(device.device.getBufferMemoryRequirements(handle), memory_location);
+    const allocation = try device.gpu_allocator.alloc(device.proxy.getBufferMemoryRequirements(handle), memory_location);
     errdefer device.gpu_allocator.free(allocation);
-    try device.device.bindBufferMemory(handle, allocation.memory, allocation.offset);
+    try device.proxy.bindBufferMemory(handle, allocation.memory, allocation.offset);
 
     return .{
         .device = device,
@@ -34,7 +34,7 @@ pub fn init(device: *VkDevice, size: usize, usage: vk.BufferUsageFlags, memory_l
 }
 
 pub fn deinit(self: Self) void {
-    self.device.device.destroyBuffer(self.handle, null);
+    self.device.proxy.destroyBuffer(self.handle, null);
     self.device.gpu_allocator.free(self.allocation);
 }
 
@@ -45,18 +45,18 @@ pub fn uploadBufferData(
     data: []const u8,
 ) !void {
     var command_buffers: [1]vk.CommandBuffer = undefined;
-    try device.device.allocateCommandBuffers(&.{
+    try device.proxy.allocateCommandBuffers(&.{
         .command_pool = queue.command_pool,
         .level = vk.CommandBufferLevel.primary,
         .command_buffer_count = 1,
     }, &command_buffers);
-    defer device.device.freeCommandBuffers(queue.command_pool, @intCast(command_buffers.len), &command_buffers);
+    defer device.proxy.freeCommandBuffers(queue.command_pool, @intCast(command_buffers.len), &command_buffers);
     const command_buffer = command_buffers[0];
 
-    const fence = try device.device.createFence(&.{}, null);
-    defer device.device.destroyFence(fence, null);
+    const fence = try device.proxy.createFence(&.{}, null);
+    defer device.proxy.destroyFence(fence, null);
 
-    try device.device.beginCommandBuffer(command_buffer, &.{
+    try device.proxy.beginCommandBuffer(command_buffer, &.{
         .flags = .{ .one_time_submit_bit = true },
     });
 
@@ -73,7 +73,7 @@ pub fn uploadBufferData(
         .size = data.len,
     };
 
-    device.device.cmdCopyBuffer(
+    device.proxy.cmdCopyBuffer(
         command_buffer,
         buffer.handle,
         self.handle,
@@ -81,12 +81,12 @@ pub fn uploadBufferData(
         (&buffer_copy)[0..1],
     );
 
-    try device.device.endCommandBuffer(command_buffer);
+    try device.proxy.endCommandBuffer(command_buffer);
 
     const submit_info = vk.SubmitInfo{
         .command_buffer_count = 1,
         .p_command_buffers = &command_buffers,
     };
-    try device.device.queueSubmit(queue.handle, 1, (&submit_info)[0..1], fence);
-    _ = try device.device.waitForFences(1, (&fence)[0..1], 1, std.math.maxInt(u64));
+    try device.proxy.queueSubmit(queue.handle, 1, (&submit_info)[0..1], fence);
+    _ = try device.proxy.waitForFences(1, (&fence)[0..1], 1, std.math.maxInt(u64));
 }

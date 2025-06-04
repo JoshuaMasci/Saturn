@@ -52,7 +52,7 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
     const composite_alpha: vk.CompositeAlphaFlagsKHR = .{ .opaque_bit_khr = true };
     const present_mode = .fifo_khr;
 
-    const handle = try device.device.createSwapchainKHR(&.{
+    const handle = try device.proxy.createSwapchainKHR(&.{
         .flags = .{},
         .surface = surface,
         .min_image_count = image_count,
@@ -70,18 +70,18 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
     }, null);
 
     var actual_image_count: u32 = 0;
-    _ = try device.device.getSwapchainImagesKHR(handle, &actual_image_count, null);
+    _ = try device.proxy.getSwapchainImagesKHR(handle, &actual_image_count, null);
 
     if (actual_image_count > MAX_IMAGE_COUNT) {
         return error.TooManyImages;
     }
 
     var image_handles: [MAX_IMAGE_COUNT]vk.Image = undefined;
-    _ = try device.device.getSwapchainImagesKHR(handle, &actual_image_count, &image_handles);
+    _ = try device.proxy.getSwapchainImagesKHR(handle, &actual_image_count, &image_handles);
 
     var images: [MAX_IMAGE_COUNT]ImageInterface = undefined;
     for (image_handles[0..actual_image_count], images[0..actual_image_count]) |image_handle, *swapchain_image| {
-        const view_handle = try device.device.createImageView(&.{
+        const view_handle = try device.proxy.createImageView(&.{
             .view_type = .@"2d",
             .image = image_handle,
             .format = format,
@@ -122,10 +122,10 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
 
 pub fn deinit(self: Self) void {
     for (self.images[0..self.image_count]) |image| {
-        self.device.device.destroyImageView(image.view_handle, null);
+        self.device.proxy.destroyImageView(image.view_handle, null);
     }
 
-    self.device.device.destroySwapchainKHR(self.handle, null);
+    self.device.proxy.destroySwapchainKHR(self.handle, null);
 }
 
 pub fn acquireNextImage(
@@ -134,7 +134,7 @@ pub fn acquireNextImage(
     wait_semaphore: vk.Semaphore,
     wait_fence: vk.Fence,
 ) !SwapchainImage {
-    const result = try self.device.device.acquireNextImageKHR(
+    const result = try self.device.proxy.acquireNextImageKHR(
         self.handle,
         timeout orelse std.math.maxInt(u64),
         wait_semaphore,
@@ -159,7 +159,7 @@ pub fn queuePresent(
     index: u32,
     present_semaphore: vk.Semaphore,
 ) !void {
-    const present_result = try self.device.device.queuePresentKHR(queue, &.{
+    const present_result = try self.device.proxy.queuePresentKHR(queue, &.{
         .swapchain_count = 1,
         .p_image_indices = @ptrCast(&index),
         .p_swapchains = @ptrCast(&self.handle),
