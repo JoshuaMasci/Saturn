@@ -100,22 +100,6 @@ pub fn build(b: *std.Build) !void {
         });
         assets_exe.root_module.addImport("dxc", zdxc.module("dxc"));
 
-        if (build_sdl3) {
-            const sdl3 = b.dependency("sdl3", .{
-                .target = target,
-                .optimize = optimize,
-                .preferred_link_mode = .dynamic,
-            });
-            assets_exe.linkLibrary(sdl3.artifact("SDL3"));
-        } else {
-            assets_exe.linkSystemLibrary("SDL3");
-        }
-
-        //TODO: link included versions, rather than system libs
-        assets_exe.linkSystemLibrary("SDL3_shadercross");
-        assets_exe.linkSystemLibrary("spirv-cross-c-shared");
-        assets_exe.linkSystemLibrary("dxcompiler");
-
         b.installArtifact(assets_exe);
         const build_engine_assets = b.addRunArtifact(assets_exe);
         build_engine_assets.step.dependOn(b.getInstallStep());

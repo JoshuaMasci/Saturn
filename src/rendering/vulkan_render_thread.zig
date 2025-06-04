@@ -11,7 +11,7 @@ const rendering_scene = @import("scene.zig");
 const RenderSettings = @import("settings.zig").RenderSettings;
 
 //Vulkan
-const Backend = @import("vulkan/backend.zig");
+const Device = @import("vulkan/device.zig");
 const SceneRenderer = @import("vulkan/scene_renderer.zig");
 
 pub const RenderThreadData = struct {
@@ -21,7 +21,7 @@ pub const RenderThreadData = struct {
 
     window: Window,
 
-    backend: *Backend,
+    device: *Device,
     scene_renderer: SceneRenderer,
 
     //Per Frame Data
@@ -32,9 +32,9 @@ pub const RenderThreadData = struct {
 
     pub fn deinit(self: *Self) void {
         self.scene_renderer.deinit();
-        self.backend.releaseWindow(self.window);
-        self.backend.deinit();
-        self.allocator.destroy(self.backend);
+        self.device.releaseWindow(self.window);
+        self.device.deinit();
+        self.allocator.destroy(self.device);
         self.temp_allocator.deinit();
     }
 };
@@ -58,27 +58,27 @@ pub const RenderThread = struct {
     should_reload: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, window: Window) !Self {
-        const backend = try allocator.create(Backend);
-        errdefer allocator.destroy(backend);
+        const device = try allocator.create(Device);
+        errdefer allocator.destroy(device);
 
-        backend.* = try .init(allocator, 3);
-        errdefer backend.deinit();
+        device.* = try .init(allocator, 3);
+        errdefer device.deinit();
 
-        try backend.claimWindow(window);
+        try device.claimWindow(window);
 
         const scene_renderer = SceneRenderer.init(
             allocator,
-            backend,
+            device,
             .b8g8r8a8_unorm,
             .d32_sfloat,
-            backend.bindless_layout,
+            device.bindless_layout,
         ) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
 
         const render_thread_data = try allocator.create(RenderThreadData);
         render_thread_data.* = .{
             .allocator = allocator,
             .window = window,
-            .backend = backend,
+            .device = device,
             .scene_renderer = scene_renderer,
             .temp_allocator = std.heap.ArenaAllocator.init(allocator),
         };
@@ -205,7 +205,7 @@ fn renderThreadMain(
             continue;
         };
 
-        render_thread_data.backend.render(temp_allocator, render_graph) catch |err| std.log.err("Failed to render frame: {}", .{err});
+        render_thread_data.device.render(temp_allocator, render_graph) catch |err| std.log.err("Failed to render frame: {}", .{err});
 
         render_signals.render_done_semaphore.post();
         if (render_signals.quit_thread.load(.monotonic)) {

@@ -2,7 +2,7 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const Device = @import("device.zig");
+const VkDevice = @import("vulkan_device.zig");
 const ImageInterface = @import("image.zig").Interface;
 
 const MAX_IMAGE_COUNT: u32 = 8;
@@ -16,7 +16,7 @@ pub const SwapchainImage = struct {
 const Self = @This();
 
 out_of_date: bool = false,
-device: *Device,
+device: *VkDevice,
 surface: vk.SurfaceKHR,
 handle: vk.SwapchainKHR,
 
@@ -30,7 +30,7 @@ transform: vk.SurfaceTransformFlagsKHR,
 composite_alpha: vk.CompositeAlphaFlagsKHR,
 present_mode: vk.PresentModeKHR,
 
-pub fn init(device: *Device, surface: vk.SurfaceKHR, window_extent: vk.Extent2D, old_swapchain: ?vk.SwapchainKHR) !Self {
+pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2D, old_swapchain: ?vk.SwapchainKHR) !Self {
     const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface);
 
     //TODO: take all of this in from settings

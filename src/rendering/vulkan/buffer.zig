@@ -2,12 +2,13 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const Device = @import("device.zig");
+const VkDevice = @import("vulkan_device.zig");
+const Queue = @import("queue.zig");
 const GpuAllocator = @import("gpu_allocator.zig");
 
 const Self = @This();
 
-device: *Device,
+device: *VkDevice,
 
 size: usize,
 usage: vk.BufferUsageFlags,
@@ -15,7 +16,7 @@ usage: vk.BufferUsageFlags,
 handle: vk.Buffer,
 allocation: GpuAllocator.Allocation,
 
-pub fn init(device: *Device, size: usize, usage: vk.BufferUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
+pub fn init(device: *VkDevice, size: usize, usage: vk.BufferUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
     const handle = try device.device.createBuffer(&.{ .size = size, .usage = usage, .sharing_mode = .exclusive }, null);
     errdefer device.device.destroyBuffer(handle, null);
 
@@ -39,8 +40,8 @@ pub fn deinit(self: Self) void {
 
 pub fn uploadBufferData(
     self: *Self,
-    device: *Device,
-    queue: Device.Queue,
+    device: *VkDevice,
+    queue: Queue,
     data: []const u8,
 ) !void {
     var command_buffers: [1]vk.CommandBuffer = undefined;

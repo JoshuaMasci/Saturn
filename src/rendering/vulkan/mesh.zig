@@ -4,12 +4,12 @@ const vk = @import("vulkan");
 
 const MeshAsset = @import("../../asset/mesh.zig");
 
-const Backend = @import("backend.zig");
+const Device = @import("device.zig");
 const Buffer = @import("buffer.zig");
 
 pub const Primitive = struct {
-    vertex_buffer: Backend.BufferHandle,
-    index_buffer: ?Backend.BufferHandle,
+    vertex_buffer: Device.BufferHandle,
+    index_buffer: ?Device.BufferHandle,
 
     vertex_count: u32,
     index_count: u32,
@@ -18,15 +18,15 @@ pub const Primitive = struct {
 const Self = @This();
 
 allocator: std.mem.Allocator,
-backend: *Backend,
+backend: *Device,
 primitives: []Primitive,
 
-pub fn init(allocator: std.mem.Allocator, backend: *Backend, mesh: *const MeshAsset) !Self {
+pub fn init(allocator: std.mem.Allocator, backend: *Device, mesh: *const MeshAsset) !Self {
     var primitives = try allocator.alloc(Primitive, mesh.primitives.len);
     for (mesh.primitives, 0..) |primitive, i| {
         const vertex_buffer = try backend.createBufferWithData(.{ .vertex_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(primitive.vertices));
 
-        var index_buffer: ?Backend.BufferHandle = null;
+        var index_buffer: ?Device.BufferHandle = null;
         if (mesh.primitives[0].indices.len != 0) {
             index_buffer = try backend.createBufferWithData(.{ .index_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(primitive.indices));
         }

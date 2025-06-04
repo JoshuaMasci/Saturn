@@ -15,7 +15,7 @@ const Settings = @import("../../rendering/settings.zig");
 const Transform = @import("../../transform.zig");
 const Camera = @import("../camera.zig").Camera;
 const RenderScene = @import("../scene.zig").RenderScene;
-const Backend = @import("backend.zig");
+const Device = @import("device.zig");
 const Image = @import("image.zig");
 const Mesh = @import("mesh.zig");
 const Pipeline = @import("pipeline.zig");
@@ -30,24 +30,24 @@ pub const BuildCommandBufferData = struct {
 const Self = @This();
 
 allocator: std.mem.Allocator,
-backend: *Backend,
+device: *Device,
 
 mesh_pipeline: vk.Pipeline,
 
 static_mesh_map: std.AutoArrayHashMap(MeshAsset.Registry.Handle, Mesh),
-texture_map: std.AutoArrayHashMap(Texture2dAsset.Registry.Handle, Backend.ImageHandle),
+texture_map: std.AutoArrayHashMap(Texture2dAsset.Registry.Handle, Device.ImageHandle),
 material_map: std.AutoArrayHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
-pub fn init(allocator: std.mem.Allocator, backend: *Backend, color_format: vk.Format, depth_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
-    const vertex_shader = try loadGraphicsShader(allocator, backend.device.device, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/static_mesh.vert.shader").?);
-    defer backend.device.device.destroyShaderModule(vertex_shader, null);
+pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Format, depth_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
+    const vertex_shader = try loadGraphicsShader(allocator, device.device.device, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/static_mesh.vert.shader").?);
+    defer device.device.device.destroyShaderModule(vertex_shader, null);
 
-    const opaque_fragment_shader = try loadGraphicsShader(allocator, backend.device.device, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/opaque.frag.shader").?);
-    defer backend.device.device.destroyShaderModule(opaque_fragment_shader, null);
+    const opaque_fragment_shader = try loadGraphicsShader(allocator, device.device.device, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/opaque.frag.shader").?);
+    defer device.device.device.destroyShaderModule(opaque_fragment_shader, null);
 
     const mesh_pipeline = try Pipeline.createGraphicsPipeline(
         allocator,
-        backend.device.device,
+        device.device.device,
         pipeline_layout,
         .{
             .color_format = color_format,
@@ -60,7 +60,7 @@ pub fn init(allocator: std.mem.Allocator, backend: *Backend, color_format: vk.Fo
 
     return .{
         .allocator = allocator,
-        .backend = backend,
+        .device = device,
         .mesh_pipeline = mesh_pipeline,
         .static_mesh_map = .init(allocator),
         .texture_map = .init(allocator),
@@ -75,7 +75,7 @@ pub fn deinit(self: *Self) void {
     self.static_mesh_map.deinit();
 
     for (self.texture_map.values()) |texture| {
-        self.backend.destroyImage(texture);
+        self.device.destroyImage(texture);
     }
     self.texture_map.deinit();
 
@@ -84,10 +84,10 @@ pub fn deinit(self: *Self) void {
     }
     self.material_map.deinit();
 
-    self.backend.device.device.destroyPipeline(self.mesh_pipeline, null);
+    self.device.device.device.destroyPipeline(self.mesh_pipeline, null);
 }
 
-pub fn buildCommandBuffer(backend: *Backend, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D, user_data: ?*anyopaque) void {
+pub fn buildCommandBuffer(device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D, user_data: ?*anyopaque) void {
     const data: *BuildCommandBufferData = @ptrCast(@alignCast(user_data.?));
     const self = data.self;
 
@@ -140,7 +140,7 @@ pub fn buildCommandBuffer(backend: *Backend, command_buffer: vk.CommandBufferPro
 
                     if (mat.base_color_texture) |handle| {
                         if (self.texture_map.get(handle)) |tex_handle| {
-                            if (backend.images.get(tex_handle)) |image| {
+                            if (device.images.get(tex_handle)) |image| {
                                 base_color_texture = image.sampled_binding.?;
                             }
                         }
@@ -154,20 +154,20 @@ pub fn buildCommandBuffer(backend: *Backend, command_buffer: vk.CommandBufferPro
                     .base_color_texture = base_color_texture,
                 };
 
-                command_buffer.pushConstants(backend.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
+                command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
 
-                drawPrimitive(backend, command_buffer, primtive);
+                drawPrimitive(device, command_buffer, primtive);
             }
         }
     }
 }
 
 pub fn drawPrimitive(
-    backend: *Backend,
+    device: *Device,
     command_buffer: vk.CommandBufferProxy,
     primitive: anytype, // Your primitive struct
 ) void {
-    const vertex_buffer = backend.buffers.get(primitive.vertex_buffer) orelse return;
+    const vertex_buffer = device.buffers.get(primitive.vertex_buffer) orelse return;
 
     const vertex_buffers = [_]vk.Buffer{vertex_buffer.handle};
     const vertex_offsets = [_]vk.DeviceSize{0};
@@ -175,7 +175,7 @@ pub fn drawPrimitive(
     command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
 
     if (primitive.index_buffer) |index_buffer_handle| {
-        const index_buffer = backend.buffers.get(index_buffer_handle) orelse return;
+        const index_buffer = device.buffers.get(index_buffer_handle) orelse return;
 
         command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
         command_buffer.drawIndexed(primitive.index_count, 1, 0, 0, 0);
@@ -198,7 +198,7 @@ pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: MeshA
     if (!self.static_mesh_map.contains(handle)) {
         if (global.assets.meshes.loadAsset(temp_allocator, handle)) |mesh| {
             defer mesh.deinit(temp_allocator);
-            const gpu_mesh = Mesh.init(self.allocator, self.backend, &mesh) catch return;
+            const gpu_mesh = Mesh.init(self.allocator, self.device, &mesh) catch return;
 
             self.static_mesh_map.put(handle, gpu_mesh) catch |err| {
                 gpu_mesh.deinit();
@@ -221,10 +221,10 @@ pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: Te
                 .rgba8 => .r8g8b8a8_unorm,
             };
 
-            const image = self.backend.createImageWithData(.{ texture.width, texture.height }, format, .{ .transfer_dst_bit = true, .sampled_bit = true }, texture.data) catch return;
+            const image = self.device.createImageWithData(.{ texture.width, texture.height }, format, .{ .transfer_dst_bit = true, .sampled_bit = true }, texture.data) catch return;
 
             self.texture_map.put(handle, image) catch |err| {
-                self.backend.destroyImage(image);
+                self.device.destroyImage(image);
                 std.log.err("Failed to append texture to list {}", .{err});
             };
         } else |err| {

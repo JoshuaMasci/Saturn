@@ -68,15 +68,18 @@ pub fn InputContext(
     return struct {
         const Self = @This();
 
+        pub const Button = ButtonEnum;
+        pub const Axis = AxisEnum;
+
         button_states: std.EnumArray(ButtonEnum, DeviceButtonState),
         axis_states: std.EnumArray(AxisEnum, DeviceAxisState),
 
         pub fn init(devices: []const InputDevice) Self {
             var self: Self =
                 .{
-                .button_states = std.EnumArray(ButtonEnum, DeviceButtonState).initFill(.{}),
-                .axis_states = std.EnumArray(AxisEnum, DeviceAxisState).initFill(.{}),
-            };
+                    .button_states = std.EnumArray(ButtonEnum, DeviceButtonState).initFill(.{}),
+                    .axis_states = std.EnumArray(AxisEnum, DeviceAxisState).initFill(.{}),
+                };
             self.update(devices);
             return self;
         }

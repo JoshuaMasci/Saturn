@@ -42,11 +42,6 @@ pub fn main() !void {
     defer thread_pool.deinit();
 
     //Asset Init
-    if (hlsl.init()) {
-        return error.shaderCompilerInitFailed;
-    }
-    defer hlsl.deinit();
-
     stbi.init(global_allocator);
     defer stbi.deinit();
 

@@ -1,18 +1,6 @@
 const std = @import("std");
 const Shader = @import("shader.zig");
 
-const c = @cImport({
-    @cInclude("SDL3_shadercross/SDL_shadercross.h");
-});
-
-pub fn init() bool {
-    return !c.SDL_ShaderCross_Init();
-}
-
-pub fn deinit() void {
-    c.SDL_ShaderCross_Quit();
-}
-
 pub fn compileShader(allocator: std.mem.Allocator, dir: std.fs.Dir, meta_file_path: []const u8) !Shader {
     const meta_file_buffer = try dir.readFileAllocOptions(allocator, meta_file_path, std.math.maxInt(usize), null, 4, 0);
     defer allocator.free(meta_file_buffer);
@@ -40,7 +28,6 @@ pub fn compileShader(allocator: std.mem.Allocator, dir: std.fs.Dir, meta_file_pa
 
     return switch (meta_data.target) {
         .vulkan => try compileVulkanShader(allocator, shader_name, shader_code, shader_stage),
-        .sdl_gpu => try compileSdlGpuShader(allocator, shader_name, shader_code, shader_stage),
     };
 }
 
@@ -62,48 +49,6 @@ fn compileVulkanShader(allocator: std.mem.Allocator, shader_name: []const u8, sh
         .target = .vulkan,
         .stage = shader_stage,
         .bindings = .{},
-        .spirv_code = spirv_code,
-    };
-}
-
-fn compileSdlGpuShader(allocator: std.mem.Allocator, shader_name: []const u8, shader_code: []const u8, shader_stage: Shader.Stage) !Shader {
-    var hlsl_info = c.SDL_ShaderCross_HLSL_Info{
-        .source = @ptrCast(shader_code),
-        .entrypoint = "main",
-        .include_dir = null, //TODO: support an include dir
-        .defines = null, //TODO: support defines
-        .shader_stage = switch (shader_stage) {
-            .vertex => c.SDL_SHADERCROSS_SHADERSTAGE_VERTEX,
-            .fragment => c.SDL_SHADERCROSS_SHADERSTAGE_FRAGMENT,
-            .compute => c.SDL_SHADERCROSS_SHADERSTAGE_COMPUTE,
-        },
-        .enable_debug = false, //TODO: make this a setting
-        .name = @ptrCast(shader_name),
-    };
-
-    // SPIRV
-    var spirv_size: usize = 0;
-    const spirv_code_ptr: [*]u8 = @ptrCast(c.SDL_ShaderCross_CompileSPIRVFromHLSL(&hlsl_info, &spirv_size) orelse return error.failedToCompileSPIRV);
-    defer c.SDL_free(spirv_code_ptr);
-
-    var spirv_meta_data: c.SDL_ShaderCross_GraphicsShaderMetadata = undefined;
-    if (!c.SDL_ShaderCross_ReflectGraphicsSPIRV(spirv_code_ptr, spirv_size, @ptrCast(&spirv_meta_data))) {
-        return error.failedtoReflectSPIRV;
-    }
-
-    const spirv_code: []u32 = try dupeBytesToU32(allocator, spirv_code_ptr[0..spirv_size]);
-    errdefer allocator.free(spirv_code);
-
-    return Shader{
-        .name = shader_name,
-        .target = .sdl_gpu,
-        .stage = shader_stage,
-        .bindings = .{
-            .samplers = spirv_meta_data.num_samplers,
-            .storage_textures = spirv_meta_data.num_storage_textures,
-            .uniform_buffers = spirv_meta_data.num_uniform_buffers,
-            .storage_buffers = spirv_meta_data.num_storage_buffers,
-        },
         .spirv_code = spirv_code,
     };
 }

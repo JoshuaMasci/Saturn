@@ -6,12 +6,11 @@ pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".sh
 const MAGIC: [8]u8 = .{ 'S', 'A', 'T', '-', 'S', 'H', 'A', 'D' };
 
 pub const Meta = struct {
-    target: Target = .sdl_gpu, //TODO: change default to vulkan
+    target: Target = .vulkan, //TODO: change default to vulkan
     entry: ?[]const u8 = null,
 };
 
 pub const Target = enum(u32) {
-    sdl_gpu,
     vulkan,
 };
 

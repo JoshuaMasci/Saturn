@@ -3,8 +3,9 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const Window = @import("../../platform/sdl3.zig").Window;
-const BufferHandle = @import("backend.zig").BufferHandle;
-const ImageHandle = @import("backend.zig").ImageHandle;
+const Device = @import("device.zig");
+const BufferHandle = Device.BufferHandle;
+const ImageHandle = Device.ImageHandle;
 
 pub const QueueType = enum {
     graphics,
@@ -87,7 +88,7 @@ pub const RasterPassDefinition = struct {
 };
 
 pub const CommandBufferBuildFn = *const fn (
-    backend: *@import("backend.zig"),
+    device: *Device,
     command_buffer: vk.CommandBufferProxy,
     raster_pass_extent: ?vk.Extent2D,
     user_data: ?*anyopaque,

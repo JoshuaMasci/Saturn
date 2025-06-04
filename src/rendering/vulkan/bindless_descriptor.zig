@@ -3,7 +3,7 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const Buffer = @import("buffer.zig");
-const Device = @import("device.zig");
+const VkDevice = @import("vulkan_device.zig");
 const Image = @import("image.zig");
 const Sampler = @import("sampler.zig");
 
@@ -32,7 +32,7 @@ pub const DescriptorCounts = struct {
 
 const Self = @This();
 
-device: *Device,
+device: *VkDevice,
 layout: vk.DescriptorSetLayout,
 
 pool: vk.DescriptorPool,
@@ -40,7 +40,7 @@ set: vk.DescriptorSet,
 
 next_sampled_texture_id: u16 = 1,
 
-pub fn init(device: *Device, descriptor_counts: DescriptorCounts) !Self {
+pub fn init(device: *VkDevice, descriptor_counts: DescriptorCounts) !Self {
 
     //TODO: add flags when RTX-Shaders or Mesh-Shading are enabled
     const All_STAGE_FLAGS = vk.ShaderStageFlags{

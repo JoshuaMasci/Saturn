@@ -2,7 +2,8 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const Device = @import("device.zig");
+const VkDevice = @import("vulkan_device.zig");
+const Queue = @import("queue.zig");
 const GpuAllocator = @import("gpu_allocator.zig");
 
 pub const Interface = struct {
@@ -43,7 +44,7 @@ pub const Interface = struct {
 
 const Self = @This();
 
-device: *Device,
+device: *VkDevice,
 
 layout: vk.ImageLayout = .undefined,
 extent: vk.Extent2D,
@@ -56,7 +57,7 @@ allocation: GpuAllocator.Allocation,
 
 sampled_binding: ?u32 = null,
 
-pub fn init2D(device: *Device, extent: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
+pub fn init2D(device: *VkDevice, extent: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
     const handle = try device.device.createImage(&.{
         .image_type = .@"2d",
         .format = format,
@@ -137,8 +138,8 @@ pub fn interface(self: Self) Interface {
 
 pub fn uploadImageData(
     self: *Self,
-    device: *Device,
-    queue: Device.Queue,
+    device: *VkDevice,
+    queue: Queue,
     final_layout: vk.ImageLayout,
     data: []const u8,
 ) !void {

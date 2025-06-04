@@ -3,7 +3,7 @@ const std = @import("std");
 const vk = @import("vulkan");
 pub const makeVersion = vk.makeApiVersion;
 
-const Device = @import("device.zig");
+const VkDevice = @import("vulkan_device.zig");
 
 pub const AppInfo = struct {
     name: [:0]const u8,
@@ -103,10 +103,10 @@ pub fn pickDevice(self: *const Self, surface_opt: ?vk.SurfaceKHR) ?usize {
     return null;
 }
 
-pub fn createDevice(self: Self, device_index: usize) !Device {
+pub fn createDevice(self: Self, device_index: usize) !VkDevice {
     std.log.info("Creating Vulkan Device {s}", .{self.physical_devices[device_index].properties.device_name});
 
-    return Device.init(
+    return .init(
         self.allocator,
         self.instance,
         self.physical_devices[device_index].handle,
