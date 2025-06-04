@@ -57,6 +57,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     };
 
     var features_12 = vk.PhysicalDeviceVulkan12Features{
+        .runtime_descriptor_array = VK_TRUE,
         .descriptor_indexing = VK_TRUE,
         .descriptor_binding_uniform_buffer_update_after_bind = VK_TRUE,
         .descriptor_binding_storage_buffer_update_after_bind = VK_TRUE,

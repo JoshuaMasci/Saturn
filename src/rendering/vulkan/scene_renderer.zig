@@ -130,17 +130,28 @@ pub fn buildCommandBuffer(backend: *Backend, command_buffer: vk.CommandBufferPro
                     view_projection_matrix: zm.Mat,
                     model_matrix: zm.Mat,
                     base_color_factor: zm.Vec,
+                    base_color_texture: u32,
                 };
 
                 var base_color_factor: zm.Vec = .{ 1.0, 0.27, 0.63, 1.0 };
+                var base_color_texture: u32 = 0;
                 if (self.material_map.get(material)) |mat| {
                     base_color_factor = mat.base_color_factor;
+
+                    if (mat.base_color_texture) |handle| {
+                        if (self.texture_map.get(handle)) |tex_handle| {
+                            if (backend.images.get(tex_handle)) |image| {
+                                base_color_texture = image.sampled_binding.?;
+                            }
+                        }
+                    }
                 }
 
                 const push_data = PushData{
                     .view_projection_matrix = view_projection_matrix,
                     .model_matrix = model_matrix,
                     .base_color_factor = base_color_factor,
+                    .base_color_texture = base_color_texture,
                 };
 
                 command_buffer.pushConstants(backend.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);

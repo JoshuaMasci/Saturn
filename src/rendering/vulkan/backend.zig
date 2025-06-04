@@ -172,7 +172,7 @@ pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.Image
     var image: Image = try .init2D(self.device, .{ .width = size[0], .height = size[1] }, format, usage, .gpu_only);
     errdefer image.deinit();
 
-    //TOOD: image bindings
+    //TOOD: storage bindings
     if (usage.contains(.{ .sampled_bit = true })) {
         image.sampled_binding = self.bindless_descriptor.bindSampledImage(image, self.linear_sampler);
     }
@@ -182,6 +182,11 @@ pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.Image
 pub fn createImageWithData(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags, data: []const u8) !ImagePool.Handle {
     var image: Image = try .init2D(self.device, .{ .width = size[0], .height = size[1] }, format, usage, .gpu_only);
     errdefer image.deinit();
+
+    //TOOD: storage bindings
+    if (usage.contains(.{ .sampled_bit = true })) {
+        image.sampled_binding = self.bindless_descriptor.bindSampledImage(image, self.linear_sampler);
+    }
 
     //TODO: use host_image_copy if avalible
     try image.uploadImageData(self.device, self.device.graphics_queue, .shader_read_only_optimal, data);

@@ -39,7 +39,7 @@ pub fn init(device: *Device, surface: vk.SurfaceKHR, window_extent: vk.Extent2D,
         .width = std.math.clamp(window_extent.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
         .height = std.math.clamp(window_extent.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),
     };
-    const format = .b8g8r8a8_srgb;
+    const format = .b8g8r8a8_unorm;
     const usage = vk.ImageUsageFlags{
         .transfer_src_bit = false,
         .transfer_dst_bit = false,

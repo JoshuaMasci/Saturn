@@ -69,8 +69,8 @@ pub const RenderThread = struct {
         const scene_renderer = SceneRenderer.init(
             allocator,
             backend,
-            .b8g8r8a8_srgb,
-            .d16_unorm,
+            .b8g8r8a8_unorm,
+            .d32_sfloat,
             backend.bindless_layout,
         ) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
 
@@ -173,7 +173,11 @@ fn renderThreadMain(
             continue;
         };
 
-        const depth_texture = render_graph.createTransientTexture(.{ .extent = .{ .relative = swapchain_texture }, .format = .d16_unorm, .usage = .{ .depth_stencil_attachment_bit = true } }) catch |err| {
+        const depth_texture = render_graph.createTransientTexture(.{
+            .extent = .{ .relative = swapchain_texture },
+            .format = .d32_sfloat,
+            .usage = .{ .depth_stencil_attachment_bit = true },
+        }) catch |err| {
             std.log.err("failed to create transient texture: {}", .{err});
             continue;
         };
