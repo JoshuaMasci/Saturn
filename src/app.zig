@@ -41,16 +41,9 @@ pub const App = struct {
         physics_system.init(global.global_allocator);
         //physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
 
-        // zimgui.init(global.global_allocator);
-        // zimgui.backend.init(
-        //     window.handle,
-        //     .{
-        //         .device = render_thread.data.device.handle,
-        //         .color_target_format = render_thread.data.scene_renderer.color_format,
-        //         .msaa_samples = 0, // 1 Sample
-        //     },
-        // );
-        // zimgui.io.setConfigFlags(.{ .dock_enable = true });
+        zimgui.init(global.global_allocator);
+        zimgui.io.setConfigFlags(.{ .dock_enable = true });
+        _ = zimgui.io.getFontsTextDataAsRgba32();
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
@@ -79,8 +72,7 @@ pub const App = struct {
         physics_system.deinitDebugRenderer();
         physics_system.deinit();
 
-        // zimgui.backend.deinit();
-        // zimgui.deinit();
+        zimgui.deinit();
 
         self.render_thread.deinit();
         self.platform.destroyWindow(self.window);
@@ -114,6 +106,12 @@ pub const App = struct {
 
         try self.platform.proccessEvents();
 
+        if (!self.platform.isMouseCaptured()) {
+            if (self.platform.isMousePresed(.left)) {
+                self.platform.captureMouse(self.window);
+            }
+        }
+
         //Don't need to check mouse capture since the mouse input device already does that
         const input_devices = self.platform.getInputDevices();
         if (input_devices.len > 0) {
@@ -134,33 +132,34 @@ pub const App = struct {
 
         self.render_thread.beginFrame();
 
-        // {
-        //     const window_size = self.window.getSize();
-        //     zimgui.backend.newFrame(window_size[0], window_size[1], 1.0);
+        {
+            const window_size = self.window.getSize();
+            zimgui.io.setDisplaySize(@floatFromInt(window_size[0]), @floatFromInt(window_size[1]));
+            zimgui.newFrame();
 
-        //     createFullscreenDockspace();
-        //     defer zimgui.end();
+            createFullscreenDockspace();
+            defer zimgui.end();
 
-        //     if (zimgui.begin("Performance", .{})) {
-        //         zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
-        //         zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
-        //         if (mem_usage_opt) |mem_usage| {
-        //             if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
-        //                 defer frame_allocator.free(mem_usage_string);
-        //                 zimgui.text("Memory Usage {s}", .{mem_usage_string});
-        //             }
-        //         }
-        //     }
-        //     zimgui.end();
+            if (zimgui.begin("Performance", .{})) {
+                zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
+                zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
+                if (mem_usage_opt) |mem_usage| {
+                    if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+                        defer frame_allocator.free(mem_usage_string);
+                        zimgui.text("Memory Usage {s}", .{mem_usage_string});
+                    }
+                }
+            }
+            zimgui.end();
 
-        //     if (!self.platform.isMouseCaptured() and
-        //         !zimgui.isWindowHovered(.{ .any_window = true }) and
-        //         zimgui.isMouseClicked(zimgui.MouseButton.left) and
-        //         !zimgui.isAnyItemHovered())
-        //     {
-        //         self.platform.captureMouse(self.window);
-        //     }
-        // }
+            if (!self.platform.isMouseCaptured() and
+                !zimgui.isWindowHovered(.{ .any_window = true }) and
+                zimgui.isMouseClicked(zimgui.MouseButton.left) and
+                !zimgui.isAnyItemHovered())
+            {
+                self.platform.captureMouse(self.window);
+            }
+        }
 
         self.render_thread.data.scene = null;
         if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
@@ -178,7 +177,6 @@ pub const App = struct {
         //     _ = zimgui.checkbox("Debug Physics Layer", .{ .v = &self.render_thread.data.physics_renderer.enabled });
         // }
         // zimgui.end();
-
         // if (self.render_thread.data.physics_renderer.enabled) {
         //     if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
         //         if (game_debug_entity.world) |game_world| {
@@ -188,7 +186,10 @@ pub const App = struct {
         //             }
         //         }
         //     }
-        // }
+        //}
+
+        //TODO: actuall render the frame
+        zimgui.render();
 
         self.render_thread.submitFrame();
 

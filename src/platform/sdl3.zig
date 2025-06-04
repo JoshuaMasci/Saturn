@@ -108,6 +108,14 @@ pub const Platform = struct {
         return false;
     }
 
+    pub fn isMousePresed(self: *Self, button: Mouse.Button) bool {
+        if (self.keyboard_mouse_device.mouse) |mouse| {
+            return mouse.button_state.get(button).toDeviceState().state == .pressed;
+        }
+
+        return false;
+    }
+
     pub fn proccessEvents(self: *Self) !void {
         self.keyboard_mouse_device.beginFrame();
 
@@ -133,6 +141,12 @@ pub const Platform = struct {
                     if (self.keyboard_mouse_device.keyboard) |keyboard| {
                         keyboard.proccessEvent(&event);
                     }
+                },
+                c.SDL_EVENT_MOUSE_ADDED => {
+                    std.log.info("Mouse Added: {}", .{event.mdevice.which});
+                },
+                c.SDL_EVENT_MOUSE_REMOVED => {
+                    std.log.info("Mouse Remove: {}", .{event.mdevice.which});
                 },
                 c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_WHEEL, c.SDL_EVENT_MOUSE_MOTION => {
                     if (self.keyboard_mouse_device.mouse) |mouse| {
@@ -216,12 +230,16 @@ const KeyboardMouse = struct {
         if (c.SDL_HasKeyboard()) {
             keyboard = try allocator.create(Keyboard);
             keyboard.?.* = Keyboard{};
+        } else {
+            std.log.err("No Keyboard", .{});
         }
 
         var mouse: ?*Mouse = null;
         if (c.SDL_HasMouse()) {
             mouse = try allocator.create(Mouse);
             mouse.?.* = Mouse{};
+        } else {
+            std.log.err("No Mouse", .{});
         }
 
         return .{
@@ -382,7 +400,15 @@ const MouseMovementState = union(enum) {
 const Mouse = struct {
     const Self = @This();
 
-    button_state: [5]ButtonState = @splat(.{}),
+    const Button = enum(u32) {
+        left = c.SDL_BUTTON_LEFT,
+        middle = c.SDL_BUTTON_MIDDLE,
+        right = c.SDL_BUTTON_RIGHT,
+        extra1 = c.SDL_BUTTON_X1,
+        extra2 = c.SDL_BUTTON_X2,
+    };
+
+    button_state: std.EnumArray(Button, ButtonState) = .initFill(.{}),
     axis_state: MouseMovementState = .idle,
 
     captured_window: ?Window = null,
@@ -412,7 +438,7 @@ const Mouse = struct {
     }
 
     fn beginFrame(self: *Self) void {
-        for (&self.button_state) |*button_state| {
+        for (&self.button_state.values) |*button_state| {
             button_state.was_pressed_last_frame = button_state.is_pressed;
         }
 
@@ -427,9 +453,15 @@ const Mouse = struct {
 
     fn proccessEvent(self: *Self, event: *c.SDL_Event) void {
         switch (event.type) {
-            c.SDL_EVENT_MOUSE_BUTTON_UP | c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
-                self.button_state[event.button.button].timestamp = event.button.timestamp;
-                self.button_state[event.button.button].is_pressed = event.button.down;
+            c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                const button = std.meta.intToEnum(Button, event.button.button) catch |err| {
+                    std.log.err("Failed to convert int to enum {} value({})", .{ err, event.button.button });
+                    return;
+                };
+
+                const state = self.button_state.getPtr(button);
+                state.timestamp = event.button.timestamp;
+                state.is_pressed = event.button.down;
             },
             c.SDL_EVENT_MOUSE_MOTION => {
                 const PIXEL_MOVE_AMOUNT = 25.0; //TODO: is this even needed since the xrel is already a float?
