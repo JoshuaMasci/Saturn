@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const physics_system = @import("physics");
-const zimgui = @import("zimgui");
+const Imgui = @import("imgui.zig");
 const zm = @import("zmath");
 
 const Entity = @import("entity/entity.zig");
@@ -9,8 +9,9 @@ const Universe = @import("entity/universe.zig");
 const World = @import("entity/world.zig");
 const global = @import("global.zig");
 const input = @import("input.zig");
-const Platform = @import("platform/sdl3.zig").Platform;
-const Window = @import("platform/sdl3.zig").Window;
+const sdl3 = @import("platform/sdl3.zig");
+const PlatformInput = sdl3.Input;
+const Window = sdl3.Window;
 const RenderThread = @import("rendering/vulkan_render_thread.zig").RenderThread;
 const world_gen = @import("world_gen.zig");
 
@@ -19,9 +20,11 @@ pub const App = struct {
 
     should_quit: bool,
 
-    platform: Platform,
+    platform_input: PlatformInput,
     window: Window,
     render_thread: RenderThread,
+
+    imgui: Imgui,
 
     game_universe: *Universe,
     game_debug_camera: Entity.Handle,
@@ -34,16 +37,17 @@ pub const App = struct {
         try global.assets.addDir("engine", "zig-out/assets");
         try global.assets.addDir("game", "zig-out/game-assets");
 
-        var platform = try Platform.init(global.global_allocator);
-        const window = platform.createWindow("Saturn Engine", .{ .windowed = .{ 1600, 900 } });
+        try sdl3.init(global.global_allocator);
+
+        const platform_input = try PlatformInput.init(global.global_allocator);
+        const window = Window.init("Saturn Engine", .{ .windowed = .{ 1600, 900 } });
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
         //physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
 
-        zimgui.init(global.global_allocator);
-        zimgui.io.setConfigFlags(.{ .dock_enable = true });
-        _ = zimgui.io.getFontsTextDataAsRgba32();
+        const imgui = try Imgui.init(global.global_allocator);
+        errdefer imgui.deinit();
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
@@ -55,9 +59,10 @@ pub const App = struct {
 
         return .{
             .should_quit = false,
-            .platform = platform,
+            .platform_input = platform_input,
             .window = window,
             .render_thread = render_thread,
+            .imgui = imgui,
 
             .game_universe = game_universe,
             .game_debug_camera = debug_entity,
@@ -72,15 +77,17 @@ pub const App = struct {
         physics_system.deinitDebugRenderer();
         physics_system.deinit();
 
-        zimgui.deinit();
+        self.imgui.deinit();
 
         self.render_thread.deinit();
-        self.platform.destroyWindow(self.window);
-        self.platform.deinit();
+        self.window.deinit();
+        self.platform_input.deinit();
+
+        sdl3.deinit();
     }
 
     pub fn is_running(self: Self) bool {
-        return !(self.should_quit or self.platform.should_quit);
+        return !(self.should_quit or self.platform_input.should_quit);
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
@@ -104,16 +111,17 @@ pub const App = struct {
             }
         }
 
-        try self.platform.proccessEvents();
+        try self.platform_input.proccessEvents();
+        self.imgui.updateInput(&self.platform_input);
 
-        if (!self.platform.isMouseCaptured()) {
-            if (self.platform.isMousePresed(.left)) {
-                self.platform.captureMouse(self.window);
+        if (!self.platform_input.isMouseCaptured()) {
+            if (self.platform_input.isMousePressed(.left)) {
+                self.platform_input.captureMouse(self.window);
             }
         }
 
         //Don't need to check mouse capture since the mouse input device already does that
-        const input_devices = self.platform.getInputDevices();
+        const input_devices = self.platform_input.getInputDevices();
         if (input_devices.len > 0) {
             const DebugCamera = @import("entity/engine/debug_camera.zig").DebugCameraEntitySystem;
             const input_context = @import("input_bindings.zig").DebugCameraInputContext.init(input_devices);
@@ -134,31 +142,30 @@ pub const App = struct {
 
         {
             const window_size = self.window.getSize();
-            zimgui.io.setDisplaySize(@floatFromInt(window_size[0]), @floatFromInt(window_size[1]));
-            zimgui.newFrame();
+            self.imgui.startFrame(window_size, delta_time);
 
-            createFullscreenDockspace();
-            defer zimgui.end();
+            _ = self.imgui.createFullscreenDockspace("MainDockspace");
+            defer Imgui.gui.end();
 
-            if (zimgui.begin("Performance", .{})) {
-                zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
-                zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
-                if (mem_usage_opt) |mem_usage| {
-                    if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
-                        defer frame_allocator.free(mem_usage_string);
-                        zimgui.text("Memory Usage {s}", .{mem_usage_string});
-                    }
-                }
-            }
-            zimgui.end();
+            // if (zimgui.begin("Performance", .{})) {
+            //     zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
+            //     zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
+            //     if (mem_usage_opt) |mem_usage| {
+            //         if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+            //             defer frame_allocator.free(mem_usage_string);
+            //             zimgui.text("Memory Usage {s}", .{mem_usage_string});
+            //         }
+            //     }
+            // }
+            // zimgui.end();
 
-            if (!self.platform.isMouseCaptured() and
-                !zimgui.isWindowHovered(.{ .any_window = true }) and
-                zimgui.isMouseClicked(zimgui.MouseButton.left) and
-                !zimgui.isAnyItemHovered())
-            {
-                self.platform.captureMouse(self.window);
-            }
+            // if (!self.platform.isMouseCaptured() and
+            //     !zimgui.isWindowHovered(.{ .any_window = true }) and
+            //     zimgui.isMouseClicked(zimgui.MouseButton.left) and
+            //     !zimgui.isAnyItemHovered())
+            // {
+            //     self.platform.captureMouse(self.window);
+            // }
         }
 
         self.render_thread.data.scene = null;
@@ -188,55 +195,11 @@ pub const App = struct {
         //     }
         //}
 
-        //TODO: actuall render the frame
-        zimgui.render();
+        //TODO: actually render the frame
+        self.imgui.render();
 
         self.render_thread.submitFrame();
 
         self.game_universe.update(.frame_end, delta_time);
     }
 };
-
-fn createFullscreenDockspace() void {
-    const window_name = "DockSpace";
-    const viewport = zimgui.getMainViewport();
-    const pos = viewport.getPos();
-    const size = viewport.getSize();
-
-    zimgui.setNextWindowPos(.{ .x = pos[0], .y = pos[1] });
-    zimgui.setNextWindowSize(.{ .w = size[0], .h = size[1] });
-    zimgui.setNextWindowViewport(viewport.getId());
-    zimgui.pushStyleVar1f(.{ .idx = zimgui.StyleVar.window_rounding, .v = 0.0 });
-    zimgui.pushStyleVar1f(.{ .idx = zimgui.StyleVar.window_border_size, .v = 0.0 });
-    zimgui.pushStyleVar2f(.{ .idx = zimgui.StyleVar.window_padding, .v = .{ 0.0, 0.0 } });
-    defer zimgui.popStyleVar(.{ .count = 3 });
-    zimgui.pushStyleColor4f(.{ .idx = zimgui.StyleCol.window_bg, .c = .{ 0.0, 0.0, 0.0, 0.0 } });
-    defer zimgui.popStyleColor(.{ .count = 1 });
-
-    const window_flags = zimgui.WindowFlags{
-        .no_scrollbar = true,
-        .no_docking = true,
-        .no_title_bar = true,
-        .no_collapse = true,
-        .no_resize = true,
-        .no_move = true,
-        .no_bring_to_front_on_focus = true,
-        .no_nav_focus = true,
-        .no_nav_inputs = true,
-        .always_auto_resize = true,
-        .no_background = true,
-    };
-
-    // Important: note that we proceed even if Begin() returns false (aka window is collapsed).
-    // This is because we want to keep our DockSpace() active. If a DockSpace() is inactive,
-    // all active windows docked into it will lose their parent and become undocked.
-    // We cannot preserve the docking relationship between an active window and an inactive docking, otherwise
-    // any change of dockspace/settings would lead to windows being stuck in limbo and never being visible.
-    var open = true;
-    _ = zimgui.begin(window_name, .{
-        .popen = &open,
-        .flags = window_flags,
-    });
-
-    _ = zimgui.DockSpace(window_name, size, .{ .passthru_central_node = true });
-}

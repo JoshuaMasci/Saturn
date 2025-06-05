@@ -13,7 +13,57 @@ pub const c = @cImport({
     @cDefine("SDL_MAIN_HANDLED", {});
 });
 
-pub const Platform = struct {
+pub fn init(allocator: std.mem.Allocator) !void {
+    _ = allocator; // autofix
+    const version = c.SDL_GetVersion();
+    std.log.info("Starting sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
+
+    if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
+        return error.sdlInitFailed;
+    }
+}
+
+pub fn deinit() void {
+    std.log.info("Quiting sdl", .{});
+    c.SDL_Quit();
+}
+
+pub const Window = struct {
+    const Self = @This();
+
+    handle: *c.SDL_Window,
+
+    pub fn init(name: [:0]const u8, size: Settings.WindowSize) Self {
+        var window_width: i32 = 0;
+        var window_height: i32 = 0;
+        var window_flags = c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_VULKAN;
+
+        switch (size) {
+            .windowed => |window_size| {
+                window_width = window_size[0];
+                window_height = window_size[1];
+            },
+            .maximized => window_flags |= c.SDL_WINDOW_MAXIMIZED,
+            .fullscreen => window_flags |= c.SDL_WINDOW_FULLSCREEN,
+        }
+
+        const handle = c.SDL_CreateWindow(name, window_width, window_height, window_flags).?;
+        return .{ .handle = handle };
+    }
+
+    pub fn deinit(self: *Self) void {
+        _ = c.SDL_DestroyWindowSurface(self.handle);
+    }
+
+    pub fn getSize(self: @This()) [2]u32 {
+        var w: c_int = 0;
+        var h: c_int = 0;
+        _ = c.SDL_GetWindowSize(self.handle, &w, &h);
+        return .{ @intCast(w), @intCast(h) };
+    }
+};
+
+pub const Input = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
@@ -25,13 +75,6 @@ pub const Platform = struct {
     input_devices: std.ArrayList(input.InputDevice),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const version = c.SDL_GetVersion();
-        std.log.info("Starting sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
-
-        if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
-            return error.sdlInitFailed;
-        }
-
         const keyboard_mouse_device = try allocator.create(KeyboardMouse);
         keyboard_mouse_device.* = try KeyboardMouse.init(allocator);
 
@@ -60,33 +103,6 @@ pub const Platform = struct {
 
         self.keyboard_mouse_device.deinit();
         self.allocator.destroy(self.keyboard_mouse_device);
-
-        std.log.info("Quiting sdl", .{});
-        c.SDL_Quit();
-    }
-
-    pub fn createWindow(self: *Self, name: [:0]const u8, size: Settings.WindowSize) Window {
-        _ = self; // autofix
-        var window_width: i32 = 0;
-        var window_height: i32 = 0;
-        var window_flags = c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_VULKAN;
-
-        switch (size) {
-            .windowed => |window_size| {
-                window_width = window_size[0];
-                window_height = window_size[1];
-            },
-            .maximized => window_flags |= c.SDL_WINDOW_MAXIMIZED,
-            .fullscreen => window_flags |= c.SDL_WINDOW_FULLSCREEN,
-        }
-
-        const handle = c.SDL_CreateWindow(name, window_width, window_height, window_flags).?;
-        return .{ .handle = handle };
-    }
-
-    pub fn destroyWindow(self: *Self, window: Window) void {
-        _ = self; // autofix
-        _ = c.SDL_DestroyWindowSurface(window.handle);
     }
 
     pub fn captureMouse(self: *Self, window: Window) void {
@@ -108,12 +124,30 @@ pub const Platform = struct {
         return false;
     }
 
-    pub fn isMousePresed(self: *Self, button: Mouse.Button) bool {
+    pub fn isMousePressed(self: *Self, button: Mouse.Button) bool {
         if (self.keyboard_mouse_device.mouse) |mouse| {
             return mouse.button_state.get(button).toDeviceState().state == .pressed;
         }
 
         return false;
+    }
+
+    pub fn isMouseDown(self: *Self, button: Mouse.Button) bool {
+        if (self.keyboard_mouse_device.mouse) |mouse| {
+            return mouse.button_state.get(button).is_pressed;
+        }
+
+        return false;
+    }
+
+    pub fn getMousePosition(self: *Self) ?[2]f32 {
+        if (self.keyboard_mouse_device.mouse) |mouse| {
+            _ = mouse; // autofix
+            var pos: [2]f32 = @splat(0.0);
+            _ = c.SDL_GetMouseState(@ptrCast(&pos[0]), @ptrCast(&pos[1]));
+            return pos;
+        }
+        return null;
     }
 
     pub fn proccessEvents(self: *Self) !void {
@@ -125,9 +159,6 @@ pub const Platform = struct {
 
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event)) {
-
-            //TODO: only update when input is in "Menu" mode, aka mouse not captured
-            //_ = @import("zimgui").backend.processEvent(&event);
             switch (event.type) {
                 c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
                     self.should_quit = true;
@@ -204,17 +235,6 @@ pub const Platform = struct {
 
     pub fn getInputDevices(self: Self) []const input.InputDevice {
         return self.input_devices.items;
-    }
-};
-
-pub const Window = struct {
-    handle: *c.SDL_Window,
-
-    pub fn getSize(self: @This()) [2]u32 {
-        var w: c_int = 0;
-        var h: c_int = 0;
-        _ = c.SDL_GetWindowSize(self.handle, &w, &h);
-        return .{ @intCast(w), @intCast(h) };
     }
 };
 
