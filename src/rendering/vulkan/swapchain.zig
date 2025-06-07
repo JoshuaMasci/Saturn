@@ -2,8 +2,8 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const VkDevice = @import("vulkan_device.zig");
 const ImageInterface = @import("image.zig").Interface;
+const VkDevice = @import("vulkan_device.zig");
 
 const MAX_IMAGE_COUNT: u32 = 8;
 
@@ -133,7 +133,7 @@ pub fn acquireNextImage(
     timeout: ?u64,
     wait_semaphore: vk.Semaphore,
     wait_fence: vk.Fence,
-) !SwapchainImage {
+) vk.DeviceProxy.AcquireNextImageKHRError!SwapchainImage {
     const result = try self.device.proxy.acquireNextImageKHR(
         self.handle,
         timeout orelse std.math.maxInt(u64),
@@ -158,7 +158,7 @@ pub fn queuePresent(
     queue: vk.Queue,
     index: u32,
     present_semaphore: vk.Semaphore,
-) !void {
+) vk.DeviceProxy.QueuePresentKHRError!void {
     const present_result = try self.device.proxy.queuePresentKHR(queue, &.{
         .swapchain_count = 1,
         .p_image_indices = @ptrCast(&index),

@@ -284,6 +284,12 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
 
     const fence = try frame_data.fence_pool.get();
     try frame_data.frame_wait_fences.append(fence);
+    errdefer {
+        self.device.proxy.resetFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr) catch |err| {
+            std.log.err("Failed to reset frame_wait_fences: {}", .{err});
+        };
+        frame_data.frame_wait_fences.clearRetainingCapacity();
+    }
 
     // Swapchain Images
     const swapchain_infos = try temp_allocator.alloc(SwapchainImageInfo, render_graph.swapchains.items.len);
@@ -305,11 +311,18 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
             );
             swapchain.deinit();
             swapchain.* = new_swapchain;
+
+            std.log.info("Finished Rebuilding Swapchain", .{});
         }
 
         const wait_semaphore = try frame_data.semaphore_pool.get();
         const present_semaphore = try frame_data.semaphore_pool.get();
-        const swapchain_image = try swapchain.acquireNextImage(null, wait_semaphore, .null_handle);
+        const swapchain_image = swapchain.acquireNextImage(null, wait_semaphore, .null_handle) catch |err| {
+            if (err == error.OutOfDateKHR) {
+                swapchain.out_of_date = true;
+            }
+            return err;
+        };
 
         swapchain_info.* = .{
             .swapchain = surface_swapchain.swapchain,
@@ -531,10 +544,15 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     try self.device.proxy.queueSubmit(self.device.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
 
     for (swapchain_infos) |swapchain_info| {
-        try swapchain_info.swapchain.queuePresent(
+        swapchain_info.swapchain.queuePresent(
             self.device.graphics_queue.handle,
             swapchain_info.index,
             swapchain_info.present_semaphore,
-        );
+        ) catch |err| {
+            switch (err) {
+                error.OutOfDateKHR => swapchain_info.swapchain.out_of_date = true,
+                else => return err,
+            }
+        };
     }
 }
