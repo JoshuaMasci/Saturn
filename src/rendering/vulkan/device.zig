@@ -11,7 +11,7 @@ const Buffer = @import("buffer.zig");
 const VkDevice = @import("vulkan_device.zig");
 const Image = @import("image.zig");
 const Instance = @import("instance.zig");
-const RenderGraphDefinition = @import("render_graph.zig").RenderGraphDefinition;
+const RenderGraph = @import("render_graph.zig").RenderGraph;
 const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
 
@@ -33,11 +33,14 @@ const PerFrameData = struct {
     semaphore_pool: object_pools.SemaphorePool,
     fence_pool: object_pools.FencePool,
 
+    transient_images: std.ArrayList(ImageHandle),
+
     pub fn reset(self: *@This()) void {
         self.frame_wait_fences.clearRetainingCapacity();
         self.graphics_command_pool.reset();
         self.semaphore_pool.reset();
         self.fence_pool.reset();
+        self.transient_images.clearRetainingCapacity();
     }
 };
 
@@ -111,6 +114,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
             .graphics_command_pool = try .init(allocator, device, device.graphics_queue),
             .semaphore_pool = .init(allocator, device, .binary, 0),
             .fence_pool = .init(allocator, device, .{}),
+            .transient_images = .init(allocator),
         };
     }
 
@@ -137,6 +141,7 @@ pub fn deinit(self: *Self) void {
         data.graphics_command_pool.deinit();
         data.semaphore_pool.deinit();
         data.fence_pool.deinit();
+        data.transient_images.deinit();
     }
 
     self.allocator.free(self.frame_data);
@@ -263,6 +268,11 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
         _ = try self.device.proxy.waitForFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr, 1, std.math.maxInt(u64));
         frame_data.frame_wait_fences.clearRetainingCapacity();
     }
+
+    //Clear tranisent data
+    for (frame_data.transient_images.items) |handle| {
+        self.destroyImage(handle);
+    }
     frame_data.reset();
 
     const fence = try frame_data.fence_pool.get();
@@ -308,11 +318,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     defer temp_allocator.free(images);
 
     // Transient Images
-    const transient_images = try temp_allocator.alloc(ImageHandle, render_graph.transient_textures.items.len);
-    defer temp_allocator.free(transient_images);
-    defer for (transient_images) |transient_image| {
-        self.destroyImage(transient_image);
-    };
+    try frame_data.transient_images.resize(render_graph.transient_textures.items.len);
 
     for (images, render_graph.textures.items) |*image, texture| {
         image.* = switch (texture) {
@@ -326,8 +332,8 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
                     .fixed => |extent| extent,
                     .relative => |r| images[r.texture_index].extent,
                 };
-                transient_images[transient_index] = try self.createImage(.{ extent.width, extent.height }, transient_desc.format, transient_desc.usage);
-                break :img self.images.get(transient_images[transient_index]).?.interface();
+                frame_data.transient_images.items[transient_index] = try self.createImage(.{ extent.width, extent.height }, transient_desc.format, transient_desc.usage);
+                break :img self.images.get(frame_data.transient_images.items[transient_index]).?.interface();
             },
         };
     }
@@ -343,13 +349,13 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
         var render_extent: ?vk.Extent2D = null;
 
         if (render_pass.raster_pass) |raster_pass| {
-            var image_barriers: std.ArrayList(vk.ImageMemoryBarrier) = try .initCapacity(temp_allocator, raster_pass.color_attachments.len + 1);
+            var image_barriers: std.ArrayList(vk.ImageMemoryBarrier) = try .initCapacity(temp_allocator, raster_pass.color_attachments.items.len + 1);
             defer image_barriers.deinit();
 
-            const color_attachments = try temp_allocator.alloc(vk.RenderingAttachmentInfo, raster_pass.color_attachments.len);
+            const color_attachments = try temp_allocator.alloc(vk.RenderingAttachmentInfo, raster_pass.color_attachments.items.len);
             defer temp_allocator.free(color_attachments);
 
-            for (color_attachments, raster_pass.color_attachments) |*vk_attachment, attachment| {
+            for (color_attachments, raster_pass.color_attachments.items) |*vk_attachment, attachment| {
                 const interface = &images[attachment.texture.texture_index];
 
                 if (interface.transitionLazy(.color_attachment_optimal)) |barrier| {

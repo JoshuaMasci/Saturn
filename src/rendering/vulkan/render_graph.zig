@@ -13,36 +13,7 @@ pub const QueueType = enum {
     prefer_async_transfer,
 };
 
-// pub const BufferUsageInfo = struct {
-//     access_flags: vk.AccessFlags,
-//     pipeline_stages: vk.PipelineStageFlags,
-//     read_only: bool,
-// };
-
-// pub const TextureUsageInfo = struct {
-//     access_flags: vk.AccessFlags,
-//     pipeline_stages: vk.PipelineStageFlags,
-//     layout: vk.ImageLayout,
-//     read_only: bool,
-// };
-
-// pub const CommandBufferBuildFn = *const fn (
-//     device: vk.Device,
-//     command_buffer: vk.CommandBufferProxy,
-//     user_data: ?*anyopaque,
-// ) void;
-
-// pub const RenderPassBufferUsage = struct {
-//     buffer: RenderGraphBuffer,
-//     usage_info: BufferUsageInfo,
-// };
-
-// pub const RenderPassTextureUsage = struct {
-//     texture: RenderGraphTextureHandle,
-//     usage_info: TextureUsageInfo,
-// };
-
-pub const TransientBufferDefinition = struct {
+pub const TransientBuffer = struct {
     size: usize,
     usage: vk.BufferUsageFlags,
 };
@@ -52,7 +23,7 @@ pub const TextureExtent = union(enum) {
     relative: RenderGraphTextureHandle,
 };
 
-pub const TransientTextureDefinition = struct {
+pub const TransientTexture = struct {
     extent: TextureExtent,
     format: vk.Format,
     usage: vk.ImageUsageFlags,
@@ -82,8 +53,8 @@ pub const DepthAttachment = struct {
     store: bool = true,
 };
 
-pub const RasterPassDefinition = struct {
-    color_attachments: []const ColorAttachment = &.{},
+pub const RasterPass = struct {
+    color_attachments: std.ArrayList(ColorAttachment),
     depth_attachment: ?DepthAttachment = null,
 };
 
@@ -94,28 +65,67 @@ pub const CommandBufferBuildFn = *const fn (
     user_data: ?*anyopaque,
 ) void;
 
-pub const RenderPassDefinition = struct {
+pub const RenderPass = struct {
+    const Self = @This();
+
+    allocator: std.mem.Allocator,
+
     name: []const u8,
     queue_type: QueueType = .graphics,
-    raster_pass: ?RasterPassDefinition = null,
+    raster_pass: ?RasterPass = null,
 
-    // buffer_usage: []const RenderPassBufferUsage,
-    // texture_usage: []const RenderPassTextureUsage,
     build_fn: ?CommandBufferBuildFn = null,
     build_data: ?*anyopaque = null,
+
+    pub fn init(allocator: std.mem.Allocator, name: []const u8) !Self {
+        return .{
+            .allocator = allocator,
+            .name = try allocator.dupe(u8, name),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        if (self.raster_pass) |*raster_pass| {
+            raster_pass.color_attachments.deinit();
+        }
+        self.allocator.free(self.name);
+    }
+
+    pub fn addColorAttachment(self: *Self, attachment: ColorAttachment) !void {
+        if (self.raster_pass == null) {
+            self.raster_pass = RasterPass{
+                .color_attachments = std.ArrayList(ColorAttachment).init(self.allocator),
+            };
+        }
+        try self.raster_pass.?.color_attachments.append(attachment);
+    }
+
+    pub fn addDepthAttachment(self: *Self, attachment: DepthAttachment) void {
+        if (self.raster_pass == null) {
+            self.raster_pass = RasterPass{
+                .color_attachments = std.ArrayList(ColorAttachment).init(self.allocator),
+            };
+        }
+        self.raster_pass.?.depth_attachment = attachment;
+    }
+
+    pub fn addBuildFn(self: *Self, build_fn: CommandBufferBuildFn, build_data: ?*anyopaque) void {
+        self.build_fn = build_fn;
+        self.build_data = build_data;
+    }
 };
 
-pub const RenderGraphDefinition = struct {
+pub const RenderGraph = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
 
     swapchains: std.ArrayList(Window),
-    transient_textures: std.ArrayList(TransientTextureDefinition),
+    transient_textures: std.ArrayList(TransientTexture),
 
     textures: std.ArrayList(RenderGraphTexture),
 
-    render_passes: std.ArrayList(RenderPassDefinition),
+    render_passes: std.ArrayList(RenderPass),
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
@@ -140,7 +150,7 @@ pub const RenderGraphDefinition = struct {
         return .{ .texture_index = texture_index };
     }
 
-    pub fn createTransientTexture(self: *Self, definition: TransientTextureDefinition) !RenderGraphTextureHandle {
+    pub fn createTransientTexture(self: *Self, definition: TransientTexture) !RenderGraphTextureHandle {
         const transient_index = self.transient_textures.items.len;
         try self.transient_textures.append(definition);
 

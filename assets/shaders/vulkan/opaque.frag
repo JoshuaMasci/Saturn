@@ -10,19 +10,16 @@ float4 sampleTexture(uint index, float2 uv)
     return BindlessTextures[index].Sample(BindlessSamplers[index], uv);
 }
 
-// Input structure
 struct PixelInput
 {
     float2 frag_uv0 : TEXCOORD0;
 };
 
-// Output structure
 struct PixelOutput
 {
     float4 out_frag_color : SV_Target;
 };
 
-// Push constants structure
 struct PushConstants
 {
     float4x4 view_projection_matrix;
@@ -31,23 +28,19 @@ struct PushConstants
     uint base_color_texture;
 };
 
-// Push constants declaration
 [[vk::push_constant]]
 PushConstants push_constants;
 
-// Main fragment shader function
 PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    // Start with base color from factor
     float4 base_color = push_constants.base_color_factor;
 
 	if (push_constants.base_color_texture != 0) {
 		base_color *= sampleTexture(push_constants.base_color_texture, input.frag_uv0);
 	}
 
-    // Set the final color for the fragment
     output.out_frag_color = base_color;
 
     return output;

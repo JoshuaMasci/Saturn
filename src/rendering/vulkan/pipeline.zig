@@ -5,7 +5,7 @@ const MeshAsset = @import("../../asset/mesh.zig");
 
 pub const PipelineConfig = struct {
     color_format: vk.Format,
-    depth_format: vk.Format,
+    depth_format: ?vk.Format = null,
     sample_count: vk.SampleCountFlags = .{ .@"1_bit" = true },
     cull_mode: vk.CullModeFlags = .{ .back_bit = true },
     front_face: vk.FrontFace = .counter_clockwise,
@@ -143,8 +143,8 @@ pub fn createGraphicsPipeline(
     // Depth stencil state
     const depth_stencil = vk.PipelineDepthStencilStateCreateInfo{
         .flags = .{},
-        .depth_test_enable = if (config.enable_depth_test) vk.TRUE else vk.FALSE,
-        .depth_write_enable = if (config.enable_depth_write) vk.TRUE else vk.FALSE,
+        .depth_test_enable = if (config.enable_depth_test and config.depth_format != null) vk.TRUE else vk.FALSE,
+        .depth_write_enable = if (config.enable_depth_write and config.depth_format != null) vk.TRUE else vk.FALSE,
         .depth_compare_op = config.depth_compare_op,
         .depth_bounds_test_enable = vk.FALSE,
         .min_depth_bounds = 0.0,
@@ -194,7 +194,7 @@ pub fn createGraphicsPipeline(
         .view_mask = 0,
         .color_attachment_count = 1,
         .p_color_attachment_formats = &color_attachment_format,
-        .depth_attachment_format = config.depth_format,
+        .depth_attachment_format = config.depth_format orelse .undefined,
         .stencil_attachment_format = .undefined,
     };
 

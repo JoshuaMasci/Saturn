@@ -3,22 +3,23 @@ const std = @import("std");
 const vk = @import("vulkan");
 const zm = @import("zmath");
 
-const MaterialAsset = @import("../../asset/material.zig");
-const MeshAsset = @import("../../asset/mesh.zig");
-const ShaderAsset = @import("../../asset/shader.zig");
+const MaterialAsset = @import("../asset/material.zig");
+const MeshAsset = @import("../asset/mesh.zig");
+const ShaderAsset = @import("../asset/shader.zig");
 const ShaderAssetHandle = ShaderAsset.Registry.Handle;
-const Texture2dAsset = @import("../../asset/texture_2d.zig");
-const global = @import("../../global.zig");
-const c = @import("../../platform/sdl3.zig").c;
-const Window = @import("../../platform/sdl3.zig").Window;
-const Settings = @import("../../rendering/settings.zig");
-const Transform = @import("../../transform.zig");
-const Camera = @import("../camera.zig").Camera;
-const RenderScene = @import("../scene.zig").RenderScene;
-const Device = @import("device.zig");
-const Image = @import("image.zig");
-const Mesh = @import("mesh.zig");
-const Pipeline = @import("pipeline.zig");
+const Texture2dAsset = @import("../asset/texture_2d.zig");
+const global = @import("../global.zig");
+const c = @import("../platform/sdl3.zig").c;
+const Window = @import("../platform/sdl3.zig").Window;
+const Settings = @import("../rendering/settings.zig");
+const Transform = @import("../transform.zig");
+const Camera = @import("camera.zig").Camera;
+const RenderScene = @import("scene.zig").RenderScene;
+
+const Device = @import("vulkan/device.zig");
+const Image = @import("vulkan/image.zig");
+const Mesh = @import("vulkan/mesh.zig");
+const Pipeline = @import("vulkan/pipeline.zig");
 
 pub const BuildCommandBufferData = struct {
     self: *const Self,

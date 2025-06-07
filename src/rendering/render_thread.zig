@@ -12,7 +12,9 @@ const RenderSettings = @import("settings.zig").RenderSettings;
 
 //Vulkan
 const Device = @import("vulkan/device.zig");
-const SceneRenderer = @import("vulkan/scene_renderer.zig");
+const SceneRenderer = @import("scene_renderer.zig");
+const ImguiRenderer = @import("imgui_renderer.zig");
+const rg = @import("vulkan/render_graph.zig");
 
 pub const RenderThreadData = struct {
     const Self = @This();
@@ -23,6 +25,7 @@ pub const RenderThreadData = struct {
 
     device: *Device,
     scene_renderer: SceneRenderer,
+    imgui_renderer: ImguiRenderer,
 
     //Per Frame Data
     temp_allocator: std.heap.ArenaAllocator,
@@ -33,6 +36,8 @@ pub const RenderThreadData = struct {
     pub fn deinit(self: *Self) void {
         _ = self.device.device.proxy.deviceWaitIdle() catch {};
         self.scene_renderer.deinit();
+        self.imgui_renderer.deinit();
+
         self.device.releaseWindow(self.window);
         self.device.deinit();
         self.allocator.destroy(self.device);
@@ -75,12 +80,20 @@ pub const RenderThread = struct {
             device.bindless_layout,
         ) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
 
+        const imgui_renderer = ImguiRenderer.init(
+            allocator,
+            device,
+            .b8g8r8a8_unorm,
+            device.bindless_layout,
+        ) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
+
         const render_thread_data = try allocator.create(RenderThreadData);
         render_thread_data.* = .{
             .allocator = allocator,
             .window = window,
             .device = device,
             .scene_renderer = scene_renderer,
+            .imgui_renderer = imgui_renderer,
             .temp_allocator = std.heap.ArenaAllocator.init(allocator),
         };
 
@@ -151,11 +164,10 @@ fn renderThreadMain(
             return; //TODO: deinit
         }
 
-        const RenderGraph = @import("vulkan/render_graph.zig");
-        var render_graph = RenderGraph.RenderGraphDefinition.init(temp_allocator);
+        var render_graph = rg.RenderGraph.init(temp_allocator);
         defer render_graph.deinit();
 
-        var scene_build_fn: ?RenderGraph.CommandBufferBuildFn = null;
+        var scene_build_fn: ?rg.CommandBufferBuildFn = null;
         var scene_build_data: SceneRenderer.BuildCommandBufferData = undefined;
 
         if (render_thread_data.scene) |*scene| {
@@ -183,26 +195,34 @@ fn renderThreadMain(
             continue;
         };
 
-        const render_pass = RenderGraph.RenderPassDefinition{
-            .name = "Scene Pass",
-            .raster_pass = .{
-                .color_attachments = &.{.{
-                    .texture = swapchain_texture,
-                    .clear = .{ .float_32 = .{ 0.576, 0.439, 0.859, 1.0 } },
-                    .store = true,
-                }},
-                .depth_attachment = .{
-                    .texture = depth_texture,
-                    .clear = 1.0,
-                    .store = true,
-                },
-            },
-            .build_fn = scene_build_fn,
-            .build_data = &scene_build_data,
+        var render_pass = rg.RenderPass.init(temp_allocator, "Scene Pass") catch |err| {
+            std.log.err("failed to create render pass: {}", .{err});
+            continue;
         };
+        render_pass.addColorAttachment(.{
+            .texture = swapchain_texture,
+            .clear = .{ .float_32 = .{ 0.576, 0.439, 0.859, 1.0 } },
+            .store = true,
+        }) catch |err| {
+            std.log.err("failed to create color attachment: {}", .{err});
+            continue;
+        };
+        render_pass.addDepthAttachment(.{
+            .texture = depth_texture,
+            .clear = 1.0,
+            .store = true,
+        });
+        if (scene_build_fn) |build_fn| {
+            render_pass.addBuildFn(build_fn, &scene_build_data);
+        }
 
         render_graph.render_passes.append(render_pass) catch |err| {
             std.log.err("failed to append render_pass: {}", .{err});
+            continue;
+        };
+
+        render_thread_data.imgui_renderer.createRenderPass(temp_allocator, swapchain_texture, &render_graph) catch |err| {
+            std.log.err("failed to build imgui render_pass: {}", .{err});
             continue;
         };
 

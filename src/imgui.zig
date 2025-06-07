@@ -11,9 +11,6 @@ pub fn init(allocator: std.mem.Allocator) !Self {
     //TODO: support viewports
     zimgui.io.setConfigFlags(.{ .dock_enable = true, .viewport_enable = false });
 
-    //TODO: have Render Backend Fetch this
-    _ = zimgui.io.getFontsTextDataAsRgba32();
-
     return .{};
 }
 
@@ -38,6 +35,9 @@ pub fn updateInput(self: Self, input: *@import("platform/sdl3.zig").Input) void 
 
         const pos = input.getMousePosition().?;
         zimgui.io.addMousePositionEvent(pos[0], pos[1]);
+
+        //TODO: this
+        //zimgui.io.addInputCharactersUTF8(null);
     }
 }
 

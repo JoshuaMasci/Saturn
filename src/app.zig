@@ -12,7 +12,7 @@ const input = @import("input.zig");
 const sdl3 = @import("platform/sdl3.zig");
 const PlatformInput = sdl3.Input;
 const Window = sdl3.Window;
-const RenderThread = @import("rendering/vulkan_render_thread.zig").RenderThread;
+const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 const world_gen = @import("world_gen.zig");
 
 pub const App = struct {
@@ -39,15 +39,15 @@ pub const App = struct {
 
         try sdl3.init(global.global_allocator);
 
+        const imgui = try Imgui.init(global.global_allocator);
+        errdefer imgui.deinit();
+
         const platform_input = try PlatformInput.init(global.global_allocator);
         const window = Window.init("Saturn Engine", .{ .windowed = .{ 1600, 900 } });
         const render_thread = try RenderThread.init(global.global_allocator, window);
 
         physics_system.init(global.global_allocator);
         //physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
-
-        const imgui = try Imgui.init(global.global_allocator);
-        errdefer imgui.deinit();
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
