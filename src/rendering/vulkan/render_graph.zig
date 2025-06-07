@@ -6,6 +6,7 @@ const Window = @import("../../platform/sdl3.zig").Window;
 const Device = @import("device.zig");
 const BufferHandle = Device.BufferHandle;
 const ImageHandle = Device.ImageHandle;
+const GpuAllocator = @import("gpu_allocator.zig");
 
 pub const QueueType = enum {
     graphics,
@@ -13,10 +14,29 @@ pub const QueueType = enum {
     prefer_async_transfer,
 };
 
+/// Function should returns amount of data actually written
+pub const UploadFn = *const fn (dst: []u8, user_data: ?*anyopaque) usize;
+
+pub const DownloadFn = *const fn (src: []u8, user_data: ?*anyopaque) void;
+
+pub const CommandBufferBuildFn = *const fn (
+    device: *Device,
+    command_buffer: vk.CommandBufferProxy,
+    raster_pass_extent: ?vk.Extent2D,
+    user_data: ?*anyopaque,
+) void;
+
 pub const TransientBuffer = struct {
     size: usize,
     usage: vk.BufferUsageFlags,
+    location: GpuAllocator.MemoryLocation = .gpu_only,
 };
+
+pub const RenderGraphBuffer = union(enum) {
+    persistent: BufferHandle,
+    transient: usize,
+};
+pub const RenderGraphBufferHandle = struct { buffer_index: usize };
 
 pub const TextureExtent = union(enum) {
     fixed: vk.Extent2D,
@@ -29,17 +49,20 @@ pub const TransientTexture = struct {
     usage: vk.ImageUsageFlags,
 };
 
-pub const RenderGraphBuffer = union(enum) {
-    persistent: BufferHandle,
-    transient: usize,
-};
-
 pub const RenderGraphTexture = union(enum) {
     persistent: ImageHandle,
     transient: usize,
     swapchain: usize,
 };
 pub const RenderGraphTextureHandle = struct { texture_index: usize };
+
+pub const UploadPass = struct {
+    target: RenderGraphBufferHandle,
+    offset: usize,
+    size: usize,
+    data_fn: UploadFn,
+    user_data: ?*anyopaque,
+};
 
 pub const ColorAttachment = struct {
     texture: RenderGraphTextureHandle,
@@ -57,13 +80,6 @@ pub const RasterPass = struct {
     color_attachments: std.ArrayList(ColorAttachment),
     depth_attachment: ?DepthAttachment = null,
 };
-
-pub const CommandBufferBuildFn = *const fn (
-    device: *Device,
-    command_buffer: vk.CommandBufferProxy,
-    raster_pass_extent: ?vk.Extent2D,
-    user_data: ?*anyopaque,
-) void;
 
 pub const RenderPass = struct {
     const Self = @This();
@@ -121,27 +137,51 @@ pub const RenderGraph = struct {
     allocator: std.mem.Allocator,
 
     swapchains: std.ArrayList(Window),
+    transient_buffers: std.ArrayList(TransientBuffer),
     transient_textures: std.ArrayList(TransientTexture),
 
+    buffers: std.ArrayList(RenderGraphBuffer),
     textures: std.ArrayList(RenderGraphTexture),
 
+    upload_passes: std.ArrayList(UploadPass),
     render_passes: std.ArrayList(RenderPass),
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
             .swapchains = .init(allocator),
+            .transient_buffers = .init(allocator),
             .transient_textures = .init(allocator),
+            .buffers = .init(allocator),
             .textures = .init(allocator),
+            .upload_passes = .init(allocator),
             .render_passes = .init(allocator),
         };
     }
 
     pub fn deinit(self: Self) void {
         self.swapchains.deinit();
+        self.transient_buffers.deinit();
         self.transient_textures.deinit();
+        self.buffers.deinit();
         self.textures.deinit();
+        self.upload_passes.deinit();
         self.render_passes.deinit();
+    }
+
+    pub fn importBuffer(self: *Self, handle: BufferHandle) !RenderGraphBuffer {
+        const buffer_index = self.buffers.items.len;
+        try self.buffer.append(.{ .persistent = handle });
+        return .{ .buffer_index = buffer_index };
+    }
+
+    pub fn createTransientBuffer(self: *Self, definition: TransientBuffer) !RenderGraphBufferHandle {
+        const transient_index = self.transient_buffers.items.len;
+        try self.transient_buffers.append(definition);
+
+        const buffer_index = self.buffers.items.len;
+        try self.buffers.append(.{ .transient = transient_index });
+        return .{ .buffer_index = buffer_index };
     }
 
     pub fn importTexture(self: *Self, handle: ImageHandle) !RenderGraphTextureHandle {

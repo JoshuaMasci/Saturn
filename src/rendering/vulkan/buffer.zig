@@ -2,9 +2,17 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const VkDevice = @import("vulkan_device.zig");
-const Queue = @import("queue.zig");
 const GpuAllocator = @import("gpu_allocator.zig");
+const Queue = @import("queue.zig");
+const VkDevice = @import("vulkan_device.zig");
+
+pub const Interface = struct {
+    size: usize,
+    usage: vk.BufferUsageFlags,
+    handle: vk.Buffer,
+    uniform_binding: ?u32,
+    storage_binding: ?u32,
+};
 
 const Self = @This();
 
@@ -36,6 +44,16 @@ pub fn init(device: *VkDevice, size: usize, usage: vk.BufferUsageFlags, memory_l
 pub fn deinit(self: Self) void {
     self.device.proxy.destroyBuffer(self.handle, null);
     self.device.gpu_allocator.free(self.allocation);
+}
+
+pub fn interface(self: Self) Interface {
+    return .{
+        .size = self.size,
+        .usage = self.usage,
+        .handle = self.handle,
+        .uniform_binding = null,
+        .storage_binding = null,
+    };
 }
 
 pub fn uploadBufferData(

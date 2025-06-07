@@ -1,13 +1,13 @@
 const std = @import("std");
 
 const physics_system = @import("physics");
-const Imgui = @import("imgui.zig");
 const zm = @import("zmath");
 
 const Entity = @import("entity/entity.zig");
 const Universe = @import("entity/universe.zig");
 const World = @import("entity/world.zig");
 const global = @import("global.zig");
+const Imgui = @import("imgui.zig");
 const input = @import("input.zig");
 const sdl3 = @import("platform/sdl3.zig");
 const PlatformInput = sdl3.Input;
@@ -194,9 +194,6 @@ pub const App = struct {
         //         }
         //     }
         //}
-
-        //TODO: actually render the frame
-        self.imgui.render();
 
         self.render_thread.submitFrame();
 

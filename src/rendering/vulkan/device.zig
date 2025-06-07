@@ -8,17 +8,16 @@ const Vulkan = sdl3.Vulkan;
 const Window = sdl3.Window;
 const BindlessDescriptor = @import("bindless_descriptor.zig");
 const Buffer = @import("buffer.zig");
-const VkDevice = @import("vulkan_device.zig");
 const Image = @import("image.zig");
 const Instance = @import("instance.zig");
+const object_pools = @import("object_pools.zig");
 const RenderGraph = @import("render_graph.zig").RenderGraph;
 const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
+const VkDevice = @import("vulkan_device.zig");
 
 const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
-const object_pools = @import("object_pools.zig");
-
 pub const BufferHandle = BufferPool.Handle;
 pub const ImageHandle = ImagePool.Handle;
 
@@ -33,6 +32,7 @@ const PerFrameData = struct {
     semaphore_pool: object_pools.SemaphorePool,
     fence_pool: object_pools.FencePool,
 
+    transient_buffers: std.ArrayList(BufferHandle),
     transient_images: std.ArrayList(ImageHandle),
 
     pub fn reset(self: *@This()) void {
@@ -40,6 +40,7 @@ const PerFrameData = struct {
         self.graphics_command_pool.reset();
         self.semaphore_pool.reset();
         self.fence_pool.reset();
+        self.transient_buffers.clearRetainingCapacity();
         self.transient_images.clearRetainingCapacity();
     }
 };
@@ -114,6 +115,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
             .graphics_command_pool = try .init(allocator, device, device.graphics_queue),
             .semaphore_pool = .init(allocator, device, .binary, 0),
             .fence_pool = .init(allocator, device, .{}),
+            .transient_buffers = .init(allocator),
             .transient_images = .init(allocator),
         };
     }
@@ -141,6 +143,7 @@ pub fn deinit(self: *Self) void {
         data.graphics_command_pool.deinit();
         data.semaphore_pool.deinit();
         data.fence_pool.deinit();
+        data.transient_buffers.deinit();
         data.transient_images.deinit();
     }
 
@@ -270,6 +273,10 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     }
 
     //Clear tranisent data
+    for (frame_data.transient_buffers.items) |handle| {
+        self.destroyBuffer(handle);
+    }
+
     for (frame_data.transient_images.items) |handle| {
         self.destroyImage(handle);
     }
@@ -314,14 +321,31 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     }
 
     //Resources
+    const buffers = try temp_allocator.alloc(Buffer.Interface, render_graph.buffers.items.len);
+    defer temp_allocator.free(buffers);
+
     const images = try temp_allocator.alloc(Image.Interface, render_graph.textures.items.len);
     defer temp_allocator.free(images);
+
+    // Transient Buffers
+    try frame_data.transient_buffers.resize(render_graph.transient_buffers.items.len);
+
+    for (buffers, render_graph.buffers.items) |*buffer, rg_buffer| {
+        buffer.* = switch (rg_buffer) {
+            .persistent => |handle| self.buffers.get(handle).?.interface(),
+            .transient => |transient_index| buf: {
+                const transient_desc = render_graph.transient_buffers.items[transient_index];
+                frame_data.transient_buffers.items[transient_index] = try self.createBuffer(transient_desc.size, transient_desc.usage);
+                break :buf self.buffers.get(frame_data.transient_buffers.items[transient_index]).?.interface();
+            },
+        };
+    }
 
     // Transient Images
     try frame_data.transient_images.resize(render_graph.transient_textures.items.len);
 
-    for (images, render_graph.textures.items) |*image, texture| {
-        image.* = switch (texture) {
+    for (images, render_graph.textures.items) |*image, rg_texture| {
+        image.* = switch (rg_texture) {
             .persistent => |handle| self.images.get(handle).?.interface(),
             .swapchain => |index| swapchain_infos[index].image,
             .transient => |transient_index| img: {

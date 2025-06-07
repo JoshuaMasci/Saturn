@@ -1,6 +1,6 @@
 const std = @import("std");
-const zimgui = @import("zimgui");
 
+const zimgui = @import("zimgui");
 pub const gui = zimgui;
 
 const Self = @This();
@@ -94,14 +94,4 @@ pub fn createFullscreenDockspace(self: Self, dockspace_name: [:0]const u8) zimgu
         size,
         .{ .passthru_central_node = true },
     );
-}
-
-//TODO: render using backend
-pub fn render(self: Self) void {
-    zimgui.endFrame();
-
-    _ = self; // autofix
-    zimgui.render();
-    const draw_data = zimgui.getDrawData();
-    _ = draw_data; // autofix
 }

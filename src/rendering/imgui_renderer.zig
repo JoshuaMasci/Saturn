@@ -1,13 +1,13 @@
 const std = @import("std");
+
 const vk = @import("vulkan");
 const zimgui = @import("zimgui");
 
-const global = @import("../global.zig");
-const Device = @import("vulkan/device.zig");
 const ShaderAsset = @import("../asset/shader.zig");
 const ShaderAssetHandle = ShaderAsset.Registry.Handle;
+const global = @import("../global.zig");
+const Device = @import("vulkan/device.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
-
 const rg = @import("vulkan/render_graph.zig");
 
 const Self = @This();
@@ -65,12 +65,59 @@ pub fn deinit(self: *Self) void {
 pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: rg.RenderGraphTextureHandle, render_graph: *rg.RenderGraph) !void {
     _ = self; // autofix
 
+    zimgui.render();
+    const draw_data = zimgui.getDrawData();
+
+    if (draw_data.cmd_lists_count == 0) {
+        return;
+    }
+
+    const vertex_size_bytes: usize = @as(usize, @intCast(draw_data.total_vtx_count)) * @sizeOf(zimgui.DrawVert);
+    const index_size_bytes: usize = @as(usize, @intCast(draw_data.total_idx_count)) * @sizeOf(zimgui.DrawIdx);
+
+    const vertex_buffer = try render_graph.createTransientBuffer(.{
+        .size = vertex_size_bytes,
+        .usage = .{ .transfer_dst_bit = true, .vertex_buffer_bit = true },
+    });
+    const index_buffer = try render_graph.createTransientBuffer(.{
+        .size = index_size_bytes,
+        .usage = .{ .transfer_dst_bit = true, .index_buffer_bit = true },
+    });
+
+    try render_graph.upload_passes.append(.{
+        .target = vertex_buffer,
+        .offset = 0,
+        .size = vertex_size_bytes,
+        .data_fn = vertexUploadPass,
+        .user_data = null,
+    });
+
+    try render_graph.upload_passes.append(.{
+        .target = index_buffer,
+        .offset = 0,
+        .size = index_size_bytes,
+        .data_fn = indexUploadPass,
+        .user_data = null,
+    });
+
     var render_pass = try rg.RenderPass.init(temp_allocator, "Imgui Pass");
     try render_pass.addColorAttachment(.{ .texture = target });
     try render_graph.render_passes.append(render_pass);
 }
 
-pub fn buildCommandBuffer(device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D, user_data: ?*anyopaque) void {
+fn vertexUploadPass(dst: []u8, user_data: ?*anyopaque) usize {
+    _ = dst; // autofix
+    _ = user_data; // autofix
+    return 0;
+}
+
+fn indexUploadPass(dst: []u8, user_data: ?*anyopaque) usize {
+    _ = dst; // autofix
+    _ = user_data; // autofix
+    return 0;
+}
+
+fn buildCommandBuffer(device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D, user_data: ?*anyopaque) void {
     _ = device; // autofix
     _ = command_buffer; // autofix
     _ = raster_pass_extent; // autofix
