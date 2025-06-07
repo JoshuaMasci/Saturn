@@ -259,7 +259,7 @@ const SwapchainImageInfo = struct {
     last_layout: vk.ImageLayout = .undefined,
 };
 
-pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: RenderGraphDefinition) !void {
+pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: RenderGraph) !void {
     self.frame_index = @mod(self.frame_index + 1, self.frame_data.len);
     const frame_data = &self.frame_data[self.frame_index];
 
