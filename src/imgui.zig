@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const zimgui = @import("zimgui");
-pub const gui = zimgui;
+pub const imgui = zimgui;
 
 const Self = @This();
 

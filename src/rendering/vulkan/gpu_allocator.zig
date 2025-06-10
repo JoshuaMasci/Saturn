@@ -11,8 +11,19 @@ pub const MemoryLocation = enum {
 pub const Allocation = struct {
     memory: vk.DeviceMemory,
     offset: vk.DeviceSize,
+    size: vk.DeviceSize,
     location: MemoryLocation,
     mapped_ptr: ?*anyopaque,
+
+    pub fn getMappedByteSlice(self: *@This()) ?[]u8 {
+        if (self.mapped_ptr) |buffer_ptr| {
+            const buffer_slice_ptr: [*]u8 = @ptrCast(@alignCast(buffer_ptr));
+            const buffer_slice: []u8 = buffer_slice_ptr[0..self.size];
+            return buffer_slice;
+        } else {
+            return null;
+        }
+    }
 };
 
 const Self = @This();
@@ -72,7 +83,13 @@ pub fn alloc(
         mapped_ptr = try self.device.mapMemory(memory, offset, alloc_info.allocation_size, .{});
     }
 
-    return .{ .memory = memory, .offset = 0, .location = location, .mapped_ptr = mapped_ptr };
+    return .{
+        .memory = memory,
+        .offset = 0,
+        .size = alloc_info.allocation_size,
+        .location = location,
+        .mapped_ptr = mapped_ptr,
+    };
 }
 
 pub fn free(self: *Self, allocation: Allocation) void {

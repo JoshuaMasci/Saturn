@@ -7,15 +7,14 @@ const Window = Platform.Window;
 const Vulkan = Platform.Vulkan;
 const Transform = @import("../transform.zig");
 const Camera = @import("camera.zig").Camera;
+const ImguiRenderer = @import("imgui_renderer.zig");
 const rendering_scene = @import("scene.zig");
 const RenderSettings = @import("settings.zig").RenderSettings;
-
-//Vulkan
-const Device = @import("vulkan/device.zig");
 const SceneRenderer = @import("scene_renderer.zig");
-const ImguiRenderer = @import("imgui_renderer.zig");
+const Device = @import("vulkan/device.zig");
 const rg = @import("vulkan/render_graph.zig");
 
+//Vulkan
 pub const RenderThreadData = struct {
     const Self = @This();
 

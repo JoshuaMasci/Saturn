@@ -35,6 +35,8 @@ const PerFrameData = struct {
     transient_buffers: std.ArrayList(BufferHandle),
     transient_images: std.ArrayList(ImageHandle),
 
+    upload_src_buffer: ?Buffer = null,
+
     pub fn reset(self: *@This()) void {
         self.frame_wait_fences.clearRetainingCapacity();
         self.graphics_command_pool.reset();
@@ -145,6 +147,10 @@ pub fn deinit(self: *Self) void {
         data.fence_pool.deinit();
         data.transient_buffers.deinit();
         data.transient_images.deinit();
+
+        if (data.upload_src_buffer) |buffer| {
+            buffer.deinit();
+        }
     }
 
     self.allocator.free(self.frame_data);
@@ -201,9 +207,7 @@ pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []con
     var buffer: Buffer = try .init(self.device, data.len, usage, .gpu_only);
     errdefer buffer.deinit();
 
-    if (buffer.allocation.mapped_ptr) |buffer_ptr| {
-        const buffer_slice_ptr: [*]u8 = @ptrCast(@alignCast(buffer_ptr));
-        const buffer_slice: []u8 = buffer_slice_ptr[0..data.len];
+    if (buffer.allocation.getMappedByteSlice()) |buffer_slice| {
         @memcpy(buffer_slice, data);
     } else {
         //TODO: slow transfer upload
@@ -260,6 +264,11 @@ const SwapchainImageInfo = struct {
     wait_semaphore: vk.Semaphore,
     present_semaphore: vk.Semaphore,
     last_layout: vk.ImageLayout = .undefined,
+};
+
+const UploadInfo = struct {
+    src_offset: usize,
+    bytes_written: usize,
 };
 
 pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: RenderGraph) !void {
@@ -381,7 +390,79 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
     try command_buffer.beginCommandBuffer(&.{});
     self.bindless_descriptor.bind(command_buffer, self.bindless_layout);
 
-    //TODO: render here
+    if (render_graph.buffer_upload_passes.items.len != 0) {
+        //Data upload
+        const buffer_upload_infos = try temp_allocator.alloc(UploadInfo, render_graph.buffer_upload_passes.items.len);
+        defer temp_allocator.free(buffer_upload_infos);
+
+        var total_upload_size: usize = 0;
+        for (buffer_upload_infos, render_graph.buffer_upload_passes.items) |*info, upload| {
+            info.* = .{ .src_offset = total_upload_size, .bytes_written = 0 };
+            total_upload_size += upload.size;
+        }
+
+        if (frame_data.upload_src_buffer) |upload_buffer| {
+            if (upload_buffer.size < total_upload_size) {
+                upload_buffer.deinit();
+                frame_data.upload_src_buffer = null;
+            }
+        }
+
+        if (frame_data.upload_src_buffer == null) {
+            frame_data.upload_src_buffer = try Buffer.init(self.device, total_upload_size, .{ .transfer_src_bit = true }, .cpu_only);
+        }
+
+        const upload_buffer = &frame_data.upload_src_buffer.?;
+        const upload_src_slice = upload_buffer.allocation.getMappedByteSlice().?;
+
+        for (buffer_upload_infos, render_graph.buffer_upload_passes.items) |*info, upload| {
+            const start = info.src_offset;
+            const end = start + upload.size;
+            info.bytes_written = upload.write_fn(upload.write_data, upload_src_slice[start..end]);
+        }
+
+        //TODO: Replace this very bad barrier
+        command_buffer.pipelineBarrier(
+            .{ .all_commands_bit = true },
+            .{ .all_commands_bit = true },
+            .{},
+            0,
+            null,
+            0,
+            null,
+            0,
+            null,
+        );
+
+        for (buffer_upload_infos, render_graph.buffer_upload_passes.items) |info, upload| {
+            const dst = buffers[upload.target.buffer_index];
+
+            var write_size = info.bytes_written;
+            if (dst.size < upload.offset + upload.size) {
+                std.log.err(
+                    "Buffer upload too large clamping: Buffer Offset: {} Buffer Size: {} Max Write: {}, Written Size: {}",
+                    .{
+                        upload.offset,
+                        dst.size,
+                        upload.size,
+                        info.bytes_written,
+                    },
+                );
+                const total_possible_write = dst.size - upload.offset;
+                write_size = @max(write_size, total_possible_write);
+            }
+
+            if (write_size != 0) {
+                const region = vk.BufferCopy{
+                    .src_offset = info.src_offset,
+                    .dst_offset = upload.offset,
+                    .size = write_size,
+                };
+                command_buffer.copyBuffer(upload_buffer.handle, dst.handle, 1, @ptrCast(&region));
+            }
+        }
+    }
+
     for (render_graph.render_passes.items) |render_pass| {
         var render_extent: ?vk.Extent2D = null;
 
@@ -445,6 +526,8 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
                 };
             }
 
+            //TODO: Replace this very bad image barrier
+            // Need to actually calcuate flags
             command_buffer.pipelineBarrier(
                 .{ .all_commands_bit = true },
                 .{ .all_commands_bit = true },
@@ -465,10 +548,23 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
                 .p_color_attachments = color_attachments.ptr,
                 .p_depth_attachment = if (depth_attachment) |attachment| @ptrCast(&attachment) else null,
             });
+        } else {
+            //TODO: Replace this very bad barrier
+            command_buffer.pipelineBarrier(
+                .{ .all_commands_bit = true },
+                .{ .all_commands_bit = true },
+                .{},
+                0,
+                null,
+                0,
+                null,
+                0,
+                null,
+            );
         }
 
         if (render_pass.build_fn) |build_fn| {
-            build_fn(self, command_buffer, render_extent, render_pass.build_data);
+            build_fn(render_pass.build_data, self, command_buffer, render_extent);
         }
 
         if (render_pass.raster_pass != null) {

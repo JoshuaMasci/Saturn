@@ -15,7 +15,6 @@ const Settings = @import("../rendering/settings.zig");
 const Transform = @import("../transform.zig");
 const Camera = @import("camera.zig").Camera;
 const RenderScene = @import("scene.zig").RenderScene;
-
 const Device = @import("vulkan/device.zig");
 const Image = @import("vulkan/image.zig");
 const Mesh = @import("vulkan/mesh.zig");
@@ -88,8 +87,8 @@ pub fn deinit(self: *Self) void {
     self.device.device.proxy.destroyPipeline(self.mesh_pipeline, null);
 }
 
-pub fn buildCommandBuffer(device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D, user_data: ?*anyopaque) void {
-    const data: *BuildCommandBufferData = @ptrCast(@alignCast(user_data.?));
+pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+    const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
     const self = data.self;
 
     const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);

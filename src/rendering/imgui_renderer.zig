@@ -72,8 +72,37 @@ pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: 
         return;
     }
 
-    const vertex_size_bytes: usize = @as(usize, @intCast(draw_data.total_vtx_count)) * @sizeOf(zimgui.DrawVert);
-    const index_size_bytes: usize = @as(usize, @intCast(draw_data.total_idx_count)) * @sizeOf(zimgui.DrawIdx);
+    //Might need to split vert/idx loading up if it possible for either to be zero
+    const vertex_size: usize = @intCast(draw_data.total_vtx_count);
+    const index_size: usize = @intCast(draw_data.total_idx_count);
+
+    const vertex_size_bytes: usize = vertex_size * @sizeOf(zimgui.DrawVert);
+    const index_size_bytes: usize = index_size * @sizeOf(zimgui.DrawIdx);
+
+    //TODO: IDK if I need to copy here but I don't want to risk the possibily that NewFrame() is called before upload callback reads the data
+    const vertex_data = try temp_allocator.alloc(zimgui.DrawVert, vertex_size);
+    errdefer temp_allocator.free(vertex_data);
+
+    const index_data = try temp_allocator.alloc(zimgui.DrawIdx, index_size);
+    errdefer temp_allocator.free(index_data);
+
+    {
+        var i_vertex: usize = 0;
+        var i_index: usize = 0;
+
+        const cmd_list_count: usize = @intCast(draw_data.cmd_lists.len);
+
+        for (draw_data.cmd_lists.items[0..cmd_list_count]) |cmd| {
+            const cmd_vertex_data = cmd.getVertexBuffer();
+            const cmd_index_data = cmd.getIndexBuffer();
+
+            std.mem.copyForwards(zimgui.DrawVert, vertex_data[i_vertex..], cmd_vertex_data);
+            std.mem.copyForwards(zimgui.DrawIdx, index_data[i_index..], cmd_index_data);
+
+            i_vertex += cmd_vertex_data.len;
+            i_index += cmd_index_data.len;
+        }
+    }
 
     const vertex_buffer = try render_graph.createTransientBuffer(.{
         .size = vertex_size_bytes,
@@ -84,44 +113,59 @@ pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: 
         .usage = .{ .transfer_dst_bit = true, .index_buffer_bit = true },
     });
 
-    try render_graph.upload_passes.append(.{
+    const user_datas = try temp_allocator.alloc(SliceData, 2);
+
+    user_datas[0] = .{ .ptr = @ptrCast(vertex_data.ptr), .len = vertex_data.len };
+    user_datas[1] = .{ .ptr = @ptrCast(index_data.ptr), .len = index_data.len };
+
+    try render_graph.buffer_upload_passes.append(.{
         .target = vertex_buffer,
         .offset = 0,
         .size = vertex_size_bytes,
-        .data_fn = vertexUploadPass,
-        .user_data = null,
+        .write_fn = vertexUploadPass,
+        .write_data = @ptrCast(&user_datas[0]),
     });
 
-    try render_graph.upload_passes.append(.{
+    try render_graph.buffer_upload_passes.append(.{
         .target = index_buffer,
         .offset = 0,
         .size = index_size_bytes,
-        .data_fn = indexUploadPass,
-        .user_data = null,
+        .write_fn = indexUploadPass,
+        .write_data = @ptrCast(&user_datas[1]),
     });
 
     var render_pass = try rg.RenderPass.init(temp_allocator, "Imgui Pass");
     try render_pass.addColorAttachment(.{ .texture = target });
+    render_pass.addBuildFn(buildCommandBuffer, null);
+
     try render_graph.render_passes.append(render_pass);
 }
 
-fn vertexUploadPass(dst: []u8, user_data: ?*anyopaque) usize {
-    _ = dst; // autofix
-    _ = user_data; // autofix
-    return 0;
+const SliceData = struct { ptr: *anyopaque, len: usize };
+
+fn vertexUploadPass(write_data: ?*anyopaque, dst: []u8) usize {
+    const data: *SliceData = @alignCast(@ptrCast(write_data));
+    const vertex_ptr: [*]const zimgui.DrawVert = @alignCast(@ptrCast(data.ptr));
+    const vertex_slice: []const zimgui.DrawVert = vertex_ptr[0..data.len];
+    const vertex_bytes: []const u8 = std.mem.sliceAsBytes(vertex_slice);
+    std.mem.copyForwards(u8, dst, vertex_bytes);
+    return vertex_bytes.len;
 }
 
-fn indexUploadPass(dst: []u8, user_data: ?*anyopaque) usize {
-    _ = dst; // autofix
-    _ = user_data; // autofix
-    return 0;
+fn indexUploadPass(write_data: ?*anyopaque, dst: []u8) usize {
+    const data: *SliceData = @alignCast(@ptrCast(write_data));
+    const index_ptr: [*]const zimgui.DrawIdx = @alignCast(@ptrCast(data.ptr));
+    const index_slice: []const zimgui.DrawIdx = index_ptr[0..data.len];
+    const index_bytes: []const u8 = std.mem.sliceAsBytes(index_slice);
+    std.mem.copyForwards(u8, dst, index_bytes);
+    return index_bytes.len;
 }
 
-fn buildCommandBuffer(device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D, user_data: ?*anyopaque) void {
+fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+    _ = build_data; // autofix
     _ = device; // autofix
     _ = command_buffer; // autofix
     _ = raster_pass_extent; // autofix
-    _ = user_data; // autofix
 }
 
 fn loadGraphicsShader(allocator: std.mem.Allocator, device: vk.DeviceProxy, handle: ShaderAssetHandle) !vk.ShaderModule {

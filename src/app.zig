@@ -143,21 +143,22 @@ pub const App = struct {
         {
             const window_size = self.window.getSize();
             self.imgui.startFrame(window_size, delta_time);
+            defer Imgui.imgui.endFrame();
 
             _ = self.imgui.createFullscreenDockspace("MainDockspace");
-            defer Imgui.gui.end();
+            defer Imgui.imgui.end();
 
-            // if (zimgui.begin("Performance", .{})) {
-            //     zimgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
-            //     zimgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
-            //     if (mem_usage_opt) |mem_usage| {
-            //         if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
-            //             defer frame_allocator.free(mem_usage_string);
-            //             zimgui.text("Memory Usage {s}", .{mem_usage_string});
-            //         }
-            //     }
-            // }
-            // zimgui.end();
+            if (Imgui.imgui.begin("Performance", .{})) {
+                Imgui.imgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
+                Imgui.imgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
+                if (mem_usage_opt) |mem_usage| {
+                    if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+                        defer frame_allocator.free(mem_usage_string);
+                        Imgui.imgui.text("Memory Usage {s}", .{mem_usage_string});
+                    }
+                }
+            }
+            Imgui.imgui.end();
 
             // if (!self.platform.isMouseCaptured() and
             //     !zimgui.isWindowHovered(.{ .any_window = true }) and

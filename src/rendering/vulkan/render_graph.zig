@@ -15,15 +15,15 @@ pub const QueueType = enum {
 };
 
 /// Function should returns amount of data actually written
-pub const UploadFn = *const fn (dst: []u8, user_data: ?*anyopaque) usize;
+pub const UploadFn = *const fn (data: ?*anyopaque, dst: []u8) usize;
 
-pub const DownloadFn = *const fn (src: []u8, user_data: ?*anyopaque) void;
+pub const DownloadFn = *const fn (data: ?*anyopaque, src: []u8) void;
 
 pub const CommandBufferBuildFn = *const fn (
+    data: ?*anyopaque,
     device: *Device,
     command_buffer: vk.CommandBufferProxy,
     raster_pass_extent: ?vk.Extent2D,
-    user_data: ?*anyopaque,
 ) void;
 
 pub const TransientBuffer = struct {
@@ -56,12 +56,12 @@ pub const RenderGraphTexture = union(enum) {
 };
 pub const RenderGraphTextureHandle = struct { texture_index: usize };
 
-pub const UploadPass = struct {
+pub const BufferUploadPass = struct {
     target: RenderGraphBufferHandle,
     offset: usize,
     size: usize,
-    data_fn: UploadFn,
-    user_data: ?*anyopaque,
+    write_fn: UploadFn,
+    write_data: ?*anyopaque,
 };
 
 pub const ColorAttachment = struct {
@@ -143,7 +143,7 @@ pub const RenderGraph = struct {
     buffers: std.ArrayList(RenderGraphBuffer),
     textures: std.ArrayList(RenderGraphTexture),
 
-    upload_passes: std.ArrayList(UploadPass),
+    buffer_upload_passes: std.ArrayList(BufferUploadPass),
     render_passes: std.ArrayList(RenderPass),
 
     pub fn init(allocator: std.mem.Allocator) Self {
@@ -154,7 +154,7 @@ pub const RenderGraph = struct {
             .transient_textures = .init(allocator),
             .buffers = .init(allocator),
             .textures = .init(allocator),
-            .upload_passes = .init(allocator),
+            .buffer_upload_passes = .init(allocator),
             .render_passes = .init(allocator),
         };
     }
@@ -165,7 +165,7 @@ pub const RenderGraph = struct {
         self.transient_textures.deinit();
         self.buffers.deinit();
         self.textures.deinit();
-        self.upload_passes.deinit();
+        self.buffer_upload_passes.deinit();
         self.render_passes.deinit();
     }
 
