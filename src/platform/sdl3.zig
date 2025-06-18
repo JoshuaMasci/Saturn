@@ -15,11 +15,16 @@ pub const c = @cImport({
 
 pub fn init(allocator: std.mem.Allocator) !void {
     _ = allocator; // autofix
+    if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
+        return error.sdlInitFailed;
+    }
+
     const version = c.SDL_GetVersion();
     std.log.info("Starting sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
 
-    if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
-        return error.sdlInitFailed;
+    const driver_opt = c.SDL_GetCurrentVideoDriver();
+    if (driver_opt) |driver| {
+        std.log.info("SDL3 using {s} backend", .{driver});
     }
 }
 
@@ -48,6 +53,7 @@ pub const Window = struct {
         }
 
         const handle = c.SDL_CreateWindow(name, window_width, window_height, window_flags).?;
+
         return .{ .handle = handle };
     }
 

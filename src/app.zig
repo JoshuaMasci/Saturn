@@ -55,7 +55,7 @@ pub const App = struct {
         world_gen.create_props(game_universe, game_worlds.inside, 10, zm.f32x4(2.5, 0.0, -15.0, 0.0), 0.15);
 
         //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json", .{ .position = zm.f32x4(0, -1, 0, 0) });
-        //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Bistro/scene.json", .{ .position = zm.f32x4(0, -50, 0, 0) });
+        try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Bistro/scene.json", .{ .position = zm.f32x4(0, -50, 0, 0) });
 
         return .{
             .should_quit = false,
@@ -143,22 +143,22 @@ pub const App = struct {
         {
             const window_size = self.window.getSize();
             self.imgui.startFrame(window_size, delta_time);
-            defer Imgui.imgui.endFrame();
+            defer self.imgui.context.endFrame();
 
-            _ = self.imgui.createFullscreenDockspace("MainDockspace");
-            defer Imgui.imgui.end();
+            //_ = self.imgui.createFullscreenDockspace("MainDockspace");
+            //defer Imgui.imgui.end();
 
-            if (Imgui.imgui.begin("Performance", .{})) {
-                Imgui.imgui.text("Delta Time {d:.3} ms", .{self.average_dt * 1000});
-                Imgui.imgui.text("FPS {d:.3}", .{1.0 / self.average_dt});
+            if (self.imgui.context.begin("Performance", null, 0)) {
+                self.imgui.context.textFmt("Delta Time {d:.3} ms", .{self.average_dt * 1000});
+                self.imgui.context.textFmt("FPS {d:.3}", .{1.0 / self.average_dt});
                 if (mem_usage_opt) |mem_usage| {
                     if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
                         defer frame_allocator.free(mem_usage_string);
-                        Imgui.imgui.text("Memory Usage {s}", .{mem_usage_string});
+                        self.imgui.context.textFmt("Memory Usage {s}", .{mem_usage_string});
                     }
                 }
             }
-            Imgui.imgui.end();
+            self.imgui.context.end();
 
             // if (!self.platform.isMouseCaptured() and
             //     !zimgui.isWindowHovered(.{ .any_window = true }) and

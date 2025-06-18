@@ -19,6 +19,7 @@ const Device = @import("vulkan/device.zig");
 const Image = @import("vulkan/image.zig");
 const Mesh = @import("vulkan/mesh.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
+const rg = @import("vulkan/render_graph.zig");
 
 pub const BuildCommandBufferData = struct {
     self: *const Self,
@@ -87,7 +88,9 @@ pub fn deinit(self: *Self) void {
     self.device.device.proxy.destroyPipeline(self.mesh_pipeline, null);
 }
 
-pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+    _ = resources; // autofix
+
     const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
     const self = data.self;
 

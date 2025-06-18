@@ -3,7 +3,6 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const GpuAllocator = @import("gpu_allocator.zig");
-
 const Queue = @import("queue.zig");
 
 const Self = @This();
@@ -17,6 +16,8 @@ physical_device: vk.PhysicalDevice,
 graphics_queue: Queue,
 
 gpu_allocator: GpuAllocator,
+
+debug: bool = false,
 
 pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_device: vk.PhysicalDevice) !Self {
     //TODO: have physical_device pick these

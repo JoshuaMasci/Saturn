@@ -11,7 +11,7 @@ const Buffer = @import("buffer.zig");
 const Image = @import("image.zig");
 const Instance = @import("instance.zig");
 const object_pools = @import("object_pools.zig");
-const RenderGraph = @import("render_graph.zig").RenderGraph;
+const rg = @import("render_graph.zig");
 const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
 const VkDevice = @import("vulkan_device.zig");
@@ -271,7 +271,7 @@ const UploadInfo = struct {
     bytes_written: usize,
 };
 
-pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: RenderGraph) !void {
+pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.RenderGraph) !void {
     self.frame_index = @mod(self.frame_index + 1, self.frame_data.len);
     const frame_data = &self.frame_data[self.frame_index];
 
@@ -384,14 +384,19 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
         };
     }
 
+    const resources = rg.Resources{
+        .buffers = buffers,
+        .textures = images,
+    };
+
     const command_buffer_handle = try frame_data.graphics_command_pool.get();
     const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.proxy.wrapper);
 
     try command_buffer.beginCommandBuffer(&.{});
     self.bindless_descriptor.bind(command_buffer, self.bindless_layout);
 
+    //Data upload
     if (render_graph.buffer_upload_passes.items.len != 0) {
-        //Data upload
         const buffer_upload_infos = try temp_allocator.alloc(UploadInfo, render_graph.buffer_upload_passes.items.len);
         defer temp_allocator.free(buffer_upload_infos);
 
@@ -540,14 +545,27 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
                 image_barriers.items.ptr,
             );
 
-            command_buffer.beginRendering(&.{
-                .render_area = .{ .extent = render_extent.?, .offset = .{ .x = 0, .y = 0 } },
+            const render_area: vk.Rect2D = .{ .extent = render_extent.?, .offset = .{ .x = 0, .y = 0 } };
+            const rendering_info: vk.RenderingInfo = .{
+                .render_area = render_area,
                 .layer_count = 1,
                 .view_mask = 0,
                 .color_attachment_count = @intCast(color_attachments.len),
                 .p_color_attachments = color_attachments.ptr,
                 .p_depth_attachment = if (depth_attachment) |attachment| @ptrCast(&attachment) else null,
-            });
+            };
+            command_buffer.beginRendering(&rendering_info);
+
+            const viewport: vk.Viewport = .{
+                .width = @floatFromInt(render_area.extent.width),
+                .height = @floatFromInt(render_area.extent.height),
+                .x = 0.0,
+                .y = 0.0,
+                .min_depth = 0.0,
+                .max_depth = 1.0,
+            };
+            command_buffer.setViewport(0, 1, @ptrCast(&viewport));
+            command_buffer.setScissor(0, 1, @ptrCast(&render_area));
         } else {
             //TODO: Replace this very bad barrier
             command_buffer.pipelineBarrier(
@@ -564,7 +582,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: Rend
         }
 
         if (render_pass.build_fn) |build_fn| {
-            build_fn(render_pass.build_data, self, command_buffer, render_extent);
+            build_fn(render_pass.build_data, self, resources, command_buffer, render_extent);
         }
 
         if (render_pass.raster_pass != null) {

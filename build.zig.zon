@@ -12,14 +12,9 @@
     .dependencies = .{
         .saturn_jolt = .{ .path = "libs/saturn_jolt" },
         .zdxc = .{ .path = "libs/zdxc" },
-
         .sdl3 = .{
             .url = "git+https://github.com/castholm/SDL.git#0ab7c9830bf17c1a2404461a88c0fdedf95309a4",
             .hash = "sdl-0.2.3+3.2.14-7uIn9Gh6fgEdV7R2A723rZxtbgkVd0PHIs2rvshLBqgV",
-        },
-        .zgui = .{
-            .url = "git+https://github.com/zig-gamedev/zgui.git#0f2e9c7b50b2b5f36243ac8028f38adfe289303b",
-            .hash = "zgui-0.6.0-dev--L6sZJWZaAAJXsX2Alyo89zyb0El4LV37XxEhPz1H9ql",
         },
         .zmath = .{
             .url = "git+https://github.com/zig-gamedev/zmath.git#ccf7297ef6c01e21b2d51ad81b5b6ce929e86a00",
@@ -44,6 +39,10 @@
         .vulkan_headers = .{
             .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#e2e53a724677f6eba8ff0ce1ccb64ee321785cbd",
             .hash = "N-V-__8AAMjV7gGH3DKcxHoM9tIKAxu9ypDzlJHSgEhQ8v_f",
+        },
+        .zimgui = .{
+            .url = "git+https://github.com/JoshuaMasci/zimgui.git#5ab1febdec7ce67219914c784ed69f152270118c",
+            .hash = "zimgui-0.0.0-KY3Tl_mmQQBp47VBtWzgTEVfNW9kosGbvySZgI1xAUQC",
         },
     },
 }

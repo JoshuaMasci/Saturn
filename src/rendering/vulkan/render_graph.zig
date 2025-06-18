@@ -19,9 +19,15 @@ pub const UploadFn = *const fn (data: ?*anyopaque, dst: []u8) usize;
 
 pub const DownloadFn = *const fn (data: ?*anyopaque, src: []u8) void;
 
+pub const Resources = struct {
+    buffers: []const @import("buffer.zig").Interface,
+    textures: []const @import("image.zig").Interface,
+};
+
 pub const CommandBufferBuildFn = *const fn (
     data: ?*anyopaque,
     device: *Device,
+    resources: Resources,
     command_buffer: vk.CommandBufferProxy,
     raster_pass_extent: ?vk.Extent2D,
 ) void;

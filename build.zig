@@ -30,13 +30,11 @@ pub fn build(b: *std.Build) !void {
     }
 
     // dear imgui
-    const zimgui = b.dependency("zgui", .{
-        .shared = false,
-        .backend = .no_backend,
-        .with_gizmo = true,
+    const zimgui = b.dependency("zimgui", .{
+        .target = target,
+        .optimize = optimize,
     });
-    exe.root_module.addImport("zimgui", zimgui.module("root"));
-    exe.linkLibrary(zimgui.artifact("imgui"));
+    exe.root_module.addImport("zimgui", zimgui.module("zimgui"));
 
     // saturn physics abstraction
     const saturn_jolt = b.dependency("saturn_jolt", .{ .enable_debug_renderer = true });
