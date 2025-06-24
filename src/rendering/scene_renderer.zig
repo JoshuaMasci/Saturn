@@ -46,6 +46,47 @@ pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Form
     const opaque_fragment_shader = try loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/opaque.frag.shader").?);
     defer device.device.proxy.destroyShaderModule(opaque_fragment_shader, null);
 
+    const bindings = [_]vk.VertexInputBindingDescription{
+        .{
+            .binding = 0,
+            .stride = @sizeOf(MeshAsset.Vertex),
+            .input_rate = .vertex,
+        },
+    };
+
+    const attributes = [_]vk.VertexInputAttributeDescription{
+        .{
+            .binding = 0,
+            .location = 0,
+            .format = .r32g32b32_sfloat, // FLOAT3
+            .offset = @offsetOf(MeshAsset.Vertex, "position"),
+        },
+        .{
+            .binding = 0,
+            .location = 1,
+            .format = .r32g32b32_sfloat, // FLOAT3
+            .offset = @offsetOf(MeshAsset.Vertex, "normal"),
+        },
+        .{
+            .binding = 0,
+            .location = 2,
+            .format = .r32g32b32a32_sfloat, // FLOAT4
+            .offset = @offsetOf(MeshAsset.Vertex, "tangent"),
+        },
+        .{
+            .binding = 0,
+            .location = 3,
+            .format = .r32g32_sfloat, // FLOAT2
+            .offset = @offsetOf(MeshAsset.Vertex, "uv0"),
+        },
+        .{
+            .binding = 0,
+            .location = 4,
+            .format = .r32g32_sfloat, // FLOAT2
+            .offset = @offsetOf(MeshAsset.Vertex, "uv1"),
+        },
+    };
+
     const mesh_pipeline = try Pipeline.createGraphicsPipeline(
         allocator,
         device.device.proxy,
@@ -55,6 +96,7 @@ pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Form
             .depth_format = depth_format,
             .cull_mode = .{},
         },
+        .{ .bindings = &bindings, .attributes = &attributes },
         vertex_shader,
         opaque_fragment_shader,
     );

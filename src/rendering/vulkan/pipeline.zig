@@ -1,8 +1,6 @@
 const std = @import("std");
 const vk = @import("vulkan");
 
-const MeshAsset = @import("../../asset/mesh.zig");
-
 pub const PipelineConfig = struct {
     color_format: vk.Format,
     depth_format: ?vk.Format = null,
@@ -16,6 +14,11 @@ pub const PipelineConfig = struct {
     enable_blending: bool = false,
 };
 
+pub const VertexInput = struct {
+    bindings: []const vk.VertexInputBindingDescription = &.{},
+    attributes: []const vk.VertexInputAttributeDescription = &.{},
+};
+
 pub const PipelineError = error{
     ShaderModuleCreationFailed,
     PipelineCreationFailed,
@@ -27,6 +30,7 @@ pub fn createGraphicsPipeline(
     device: vk.DeviceProxy,
     pipeline_layout: vk.PipelineLayout,
     config: PipelineConfig,
+    vertex_input: VertexInput,
     vertex_module: vk.ShaderModule,
     fragment_module: ?vk.ShaderModule,
 ) PipelineError!vk.Pipeline {
@@ -50,52 +54,11 @@ pub fn createGraphicsPipeline(
         },
     };
 
-    const vertex_binding_descriptions = [_]vk.VertexInputBindingDescription{
-        .{
-            .binding = 0,
-            .stride = @sizeOf(MeshAsset.Vertex),
-            .input_rate = .vertex,
-        },
-    };
-
-    const vertex_attribute_descriptions = [_]vk.VertexInputAttributeDescription{
-        .{
-            .binding = 0,
-            .location = 0,
-            .format = .r32g32b32_sfloat, // FLOAT3
-            .offset = @offsetOf(MeshAsset.Vertex, "position"),
-        },
-        .{
-            .binding = 0,
-            .location = 1,
-            .format = .r32g32b32_sfloat, // FLOAT3
-            .offset = @offsetOf(MeshAsset.Vertex, "normal"),
-        },
-        .{
-            .binding = 0,
-            .location = 2,
-            .format = .r32g32b32a32_sfloat, // FLOAT4
-            .offset = @offsetOf(MeshAsset.Vertex, "tangent"),
-        },
-        .{
-            .binding = 0,
-            .location = 3,
-            .format = .r32g32_sfloat, // FLOAT2
-            .offset = @offsetOf(MeshAsset.Vertex, "uv0"),
-        },
-        .{
-            .binding = 0,
-            .location = 4,
-            .format = .r32g32_sfloat, // FLOAT2
-            .offset = @offsetOf(MeshAsset.Vertex, "uv1"),
-        },
-    };
-
     const vertex_input_info = vk.PipelineVertexInputStateCreateInfo{
-        .vertex_binding_description_count = vertex_binding_descriptions.len,
-        .p_vertex_binding_descriptions = &vertex_binding_descriptions,
-        .vertex_attribute_description_count = vertex_attribute_descriptions.len,
-        .p_vertex_attribute_descriptions = &vertex_attribute_descriptions,
+        .vertex_binding_description_count = @intCast(vertex_input.bindings.len),
+        .p_vertex_binding_descriptions = vertex_input.bindings.ptr,
+        .vertex_attribute_description_count = @intCast(vertex_input.attributes.len),
+        .p_vertex_attribute_descriptions = vertex_input.attributes.ptr,
     };
 
     // Input assembly state

@@ -62,7 +62,7 @@ pub const RenderThread = struct {
 
     should_reload: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, window: Window) !Self {
+    pub fn init(allocator: std.mem.Allocator, window: Window, imgui: @import("zimgui")) !Self {
         const device = try allocator.create(Device);
         errdefer allocator.destroy(device);
 
@@ -82,6 +82,7 @@ pub const RenderThread = struct {
         const imgui_renderer = ImguiRenderer.init(
             allocator,
             device,
+            imgui,
             .b8g8r8a8_unorm,
             device.bindless_layout,
         ) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});

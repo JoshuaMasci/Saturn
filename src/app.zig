@@ -44,7 +44,7 @@ pub const App = struct {
 
         const platform_input = try PlatformInput.init(global.global_allocator);
         const window = Window.init("Saturn Engine", .{ .windowed = .{ 1600, 900 } });
-        const render_thread = try RenderThread.init(global.global_allocator, window);
+        const render_thread = try RenderThread.init(global.global_allocator, window, imgui.context);
 
         physics_system.init(global.global_allocator);
         //physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
@@ -103,7 +103,8 @@ pub const App = struct {
                 self.frames = 0;
                 std.log.info("Delta Time {d:.3} ms", .{self.average_dt * 1000});
                 if (mem_usage_opt) |mem_usage| {
-                    if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+                    const formatted_string: ?[]const u8 = @import("utils.zig").format_bytes(frame_allocator, mem_usage) catch null;
+                    if (formatted_string) |mem_usage_string| {
                         defer frame_allocator.free(mem_usage_string);
                         std.log.info("Memory Usage {s}", .{mem_usage_string});
                     }
@@ -148,11 +149,12 @@ pub const App = struct {
             //_ = self.imgui.createFullscreenDockspace("MainDockspace");
             //defer Imgui.imgui.end();
 
-            if (self.imgui.context.begin("Performance", null, 0)) {
+            if (self.imgui.context.begin("Performance", null, .{})) {
                 self.imgui.context.textFmt("Delta Time {d:.3} ms", .{self.average_dt * 1000});
                 self.imgui.context.textFmt("FPS {d:.3}", .{1.0 / self.average_dt});
                 if (mem_usage_opt) |mem_usage| {
-                    if (@import("utils.zig").format_human_readable_bytes(frame_allocator, mem_usage)) |mem_usage_string| {
+                    const formatted_string: ?[]const u8 = @import("utils.zig").format_bytes(frame_allocator, mem_usage) catch null;
+                    if (formatted_string) |mem_usage_string| {
                         defer frame_allocator.free(mem_usage_string);
                         self.imgui.context.textFmt("Memory Usage {s}", .{mem_usage_string});
                     }

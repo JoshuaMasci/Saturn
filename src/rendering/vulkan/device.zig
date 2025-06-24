@@ -376,7 +376,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
                 const transient_desc = render_graph.transient_textures.items[transient_index];
                 const extent: vk.Extent2D = switch (transient_desc.extent) {
                     .fixed => |extent| extent,
-                    .relative => |r| images[r.texture_index].extent,
+                    .relative => |r| images[r.index].extent,
                 };
                 frame_data.transient_images.items[transient_index] = try self.createImage(.{ extent.width, extent.height }, transient_desc.format, transient_desc.usage);
                 break :img self.images.get(frame_data.transient_images.items[transient_index]).?.interface();
@@ -440,7 +440,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         );
 
         for (buffer_upload_infos, render_graph.buffer_upload_passes.items) |info, upload| {
-            const dst = buffers[upload.target.buffer_index];
+            const dst = buffers[upload.target.index];
 
             var write_size = info.bytes_written;
             if (dst.size < upload.offset + upload.size) {
@@ -479,7 +479,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
             defer temp_allocator.free(color_attachments);
 
             for (color_attachments, raster_pass.color_attachments.items) |*vk_attachment, attachment| {
-                const interface = &images[attachment.texture.texture_index];
+                const interface = &images[attachment.texture.index];
 
                 if (interface.transitionLazy(.color_attachment_optimal)) |barrier| {
                     image_barriers.appendAssumeCapacity(barrier);
@@ -506,7 +506,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
 
             var depth_attachment: ?vk.RenderingAttachmentInfo = null;
             if (raster_pass.depth_attachment) |attachment| {
-                const interface = &images[attachment.texture.texture_index];
+                const interface = &images[attachment.texture.index];
 
                 if (interface.transitionLazy(.depth_attachment_stencil_read_only_optimal)) |barrier| {
                     image_barriers.appendAssumeCapacity(barrier);

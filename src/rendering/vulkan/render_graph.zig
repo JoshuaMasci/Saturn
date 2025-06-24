@@ -42,7 +42,7 @@ pub const RenderGraphBuffer = union(enum) {
     persistent: BufferHandle,
     transient: usize,
 };
-pub const RenderGraphBufferHandle = struct { buffer_index: usize };
+pub const RenderGraphBufferHandle = struct { index: usize };
 
 pub const TextureExtent = union(enum) {
     fixed: vk.Extent2D,
@@ -60,7 +60,7 @@ pub const RenderGraphTexture = union(enum) {
     transient: usize,
     swapchain: usize,
 };
-pub const RenderGraphTextureHandle = struct { texture_index: usize };
+pub const RenderGraphTextureHandle = struct { index: usize };
 
 pub const BufferUploadPass = struct {
     target: RenderGraphBufferHandle,
@@ -178,7 +178,7 @@ pub const RenderGraph = struct {
     pub fn importBuffer(self: *Self, handle: BufferHandle) !RenderGraphBuffer {
         const buffer_index = self.buffers.items.len;
         try self.buffer.append(.{ .persistent = handle });
-        return .{ .buffer_index = buffer_index };
+        return .{ .index = buffer_index };
     }
 
     pub fn createTransientBuffer(self: *Self, definition: TransientBuffer) !RenderGraphBufferHandle {
@@ -187,13 +187,13 @@ pub const RenderGraph = struct {
 
         const buffer_index = self.buffers.items.len;
         try self.buffers.append(.{ .transient = transient_index });
-        return .{ .buffer_index = buffer_index };
+        return .{ .index = buffer_index };
     }
 
     pub fn importTexture(self: *Self, handle: ImageHandle) !RenderGraphTextureHandle {
         const texture_index = self.textures.items.len;
         try self.textures.append(.{ .persistent = handle });
-        return .{ .texture_index = texture_index };
+        return .{ .index = texture_index };
     }
 
     pub fn createTransientTexture(self: *Self, definition: TransientTexture) !RenderGraphTextureHandle {
@@ -202,7 +202,7 @@ pub const RenderGraph = struct {
 
         const texture_index = self.textures.items.len;
         try self.textures.append(.{ .transient = transient_index });
-        return .{ .texture_index = texture_index };
+        return .{ .index = texture_index };
     }
 
     pub fn acquireSwapchainTexture(self: *Self, window: Window) !RenderGraphTextureHandle {
@@ -211,6 +211,6 @@ pub const RenderGraph = struct {
 
         const texture_index = self.textures.items.len;
         try self.textures.append(.{ .swapchain = swapchain_index });
-        return .{ .texture_index = texture_index };
+        return .{ .index = texture_index };
     }
 };
