@@ -41,8 +41,8 @@
             .hash = "N-V-__8AAMjV7gGH3DKcxHoM9tIKAxu9ypDzlJHSgEhQ8v_f",
         },
         .zimgui = .{
-            .url = "git+https://github.com/JoshuaMasci/zimgui.git#885ad8d3b66cc3280b572d41e65e8f5c61cbe206",
-            .hash = "zimgui-0.0.0-KY3Tl3yvQQCrtfxpLgRRtawEbgn3r6CuOPmeRWiu2pDL",
+            .url = "git+https://github.com/JoshuaMasci/zimgui.git#e2bae03aeaa1df377482d79bd0aa05d97c1df91b",
+            .hash = "zimgui-0.0.0-KY3Tl462QQBJveP_R9M3MMpZ3JKPpMZDHs0BVL0p9Bjn",
         },
     },
 }

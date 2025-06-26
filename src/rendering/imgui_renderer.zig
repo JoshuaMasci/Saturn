@@ -66,21 +66,22 @@ pub fn init(allocator: std.mem.Allocator, device: *Device, imgui: Imgui, color_f
             .color_format = color_format,
             .enable_depth_test = false,
             .enable_depth_write = false,
-            .cull_mode = .{},
+            .cull_mode = .{ .front_bit = false, .back_bit = false },
+            .enable_blending = true,
         },
         .{ .bindings = &bindings, .attributes = &attributes },
         vertex_shader,
         fragment_shader,
     );
 
-    const font_data = imgui.getFontAtlasAsRGBA32().?;
-
+    const font_data = imgui.getFontAtlasAsR8().?;
     const font_texture = try device.createImageWithData(
-        .{ @intCast(font_data.size[0]), @intCast(font_data.size[1]) },
-        .r8g8b8a8_unorm,
+        font_data.size,
+        .r8_unorm,
         .{ .sampled_bit = true, .transfer_dst_bit = true },
         font_data.data,
     );
+    errdefer device.destroyImage(font_texture);
 
     return .{
         .allocator = allocator,
@@ -203,25 +204,18 @@ pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: 
                 var clip_max: Imgui.Vec2 = .{ .x = (draw_cmd.ClipRect.z - clip_off.x) * clip_scale.x, .y = (draw_cmd.ClipRect.w - clip_off.y) * clip_scale.y };
 
                 // Clamp to viewport as vkCmdSetScissor() won't accept values that are off bounds
-                if (clip_min.x < 0.0) {
-                    clip_min.x = 0.0;
-                }
-                if (clip_min.y < 0.0) {
-                    clip_min.y = 0.0;
-                }
-                if (clip_max.x > framebuffer_size_f[0]) {
-                    clip_max.x = framebuffer_size_f[0];
-                }
-                if (clip_max.y > framebuffer_size_f[1]) {
-                    clip_max.y = framebuffer_size_f[1];
-                }
+
+                clip_min.x = @max(clip_min.x, 0.0);
+                clip_min.y = @max(clip_min.y, 0.0);
+                clip_max.x = @min(clip_max.x, framebuffer_size_f[0]);
+                clip_max.y = @min(clip_max.y, framebuffer_size_f[1]);
                 if (clip_max.x <= clip_min.x or clip_max.y <= clip_min.y)
                     continue;
 
                 const scissor = vk.Rect2D{
                     .offset = .{
                         .x = @intFromFloat(clip_min.x),
-                        .y = @intFromFloat(clip_min.x),
+                        .y = @intFromFloat(clip_min.y),
                     },
                     .extent = .{
                         .width = @intFromFloat(clip_max.x - clip_min.x),
@@ -330,7 +324,7 @@ fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Re
     };
     const push_data: [4]f32 = .{
         scale[0],     scale[1],
-        translate[0], scale[1],
+        translate[0], translate[1],
     };
 
     const AllStages = vk.ShaderStageFlags{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true };
@@ -341,7 +335,7 @@ fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Re
 
     for (data.draw_commands) |draw_command| {
         const texture = resources.textures[draw_command.texture.index];
-        const bindings_index: u32 = texture.sampled_binding orelse 0;
+        const bindings_index: u32 = texture.sampled_binding.?;
 
         command_buffer.pushConstants(data.layout, AllStages, @sizeOf([4]f32), @sizeOf(u32), @ptrCast(&bindings_index));
         command_buffer.setScissor(0, 1, @ptrCast(&draw_command.scissor));

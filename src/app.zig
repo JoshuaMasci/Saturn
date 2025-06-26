@@ -55,7 +55,7 @@ pub const App = struct {
         world_gen.create_props(game_universe, game_worlds.inside, 10, zm.f32x4(2.5, 0.0, -15.0, 0.0), 0.15);
 
         //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json", .{ .position = zm.f32x4(0, -1, 0, 0) });
-        try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Bistro/scene.json", .{ .position = zm.f32x4(0, -50, 0, 0) });
+        //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Bistro/scene.json", .{ .position = zm.f32x4(0, -50, 0, 0) });
 
         return .{
             .should_quit = false,
@@ -96,19 +96,11 @@ pub const App = struct {
         {
             self.timer += delta_time;
             self.frames += 1;
-            if (self.timer > 5.0) {
+            if (self.timer > 0.1) {
                 const avr_delta_time = self.timer / self.frames;
                 self.average_dt = avr_delta_time;
                 self.timer = 0.0;
                 self.frames = 0;
-                std.log.info("Delta Time {d:.3} ms", .{self.average_dt * 1000});
-                if (mem_usage_opt) |mem_usage| {
-                    const formatted_string: ?[]const u8 = @import("utils.zig").format_bytes(frame_allocator, mem_usage) catch null;
-                    if (formatted_string) |mem_usage_string| {
-                        defer frame_allocator.free(mem_usage_string);
-                        std.log.info("Memory Usage {s}", .{mem_usage_string});
-                    }
-                }
             }
         }
 

@@ -105,6 +105,10 @@ pub fn build(b: *std.Build) !void {
         build_engine_assets.addArg("assets/");
         build_engine_assets.addArg("zig-out/assets");
 
+        //TODO: get this path from builder
+        const run_engine_assets_step = b.step("engine_assets", "Process engine assets");
+        run_engine_assets_step.dependOn(&build_engine_assets.step);
+
         const build_game_assets = b.addRunArtifact(assets_exe);
         build_game_assets.step.dependOn(b.getInstallStep());
         build_game_assets.addArg("game");
@@ -112,7 +116,10 @@ pub fn build(b: *std.Build) !void {
         build_game_assets.addArg("zig-out/game-assets");
 
         //TODO: get this path from builder
-        const run_assets_step = b.step("assets", "Process assets");
+        const run_game_assets_step = b.step("game_assets", "Process game assets");
+        run_game_assets_step.dependOn(&build_game_assets.step);
+
+        const run_assets_step = b.step("assets", "Process all assets");
         run_assets_step.dependOn(&build_engine_assets.step);
         run_assets_step.dependOn(&build_game_assets.step);
     }

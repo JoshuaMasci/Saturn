@@ -103,3 +103,17 @@ pub fn deinit(self: Self) void {
     self.proxy.destroyDevice(null);
     self.allocator.destroy(self.proxy.wrapper);
 }
+
+pub fn setDebugName(self: Self, object_type: vk.ObjectType, handle: u64, name: [:0]const u8) void {
+    if (!self.debug) {
+        return;
+    }
+
+    self.proxy.setDebugUtilsObjectNameEXT(&.{
+        .object_type = object_type,
+        .object_handle = handle,
+        .p_object_name = name,
+    }) catch |err| {
+        std.log.err("Failed to set object name \"{s}\" for  {}: {}", .{ name, handle, err });
+    };
+}

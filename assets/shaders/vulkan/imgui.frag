@@ -28,5 +28,5 @@ struct FragmentInput
 
 float4 main(FragmentInput input) : SV_Target
 {
-    return input.in_color * sampleTexture(push_constants.texture_index, input.in_uv);
+    return input.in_color * sampleTexture(push_constants.texture_index, input.in_uv).r;
 }

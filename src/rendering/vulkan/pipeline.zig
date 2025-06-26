@@ -5,7 +5,7 @@ pub const PipelineConfig = struct {
     color_format: vk.Format,
     depth_format: ?vk.Format = null,
     sample_count: vk.SampleCountFlags = .{ .@"1_bit" = true },
-    cull_mode: vk.CullModeFlags = .{ .back_bit = true },
+    cull_mode: vk.CullModeFlags = .{},
     front_face: vk.FrontFace = .counter_clockwise,
     polygon_mode: vk.PolygonMode = .fill,
     enable_depth_test: bool = true,
@@ -118,7 +118,7 @@ pub fn createGraphicsPipeline(
     };
 
     // Color blend attachment state
-    const color_blend_attachment = vk.PipelineColorBlendAttachmentState{
+    const color_blend_attachment: [1]vk.PipelineColorBlendAttachmentState = .{.{
         .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
         .blend_enable = if (config.enable_blending) vk.TRUE else vk.FALSE,
         .src_color_blend_factor = .src_alpha,
@@ -127,14 +127,14 @@ pub fn createGraphicsPipeline(
         .src_alpha_blend_factor = .one,
         .dst_alpha_blend_factor = .zero,
         .alpha_blend_op = .add,
-    };
+    }};
 
     // Color blend state
     const color_blending = vk.PipelineColorBlendStateCreateInfo{
         .flags = .{},
         .logic_op_enable = vk.FALSE,
         .logic_op = .copy,
-        .attachment_count = 1,
+        .attachment_count = @intCast(color_blend_attachment.len),
         .p_attachments = @ptrCast(&color_blend_attachment),
         .blend_constants = [4]f32{ 0.0, 0.0, 0.0, 0.0 },
     };
