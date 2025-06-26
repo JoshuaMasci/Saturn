@@ -104,7 +104,11 @@ pub const App = struct {
             }
         }
 
-        try self.platform_input.proccessEvents();
+        try self.platform_input.proccessEvents(.{
+            .data = @ptrCast(self),
+            .resize = window_resize,
+            .close_requested = window_close_requested,
+        });
         self.imgui.updateInput(&self.platform_input);
 
         if (!self.platform_input.isMouseCaptured()) {
@@ -195,3 +199,22 @@ pub const App = struct {
         self.game_universe.update(.frame_end, delta_time);
     }
 };
+
+fn window_resize(data: ?*anyopaque, window: Window, size: [2]u32) void {
+    _ = size; // autofix
+    const app: *App = @alignCast(@ptrCast(data.?));
+
+    //IDK if I should do this here, it probably could cause a race condition
+    if (app.render_thread.data.device.swapchains.get(window)) |swapchain| {
+        swapchain.swapchain.out_of_date = true;
+    }
+}
+
+fn window_close_requested(data: ?*anyopaque, window: Window) void {
+    const app: *App = @alignCast(@ptrCast(data.?));
+
+    if (app.window.handle == window.handle) {
+        std.log.info("Main Window got close request", .{});
+        app.should_quit = true;
+    }
+}

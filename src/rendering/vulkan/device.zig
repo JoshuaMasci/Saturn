@@ -309,8 +309,6 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         var swapchain = surface_swapchain.swapchain;
 
         if (swapchain.out_of_date) {
-            std.log.info("Rebuilding Swapchain", .{});
-            //_ = self.device.proxy.deviceWaitIdle() catch {};
             const window_size = window.getSize();
             const new_swapchain = try Swapchain.init(
                 self.device,
@@ -320,8 +318,6 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
             );
             swapchain.deinit();
             swapchain.* = new_swapchain;
-
-            std.log.info("Finished Rebuilding Swapchain", .{});
         }
 
         const wait_semaphore = try frame_data.semaphore_pool.get();

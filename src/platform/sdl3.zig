@@ -69,6 +69,12 @@ pub const Window = struct {
     }
 };
 
+pub const WindowCallbacks = struct {
+    data: ?*anyopaque = null,
+    resize: ?*const fn (data: ?*anyopaque, window: Window, size: [2]u32) void = null,
+    close_requested: ?*const fn (data: ?*anyopaque, window: Window) void = null,
+};
+
 pub const Input = struct {
     const Self = @This();
 
@@ -156,7 +162,7 @@ pub const Input = struct {
         return null;
     }
 
-    pub fn proccessEvents(self: *Self) !void {
+    pub fn proccessEvents(self: *Self, window_callbacks: WindowCallbacks) !void {
         self.keyboard_mouse_device.beginFrame();
 
         for (self.controllers.values()) |controller| {
@@ -166,7 +172,28 @@ pub const Input = struct {
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event)) {
             switch (event.type) {
-                c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
+                c.SDL_EVENT_WINDOW_RESIZED => {
+                    if (window_callbacks.resize) |resize_fn| {
+                        if (c.SDL_GetWindowFromID(event.window.windowID)) |handle| {
+                            const window: Window = .{ .handle = handle };
+                            const size: [2]u32 = .{ @intCast(event.window.data1), @intCast(event.window.data2) };
+                            resize_fn(window_callbacks.data, window, size);
+                        } else {
+                            std.log.warn("SDL_GetWindowFromID Failed for ID({})", .{event.window.windowID});
+                        }
+                    }
+                },
+                c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
+                    if (window_callbacks.close_requested) |close_fn| {
+                        if (c.SDL_GetWindowFromID(event.window.windowID)) |handle| {
+                            const window: Window = .{ .handle = handle };
+                            close_fn(window_callbacks.data, window);
+                        } else {
+                            std.log.warn("SDL_GetWindowFromID Failed for ID({})", .{event.window.windowID});
+                        }
+                    }
+                },
+                c.SDL_EVENT_QUIT => {
                     self.should_quit = true;
                 },
                 c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
