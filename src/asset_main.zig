@@ -2,6 +2,9 @@ const std = @import("std");
 
 pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8;
 
+const io = @import("asset/io.zig");
+const AssetType = @import("asset/header.zig").AssetType;
+
 const Material = @import("asset/material.zig");
 
 //Asset Loaders
@@ -156,13 +159,8 @@ fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
-    makePath(output_dir, new_path);
-    const output_file = output_dir.createFile(new_path, .{}) catch |err|
-        return errorString(allocator, "Failed to create file: {}", .{err});
-    defer output_file.close();
-
-    processed_mesh.serialize(output_file.writer()) catch |err|
-        return errorString(allocator, "Failed to serialize file: {}", .{err});
+    io.writeFile(output_dir, .mesh, new_path, processed_mesh) catch |err|
+        return errorString(allocator, "Failed to write asset file: {}", .{err});
 
     return null;
 }
@@ -178,13 +176,8 @@ fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
-    makePath(output_dir, new_path);
-    const output_file = output_dir.createFile(new_path, .{}) catch |err|
-        return errorString(allocator, "Failed to create file: {}", .{err});
-    defer output_file.close();
-
-    texture.serialize(output_file.writer()) catch |err|
-        return errorString(allocator, "Failed to serialize file: {}", .{err});
+    io.writeFile(output_dir, .texture_2d, new_path, texture) catch |err|
+        return errorString(allocator, "Failed to write asset file: {}", .{err});
 
     return null;
 }
@@ -204,13 +197,8 @@ fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
-    makePath(output_dir, new_path);
-    const output_file = output_dir.createFile(new_path, .{}) catch |err|
-        return errorString(allocator, "Failed to create file: {}", .{err});
-    defer output_file.close();
-
-    material.serialize(output_file.writer()) catch |err|
-        return errorString(allocator, "Failed to serialize file: {}", .{err});
+    io.writeFile(output_dir, .material, new_path, material) catch |err|
+        return errorString(allocator, "Failed to write asset file: {}", .{err});
 
     return null;
 }
@@ -225,34 +213,22 @@ fn processShader(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]co
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
-    makePath(output_dir, new_path);
-    const output_file = output_dir.createFile(new_path, .{}) catch |err|
-        return errorString(allocator, "Failed to create file: {}", .{err});
-    defer output_file.close();
-
-    shader.serialize(output_file.writer()) catch |err|
-        return errorString(allocator, "Failed to serialize file: {}", .{err});
+    io.writeFile(output_dir, .shader, new_path, shader) catch |err|
+        return errorString(allocator, "Failed to write asset file: {}", .{err});
 
     return null;
 }
 
-fn GltfResourceWorker(comptime load_fn: anytype, comptime asset_name: []const u8) type {
+fn GltfResourceWorker(comptime load_fn: anytype, comptime asset_name: []const u8, comptime atype: AssetType) type {
     return struct {
         fn run(gltf_file: *Gltf, allocator: std.mem.Allocator, index: usize) void {
             if (load_fn(gltf_file.*, allocator, index)) |result| {
                 defer result.value.deinit(allocator);
 
                 const output_file_path = result.output_path;
-                makePath(output_dir, output_file_path);
 
-                const output_file = output_dir.createFile(output_file_path, .{}) catch |err| {
-                    std.log.err("Failed to create file: {}", .{err});
-                    return;
-                };
-                defer output_file.close();
-
-                result.value.serialize(output_file.writer()) catch |err| {
-                    std.log.err("Failed to serialize file: {}", .{err});
+                io.writeFile(output_dir, atype, output_file_path, result.value) catch |err| {
+                    std.log.err("Failed to write asset file: {}", .{err});
                     return;
                 };
             } else |err| {
@@ -261,9 +237,9 @@ fn GltfResourceWorker(comptime load_fn: anytype, comptime asset_name: []const u8
         }
     };
 }
-const mesh_thread_worker = GltfResourceWorker(Gltf.loadMesh, "mesh").run;
-const texture_thread_worker = GltfResourceWorker(Gltf.loadTexture, "texture").run;
-const material_thread_worker = GltfResourceWorker(Gltf.loadMaterial, "material").run;
+const mesh_thread_worker = GltfResourceWorker(Gltf.loadMesh, "mesh", .mesh).run;
+const texture_thread_worker = GltfResourceWorker(Gltf.loadTexture, "texture", .texture_2d).run;
+const material_thread_worker = GltfResourceWorker(Gltf.loadMaterial, "material", .material).run;
 
 fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
     const file_path = removeExt(meta_file_path);

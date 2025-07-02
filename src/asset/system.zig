@@ -1,4 +1,7 @@
 const std = @import("std");
+
+const io = @import("io.zig");
+
 const testing = std.testing;
 pub const HashMethod = std.hash.Fnv1a_32.hash;
 
@@ -135,7 +138,7 @@ pub fn AssetSystem(comptime T: type, comptime extesnions: []const []const u8) ty
             if (self.repositories.get(handle.repo_hash)) |repository| {
                 if (try repository.getAssetFile(handle.asset_hash)) |asset_file| {
                     defer asset_file.close();
-                    return try T.deserialzie(allocator, asset_file.reader());
+                    return try io.readFile(allocator, asset_file.reader(), T);
                 } else {
                     return error.InvalidAssetHash;
                 }

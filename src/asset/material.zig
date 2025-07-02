@@ -5,8 +5,6 @@ const TextureAssetHandle = @import("texture_2d.zig").Registry.Handle;
 
 pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".mat"});
 
-const MAGIC: [8]u8 = .{ 'S', 'A', 'T', '-', 'M', 'A', 'T', 'E' };
-
 pub const AlphaMode = enum(u32) {
     alpha_opaque,
     alpha_blend,
@@ -111,17 +109,11 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
 }
 
 pub fn serialize(self: Self, writer: std.fs.File.Writer) !void {
-    try writer.writeAll(&MAGIC);
     try serde.serialzieSlice(u8, writer, self.name);
     try writer.writeStructEndian(PackedMaterial.pack(self), .little);
 }
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !Self {
-    var magic: [8]u8 = undefined;
-    try reader.readNoEof(&magic);
-    if (!std.mem.eql(u8, &MAGIC, &magic)) {
-        return error.InvalidMagic;
-    }
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     var value = (try reader.readStruct(PackedMaterial)).unpack();
     value.name = name;

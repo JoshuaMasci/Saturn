@@ -111,11 +111,11 @@ pub const App = struct {
         });
         self.imgui.updateInput(&self.platform_input);
 
-        if (!self.platform_input.isMouseCaptured()) {
-            if (self.platform_input.isMousePressed(.left)) {
-                self.platform_input.captureMouse(self.window);
-            }
-        }
+        // if (!self.platform_input.isMouseCaptured()) {
+        //     if (self.platform_input.isMousePressed(.left)) {
+        //         self.platform_input.captureMouse(self.window);
+        //     }
+        // }
 
         //Don't need to check mouse capture since the mouse input device already does that
         const input_devices = self.platform_input.getInputDevices();

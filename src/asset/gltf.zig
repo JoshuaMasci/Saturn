@@ -113,12 +113,16 @@ pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !st
         primitives[i] = try loadGltfPrimitive(allocator, &self.gltf_file, &primitive);
     }
 
+    var mesh: Mesh = .{
+        .name = mesh_name,
+        .sphere_pos_radius = undefined,
+        .primitives = primitives,
+    };
+    mesh.calcBoundingSphere();
+
     return .{
         .output_path = self.asset_info.meshes[gltf_index].path,
-        .value = .{
-            .name = mesh_name,
-            .primitives = primitives,
-        },
+        .value = mesh,
     };
 }
 
@@ -530,7 +534,7 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
     }
 
     return .{
-        .sphere_pos_radius = .{ 0, 0, 0, 0 },
+        .sphere_pos_radius = undefined,
         .vertices = vertices,
         .indices = indices,
     };

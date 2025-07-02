@@ -120,3 +120,7 @@ pub fn createWorld(self: *Self) *World {
     world.* = World.init(self.allocator, self, handle) catch |err| std.debug.panic("Failed to init world: {}", .{err});
     return world;
 }
+
+pub fn destroyWorld(self: *Self, handle: World.Handle) void {
+    self.worlds.destroy(handle);
+}

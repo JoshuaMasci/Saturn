@@ -20,6 +20,7 @@ const Image = @import("vulkan/image.zig");
 const Mesh = @import("vulkan/mesh.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
+const utils = @import("vulkan/utils.zig");
 
 pub const BuildCommandBufferData = struct {
     self: *const Self,
@@ -40,10 +41,10 @@ texture_map: std.AutoArrayHashMap(Texture2dAsset.Registry.Handle, Device.ImageHa
 material_map: std.AutoArrayHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
 
 pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Format, depth_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
-    const vertex_shader = try loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/static_mesh.vert.shader").?);
+    const vertex_shader = try utils.loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/static_mesh.vert.shader").?);
     defer device.device.proxy.destroyShaderModule(vertex_shader, null);
 
-    const opaque_fragment_shader = try loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/opaque.frag.shader").?);
+    const opaque_fragment_shader = try utils.loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/opaque.frag.shader").?);
     defer device.device.proxy.destroyShaderModule(opaque_fragment_shader, null);
 
     const bindings = [_]vk.VertexInputBindingDescription{
@@ -304,19 +305,4 @@ pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: M
             std.log.err("Failed to load material {}", .{err});
         }
     }
-}
-
-fn loadGraphicsShader(allocator: std.mem.Allocator, device: vk.DeviceProxy, handle: ShaderAssetHandle) !vk.ShaderModule {
-    var shader = try global.assets.shaders.loadAsset(allocator, handle);
-    defer shader.deinit(allocator);
-
-    if (shader.target != .vulkan) {
-        return error.InvalidShaderTarget;
-    }
-
-    return try device.createShaderModule(&.{
-        .flags = .{},
-        .code_size = shader.spirv_code.len * @sizeOf(u32), //Code size is in bytes, despite the p_code being a u32ptr
-        .p_code = @alignCast(@ptrCast(shader.spirv_code.ptr)),
-    }, null);
 }

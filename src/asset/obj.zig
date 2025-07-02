@@ -39,10 +39,14 @@ pub fn loadObjMesh(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []c
         };
     }
 
-    return .{
+    var mesh: Mesh = .{
         .name = &.{},
+        .sphere_pos_radius = undefined,
         .primitives = primitives,
     };
+    mesh.calcBoundingSphere();
+
+    return mesh;
 }
 
 fn extract3f(data: []const f32, idx: u32) ![3]f32 {

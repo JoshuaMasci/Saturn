@@ -3,8 +3,6 @@ const serde = @import("../serde.zig");
 
 pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".shader"});
 
-const MAGIC: [8]u8 = .{ 'S', 'A', 'T', '-', 'S', 'H', 'A', 'D' };
-
 pub const Meta = struct {
     target: Target = .vulkan, //TODO: change default to vulkan
     entry: ?[]const u8 = null,
@@ -41,7 +39,6 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
 }
 
 pub fn serialize(self: Self, writer: anytype) !void {
-    try writer.writeAll(&MAGIC);
     try serde.serialzieSlice(u8, writer, self.name);
 
     try writer.writeInt(u32, @intFromEnum(self.target), .little);
@@ -56,12 +53,6 @@ pub fn serialize(self: Self, writer: anytype) !void {
 }
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
-    var magic: [8]u8 = undefined;
-    try reader.readNoEof(&magic);
-    if (!std.mem.eql(u8, &MAGIC, &magic)) {
-        return error.InvalidMagic;
-    }
-
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     errdefer allocator.free(name);
 
