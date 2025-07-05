@@ -183,6 +183,7 @@ pub const App = struct {
             if (game_debug_entity.world) |game_world| {
                 const rendering = @import("entity/engine/rendering.zig");
                 const physics = @import("entity/engine/physics.zig");
+                const zphysics = @import("physics");
 
                 if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
                     self.render_thread.data.draw_scene = .{
@@ -194,7 +195,13 @@ pub const App = struct {
 
                     if (self.render_physics_debug) {
                         if (game_world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
-                            self.render_thread.data.physics_renderer.buildFrame(&physics_world.physics_world, .{});
+                            var ignore_list = std.BoundedArray(zphysics.Body, 8).init(0) catch unreachable;
+
+                            if (game_debug_entity.systems.get(physics.PhysicsEntitySystem)) |game_debug_entity_physics| {
+                                ignore_list.appendAssumeCapacity(game_debug_entity_physics.body);
+                            }
+
+                            self.render_thread.data.physics_renderer.buildFrame(&physics_world.physics_world, .{}, ignore_list.slice());
                         }
                     }
                 }

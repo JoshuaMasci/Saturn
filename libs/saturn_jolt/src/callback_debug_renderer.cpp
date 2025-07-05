@@ -1,11 +1,31 @@
 #include "callback_debug_renderer.hpp"
 #include "math.hpp"
 
+#include <Jolt/Physics/PhysicsSystem.h>
+
 // Needed to make the casting from JPH to Saturn unambiguous for some reason
 namespace Saturn {
 	using Triangle = Triangle;
 	using Vertex = Vertex;
 } // namespace Saturn
+
+bool IgnoreListBodyDrawFilter::ShouldDraw(const JPH::Body& inBody) const
+{
+    if (this->ignore_bodies == nullptr) {
+	    return true;
+	}
+
+    Body *body_ptr = reinterpret_cast<Body *>(inBody.GetUserData());
+
+    for (uint32_t i = 0; i < this->ignore_bodies_count; i++) {
+        if (body_ptr == this->ignore_bodies[i]) {
+            return false;
+        }
+    }
+
+	return true;
+}
+
 
 CallbackDebugRenderer::CallbackDebugRenderer(DebugRendererCallbacks data) {
 	callback_data = data;

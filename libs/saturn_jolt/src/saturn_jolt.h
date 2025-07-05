@@ -145,7 +145,7 @@ typedef struct DebugRendererCallbacks {
 
 void debugRendererCreate(DebugRendererCallbacks data);
 void debugRendererDestroy();
-void debugRendererBuildFrame(World *world_ptr, Transform transform);
+void debugRendererBuildFrame(World *world_ptr, Transform transform, const Body* const* ignore_bodies, const uint32_t ignore_bodies_count);
 
 // Structs
 typedef struct WorldSettings {

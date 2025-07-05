@@ -1,6 +1,7 @@
 .{
     .name = .saturn_jolt,
     .version = "0.0.1",
+    .fingerprint = 0x1e71abbe2fbffc3,
     .minimum_zig_version = "0.12.0",
     .paths = .{
         "build.zig",

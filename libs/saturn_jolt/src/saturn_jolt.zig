@@ -300,8 +300,8 @@ pub fn deinitDebugRenderer() void {
     c.debugRendererDestroy();
 }
 
-pub fn debugRendererBuildFrame(world: *World, transform: Transform) void {
-    c.debugRendererBuildFrame(world.ptr, transform);
+pub fn debugRendererBuildFrame(world: *World, transform: Transform, ignore_bodies: []const Body) void {
+    c.debugRendererBuildFrame(world.ptr, transform, @ptrCast(ignore_bodies.ptr), @intCast(ignore_bodies.len));
 }
 
 // Memory Allocation

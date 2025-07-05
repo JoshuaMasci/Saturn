@@ -5,8 +5,22 @@
 #include <Jolt/Core/Color.h>
 #include <Jolt/Core/Reference.h>
 #include <Jolt/Renderer/DebugRenderer.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 
 #include "saturn_jolt.h"
+#include "body.hpp"
+
+class IgnoreListBodyDrawFilter: public JPH::BodyDrawFilter {
+public:
+    IgnoreListBodyDrawFilter(const Body* const* ignore_bodies, const uint32_t ignore_bodies_count):
+    ignore_bodies(ignore_bodies), ignore_bodies_count(ignore_bodies_count){}
+
+    virtual bool ShouldDraw(const JPH::Body& inBody) const;
+
+private:
+    const Body* const* ignore_bodies;
+    const uint32_t ignore_bodies_count;
+};
 
 class CallbackRenderPrimitive : public JPH::RefTarget<CallbackRenderPrimitive>, public JPH::RefTargetVirtual {
   public:

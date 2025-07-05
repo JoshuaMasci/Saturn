@@ -137,10 +137,10 @@ pub fn deinit(self: *Self) void {
     self.draw_wireframe_meshs.deinit();
 }
 
-pub fn buildFrame(self: *Self, world: *physics.World, camera_transform: physics.Transform) void {
+pub fn buildFrame(self: *Self, world: *physics.World, camera_transform: physics.Transform, ignore_list: []const physics.Body) void {
     self.draw_wireframe_meshs.clearRetainingCapacity();
 
-    physics.debugRendererBuildFrame(world, camera_transform);
+    physics.debugRendererBuildFrame(world, camera_transform, ignore_list);
 }
 
 pub fn createRenderPass(

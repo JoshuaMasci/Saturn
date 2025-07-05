@@ -93,17 +93,19 @@ void debugRendererDestroy() {
 #endif
 }
 
-void debugRendererBuildFrame(World *world_ptr, Transform camera_transform) {
+void debugRendererBuildFrame(World *world_ptr, Transform camera_transform, const Body* const* ignore_bodies, const uint32_t ignore_bodies_count) {
 #ifdef JPH_DEBUG_RENDERER
 	if (JPH::DebugRenderer::sInstance != nullptr && world_ptr != nullptr) {
 		auto renderer = dynamic_cast<CallbackDebugRenderer *>(JPH::DebugRenderer::sInstance);
 		renderer->camera_position = loadRVec3(camera_transform.position);
 
+		IgnoreListBodyDrawFilter draw_filter(ignore_bodies, ignore_bodies_count);
+
 		JPH::BodyManager::DrawSettings settings;
 		settings.mDrawShape = true;
 		settings.mDrawShapeWireframe = true;
 		settings.mDrawShapeColor = JPH::BodyManager::EShapeColor::SleepColor;
-		world_ptr->physics_system->DrawBodies(settings, JPH::DebugRenderer::sInstance);
+		world_ptr->physics_system->DrawBodies(settings, JPH::DebugRenderer::sInstance, &draw_filter);
 	}
 #endif
 }
