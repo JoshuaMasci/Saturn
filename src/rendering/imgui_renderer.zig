@@ -129,18 +129,20 @@ pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: 
         var i_vertex: usize = 0;
         var i_index: usize = 0;
 
-        for (draw_data.cmd_lists) |cmd_list| {
-            const vertex_count: usize = @intCast(cmd_list.VtxBuffer.Size);
-            const index_count: usize = @intCast(cmd_list.IdxBuffer.Size);
+        for (draw_data.cmd_lists) |cmd_list_opt| {
+            if (cmd_list_opt) |cmd_list| {
+                const vertex_count: usize = @intCast(@min(cmd_list.VtxBuffer.Size, cmd_list.VtxBuffer.Capacity));
+                const index_count: usize = @intCast(@min(cmd_list.IdxBuffer.Size, cmd_list.IdxBuffer.Capacity));
 
-            const cmd_vertex_data: []zimgui.DrawVert = cmd_list.VtxBuffer.Data[0..vertex_count];
-            const cmd_index_data: []zimgui.DrawIdx = cmd_list.IdxBuffer.Data[0..index_count];
+                const cmd_vertex_data: []zimgui.DrawVert = cmd_list.VtxBuffer.Data[0..vertex_count];
+                const cmd_index_data: []zimgui.DrawIdx = cmd_list.IdxBuffer.Data[0..index_count];
 
-            std.mem.copyForwards(zimgui.DrawVert, vertex_data[i_vertex..], cmd_vertex_data);
-            std.mem.copyForwards(zimgui.DrawIdx, index_data[i_index..], cmd_index_data);
+                std.mem.copyForwards(zimgui.DrawVert, vertex_data[i_vertex..], cmd_vertex_data);
+                std.mem.copyForwards(zimgui.DrawIdx, index_data[i_index..], cmd_index_data);
 
-            i_vertex += cmd_vertex_data.len;
-            i_index += cmd_index_data.len;
+                i_vertex += cmd_vertex_data.len;
+                i_index += cmd_index_data.len;
+            }
         }
     }
 
@@ -175,15 +177,9 @@ pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: 
         .write_data = @ptrCast(&user_datas[1]),
     });
 
-    var draw_cmd_count: usize = 0;
-    for (draw_data.cmd_lists) |cmd_list| {
-        const cmd_buffer_len: usize = @intCast(cmd_list.CmdBuffer.Size);
-        draw_cmd_count += cmd_buffer_len;
-    }
-
     const font_texture = try render_graph.importTexture(self.font_texture);
 
-    var draw_commands = std.ArrayList(DrawCommand).init(temp_allocator);
+    var draw_commands = try std.ArrayList(DrawCommand).initCapacity(temp_allocator, @intCast(draw_data.cmd_lists_count));
     errdefer draw_commands.deinit();
 
     const clip_off = draw_data.display_pos;
@@ -192,49 +188,50 @@ pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: 
     var global_vtx_offset: i32 = 0;
     var global_idx_offset: u32 = 0;
 
-    for (draw_data.cmd_lists) |cmd_list| {
-        const cmd_buffer_len: usize = @intCast(cmd_list.CmdBuffer.Size);
-        for (cmd_list.CmdBuffer.Data[0..cmd_buffer_len]) |draw_cmd| {
-            if (draw_cmd.UserCallback) |user_callback| {
-                _ = user_callback; // autofix
-                unreachable;
-            } else {
-                // Project scissor/clipping rectangles into framebuffer space
-                var clip_min: Imgui.Vec2 = .{ .x = (draw_cmd.ClipRect.x - clip_off.x) * clip_scale.x, .y = (draw_cmd.ClipRect.y - clip_off.y) * clip_scale.y };
-                var clip_max: Imgui.Vec2 = .{ .x = (draw_cmd.ClipRect.z - clip_off.x) * clip_scale.x, .y = (draw_cmd.ClipRect.w - clip_off.y) * clip_scale.y };
+    for (draw_data.cmd_lists) |cmd_list_opt| {
+        if (cmd_list_opt) |cmd_list| {
+            const cmd_buffer_len: usize = @intCast(cmd_list.CmdBuffer.Size);
+            for (cmd_list.CmdBuffer.Data[0..cmd_buffer_len]) |draw_cmd| {
+                if (draw_cmd.UserCallback) |user_callback| {
+                    _ = user_callback; // autofix
+                    unreachable;
+                } else {
+                    // Project scissor/clipping rectangles into framebuffer space
+                    var clip_min: Imgui.Vec2 = .{ .x = (draw_cmd.ClipRect.x - clip_off.x) * clip_scale.x, .y = (draw_cmd.ClipRect.y - clip_off.y) * clip_scale.y };
+                    var clip_max: Imgui.Vec2 = .{ .x = (draw_cmd.ClipRect.z - clip_off.x) * clip_scale.x, .y = (draw_cmd.ClipRect.w - clip_off.y) * clip_scale.y };
 
-                // Clamp to viewport as vkCmdSetScissor() won't accept values that are off bounds
+                    // Clamp to viewport as vkCmdSetScissor() won't accept values that are off bounds
+                    clip_min.x = @max(clip_min.x, 0.0);
+                    clip_min.y = @max(clip_min.y, 0.0);
+                    clip_max.x = @min(clip_max.x, framebuffer_size_f[0]);
+                    clip_max.y = @min(clip_max.y, framebuffer_size_f[1]);
+                    if (clip_max.x <= clip_min.x or clip_max.y <= clip_min.y)
+                        continue;
 
-                clip_min.x = @max(clip_min.x, 0.0);
-                clip_min.y = @max(clip_min.y, 0.0);
-                clip_max.x = @min(clip_max.x, framebuffer_size_f[0]);
-                clip_max.y = @min(clip_max.y, framebuffer_size_f[1]);
-                if (clip_max.x <= clip_min.x or clip_max.y <= clip_min.y)
-                    continue;
+                    const scissor = vk.Rect2D{
+                        .offset = .{
+                            .x = @intFromFloat(clip_min.x),
+                            .y = @intFromFloat(clip_min.y),
+                        },
+                        .extent = .{
+                            .width = @intFromFloat(clip_max.x - clip_min.x),
+                            .height = @intFromFloat(clip_max.y - clip_min.y),
+                        },
+                    };
 
-                const scissor = vk.Rect2D{
-                    .offset = .{
-                        .x = @intFromFloat(clip_min.x),
-                        .y = @intFromFloat(clip_min.y),
-                    },
-                    .extent = .{
-                        .width = @intFromFloat(clip_max.x - clip_min.x),
-                        .height = @intFromFloat(clip_max.y - clip_min.y),
-                    },
-                };
-
-                try draw_commands.append(.{
-                    .scissor = scissor,
-                    .texture = font_texture,
-                    .index_count = @intCast(draw_cmd.ElemCount),
-                    .first_index = draw_cmd.IdxOffset + global_idx_offset,
-                    .vertex_offset = @as(i32, @intCast(draw_cmd.VtxOffset)) + global_vtx_offset,
-                });
+                    try draw_commands.append(.{
+                        .scissor = scissor,
+                        .texture = font_texture,
+                        .index_count = @intCast(draw_cmd.ElemCount),
+                        .first_index = draw_cmd.IdxOffset + global_idx_offset,
+                        .vertex_offset = @as(i32, @intCast(draw_cmd.VtxOffset)) + global_vtx_offset,
+                    });
+                }
             }
-        }
 
-        global_vtx_offset += @intCast(cmd_list.VtxBuffer.Size);
-        global_idx_offset += @intCast(cmd_list.IdxBuffer.Size);
+            global_vtx_offset += @intCast(cmd_list.VtxBuffer.Size);
+            global_idx_offset += @intCast(cmd_list.IdxBuffer.Size);
+        }
     }
 
     var render_pass = try rg.RenderPass.init(temp_allocator, "Imgui Pass");

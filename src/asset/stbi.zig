@@ -1,6 +1,6 @@
 const std = @import("std");
 const zstbi = @import("zstbi");
-const Texture = @import("texture_2d.zig");
+const Texture = @import("texture.zig");
 
 pub fn init(allocator: std.mem.Allocator) void {
     zstbi.init(allocator);
@@ -35,9 +35,11 @@ pub fn load(allocator: std.mem.Allocator, texture_name: []const u8, file_buffer:
 
     return .{
         .name = name,
+        .tex_type = .@"2d",
         .format = format,
         .width = stb_image.width,
         .height = stb_image.height,
+        .depth = 1,
         .data = data,
     };
 }

@@ -23,7 +23,7 @@ pub const HeaderV1 = extern struct {
 
 pub const AssetType = enum(u32) {
     mesh = 1,
-    texture_2d = 2,
+    texture = 2,
     material = 3,
     shader = 4,
     _,

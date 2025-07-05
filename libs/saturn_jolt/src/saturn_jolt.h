@@ -52,6 +52,7 @@ typedef struct Velocity {
 
 typedef struct World World;
 typedef struct Body Body;
+typedef struct Character Character;
 typedef struct SoftBody SoftBody;
 typedef uint64_t Shape;
 const Shape InvalidShape = UINT64_MAX;
@@ -247,6 +248,15 @@ void bodyRemoveShape(Body *body_ptr, SubShapeIndex index);
 void bodyUpdateShapeTransform(Body *body_ptr, SubShapeIndex index, const Vec3 position, const Quat rotation);
 void bodyRemoveAllShapes(Body *body_ptr);
 void bodyCommitShapeChanges(Body *body_ptr);
+
+// Character functions
+Character *characterCreate();
+void characterDestroy(Character *character_ptr);
+
+Transform characterGetTransform(Character *character_ptr);
+void characterSetTransform(Character *character_ptr, const Transform *c_transform);
+Velocity characterGetVelocity(Character *character_ptr);
+void characterSetVelocity(Character *character_ptr, const Velocity *c_velocity);
 
 #ifdef __cplusplus
 }

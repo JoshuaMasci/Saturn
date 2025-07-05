@@ -24,6 +24,8 @@ pub const App = struct {
     window: Window,
     render_thread: RenderThread,
 
+    render_physics_debug: bool = false,
+
     imgui: Imgui,
 
     game_universe: *Universe,
@@ -47,7 +49,7 @@ pub const App = struct {
         const render_thread = try RenderThread.init(global.global_allocator, window, imgui.context);
 
         physics_system.init(global.global_allocator);
-        //physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
+        physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
@@ -158,6 +160,15 @@ pub const App = struct {
             }
             self.imgui.context.end();
 
+            if (self.imgui.context.begin("Debug", null, .{})) {
+                _ = self.imgui.context.checkbox("Debug Physics Layer", &self.render_physics_debug);
+            }
+            self.imgui.context.end();
+
+            // if (zimgui.begin("Debug", .{})) {
+            //     _ = zimgui.checkbox("Debug Physics Layer", .{ .v = &self.render_thread.data.physics_renderer.enabled });
+            // }
+
             // if (!self.platform.isMouseCaptured() and
             //     !zimgui.isWindowHovered(.{ .any_window = true }) and
             //     zimgui.isMouseClicked(zimgui.MouseButton.left) and
@@ -167,32 +178,28 @@ pub const App = struct {
             // }
         }
 
-        self.render_thread.data.scene = null;
+        self.render_thread.data.draw_scene = null;
         if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-            self.render_thread.data.camera_transform = game_debug_entity.transform;
-
             if (game_debug_entity.world) |game_world| {
                 const rendering = @import("entity/engine/rendering.zig");
+                const physics = @import("entity/engine/physics.zig");
+
                 if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
-                    self.render_thread.data.scene = try render_world.scene.dupe(self.render_thread.data.temp_allocator.allocator());
+                    self.render_thread.data.draw_scene = .{
+                        .camera = .Default,
+                        .camera_transform = game_debug_entity.transform,
+                        .scene = try render_world.scene.dupe(self.render_thread.data.temp_allocator.allocator()),
+                        .debug_physics_draw = self.render_physics_debug,
+                    };
+
+                    if (self.render_physics_debug) {
+                        if (game_world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
+                            self.render_thread.data.physics_renderer.buildFrame(&physics_world.physics_world, .{});
+                        }
+                    }
                 }
             }
         }
-
-        // if (zimgui.begin("Debug", .{})) {
-        //     _ = zimgui.checkbox("Debug Physics Layer", .{ .v = &self.render_thread.data.physics_renderer.enabled });
-        // }
-        // zimgui.end();
-        // if (self.render_thread.data.physics_renderer.enabled) {
-        //     if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-        //         if (game_debug_entity.world) |game_world| {
-        //             const physics = @import("entity/engine/physics.zig");
-        //             if (game_world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
-        //                 self.render_thread.data.physics_renderer.buildFrame(&physics_world.physics_world, .{});
-        //             }
-        //         }
-        //     }
-        //}
 
         self.render_thread.submitFrame();
 

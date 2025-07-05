@@ -4,7 +4,7 @@ const zm = @import("zmath");
 const Transform = @import("../transform.zig");
 
 const Mesh = @import("mesh.zig");
-const Texture2D = @import("texture_2d.zig");
+const Texture2D = @import("texture.zig");
 const Material = @import("material.zig");
 const Scene = @import("scene.zig");
 
@@ -301,7 +301,7 @@ fn AssetInfo(comptime Handle: type, comptime sub_path: []const u8, comptime file
 
 const AssetHandles = struct {
     const MeshAssetInfo = AssetInfo(Mesh.Registry.Handle, "/meshes/", ".mesh");
-    const ImageAssetInfo = AssetInfo(Texture2D.Registry.Handle, "/textures/", ".tex2d");
+    const ImageAssetInfo = AssetInfo(Texture2D.Registry.Handle, "/textures/", ".tex");
     const MaterialAssetInfo = AssetInfo(Material.Registry.Handle, "/materials/", ".mat");
 
     allocator: std.mem.Allocator,

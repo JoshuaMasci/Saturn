@@ -7,14 +7,21 @@ const Window = Platform.Window;
 const Vulkan = Platform.Vulkan;
 const Transform = @import("../transform.zig");
 const Camera = @import("camera.zig").Camera;
+const SceneRenderer = @import("scene_renderer.zig");
+const PhysicsRenderer = @import("physics_renderer.zig");
 const ImguiRenderer = @import("imgui_renderer.zig");
 const rendering_scene = @import("scene.zig");
 const RenderSettings = @import("settings.zig").RenderSettings;
-const SceneRenderer = @import("scene_renderer.zig");
 const Device = @import("vulkan/device.zig");
 const rg = @import("vulkan/render_graph.zig");
 
-//Vulkan
+const DrawSceneData = struct {
+    scene: rendering_scene.RenderScene,
+    camera: Camera,
+    camera_transform: Transform,
+    debug_physics_draw: bool = false,
+};
+
 pub const RenderThreadData = struct {
     const Self = @This();
 
@@ -24,17 +31,18 @@ pub const RenderThreadData = struct {
 
     device: *Device,
     scene_renderer: SceneRenderer,
+    physics_renderer: PhysicsRenderer,
     imgui_renderer: ImguiRenderer,
 
     //Per Frame Data
     temp_allocator: std.heap.ArenaAllocator,
-    scene: ?rendering_scene.RenderScene = null,
-    camera_transform: ?Transform = null,
-    camera: ?Camera = null,
+
+    draw_scene: ?DrawSceneData = null,
 
     pub fn deinit(self: *Self) void {
         _ = self.device.device.proxy.deviceWaitIdle() catch {};
         self.scene_renderer.deinit();
+        self.physics_renderer.deinit();
         self.imgui_renderer.deinit();
 
         self.device.releaseWindow(self.window);
@@ -71,21 +79,32 @@ pub const RenderThread = struct {
 
         try device.claimWindow(window);
 
+        const swapchain_format = .b8g8r8a8_unorm;
+        const depth_format = .d32_sfloat;
+
         const scene_renderer = SceneRenderer.init(
             allocator,
             device,
-            .b8g8r8a8_unorm,
-            .d32_sfloat,
+            swapchain_format,
+            depth_format,
             device.bindless_layout,
-        ) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
+        ) catch |err| std.debug.panic("Failed to init scene renderer: {}", .{err});
+
+        const physics_renderer = PhysicsRenderer.init(
+            allocator,
+            device,
+            swapchain_format,
+            depth_format,
+            device.bindless_layout,
+        ) catch |err| std.debug.panic("Failed to init physics renderer: {}", .{err});
 
         const imgui_renderer = ImguiRenderer.init(
             allocator,
             device,
             imgui,
-            .b8g8r8a8_unorm,
+            swapchain_format,
             device.bindless_layout,
-        ) catch |err| std.debug.panic("Failed to init renderer: {}", .{err});
+        ) catch |err| std.debug.panic("Failed to init imgui renderer: {}", .{err});
 
         const render_thread_data = try allocator.create(RenderThreadData);
         render_thread_data.* = .{
@@ -93,6 +112,7 @@ pub const RenderThread = struct {
             .window = window,
             .device = device,
             .scene_renderer = scene_renderer,
+            .physics_renderer = physics_renderer,
             .imgui_renderer = imgui_renderer,
             .temp_allocator = std.heap.ArenaAllocator.init(allocator),
         };
@@ -167,63 +187,49 @@ fn renderThreadMain(
         var render_graph = rg.RenderGraph.init(temp_allocator);
         defer render_graph.deinit();
 
-        var scene_build_fn: ?rg.CommandBufferBuildFn = null;
-        var scene_build_data: SceneRenderer.BuildCommandBufferData = undefined;
-
-        if (render_thread_data.scene) |*scene| {
-            render_thread_data.scene_renderer.loadSceneData(temp_allocator, scene);
-            scene_build_fn = SceneRenderer.buildCommandBuffer;
-            scene_build_data = .{
-                .self = &render_thread_data.scene_renderer,
-                .camera = render_thread_data.camera orelse .Default,
-                .camera_transform = render_thread_data.camera_transform orelse .{},
-                .scene = scene,
-            };
-        }
-
         const swapchain_texture = render_graph.acquireSwapchainTexture(render_thread_data.window) catch |err| {
             std.log.err("failed to append swapchain: {}", .{err});
             continue;
         };
 
-        const depth_texture = render_graph.createTransientTexture(.{
-            .extent = .{ .relative = swapchain_texture },
-            .format = .d32_sfloat,
-            .usage = .{ .depth_stencil_attachment_bit = true },
-        }) catch |err| {
-            std.log.err("failed to create transient texture: {}", .{err});
-            continue;
-        };
+        if (render_thread_data.draw_scene) |scene_data| {
+            const depth_texture = render_graph.createTransientTexture(.{
+                .extent = .{ .relative = swapchain_texture },
+                .format = .d32_sfloat,
+                .usage = .{ .depth_stencil_attachment_bit = true },
+            }) catch |err| {
+                std.log.err("failed to create transient texture: {}", .{err});
+                continue;
+            };
 
-        var render_pass = rg.RenderPass.init(temp_allocator, "Scene Pass") catch |err| {
-            std.log.err("failed to create render pass: {}", .{err});
-            continue;
-        };
-        render_pass.addColorAttachment(.{
-            .texture = swapchain_texture,
-            .clear = .{ .float_32 = .{ 0.576, 0.439, 0.859, 1.0 } },
-            .store = true,
-        }) catch |err| {
-            std.log.err("failed to create color attachment: {}", .{err});
-            continue;
-        };
-        render_pass.addDepthAttachment(.{
-            .texture = depth_texture,
-            .clear = 1.0,
-            .store = true,
-        });
-        if (scene_build_fn) |build_fn| {
-            render_pass.addBuildFn(build_fn, &scene_build_data);
+            render_thread_data.scene_renderer.createRenderPass(
+                temp_allocator,
+                swapchain_texture,
+                depth_texture,
+                &scene_data.scene,
+                scene_data.camera,
+                scene_data.camera_transform,
+                &render_graph,
+            ) catch |err| {
+                std.log.err("failed to build scene render_pass: {}", .{err});
+            };
+
+            if (scene_data.debug_physics_draw) {
+                render_thread_data.physics_renderer.createRenderPass(
+                    temp_allocator,
+                    swapchain_texture,
+                    depth_texture,
+                    scene_data.camera,
+                    scene_data.camera_transform,
+                    &render_graph,
+                ) catch |err| {
+                    std.log.err("failed to build physics render_pass: {}", .{err});
+                };
+            }
         }
-
-        render_graph.render_passes.append(render_pass) catch |err| {
-            std.log.err("failed to append render_pass: {}", .{err});
-            continue;
-        };
 
         render_thread_data.imgui_renderer.createRenderPass(temp_allocator, swapchain_texture, &render_graph) catch |err| {
             std.log.err("failed to build imgui render_pass: {}", .{err});
-            continue;
         };
 
         render_thread_data.device.render(temp_allocator, render_graph) catch |err| std.log.err("Failed to render frame: {}", .{err});

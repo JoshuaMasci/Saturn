@@ -36,6 +36,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
 
     var features = vk.PhysicalDeviceFeatures{
         .robust_buffer_access = VK_TRUE,
+        .fill_mode_non_solid = VK_TRUE,
     };
 
     var features_12 = vk.PhysicalDeviceVulkan12Features{

@@ -172,11 +172,11 @@ fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
         return errorString(allocator, "Failed to open file({s}): {}", .{ file_path, err });
     defer texture.deinit(allocator);
 
-    const new_path = replaceExt(allocator, file_path, ".tex2d") catch |err|
+    const new_path = replaceExt(allocator, file_path, ".tex") catch |err|
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
-    io.writeFile(output_dir, .texture_2d, new_path, texture) catch |err|
+    io.writeFile(output_dir, .texture, new_path, texture) catch |err|
         return errorString(allocator, "Failed to write asset file: {}", .{err});
 
     return null;
@@ -238,7 +238,7 @@ fn GltfResourceWorker(comptime load_fn: anytype, comptime asset_name: []const u8
     };
 }
 const mesh_thread_worker = GltfResourceWorker(Gltf.loadMesh, "mesh", .mesh).run;
-const texture_thread_worker = GltfResourceWorker(Gltf.loadTexture, "texture", .texture_2d).run;
+const texture_thread_worker = GltfResourceWorker(Gltf.loadTexture, "texture", .texture).run;
 const material_thread_worker = GltfResourceWorker(Gltf.loadMaterial, "material", .material).run;
 
 fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {

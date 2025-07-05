@@ -1,7 +1,7 @@
 const std = @import("std");
 const serde = @import("../serde.zig");
 
-const TextureAssetHandle = @import("texture_2d.zig").Registry.Handle;
+const TextureAssetHandle = @import("texture.zig").Registry.Handle;
 
 pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".mat"});
 

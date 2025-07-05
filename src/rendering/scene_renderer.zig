@@ -7,7 +7,7 @@ const MaterialAsset = @import("../asset/material.zig");
 const MeshAsset = @import("../asset/mesh.zig");
 const ShaderAsset = @import("../asset/shader.zig");
 const ShaderAssetHandle = ShaderAsset.Registry.Handle;
-const Texture2dAsset = @import("../asset/texture_2d.zig");
+const Texture2dAsset = @import("../asset/texture.zig");
 const global = @import("../global.zig");
 const c = @import("../platform/sdl3.zig").c;
 const Window = @import("../platform/sdl3.zig").Window;
@@ -131,6 +131,42 @@ pub fn deinit(self: *Self) void {
     self.device.device.proxy.destroyPipeline(self.mesh_pipeline, null);
 }
 
+pub fn createRenderPass(
+    self: *Self,
+    temp_allocator: std.mem.Allocator,
+    color_target: rg.RenderGraphTextureHandle,
+    depth_target: rg.RenderGraphTextureHandle,
+    scene: *const RenderScene,
+    camera: Camera,
+    camera_transform: Transform,
+    render_graph: *rg.RenderGraph,
+) !void {
+    var render_pass = try rg.RenderPass.init(temp_allocator, "Scene Pass");
+    try render_pass.addColorAttachment(.{
+        .texture = color_target,
+        .clear = .{ .float_32 = .{ 0.576, 0.439, 0.859, 1.0 } },
+        .store = true,
+    });
+    render_pass.addDepthAttachment(.{
+        .texture = depth_target,
+        .clear = 1.0,
+        .store = true,
+    });
+
+    self.loadSceneData(temp_allocator, scene);
+
+    const scene_build_data = try temp_allocator.create(BuildCommandBufferData);
+    scene_build_data.* = .{
+        .self = self,
+        .camera = camera,
+        .camera_transform = camera_transform,
+        .scene = scene,
+    };
+    render_pass.addBuildFn(buildCommandBuffer, scene_build_data);
+
+    try render_graph.render_passes.append(render_pass);
+}
+
 pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
     _ = resources; // autofix
 
@@ -199,7 +235,6 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
                     .base_color_factor = base_color_factor,
                     .base_color_texture = base_color_texture,
                 };
-
                 command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
 
                 drawPrimitive(device, command_buffer, primtive);
