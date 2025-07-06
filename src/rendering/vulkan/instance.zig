@@ -48,7 +48,10 @@ pub fn init(
     var instance_layers = std.ArrayList([*c]const u8).init(allocator);
     defer instance_layers.deinit();
 
-    try instance_layers.append("VK_LAYER_KHRONOS_validation");
+    const builtin = @import("builtin");
+    if (builtin.mode == .Debug) {
+        try instance_layers.append("VK_LAYER_KHRONOS_validation");
+    }
 
     var instance_extentions = std.ArrayList([*c]const u8).init(allocator);
     defer instance_extentions.deinit();
