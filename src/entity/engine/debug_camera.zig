@@ -1,8 +1,6 @@
 const std = @import("std");
 const zm = @import("zmath");
 
-const input = @import("../../input.zig");
-
 const Entity = @import("../entity.zig");
 const World = @import("../world.zig");
 const physics = @import("physics.zig");
@@ -85,16 +83,16 @@ pub const DebugCameraEntitySystem = struct {
         }
     }
 
-    pub fn onInput(self: *Self, input_context: *const @import("../../input_bindings.zig").DebugCameraInputContext) void {
-        if (input_context.getButtonPressed(.interact)) {
-            self.cast_ray = true;
-        }
+    // pub fn onInput(self: *Self, input_context: *const @import("../../input_bindings.zig").DebugCameraInputContext) void {
+    //     if (input_context.getButtonPressed(.interact)) {
+    //         self.cast_ray = true;
+    //     }
 
-        self.linear_input[0] = input_context.getAxisValue(.move_left_right, true);
-        self.linear_input[1] = input_context.getAxisValue(.move_up_down, true);
-        self.linear_input[2] = input_context.getAxisValue(.move_forward_backward, true);
+    //     self.linear_input[0] = input_context.getAxisValue(.move_left_right, true);
+    //     self.linear_input[1] = input_context.getAxisValue(.move_up_down, true);
+    //     self.linear_input[2] = input_context.getAxisValue(.move_forward_backward, true);
 
-        self.angular_input[0] = input_context.getAxisValue(.rotate_pitch, true);
-        self.angular_input[1] = input_context.getAxisValue(.rotate_yaw, true);
-    }
+    //     self.angular_input[0] = input_context.getAxisValue(.rotate_pitch, true);
+    //     self.angular_input[1] = input_context.getAxisValue(.rotate_yaw, true);
+    // }
 };

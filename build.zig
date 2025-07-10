@@ -63,6 +63,14 @@ pub fn build(b: *std.Build) !void {
     }).module("vulkan-zig");
     exe.root_module.addImport("vulkan", vulkan);
 
+    // zlua
+    const zlua = b.dependency("zlua", .{
+        .target = target,
+        .optimize = optimize,
+        .lang = .lua52,
+    });
+    exe.root_module.addImport("zlua", zlua.module("zlua"));
+
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

@@ -1,0 +1,51 @@
+{
+	"buttons": {
+		"interact": {
+			"axis": {
+				"axis": "right_trigger",
+				"threshold": 8.999999761581421e-1,
+				"positive": true
+			}
+		}
+	},
+	"axis": {
+		"move_forward_backward": {
+			"axis": {
+				"axis": "left_y",
+				"sensitivity": 1e0,
+				"deadzone": 1.0000000149011612e-1,
+				"invert": false
+			}
+		},
+		"move_left_right": {
+			"axis": {
+				"axis": "left_x",
+				"sensitivity": 1e0,
+				"deadzone": 1.0000000149011612e-1,
+				"invert": false
+			}
+		},
+		"move_up_down": {
+			"buttons": {
+				"pos": "right_shoulder",
+				"neg": "left_shoulder"
+			}
+		},
+		"rotate_yaw": {
+			"axis": {
+				"axis": "right_x",
+				"sensitivity": 1e0,
+				"deadzone": 1.0000000149011612e-1,
+				"invert": false
+			}
+		},
+		"rotate_pitch": {
+			"axis": {
+				"axis": "right_y",
+				"sensitivity": 1e0,
+				"deadzone": 1.0000000149011612e-1,
+				"invert": false
+			}
+		}
+	}
+}

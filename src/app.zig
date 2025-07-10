@@ -2,13 +2,13 @@ const std = @import("std");
 
 const physics_system = @import("physics");
 const zm = @import("zmath");
+const zlua = @import("zlua");
 
 const Entity = @import("entity/entity.zig");
 const Universe = @import("entity/universe.zig");
 const World = @import("entity/world.zig");
 const global = @import("global.zig");
 const Imgui = @import("imgui.zig");
-const input = @import("input.zig");
 const sdl3 = @import("platform/sdl3.zig");
 const PlatformInput = sdl3.Input;
 const Window = sdl3.Window;
@@ -23,10 +23,11 @@ pub const App = struct {
     platform_input: PlatformInput,
     window: Window,
     render_thread: RenderThread,
-
     render_physics_debug: bool = false,
-
     imgui: Imgui,
+
+    lua: *zlua.Lua,
+    lua_update_fn: i32,
 
     game_universe: *Universe,
     game_debug_camera: Entity.Handle,
@@ -34,6 +35,84 @@ pub const App = struct {
     timer: f32 = 0,
     frames: f32 = 0,
     average_dt: f32 = 0.0,
+
+    fn luaLogInfo(lua: *zlua.Lua) !c_int {
+        const nargs = lua.getTop();
+        const nargs_u: usize = @intCast(nargs);
+        var list = std.ArrayList(u8).init(global.global_allocator);
+        defer list.deinit();
+
+        for (0..nargs_u) |index| {
+            const i: i32 = @intCast(index + 1);
+            const s = lua.toString(i) catch "<non-string>";
+            _ = try list.appendSlice(s);
+        }
+
+        const message = list.items;
+        std.log.info("{s}", .{message});
+
+        return 0;
+    }
+
+    fn isControllerButtonDown(lua: *zlua.Lua) !c_int {
+        const Controller = @import("platform/sdl3/controller.zig");
+
+        // Get input system
+        //
+        _ = try lua.getGlobal("input");
+        const platform_input = try lua.toUserdata(PlatformInput, -1);
+
+        const arg_count = lua.getTop();
+        if (arg_count < 1 or !lua.isString(1)) {
+            return error.ExspectedStringArg;
+        }
+        const string = try lua.toString(1);
+
+        var result: bool = false;
+
+        const controllers = platform_input.controllers.values();
+        if (controllers.len > 0) {
+            const controller = controllers[0];
+
+            if (std.meta.stringToEnum(Controller.Button, string)) |button| {
+                const index = @intFromEnum(button);
+                result = controller.button_state[index].is_pressed;
+            }
+        }
+
+        lua.pushBoolean(result);
+        return 1;
+    }
+
+    fn isControllerButtonPressed(lua: *zlua.Lua) !c_int {
+        const Controller = @import("platform/sdl3/controller.zig");
+
+        // Get input system
+        //
+        _ = try lua.getGlobal("input");
+        const platform_input = try lua.toUserdata(PlatformInput, -1);
+
+        const arg_count = lua.getTop();
+        if (arg_count < 1 or !lua.isString(1)) {
+            return error.ExspectedStringArg;
+        }
+        const string = try lua.toString(1);
+
+        var result: bool = false;
+
+        const controllers = platform_input.controllers.values();
+        if (controllers.len > 0) {
+            const controller = controllers[0];
+
+            if (std.meta.stringToEnum(Controller.Button, string)) |button| {
+                const index = @intFromEnum(button);
+                result = controller.button_state[index].is_pressed and !controller.button_state[index].was_pressed_last_frame;
+            }
+        }
+
+        lua.pushBoolean(result);
+        return 1;
+    }
 
     pub fn init() !Self {
         try global.assets.addDir("engine", "zig-out/assets");
@@ -45,11 +124,33 @@ pub const App = struct {
         errdefer imgui.deinit();
 
         const platform_input = try PlatformInput.init(global.global_allocator);
-        const window = Window.init("Saturn Engine", .{ .windowed = .{ 1600, 900 } });
+        const window = Window.init("Saturn Engine", .maximized);
         const render_thread = try RenderThread.init(global.global_allocator, window, imgui.context);
 
         physics_system.init(global.global_allocator);
         physics_system.initDebugRenderer(render_thread.data.physics_renderer.getDebugRendererData());
+
+        const lua = try zlua.Lua.init(global.global_allocator);
+        errdefer lua.deinit();
+
+        //Override print function
+        lua.pushFunction(zlua.wrap(luaLogInfo));
+        lua.setGlobal("print");
+
+        lua.pushFunction(zlua.wrap(luaLogInfo));
+        lua.setGlobal("log_info");
+
+        lua.pushFunction(zlua.wrap(isControllerButtonDown));
+        lua.setGlobal("isControllerButtonDown");
+
+        lua.pushFunction(zlua.wrap(isControllerButtonPressed));
+        lua.setGlobal("isControllerButtonPressed");
+
+        _ = try lua.loadFile("assets/lua_scripts/log_test.lua", .binary_text);
+        try lua.protectedCall(.{});
+
+        _ = try lua.getGlobal("update");
+        const lua_update_fn = try lua.ref(zlua.registry_index);
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
@@ -66,6 +167,9 @@ pub const App = struct {
             .render_thread = render_thread,
             .imgui = imgui,
 
+            .lua = lua,
+            .lua_update_fn = lua_update_fn,
+
             .game_universe = game_universe,
             .game_debug_camera = debug_entity,
         };
@@ -80,6 +184,8 @@ pub const App = struct {
         physics_system.deinit();
 
         self.imgui.deinit();
+
+        self.lua.deinit();
 
         self.render_thread.deinit();
         self.window.deinit();
@@ -111,25 +217,31 @@ pub const App = struct {
             .resize = window_resize,
             .close_requested = window_close_requested,
         });
-        self.imgui.updateInput(&self.platform_input);
 
-        // if (!self.platform_input.isMouseCaptured()) {
-        //     if (self.platform_input.isMousePressed(.left)) {
-        //         self.platform_input.captureMouse(self.window);
-        //     }
-        // }
+        {
+            self.lua.pushLightUserdata(&self.platform_input);
+            self.lua.setGlobal("input");
 
-        //Don't need to check mouse capture since the mouse input device already does that
-        const input_devices = self.platform_input.getInputDevices();
-        if (input_devices.len > 0) {
-            const DebugCamera = @import("entity/engine/debug_camera.zig").DebugCameraEntitySystem;
-            const input_context = @import("input_bindings.zig").DebugCameraInputContext.init(input_devices);
-            if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-                if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
-                    debug_camera_system.onInput(&input_context);
-                }
+            const lua_type = self.lua.rawGetIndex(zlua.registry_index, self.lua_update_fn);
+            if (lua_type == .function) {
+                self.lua.pushNumber(@floatCast(delta_time));
+                try self.lua.protectedCall(.{ .args = 1 });
+            } else {
+                std.log.err("lua global update not a function", .{});
             }
         }
+
+        //Don't need to check mouse capture since the mouse input device already does that
+        // const input_devices = self.platform_input.getInputDevices();
+        // if (input_devices.len > 0) {
+        //     const DebugCamera = @import("entity/engine/debug_camera.zig").DebugCameraEntitySystem;
+        //     const input_context = @import("input_bindings.zig").DebugCameraInputContext.init(input_devices);
+        //     if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
+        //         if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
+        //             debug_camera_system.onInput(&input_context);
+        //         }
+        //     }
+        // }
 
         self.game_universe.update(.frame_start, delta_time);
         self.game_universe.update(.pre_physics, delta_time);

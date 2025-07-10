@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-gnu -Dbuild_sdl3 -Dno_assets=true
+zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux-gnu -Dno_assets=true
 
 APP=Saturn
 VERSION=1.0.0

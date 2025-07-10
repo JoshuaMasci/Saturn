@@ -44,5 +44,9 @@
             .url = "git+https://github.com/JoshuaMasci/zimgui.git#a7016a4f3d69646a01bf0119605c39cb47d9cde3",
             .hash = "zimgui-0.0.0-KY3Tl_67QQDJPQTomNRMnb4z761p1p72dPDJ6bi4WHVC",
         },
+        .zlua = .{
+            .url = "git+https://github.com/natecraddock/ziglua#b1fa62844dafb782219631d88b7fc70e0b7cfe37",
+            .hash = "zlua-0.1.0-hGRpCxwbBQCft7Dgs_DsO0OGBbCUGgXn_mQd5c382Jn5",
+        },
     },
 }
