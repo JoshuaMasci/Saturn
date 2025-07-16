@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) !void {
     const zlua = b.dependency("zlua", .{
         .target = target,
         .optimize = optimize,
-        .lang = .lua52,
+        .lang = .lua54,
     });
     exe.root_module.addImport("zlua", zlua.module("zlua"));
 

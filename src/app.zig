@@ -15,6 +15,138 @@ const Window = sdl3.Window;
 const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 const world_gen = @import("world_gen.zig");
 
+//Test Lua Code
+fn luaLogInfo(lua: *zlua.Lua) !c_int {
+    const nargs = lua.getTop();
+    const nargs_u: usize = @intCast(nargs);
+    var list = std.ArrayList(u8).init(global.global_allocator);
+    defer list.deinit();
+
+    for (0..nargs_u) |index| {
+        const i: i32 = @intCast(index + 1);
+        const s = lua.toString(i) catch "<non-string>";
+        _ = try list.appendSlice(s);
+    }
+
+    const message = list.items;
+    std.log.info("{s}", .{message});
+
+    return 0;
+}
+
+fn isControllerButtonDown(lua: *zlua.Lua) !c_int {
+    const Controller = @import("platform/sdl3/controller.zig");
+
+    // Get input system
+    //
+    _ = try lua.getGlobal("input");
+    const platform_input = try lua.toUserdata(PlatformInput, -1);
+
+    const arg_count = lua.getTop();
+    if (arg_count < 1 or !lua.isString(1)) {
+        return error.ExspectedStringArg;
+    }
+    const string = try lua.toString(1);
+
+    var result: bool = false;
+
+    const controllers = platform_input.controllers.values();
+    if (controllers.len > 0) {
+        const controller = controllers[0];
+
+        if (std.meta.stringToEnum(Controller.Button, string)) |button| {
+            const index = @intFromEnum(button);
+            result = controller.button_state[index].is_pressed;
+        }
+    }
+
+    lua.pushBoolean(result);
+    return 1;
+}
+
+fn isControllerButtonPressed(lua: *zlua.Lua) !c_int {
+    const Controller = @import("platform/sdl3/controller.zig");
+
+    // Get input system
+    //
+    _ = try lua.getGlobal("input");
+    const platform_input = try lua.toUserdata(PlatformInput, -1);
+
+    const arg_count = lua.getTop();
+    if (arg_count < 1 or !lua.isString(1)) {
+        return error.ExspectedStringArg;
+    }
+    const string = try lua.toString(1);
+
+    var result: bool = false;
+
+    const controllers = platform_input.controllers.values();
+    if (controllers.len > 0) {
+        const controller = controllers[0];
+
+        if (std.meta.stringToEnum(Controller.Button, string)) |button| {
+            const index = @intFromEnum(button);
+            result = controller.button_state[index].is_pressed and !controller.button_state[index].was_pressed_last_frame;
+        }
+    }
+
+    lua.pushBoolean(result);
+    return 1;
+}
+
+fn getControllerAxis(lua: *zlua.Lua) !c_int {
+    const Controller = @import("platform/sdl3/controller.zig");
+
+    // Get input system
+    //
+    _ = try lua.getGlobal("input");
+    const platform_input = try lua.toUserdata(PlatformInput, -1);
+
+    const arg_count = lua.getTop();
+    if (arg_count < 1 or !lua.isString(1)) {
+        return error.ExspectedStringArg;
+    }
+    const string = try lua.toString(1);
+
+    var result: f32 = 0.0;
+
+    const controllers = platform_input.controllers.values();
+    if (controllers.len > 0) {
+        const controller = controllers[0];
+
+        if (std.meta.stringToEnum(Controller.Axis, string)) |axis| {
+            const index = @intFromEnum(axis);
+            result = controller.axis_state[index].value;
+        }
+    }
+
+    lua.pushNumber(result);
+    return 1;
+}
+
+pub fn readFileToZString(allocator: std.mem.Allocator, dir: std.fs.Dir, path: []const u8) ![:0]u8 {
+    const file = try dir.openFile(path, .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const buffer = try allocator.alloc(u8, file_size + 1);
+
+    _ = try file.readAll(buffer[0..file_size]);
+    buffer[file_size] = 0;
+    return buffer[0..file_size :0];
+}
+
+pub const LuaScript = struct {
+    code: [:0]const u8,
+
+    fn run(self: @This(), lua: *zlua.Lua) !void {
+        errdefer lua.pop(1);
+
+        try lua.loadString(self.code);
+        try lua.protectedCall(.{});
+    }
+};
+
 pub const App = struct {
     const Self = @This();
 
@@ -27,7 +159,7 @@ pub const App = struct {
     imgui: Imgui,
 
     lua: *zlua.Lua,
-    lua_update_fn: i32,
+    lua_script: ?LuaScript,
 
     game_universe: *Universe,
     game_debug_camera: Entity.Handle,
@@ -35,84 +167,6 @@ pub const App = struct {
     timer: f32 = 0,
     frames: f32 = 0,
     average_dt: f32 = 0.0,
-
-    fn luaLogInfo(lua: *zlua.Lua) !c_int {
-        const nargs = lua.getTop();
-        const nargs_u: usize = @intCast(nargs);
-        var list = std.ArrayList(u8).init(global.global_allocator);
-        defer list.deinit();
-
-        for (0..nargs_u) |index| {
-            const i: i32 = @intCast(index + 1);
-            const s = lua.toString(i) catch "<non-string>";
-            _ = try list.appendSlice(s);
-        }
-
-        const message = list.items;
-        std.log.info("{s}", .{message});
-
-        return 0;
-    }
-
-    fn isControllerButtonDown(lua: *zlua.Lua) !c_int {
-        const Controller = @import("platform/sdl3/controller.zig");
-
-        // Get input system
-        //
-        _ = try lua.getGlobal("input");
-        const platform_input = try lua.toUserdata(PlatformInput, -1);
-
-        const arg_count = lua.getTop();
-        if (arg_count < 1 or !lua.isString(1)) {
-            return error.ExspectedStringArg;
-        }
-        const string = try lua.toString(1);
-
-        var result: bool = false;
-
-        const controllers = platform_input.controllers.values();
-        if (controllers.len > 0) {
-            const controller = controllers[0];
-
-            if (std.meta.stringToEnum(Controller.Button, string)) |button| {
-                const index = @intFromEnum(button);
-                result = controller.button_state[index].is_pressed;
-            }
-        }
-
-        lua.pushBoolean(result);
-        return 1;
-    }
-
-    fn isControllerButtonPressed(lua: *zlua.Lua) !c_int {
-        const Controller = @import("platform/sdl3/controller.zig");
-
-        // Get input system
-        //
-        _ = try lua.getGlobal("input");
-        const platform_input = try lua.toUserdata(PlatformInput, -1);
-
-        const arg_count = lua.getTop();
-        if (arg_count < 1 or !lua.isString(1)) {
-            return error.ExspectedStringArg;
-        }
-        const string = try lua.toString(1);
-
-        var result: bool = false;
-
-        const controllers = platform_input.controllers.values();
-        if (controllers.len > 0) {
-            const controller = controllers[0];
-
-            if (std.meta.stringToEnum(Controller.Button, string)) |button| {
-                const index = @intFromEnum(button);
-                result = controller.button_state[index].is_pressed and !controller.button_state[index].was_pressed_last_frame;
-            }
-        }
-
-        lua.pushBoolean(result);
-        return 1;
-    }
 
     pub fn init() !Self {
         try global.assets.addDir("engine", "zig-out/assets");
@@ -133,6 +187,8 @@ pub const App = struct {
         const lua = try zlua.Lua.init(global.global_allocator);
         errdefer lua.deinit();
 
+        lua.openMath();
+
         //Override print function
         lua.pushFunction(zlua.wrap(luaLogInfo));
         lua.setGlobal("print");
@@ -146,11 +202,12 @@ pub const App = struct {
         lua.pushFunction(zlua.wrap(isControllerButtonPressed));
         lua.setGlobal("isControllerButtonPressed");
 
-        _ = try lua.loadFile("assets/lua_scripts/log_test.lua", .binary_text);
-        try lua.protectedCall(.{});
+        lua.pushFunction(zlua.wrap(getControllerAxis));
+        lua.setGlobal("getControllerAxis");
 
-        _ = try lua.getGlobal("update");
-        const lua_update_fn = try lua.ref(zlua.registry_index);
+        const lua_script: LuaScript = .{
+            .code = try readFileToZString(global.global_allocator, std.fs.cwd(), "assets/lua_scripts/log_test.lua"),
+        };
 
         const game_universe = try Universe.init(global.global_allocator);
         const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
@@ -168,7 +225,7 @@ pub const App = struct {
             .imgui = imgui,
 
             .lua = lua,
-            .lua_update_fn = lua_update_fn,
+            .lua_script = lua_script,
 
             .game_universe = game_universe,
             .game_debug_camera = debug_entity,
@@ -184,6 +241,10 @@ pub const App = struct {
         physics_system.deinit();
 
         self.imgui.deinit();
+
+        if (self.lua_script) |script| {
+            global.global_allocator.free(script.code);
+        }
 
         self.lua.deinit();
 
@@ -217,17 +278,16 @@ pub const App = struct {
             .resize = window_resize,
             .close_requested = window_close_requested,
         });
+        self.imgui.updateInput(&self.platform_input);
 
         {
             self.lua.pushLightUserdata(&self.platform_input);
             self.lua.setGlobal("input");
 
-            const lua_type = self.lua.rawGetIndex(zlua.registry_index, self.lua_update_fn);
-            if (lua_type == .function) {
-                self.lua.pushNumber(@floatCast(delta_time));
-                try self.lua.protectedCall(.{ .args = 1 });
-            } else {
-                std.log.err("lua global update not a function", .{});
+            if (self.lua_script) |script| {
+                script.run(self.lua) catch |err| {
+                    std.log.err("Failed to run Lua Script: {}", .{err});
+                };
             }
         }
 

@@ -1,7 +1,8 @@
-print("This is a lua message")
+if isControllerButtonPressed("south") then
+    print("South button pressed")
+end
 
-function update(dt)
-    if (isControllerButtonPressed("south")) then
-        print("This is a lua update dt: ", dt)
-    end
+local value = getControllerAxis("left_y")
+if math.abs(value) > 0.1 then
+    print("Left Stick: ", value)
 end
