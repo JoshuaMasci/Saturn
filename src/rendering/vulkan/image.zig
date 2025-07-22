@@ -2,9 +2,9 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const VkDevice = @import("vulkan_device.zig");
-const Queue = @import("queue.zig");
 const GpuAllocator = @import("gpu_allocator.zig");
+const Queue = @import("queue.zig");
+const VkDevice = @import("vulkan_device.zig");
 
 pub const Interface = struct {
     layout: vk.ImageLayout = .undefined,
@@ -15,7 +15,7 @@ pub const Interface = struct {
     view_handle: vk.ImageView = .null_handle,
     sampled_binding: ?u32 = null,
 
-    pub fn transitionLazy(self: *@This(), new_layout: vk.ImageLayout) ?vk.ImageMemoryBarrier {
+    pub fn transitionLazy(self: *@This(), new_layout: vk.ImageLayout) ?vk.ImageMemoryBarrier2 {
         if (new_layout == self.layout) {
             return null;
         }
@@ -24,11 +24,13 @@ pub const Interface = struct {
         self.layout = new_layout;
 
         return .{
-            .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
-            .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
             .old_layout = old_layout,
             .new_layout = new_layout,
+            .src_stage_mask = .{ .all_commands_bit = true },
+            .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
             .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .dst_stage_mask = .{ .all_commands_bit = true },
+            .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
             .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
             .image = self.handle,
             .subresource_range = .{

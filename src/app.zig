@@ -1,8 +1,8 @@
 const std = @import("std");
 
 const physics_system = @import("physics");
-const zm = @import("zmath");
 const zlua = @import("zlua");
+const zm = @import("zmath");
 
 const Entity = @import("entity/entity.zig");
 const Universe = @import("entity/universe.zig");
@@ -38,7 +38,6 @@ fn isControllerButtonDown(lua: *zlua.Lua) !c_int {
     const Controller = @import("platform/sdl3/controller.zig");
 
     // Get input system
-    //
     _ = try lua.getGlobal("input");
     const platform_input = try lua.toUserdata(PlatformInput, -1);
 
@@ -68,7 +67,6 @@ fn isControllerButtonPressed(lua: *zlua.Lua) !c_int {
     const Controller = @import("platform/sdl3/controller.zig");
 
     // Get input system
-    //
     _ = try lua.getGlobal("input");
     const platform_input = try lua.toUserdata(PlatformInput, -1);
 
@@ -98,7 +96,6 @@ fn getControllerAxis(lua: *zlua.Lua) !c_int {
     const Controller = @import("platform/sdl3/controller.zig");
 
     // Get input system
-    //
     _ = try lua.getGlobal("input");
     const platform_input = try lua.toUserdata(PlatformInput, -1);
 

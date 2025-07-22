@@ -81,11 +81,12 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     var bindless_descriptor = try allocator.create(BindlessDescriptor);
     errdefer allocator.destroy(bindless_descriptor);
 
+    const DESCRIPTOR_COUNT = 1024;
     bindless_descriptor.* = try BindlessDescriptor.init(device, .{
-        .uniform_buffers = 1024,
-        .storage_buffers = 1024,
-        .sampled_images = 1024,
-        .storage_images = 1024,
+        .uniform_buffers = DESCRIPTOR_COUNT,
+        .storage_buffers = DESCRIPTOR_COUNT,
+        .sampled_images = DESCRIPTOR_COUNT,
+        .storage_images = DESCRIPTOR_COUNT,
     });
     errdefer bindless_descriptor.deinit();
 
@@ -423,17 +424,20 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         }
 
         //TODO: Replace this very bad barrier
-        command_buffer.pipelineBarrier(
-            .{ .all_commands_bit = true },
-            .{ .all_commands_bit = true },
-            .{},
-            0,
-            null,
-            0,
-            null,
-            0,
-            null,
-        );
+        {
+            const memory_barriers: []const vk.MemoryBarrier2 = &.{
+                .{
+                    .src_stage_mask = .{ .all_commands_bit = true },
+                    .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+                    .dst_stage_mask = .{ .all_commands_bit = true },
+                    .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+                },
+            };
+            command_buffer.pipelineBarrier2(&.{
+                .memory_barrier_count = @intCast(memory_barriers.len),
+                .p_memory_barriers = memory_barriers.ptr,
+            });
+        }
 
         for (buffer_upload_infos, render_graph.buffer_upload_passes.items) |info, upload| {
             const dst = buffers[upload.target.index];
@@ -468,7 +472,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         var render_extent: ?vk.Extent2D = null;
 
         if (render_pass.raster_pass) |raster_pass| {
-            var image_barriers: std.ArrayList(vk.ImageMemoryBarrier) = try .initCapacity(temp_allocator, raster_pass.color_attachments.items.len + 1);
+            var image_barriers: std.ArrayList(vk.ImageMemoryBarrier2) = try .initCapacity(temp_allocator, raster_pass.color_attachments.items.len + 1);
             defer image_barriers.deinit();
 
             const color_attachments = try temp_allocator.alloc(vk.RenderingAttachmentInfo, raster_pass.color_attachments.items.len);
@@ -527,19 +531,13 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
                 };
             }
 
-            //TODO: Replace this very bad image barrier
-            // Need to actually calcuate flags
-            command_buffer.pipelineBarrier(
-                .{ .all_commands_bit = true },
-                .{ .all_commands_bit = true },
-                .{},
-                0,
-                null,
-                0,
-                null,
-                @intCast(image_barriers.items.len),
-                image_barriers.items.ptr,
-            );
+            //TODO: Replace this very bad barrier
+            {
+                command_buffer.pipelineBarrier2(&.{
+                    .image_memory_barrier_count = @intCast(image_barriers.items.len),
+                    .p_image_memory_barriers = image_barriers.items.ptr,
+                });
+            }
 
             const render_area: vk.Rect2D = .{ .extent = render_extent.?, .offset = .{ .x = 0, .y = 0 } };
             const rendering_info: vk.RenderingInfo = .{
@@ -564,17 +562,18 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
             command_buffer.setScissor(0, 1, @ptrCast(&render_area));
         } else {
             //TODO: Replace this very bad barrier
-            command_buffer.pipelineBarrier(
-                .{ .all_commands_bit = true },
-                .{ .all_commands_bit = true },
-                .{},
-                0,
-                null,
-                0,
-                null,
-                0,
-                null,
-            );
+            const memory_barriers: []const vk.MemoryBarrier2 = &.{
+                .{
+                    .src_stage_mask = .{ .all_commands_bit = true },
+                    .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+                    .dst_stage_mask = .{ .all_commands_bit = true },
+                    .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+                },
+            };
+            command_buffer.pipelineBarrier2(&.{
+                .memory_barrier_count = @intCast(memory_barriers.len),
+                .p_memory_barriers = memory_barriers.ptr,
+            });
         }
 
         if (render_pass.build_fn) |build_fn| {
@@ -588,7 +587,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
 
     //Transitioning Swapchains to final formats
     {
-        const swapchain_transitions = try temp_allocator.alloc(vk.ImageMemoryBarrier, swapchain_infos.len);
+        const swapchain_transitions = try temp_allocator.alloc(vk.ImageMemoryBarrier2, swapchain_infos.len);
         defer temp_allocator.free(swapchain_transitions);
 
         for (swapchain_infos, swapchain_transitions) |swapchain_info, *memory_barrier| {
@@ -596,9 +595,11 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
                 .image = swapchain_info.image.handle,
                 .old_layout = swapchain_info.last_layout,
                 .new_layout = .present_src_khr,
-                .src_access_mask = .{},
-                .dst_access_mask = .{},
+                .src_stage_mask = .{ .all_commands_bit = true },
+                .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
                 .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .dst_stage_mask = .{ .all_commands_bit = true },
+                .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
                 .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
                 .subresource_range = .{
                     .aspect_mask = .{ .color_bit = true },
@@ -609,18 +610,10 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
                 },
             };
         }
-
-        command_buffer.pipelineBarrier(
-            .{ .all_commands_bit = true },
-            .{ .all_commands_bit = true },
-            .{},
-            0,
-            null,
-            0,
-            null,
-            @intCast(swapchain_transitions.len),
-            swapchain_transitions.ptr,
-        );
+        command_buffer.pipelineBarrier2(&.{
+            .image_memory_barrier_count = @intCast(swapchain_transitions.len),
+            .p_image_memory_barriers = swapchain_transitions.ptr,
+        });
     }
 
     try command_buffer.endCommandBuffer();

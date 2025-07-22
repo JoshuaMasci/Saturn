@@ -1,14 +1,13 @@
 const std = @import("std");
-const zm = @import("zmath");
-const Transform = @import("../../transform.zig");
-
-const Entity = @import("../entity.zig");
-const World = @import("../world.zig");
-const UpdateStage = @import("../universe.zig").UpdateStage;
-
-const WorldSystem = @import("../world_system.zig");
 
 const physics = @import("physics");
+const zm = @import("zmath");
+
+const Transform = @import("../../transform.zig");
+const Entity = @import("../entity.zig");
+const UpdateStage = @import("../universe.zig").UpdateStage;
+const World = @import("../world.zig");
+const WorldSystem = @import("../world_system.zig");
 
 pub const RayCastHit = struct {
     root_handle: Entity.Handle,
@@ -105,12 +104,15 @@ pub const PhysicsWorldSystem = struct {
     physics_world: physics.World,
 
     pub fn init() Self {
+        const MAX_BODIES: usize = 1024;
+        const ALLOCATION_SIZE: usize = 1024 * 1024 * 16; //16m
+
         return .{
             .physics_world = physics.World.init(.{
-                .max_bodies = 65536,
-                .max_body_pairs = 65536,
-                .max_contact_constraints = 65536,
-                .temp_allocation_size = 1024 * 1024 * 16, //16mb
+                .max_bodies = MAX_BODIES,
+                .max_body_pairs = MAX_BODIES,
+                .max_contact_constraints = MAX_BODIES,
+                .temp_allocation_size = ALLOCATION_SIZE,
             }),
         };
     }

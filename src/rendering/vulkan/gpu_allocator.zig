@@ -33,6 +33,8 @@ instance: vk.InstanceProxy,
 device: vk.DeviceProxy,
 memory_properties: vk.PhysicalDeviceMemoryProperties,
 
+total_requested_bytes: usize = 0,
+
 pub fn init(
     physical_device: vk.PhysicalDevice,
     instance: vk.InstanceProxy,
@@ -83,6 +85,8 @@ pub fn alloc(
         mapped_ptr = try self.device.mapMemory(memory, offset, alloc_info.allocation_size, .{});
     }
 
+    self.total_requested_bytes += alloc_info.allocation_size;
+
     return .{
         .memory = memory,
         .offset = 0,
@@ -98,6 +102,8 @@ pub fn free(self: *Self, allocation: Allocation) void {
     }
 
     self.device.freeMemory(allocation.memory, null);
+
+    self.total_requested_bytes -= allocation.size;
 }
 
 fn findMemoryType(self: *const Self, memory_type_bits: u32, flags: vk.MemoryPropertyFlags) !u32 {
