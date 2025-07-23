@@ -134,7 +134,7 @@ pub fn readFileToZString(allocator: std.mem.Allocator, dir: std.fs.Dir, path: []
 }
 
 pub const LuaScript = struct {
-    code: [:0]const u8,
+    code: [:0]const u8, //TODO: use bytecode instead
 
     fn run(self: @This(), lua: *zlua.Lua) !void {
         errdefer lua.pop(1);

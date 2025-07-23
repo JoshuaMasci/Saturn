@@ -264,7 +264,7 @@ const SwapchainImageInfo = struct {
     image: Image.Interface,
     wait_semaphore: vk.Semaphore,
     present_semaphore: vk.Semaphore,
-    last_layout: vk.ImageLayout = .undefined,
+    resource_index: usize,
 };
 
 const UploadInfo = struct {
@@ -336,6 +336,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
             .image = swapchain_image.image,
             .wait_semaphore = wait_semaphore,
             .present_semaphore = present_semaphore,
+            .resource_index = undefined,
         };
     }
 
@@ -363,10 +364,13 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
     // Transient Images
     try frame_data.transient_images.resize(render_graph.transient_textures.items.len);
 
-    for (images, render_graph.textures.items) |*image, rg_texture| {
+    for (images, render_graph.textures.items, 0..) |*image, rg_texture, i| {
         image.* = switch (rg_texture) {
             .persistent => |handle| self.images.get(handle).?.interface(),
-            .swapchain => |index| swapchain_infos[index].image,
+            .swapchain => |index| img: {
+                swapchain_infos[index].resource_index = i;
+                break :img swapchain_infos[index].image;
+            },
             .transient => |transient_index| img: {
                 // This currently relies on the fact that transient textures can only referance a RenderGraphImage that was create before this one,
                 // therefor ealier in the list and already filled in the array.
@@ -593,7 +597,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         for (swapchain_infos, swapchain_transitions) |swapchain_info, *memory_barrier| {
             memory_barrier.* = .{
                 .image = swapchain_info.image.handle,
-                .old_layout = swapchain_info.last_layout,
+                .old_layout = resources.textures[swapchain_info.resource_index].layout,
                 .new_layout = .present_src_khr,
                 .src_stage_mask = .{ .all_commands_bit = true },
                 .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },

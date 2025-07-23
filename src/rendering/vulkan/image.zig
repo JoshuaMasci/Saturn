@@ -169,8 +169,10 @@ pub fn uploadImageData(
         .layer_count = 1,
     };
 
-    const barrier_to_transfer_dst = vk.ImageMemoryBarrier{
+    const barrier_to_transfer_dst: []const vk.ImageMemoryBarrier2 = &.{.{
+        .src_stage_mask = .{},
         .src_access_mask = .{},
+        .dst_stage_mask = .{ .copy_bit = true },
         .dst_access_mask = .{ .transfer_write_bit = true },
         .old_layout = .undefined,
         .new_layout = .transfer_dst_optimal,
@@ -178,19 +180,11 @@ pub fn uploadImageData(
         .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
         .image = self.handle,
         .subresource_range = subresource_range,
-    };
-    device.proxy.cmdPipelineBarrier(
-        command_buffer,
-        .{ .top_of_pipe_bit = true },
-        .{ .transfer_bit = true },
-        .{},
-        0,
-        null,
-        0,
-        null,
-        1,
-        (&barrier_to_transfer_dst)[0..1],
-    );
+    }};
+    device.proxy.cmdPipelineBarrier2(command_buffer, &.{
+        .image_memory_barrier_count = @intCast(barrier_to_transfer_dst.len),
+        .p_image_memory_barriers = barrier_to_transfer_dst.ptr,
+    });
 
     const Buffer = @import("buffer.zig");
     const buffer = try Buffer.init(device, data.len, .{ .transfer_src_bit = true }, .cpu_only);
@@ -222,8 +216,10 @@ pub fn uploadImageData(
         (&buffer_image_copy)[0..1],
     );
 
-    const barrier_to_shader_read = vk.ImageMemoryBarrier{
-        .src_access_mask = .{ .transfer_write_bit = true },
+    const barrier_to_shader_read: []const vk.ImageMemoryBarrier2 = &.{.{
+        .src_stage_mask = .{ .all_transfer_bit = true },
+        .src_access_mask = .{ .memory_write_bit = true },
+        .dst_stage_mask = .{ .all_commands_bit = true },
         .dst_access_mask = .{ .shader_read_bit = true },
         .old_layout = .transfer_dst_optimal,
         .new_layout = final_layout,
@@ -231,20 +227,11 @@ pub fn uploadImageData(
         .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
         .image = self.handle,
         .subresource_range = subresource_range,
-    };
-
-    device.proxy.cmdPipelineBarrier(
-        command_buffer,
-        .{ .transfer_bit = true },
-        .{ .all_commands_bit = true },
-        .{},
-        0,
-        null,
-        0,
-        null,
-        1,
-        (&barrier_to_shader_read)[0..1],
-    );
+    }};
+    device.proxy.cmdPipelineBarrier2(command_buffer, &.{
+        .image_memory_barrier_count = @intCast(barrier_to_shader_read.len),
+        .p_image_memory_barriers = barrier_to_shader_read.ptr,
+    });
 
     try device.proxy.endCommandBuffer(command_buffer);
 
