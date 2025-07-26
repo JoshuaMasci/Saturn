@@ -43,7 +43,7 @@ fn isControllerButtonDown(lua: *zlua.Lua) !c_int {
 
     const arg_count = lua.getTop();
     if (arg_count < 1 or !lua.isString(1)) {
-        return error.ExspectedStringArg;
+        return error.ExpectedStringArg;
     }
     const string = try lua.toString(1);
 
@@ -72,7 +72,7 @@ fn isControllerButtonPressed(lua: *zlua.Lua) !c_int {
 
     const arg_count = lua.getTop();
     if (arg_count < 1 or !lua.isString(1)) {
-        return error.ExspectedStringArg;
+        return error.ExpectedStringArg;
     }
     const string = try lua.toString(1);
 
@@ -101,7 +101,7 @@ fn getControllerAxis(lua: *zlua.Lua) !c_int {
 
     const arg_count = lua.getTop();
     if (arg_count < 1 or !lua.isString(1)) {
-        return error.ExspectedStringArg;
+        return error.ExpectedStringArg;
     }
     const string = try lua.toString(1);
 
@@ -119,6 +119,58 @@ fn getControllerAxis(lua: *zlua.Lua) !c_int {
 
     lua.pushNumber(result);
     return 1;
+}
+
+pub fn setEntityLinearVelocity(lua: *zlua.Lua) !i32 {
+    const physics = @import("entity/engine/physics.zig");
+
+    _ = try lua.getGlobal("entity");
+    const entity = try lua.toUserdata(Entity, -1);
+
+    const arg_count = lua.getTop();
+
+    if (arg_count != 4) {
+        return error.InvalidArgCount;
+    }
+
+    const linear_velocity: zm.Vec = .{
+        @floatCast(try lua.toNumber(1)),
+        @floatCast(try lua.toNumber(2)),
+        @floatCast(try lua.toNumber(3)),
+        0.0,
+    };
+
+    if (entity.systems.get(physics.PhysicsEntitySystem)) |entity_physics| {
+        entity_physics.linear_velocity = linear_velocity;
+    }
+
+    return 0;
+}
+
+pub fn setEntityAngularVelocity(lua: *zlua.Lua) !i32 {
+    const physics = @import("entity/engine/physics.zig");
+
+    _ = try lua.getGlobal("entity");
+    const entity = try lua.toUserdata(Entity, -1);
+
+    const arg_count = lua.getTop();
+
+    if (arg_count != 4) {
+        return error.InvalidArgCount;
+    }
+
+    const angular_velocity: zm.Vec = .{
+        @floatCast(try lua.toNumber(1)),
+        @floatCast(try lua.toNumber(2)),
+        @floatCast(try lua.toNumber(3)),
+        0.0,
+    };
+
+    if (entity.systems.get(physics.PhysicsEntitySystem)) |entity_physics| {
+        entity_physics.angular_velocity = angular_velocity;
+    }
+
+    return 0;
 }
 
 pub fn readFileToZString(allocator: std.mem.Allocator, dir: std.fs.Dir, path: []const u8) ![:0]u8 {
@@ -154,6 +206,7 @@ pub const App = struct {
     render_thread: RenderThread,
     render_physics_debug: bool = false,
     imgui: Imgui,
+    temp_allocator: std.heap.ArenaAllocator,
 
     lua: *zlua.Lua,
     lua_script: ?LuaScript,
@@ -202,6 +255,12 @@ pub const App = struct {
         lua.pushFunction(zlua.wrap(getControllerAxis));
         lua.setGlobal("getControllerAxis");
 
+        lua.pushFunction(zlua.wrap(setEntityLinearVelocity));
+        lua.setGlobal("setEntityLinearVelocity");
+
+        lua.pushFunction(zlua.wrap(setEntityAngularVelocity));
+        lua.setGlobal("setEntityAngularVelocity");
+
         const lua_script: LuaScript = .{
             .code = try readFileToZString(global.global_allocator, std.fs.cwd(), "assets/lua_scripts/log_test.lua"),
         };
@@ -220,6 +279,7 @@ pub const App = struct {
             .window = window,
             .render_thread = render_thread,
             .imgui = imgui,
+            .temp_allocator = .init(global.global_allocator),
 
             .lua = lua,
             .lua_script = lua_script,
@@ -236,6 +296,8 @@ pub const App = struct {
 
         physics_system.deinitDebugRenderer();
         physics_system.deinit();
+
+        self.temp_allocator.deinit();
 
         self.imgui.deinit();
 
@@ -257,7 +319,17 @@ pub const App = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
-        const frame_allocator = global.global_allocator; //TODO: move to arena allocator
+        _ = self.temp_allocator.reset(.retain_capacity);
+        const frame_allocator = self.temp_allocator.allocator();
+
+        //New Entity Test
+        const entity2 = @import("entity.zig");
+        var world: entity2.World = try .init(frame_allocator, "Test World", .{
+            .physics = .init(frame_allocator),
+        });
+        defer world.deinit();
+
+        world.update(delta_time);
 
         {
             self.timer += delta_time;
@@ -281,24 +353,15 @@ pub const App = struct {
             self.lua.pushLightUserdata(&self.platform_input);
             self.lua.setGlobal("input");
 
+            self.lua.pushLightUserdata(self.game_universe.entities.get(self.game_debug_camera).?);
+            self.lua.setGlobal("entity");
+
             if (self.lua_script) |script| {
                 script.run(self.lua) catch |err| {
                     std.log.err("Failed to run Lua Script: {}", .{err});
                 };
             }
         }
-
-        //Don't need to check mouse capture since the mouse input device already does that
-        // const input_devices = self.platform_input.getInputDevices();
-        // if (input_devices.len > 0) {
-        //     const DebugCamera = @import("entity/engine/debug_camera.zig").DebugCameraEntitySystem;
-        //     const input_context = @import("input_bindings.zig").DebugCameraInputContext.init(input_devices);
-        //     if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-        //         if (game_debug_entity.systems.get(DebugCamera)) |debug_camera_system| {
-        //             debug_camera_system.onInput(&input_context);
-        //         }
-        //     }
-        // }
 
         self.game_universe.update(.frame_start, delta_time);
         self.game_universe.update(.pre_physics, delta_time);
@@ -333,10 +396,6 @@ pub const App = struct {
                 _ = self.imgui.context.checkbox("Debug Physics Layer", &self.render_physics_debug);
             }
             self.imgui.context.end();
-
-            // if (zimgui.begin("Debug", .{})) {
-            //     _ = zimgui.checkbox("Debug Physics Layer", .{ .v = &self.render_thread.data.physics_renderer.enabled });
-            // }
 
             // if (!self.platform.isMouseCaptured() and
             //     !zimgui.isWindowHovered(.{ .any_window = true }) and

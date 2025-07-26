@@ -19,7 +19,7 @@ const Transform = @import("transform.zig");
 pub fn create_debug_camera(universe: *Universe, world_opt: ?World.Handle, transform: Transform) !Entity.Handle {
     var entity = universe.createEntity("Debug Camera");
     entity.transform = transform;
-    entity.systems.add(DebugCameraEntitySystem{});
+    //entity.systems.add(DebugCameraEntitySystem{});
     entity.systems.add(physics.PhysicsEntitySystem.init(entity.handle, .dynamic));
 
     entity.systems.add(@import("rendering/camera.zig").PerspectiveCamera{});

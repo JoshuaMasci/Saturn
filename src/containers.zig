@@ -188,50 +188,18 @@ pub fn HandlePool(comptime T: type) type {
     };
 }
 
-pub fn ObjectPool(comptime T: type) type {
-    return struct {
-        const Self = @This();
-
-        const List = std.DoublyLinkedList(T);
-
-        arena: std.heap.ArenaAllocator,
-        free: List = .{},
-
-        pub fn init(allocator: std.mem.Allocator) Self {
-            return .{ .arena = std.heap.ArenaAllocator.init(allocator) };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.arena.deinit();
-        }
-
-        pub fn new(self: *Self) !*T {
-            const obj = if (self.free.popFirst()) |item|
-                item
-            else
-                try self.arena.allocator().create(List.Node);
-            return &obj.data;
-        }
-
-        pub fn delete(self: *Self, obj: *T) void {
-            const node: *List.Node = @fieldParentPtr("data", obj);
-            self.free.append(node);
-        }
-    };
-}
-
 pub fn HandlePtrPool(comptime Handle: type, comptime T: type) type {
     return struct {
         const Self = @This();
 
         mutex: std.Thread.Mutex,
-        pool: ObjectPool(T),
+        pool: std.heap.MemoryPool(T),
         map: std.AutoArrayHashMap(Handle, *T),
 
         pub fn init(allocator: std.mem.Allocator) Self {
             return Self{
-                .pool = ObjectPool(T).init(allocator),
-                .map = std.AutoArrayHashMap(Handle, *T).init(allocator),
+                .pool = .init(allocator),
+                .map = .init(allocator),
                 .mutex = .{},
             };
         }
@@ -259,7 +227,7 @@ pub fn HandlePtrPool(comptime Handle: type, comptime T: type) type {
             }
 
             // Create a new object from the pool
-            const obj = self.pool.new() catch |err| std.debug.panic("Failed to alloc from pool: {}", .{err});
+            const obj = self.pool.create() catch |err| std.debug.panic("Failed to alloc from pool: {}", .{err});
             self.map.put(handle, obj) catch |err| std.debug.panic("Failed to insert into map: {}", .{err});
             return obj;
         }
@@ -276,7 +244,7 @@ pub fn HandlePtrPool(comptime Handle: type, comptime T: type) type {
                     value.deinit();
                 }
 
-                self.pool.delete(value);
+                self.pool.destroy(value);
                 _ = self.map.swapRemove(handle);
             }
         }
@@ -288,14 +256,10 @@ pub fn HandlePtrPool(comptime Handle: type, comptime T: type) type {
             return self.map.get(handle);
         }
 
-        pub fn getValues(self: *Self, allocator: std.mem.Allocator) []*T {
+        pub fn getValues(self: *Self, temp_allocator: std.mem.Allocator) []*T {
             self.mutex.lock();
             defer self.mutex.unlock();
-
-            const src_values = self.map.values();
-            const values = allocator.alloc(*T, src_values.len) catch |err| std.debug.panic("Failed to alloc from temp list: {}", .{err});
-            @memcpy(values, src_values);
-            return values;
+            return temp_allocator.dupe(*T, self.map.values()) catch |err| std.debug.panic("Failed to alloc from temp list: {}", .{err});
         }
     };
 }
