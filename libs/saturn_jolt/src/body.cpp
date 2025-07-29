@@ -85,6 +85,13 @@ void Body::setVelocity(const JPH::Vec3 new_linear_velocity, const JPH::Vec3 new_
 	}
 }
 
+void Body::addForce(const JPH::Vec3 force, JPH::EActivation activation) {
+    if (this->world_ptr != nullptr) {
+        this->world_ptr->physics_system->GetBodyInterface().AddForce(this->body_id, force, activation);
+    }
+}
+
+
 JPH::BodyCreationSettings Body::getCreateSettings() {
 	auto settings = JPH::BodyCreationSettings();
 

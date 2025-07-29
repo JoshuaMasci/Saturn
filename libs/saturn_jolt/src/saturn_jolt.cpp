@@ -335,6 +335,10 @@ void bodySetVelocity(Body *body_ptr, const Velocity *c_velocity) {
 	body_ptr->setVelocity(loadVec3(c_velocity->linear), loadVec3(c_velocity->angular));
 }
 
+void bodyAddForce(Body *body_ptr, const Vec3 force, bool activate) {
+	body_ptr->addForce(loadVec3(force), activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+}
+
 SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Vec3 position, const Quat rotation, UserData user_data) {
 	shape_pool_mutex.lock();
 	auto shape_ref = shape_pool->get(shape);

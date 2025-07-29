@@ -143,7 +143,7 @@ pub fn create_ship_worlds(allocator: std.mem.Allocator, universe: *Universe) !st
     ship_outside.transform.position = zm.splat(zm.Vec, 100.0);
     ship_outside.transform.rotation = zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0);
 
-    inside_world.addEntity(ship_inside);
+    //inside_world.addEntity(ship_inside);
     outside_world.addEntity(ship_outside);
 
     return .{

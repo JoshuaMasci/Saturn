@@ -30,3 +30,6 @@ local up_down = buttonsToAxis(isControllerButtonDown("right_shoulder"), isContro
 
 setEntityLinearVelocity(left_right * move_speed, up_down * move_speed, forward_backward * move_speed)
 setEntityAngularVelocity(0.0, 0.0, 0.0)
+
+local some_vector = vec4.new(0.0, 1.0, 2.0);
+print("Some Vector: ", getX(some_vector), ", ", getY(some_vector), ", ", getZ(some_vector), ", ", getW(some_vector), ", ")

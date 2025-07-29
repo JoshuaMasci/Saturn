@@ -7,6 +7,7 @@
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 
+#include <Jolt/Physics/EActivation.h>
 #include <variant>
 
 struct SubShapeInfo {
@@ -42,6 +43,8 @@ public:
     JPH::Vec3 getAngularVelocity();
 
     void setVelocity(JPH::Vec3 new_linear_velocity, JPH::Vec3 new_angular_velocity);
+
+    void addForce(const JPH::Vec3 force, JPH::EActivation activation);
 
     SubShapeIndex addShape(const SubShape &shape);
 

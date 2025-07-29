@@ -15,6 +15,8 @@ const Window = sdl3.Window;
 const RenderThread = @import("rendering/render_thread.zig").RenderThread;
 const world_gen = @import("world_gen.zig");
 
+const kiss = @import("kiss.zig");
+
 //Test Lua Code
 fn luaLogInfo(lua: *zlua.Lua) !c_int {
     const nargs = lua.getTop();
@@ -214,6 +216,8 @@ pub const App = struct {
     game_universe: *Universe,
     game_debug_camera: Entity.Handle,
 
+    world: kiss.World,
+
     timer: f32 = 0,
     frames: f32 = 0,
     average_dt: f32 = 0.0,
@@ -236,6 +240,8 @@ pub const App = struct {
 
         const lua = try zlua.Lua.init(global.global_allocator);
         errdefer lua.deinit();
+
+        try @import("lua/math.zig").addBindings(lua);
 
         lua.openMath();
 
@@ -273,6 +279,11 @@ pub const App = struct {
         //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json", .{ .position = zm.f32x4(0, -1, 0, 0) });
         //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Bistro/scene.json", .{ .position = zm.f32x4(0, -50, 0, 0) });
 
+        const IRON_DENSITY_KG_M3: f32 = 7870 * 100;
+        var new_world: kiss.World = .init();
+        new_world.addSphere(.{}, .{ 0.0, 0.0, 0.0, 0.0 }, 1.0, IRON_DENSITY_KG_M3);
+        new_world.addSphere(.{ .position = .{ 0.0, 0.0, 3.0, 0.0 } }, .{ 0.3, 0.0, 0.0, 0.0 }, 0.5, IRON_DENSITY_KG_M3);
+
         return .{
             .should_quit = false,
             .platform_input = platform_input,
@@ -286,6 +297,8 @@ pub const App = struct {
 
             .game_universe = game_universe,
             .game_debug_camera = debug_entity,
+
+            .world = new_world,
         };
     }
 
@@ -293,6 +306,8 @@ pub const App = struct {
         self.render_thread.quit();
 
         self.game_universe.deinit();
+
+        self.world.deinit();
 
         physics_system.deinitDebugRenderer();
         physics_system.deinit();
@@ -321,15 +336,6 @@ pub const App = struct {
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
         _ = self.temp_allocator.reset(.retain_capacity);
         const frame_allocator = self.temp_allocator.allocator();
-
-        //New Entity Test
-        const entity2 = @import("entity.zig");
-        var world: entity2.World = try .init(frame_allocator, "Test World", .{
-            .physics = .init(frame_allocator),
-        });
-        defer world.deinit();
-
-        world.update(delta_time);
 
         {
             self.timer += delta_time;
@@ -369,15 +375,14 @@ pub const App = struct {
         self.game_universe.update(.post_physics, delta_time);
         self.game_universe.update(.pre_render, delta_time);
 
+        self.world.update(delta_time);
+
         self.render_thread.beginFrame();
 
         {
             const window_size = self.window.getSize();
             self.imgui.startFrame(window_size, delta_time);
             defer self.imgui.context.endFrame();
-
-            //_ = self.imgui.createFullscreenDockspace("MainDockspace");
-            //defer Imgui.imgui.end();
 
             if (self.imgui.context.begin("Performance", null, .{})) {
                 self.imgui.context.textFmt("Delta Time {d:.3} ms", .{self.average_dt * 1000});
@@ -396,14 +401,6 @@ pub const App = struct {
                 _ = self.imgui.context.checkbox("Debug Physics Layer", &self.render_physics_debug);
             }
             self.imgui.context.end();
-
-            // if (!self.platform.isMouseCaptured() and
-            //     !zimgui.isWindowHovered(.{ .any_window = true }) and
-            //     zimgui.isMouseClicked(zimgui.MouseButton.left) and
-            //     !zimgui.isAnyItemHovered())
-            // {
-            //     self.platform.captureMouse(self.window);
-            // }
         }
 
         self.render_thread.data.draw_scene = null;
@@ -414,10 +411,13 @@ pub const App = struct {
                 const zphysics = @import("physics");
 
                 if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
+                    var world_dupe = try render_world.scene.dupe(self.render_thread.data.temp_allocator.allocator());
+                    self.world.buildScene(&world_dupe);
+
                     self.render_thread.data.draw_scene = .{
                         .camera = .Default,
                         .camera_transform = game_debug_entity.transform,
-                        .scene = try render_world.scene.dupe(self.render_thread.data.temp_allocator.allocator()),
+                        .scene = world_dupe,
                         .debug_physics_draw = self.render_physics_debug,
                     };
 

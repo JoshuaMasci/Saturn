@@ -251,6 +251,10 @@ pub const Body = struct {
         c.bodySetVelocity(self.ptr, velocity);
     }
 
+    pub fn addForce(self: *Self, force: Vec3, activate: bool) void {
+        c.bodyAddForce(self.ptr, @ptrCast(&force[0]), activate);
+    }
+
     pub fn addShape(self: *Self, shape: Shape, position: Vec3, rotation: Quat, user_data: UserData) SubShapeIndex {
         return c.bodyAddShape(self.ptr, shape.handle, @ptrCast(&position[0]), @ptrCast(&rotation[0]), user_data);
     }
