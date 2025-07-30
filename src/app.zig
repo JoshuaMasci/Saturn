@@ -9,13 +9,11 @@ const Universe = @import("entity/universe.zig");
 const World = @import("entity/world.zig");
 const global = @import("global.zig");
 const Imgui = @import("imgui.zig");
+const kiss = @import("kiss.zig");
 const sdl3 = @import("platform/sdl3.zig");
 const PlatformInput = sdl3.Input;
 const Window = sdl3.Window;
 const RenderThread = @import("rendering/render_thread.zig").RenderThread;
-const world_gen = @import("world_gen.zig");
-
-const kiss = @import("kiss.zig");
 
 //Test Lua Code
 fn luaLogInfo(lua: *zlua.Lua) !c_int {
@@ -211,11 +209,6 @@ pub const App = struct {
     temp_allocator: std.heap.ArenaAllocator,
 
     lua: *zlua.Lua,
-    lua_script: ?LuaScript,
-
-    game_universe: *Universe,
-    game_debug_camera: Entity.Handle,
-
     world: kiss.World,
 
     timer: f32 = 0,
@@ -252,37 +245,11 @@ pub const App = struct {
         lua.pushFunction(zlua.wrap(luaLogInfo));
         lua.setGlobal("log_info");
 
-        lua.pushFunction(zlua.wrap(isControllerButtonDown));
-        lua.setGlobal("isControllerButtonDown");
-
-        lua.pushFunction(zlua.wrap(isControllerButtonPressed));
-        lua.setGlobal("isControllerButtonPressed");
-
-        lua.pushFunction(zlua.wrap(getControllerAxis));
-        lua.setGlobal("getControllerAxis");
-
-        lua.pushFunction(zlua.wrap(setEntityLinearVelocity));
-        lua.setGlobal("setEntityLinearVelocity");
-
-        lua.pushFunction(zlua.wrap(setEntityAngularVelocity));
-        lua.setGlobal("setEntityAngularVelocity");
-
-        const lua_script: LuaScript = .{
-            .code = try readFileToZString(global.global_allocator, std.fs.cwd(), "assets/lua_scripts/log_test.lua"),
-        };
-
-        const game_universe = try Universe.init(global.global_allocator);
-        const game_worlds = try world_gen.create_ship_worlds(global.global_allocator, game_universe);
-        const debug_entity = try world_gen.create_debug_camera(game_universe, game_worlds.inside, .{ .position = zm.f32x4(0.0, 0.0, -15.0, 0.0) });
-        world_gen.create_props(game_universe, game_worlds.inside, 10, zm.f32x4(2.5, 0.0, -15.0, 0.0), 0.15);
-
-        //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json", .{ .position = zm.f32x4(0, -1, 0, 0) });
-        //try world_gen.loadScene(global.global_allocator, game_universe, game_worlds.inside, "zig-out/game-assets/Bistro/scene.json", .{ .position = zm.f32x4(0, -50, 0, 0) });
-
-        const IRON_DENSITY_KG_M3: f32 = 7870 * 100;
+        const IRON_DENSITY_KG_M3: f32 = 7870;
+        const MORE_DENSITY: f32 = IRON_DENSITY_KG_M3 * 1000;
         var new_world: kiss.World = .init();
-        new_world.addSphere(.{}, .{ 0.0, 0.0, 0.0, 0.0 }, 1.0, IRON_DENSITY_KG_M3);
-        new_world.addSphere(.{ .position = .{ 0.0, 0.0, 3.0, 0.0 } }, .{ 0.3, 0.0, 0.0, 0.0 }, 0.5, IRON_DENSITY_KG_M3);
+        new_world.addSphere(.{}, .{ 0.0, 0.0, 0.0, 0.0 }, 1.0, MORE_DENSITY * 10);
+        new_world.addSphere(.{ .position = .{ 0.0, 0.0, 3.0, 0.0 } }, .{ 2.3, 0.5, 0.0, 0.0 }, 0.5, MORE_DENSITY);
 
         return .{
             .should_quit = false,
@@ -293,11 +260,6 @@ pub const App = struct {
             .temp_allocator = .init(global.global_allocator),
 
             .lua = lua,
-            .lua_script = lua_script,
-
-            .game_universe = game_universe,
-            .game_debug_camera = debug_entity,
-
             .world = new_world,
         };
     }
@@ -305,9 +267,8 @@ pub const App = struct {
     pub fn deinit(self: *Self) void {
         self.render_thread.quit();
 
-        self.game_universe.deinit();
-
         self.world.deinit();
+        self.lua.deinit();
 
         physics_system.deinitDebugRenderer();
         physics_system.deinit();
@@ -315,12 +276,6 @@ pub const App = struct {
         self.temp_allocator.deinit();
 
         self.imgui.deinit();
-
-        if (self.lua_script) |script| {
-            global.global_allocator.free(script.code);
-        }
-
-        self.lua.deinit();
 
         self.render_thread.deinit();
         self.window.deinit();
@@ -355,26 +310,6 @@ pub const App = struct {
         });
         self.imgui.updateInput(&self.platform_input);
 
-        {
-            self.lua.pushLightUserdata(&self.platform_input);
-            self.lua.setGlobal("input");
-
-            self.lua.pushLightUserdata(self.game_universe.entities.get(self.game_debug_camera).?);
-            self.lua.setGlobal("entity");
-
-            if (self.lua_script) |script| {
-                script.run(self.lua) catch |err| {
-                    std.log.err("Failed to run Lua Script: {}", .{err});
-                };
-            }
-        }
-
-        self.game_universe.update(.frame_start, delta_time);
-        self.game_universe.update(.pre_physics, delta_time);
-        self.game_universe.update(.physics, delta_time);
-        self.game_universe.update(.post_physics, delta_time);
-        self.game_universe.update(.pre_render, delta_time);
-
         self.world.update(delta_time);
 
         self.render_thread.beginFrame();
@@ -404,41 +339,34 @@ pub const App = struct {
         }
 
         self.render_thread.data.draw_scene = null;
-        if (self.game_universe.entities.get(self.game_debug_camera)) |game_debug_entity| {
-            if (game_debug_entity.world) |game_world| {
-                const rendering = @import("entity/engine/rendering.zig");
-                const physics = @import("entity/engine/physics.zig");
-                const zphysics = @import("physics");
+        {
+            const rendering = @import("rendering/scene.zig");
+            const zphysics = @import("physics");
 
-                if (game_world.systems.get(rendering.RenderWorldSystem)) |render_world| {
-                    var world_dupe = try render_world.scene.dupe(self.render_thread.data.temp_allocator.allocator());
-                    self.world.buildScene(&world_dupe);
+            var scene: rendering.RenderScene = .init(self.render_thread.data.temp_allocator.allocator());
+            self.world.buildScene(&scene);
 
-                    self.render_thread.data.draw_scene = .{
-                        .camera = .Default,
-                        .camera_transform = game_debug_entity.transform,
-                        .scene = world_dupe,
-                        .debug_physics_draw = self.render_physics_debug,
-                    };
+            var camera_pos: zm.Vec = .{ 0.0, 0.0, -10.0, 0.0 };
 
-                    if (self.render_physics_debug) {
-                        if (game_world.systems.get(physics.PhysicsWorldSystem)) |physics_world| {
-                            var ignore_list = std.BoundedArray(zphysics.Body, 8).init(0) catch unreachable;
+            if (self.world.entites.len > 0) {
+                camera_pos = self.world.entites.get(0).transform.position + camera_pos;
+            }
 
-                            if (game_debug_entity.systems.get(physics.PhysicsEntitySystem)) |game_debug_entity_physics| {
-                                ignore_list.appendAssumeCapacity(game_debug_entity_physics.body);
-                            }
+            self.render_thread.data.draw_scene = .{
+                .scene = scene,
+                .camera = .Default,
+                .camera_transform = .{ .position = camera_pos },
+                .debug_physics_draw = self.render_physics_debug,
+            };
 
-                            self.render_thread.data.physics_renderer.buildFrame(&physics_world.physics_world, .{}, ignore_list.slice());
-                        }
-                    }
-                }
+            if (self.render_physics_debug) {
+                var ignore_list = std.BoundedArray(zphysics.Body, 8).init(0) catch unreachable;
+
+                self.render_thread.data.physics_renderer.buildFrame(&self.world.physics_world, .{}, ignore_list.slice());
             }
         }
 
         self.render_thread.submitFrame();
-
-        self.game_universe.update(.frame_end, delta_time);
     }
 };
 
