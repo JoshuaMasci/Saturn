@@ -89,4 +89,6 @@ private:
     float linear_damping;
     float angular_damping;
     float gravity_factor;
+	float max_linear_velocity;
+	float max_angular_velocity;
 };

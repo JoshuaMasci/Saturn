@@ -23,6 +23,8 @@ Body::Body(const BodySettings *settings) {
 	this->linear_damping = settings->linear_damping;
 	this->angular_damping = settings->angular_damping;
 	this->gravity_factor = settings->gravity_factor;
+	this->max_linear_velocity = settings->max_linear_velocity;
+	this->max_angular_velocity = settings->max_angular_velocity;
 }
 
 Body::~Body() {
@@ -123,6 +125,8 @@ JPH::BodyCreationSettings Body::getCreateSettings() {
 	settings.mGravityFactor = gravity_factor;
 	settings.mLinearDamping = linear_damping;
 	settings.mAngularDamping = angular_damping;
+	settings.mMaxLinearVelocity = max_linear_velocity;
+	settings.mMaxAngularVelocity = max_angular_velocity;
 
 	return settings;
 }

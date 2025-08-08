@@ -202,6 +202,8 @@ pub const Body = struct {
         linear_damping: f32 = 0.0,
         angular_damping: f32 = 0.0,
         gravity_factor: f32 = 1.0,
+        max_linear_velocity: f32 = 500.0,
+        max_angular_velocity: f32 = std.math.pi * 4.0,
     };
 
     ptr: ?*c.Body,
@@ -220,6 +222,8 @@ pub const Body = struct {
                 .friction = settings.friction,
                 .linear_damping = settings.angular_damping,
                 .gravity_factor = settings.gravity_factor,
+                .max_linear_velocity = settings.max_linear_velocity,
+                .max_angular_velocity = settings.max_angular_velocity,
             }),
         };
     }
