@@ -38,27 +38,33 @@ pub const RigidBodyComponent = struct {
     }
 };
 
+pub const EntityBehavior = enum {
+    none,
+    planet,
+    ship,
+};
+
 pub const Entity = struct {
     const Self = @This();
 
+    behavior: EntityBehavior = .none,
     transform: Transform,
     rigid_body: RigidBodyComponent,
     collider: ?jolt.Shape = null,
     mesh: ?rendering.StaticMeshComponent = null,
 
-    pub fn init(transform: Transform) Self {
-        var rigid_body: RigidBodyComponent = .{
+    pub fn init(transform: Transform, motion_type: jolt.MotionType) Self {
+        const rigid_body: RigidBodyComponent = .{
             .body = .init(.{
                 .transform = .{
                     .position = zm.vecToArr3(transform.position),
                     .rotation = zm.vecToArr4(zm.normalize4(transform.rotation)),
                 },
                 .object_layer = 1,
-                .motion_type = .dynamic,
+                .motion_type = motion_type,
                 .friction = 1.0,
             }),
         };
-        rigid_body.set(&transform);
 
         return .{
             .transform = transform,
@@ -112,15 +118,19 @@ pub const World = struct {
         }
     }
 
-    pub fn addSphere(self: *Self, transform: Transform, velocity: zm.Vec, radius: f32, density: f32) void {
+    pub fn addPlanet(self: *Self, transform: Transform, velocity: zm.Vec, motion_type: jolt.MotionType, radius: f32, density: f32) void {
         const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
         const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
 
-        var entity: Entity = .init(.{
-            .position = transform.position,
-            .rotation = transform.rotation,
-            .scale = @splat(radius),
-        });
+        var entity: Entity = .init(
+            .{
+                .position = transform.position,
+                .rotation = transform.rotation,
+                .scale = @splat(radius),
+            },
+            motion_type,
+        );
+        entity.behavior = .planet;
         entity.rigid_body.linear_velocity = velocity;
 
         const sphere = jolt.Shape.initSphere(radius, density, 0);
@@ -149,6 +159,10 @@ pub const World = struct {
                 continue;
             }
 
+            if (other.behavior != .planet) {
+                continue;
+            }
+
             if (other.collider) |other_collider| {
                 const offset = entity.transform.position - other.transform.position;
 
@@ -162,7 +176,7 @@ pub const World = struct {
 
                 const other_mass = other_collider.getMassProperties().mass;
 
-                const force_mag: f32 = (GRAVITATION_CONST_SMALL * entity_mass * other_mass) / (distance * distance);
+                const force_mag: f32 = (GRAVITATION_CONST * entity_mass * other_mass) / (distance * distance);
                 if (force_mag > 0.0001) {
                     const force = zm.splat(zm.Vec, -force_mag) * dir;
                     entity.rigid_body.body.addForce(zm.vecToArr3(force), true);
@@ -170,4 +184,54 @@ pub const World = struct {
             }
         }
     }
+
+    pub fn updateShip(self: *Self, entity: *Entity, input: *PlatformInput) void {
+        const thust_n = 1000000.0;
+
+        const x_axis_input = getControllerAxis(input, .left_x);
+        const y_axis_input = getControllerButtonAxis(input, .right_shoulder, .left_shoulder);
+        const z_axis_input = getControllerAxis(input, .left_y);
+
+        if (@abs(x_axis_input) > 0.1 or @abs(y_axis_input) > 0.1 or @abs(z_axis_input) > 0.1) {
+            const vec_input: zm.Vec = .{ x_axis_input, y_axis_input, z_axis_input, 0.0 };
+            const relative_force: zm.Vec = vec_input * zm.splat(zm.Vec, thust_n);
+            const force = zm.rotate(entity.transform.rotation, relative_force);
+            entity.rigid_body.body.addForce(zm.vecToArr3(force), true);
+            std.log.info("Adding Force: {any}", .{zm.vecToArr3(force)});
+        }
+
+        //Do Gravity Calculations
+        self.updatePlanet(entity);
+    }
 };
+
+pub fn calcOrbitalVelocity(gravity_mass: f32, radius: f32) f32 {
+    return @sqrt((GRAVITATION_CONST * gravity_mass) / radius);
+}
+
+pub fn getControllerAxis(input: *PlatformInput, axis: Controller.Axis) f32 {
+    const controllers = input.controllers.values();
+    if (controllers.len > 0) {
+        const controller = controllers[0];
+        return controller.axis_state[@intFromEnum(axis)].value;
+    }
+
+    return 0.0;
+}
+
+pub fn getControllerButtonAxis(input: *PlatformInput, pos: Controller.Button, neg: Controller.Button) f32 {
+    const controllers = input.controllers.values();
+    if (controllers.len > 0) {
+        const controller = controllers[0];
+        const pos_state = controller.button_state[@intFromEnum(pos)].is_pressed;
+        const neg_state = controller.button_state[@intFromEnum(neg)].is_pressed;
+
+        if (pos_state and !neg_state) {
+            return 1.0;
+        } else if (!pos_state and neg_state) {
+            return -1.0;
+        }
+    }
+
+    return 0.0;
+}
