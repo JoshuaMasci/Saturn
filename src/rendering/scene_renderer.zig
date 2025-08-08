@@ -144,7 +144,7 @@ pub fn createRenderPass(
     var render_pass = try rg.RenderPass.init(temp_allocator, "Scene Pass");
     try render_pass.addColorAttachment(.{
         .texture = color_target,
-        .clear = .{ .float_32 = .{ 0.576, 0.439, 0.859, 1.0 } },
+        .clear = .{ .float_32 = @splat(0.0) },
         .store = true,
     });
     render_pass.addDepthAttachment(.{
