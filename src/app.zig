@@ -204,7 +204,7 @@ pub const App = struct {
     platform_input: PlatformInput,
     window: Window,
     render_thread: RenderThread,
-    render_physics_debug: bool = false,
+    render_physics_debug: bool = true,
     imgui: Imgui,
     temp_allocator: std.heap.ArenaAllocator,
 
@@ -245,11 +245,19 @@ pub const App = struct {
         lua.pushFunction(zlua.wrap(luaLogInfo));
         lua.setGlobal("log_info");
 
-        const IRON_DENSITY_KG_M3: f32 = 7870;
-        const MORE_DENSITY: f32 = IRON_DENSITY_KG_M3 * 1000;
+        const REAL_EARTH_DENSITY_KG_M3: f32 = 5514.0;
+        const PLANET_DENSITY_KG_M3: f32 = REAL_EARTH_DENSITY_KG_M3 * 1000.0;
+        const SUN_DENSITY_KG_M3: f32 = PLANET_DENSITY_KG_M3 * 100.0;
+
         var new_world: kiss.World = .init();
-        new_world.addSphere(.{}, .{ 0.0, 0.0, 0.0, 0.0 }, 1.0, MORE_DENSITY * 10);
-        new_world.addSphere(.{ .position = .{ 0.0, 0.0, 3.0, 0.0 } }, .{ 2.3, 0.5, 0.0, 0.0 }, 0.5, MORE_DENSITY);
+
+        new_world.addPlanet(.{}, .{ 0.0, 0.0, 0.0, 0.0 }, .dynamic, 25.0, SUN_DENSITY_KG_M3 * 10);
+        const sun_mass = new_world.entites.buffer[0].collider.?.getMassProperties().mass;
+
+        const orbital_speed = kiss.calcOrbitalVelocity(sun_mass, 50.0);
+        const orbital_velocity = zm.normalize3(zm.f32x4(1.0, 0.5, 0.0, 0.0)) * zm.splat(zm.Vec, orbital_speed);
+        new_world.addPlanet(.{ .position = .{ 0.0, 0.0, 50.0, 0.0 } }, orbital_velocity, .dynamic, 5.0, PLANET_DENSITY_KG_M3);
+        try new_world.addShip(global.global_allocator, .{ .position = .{ 0.0, 0.0, -50.0, 0.0 } }, orbital_velocity * zm.splat(zm.Vec, -1.0));
 
         return .{
             .should_quit = false,
@@ -336,6 +344,13 @@ pub const App = struct {
                 _ = self.imgui.context.checkbox("Debug Physics Layer", &self.render_physics_debug);
             }
             self.imgui.context.end();
+
+            if (self.imgui.context.begin("Entities", null, .{})) {
+                for (self.world.entites.slice(), 0..) |entity, i| {
+                    self.imgui.context.textFmt("Entity {} Velocity: {d:.3}", .{ i, zm.length3(entity.rigid_body.linear_velocity)[0] });
+                }
+            }
+            self.imgui.context.end();
         }
 
         self.render_thread.data.draw_scene = null;
@@ -346,7 +361,7 @@ pub const App = struct {
             var scene: rendering.RenderScene = .init(self.render_thread.data.temp_allocator.allocator());
             self.world.buildScene(&scene);
 
-            var camera_pos: zm.Vec = .{ 0.0, 0.0, -10.0, 0.0 };
+            var camera_pos: zm.Vec = .{ 0.0, 0.0, -200.0, 0.0 };
 
             if (self.world.entites.len > 0) {
                 camera_pos = self.world.entites.get(0).transform.position + camera_pos;
