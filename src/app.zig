@@ -310,7 +310,7 @@ pub const App = struct {
         });
         self.imgui.updateInput(&self.platform_input);
 
-        self.world.update(delta_time);
+        self.world.update(delta_time, &self.platform_input);
 
         self.render_thread.beginFrame();
 

@@ -8,8 +8,10 @@ const zm = @import("zmath");
 const rendering = @import("rendering/scene.zig");
 const Transform = @import("transform.zig");
 
+const PlatformInput = @import("platform/sdl3.zig").Input;
+const Controller = @import("platform/sdl3/controller.zig");
+
 const GRAVITATION_CONST: f32 = 0.00000000006674;
-const GRAVITATION_CONST_SMALL: f32 = GRAVITATION_CONST * 1000.0;
 
 pub const RigidBodyComponent = struct {
     body: jolt.Body,
@@ -93,7 +95,7 @@ pub const World = struct {
         self.physics_world.deinit();
     }
 
-    pub fn update(self: *Self, delta_time: f32) void {
+    pub fn update(self: *Self, delta_time: f32, input: *PlatformInput) void {
         for (self.entites.slice()) |*entity| {
             entity.rigid_body.set(&entity.transform);
         }
@@ -101,8 +103,11 @@ pub const World = struct {
         self.physics_world.update(delta_time, 1);
 
         for (self.entites.slice()) |*entity| {
-            //TODO: check behavior type
-            self.updatePlanet(entity);
+            switch (entity.behavior) {
+                .none => {},
+                .planet => self.updatePlanet(entity),
+                .ship => self.updateShip(entity, input),
+            }
         }
 
         for (self.entites.slice()) |*entity| {
@@ -144,6 +149,52 @@ pub const World = struct {
         entity.mesh = .{
             .mesh = MeshAssetHandle.fromRepoPath("engine:shapes/sphere.mesh").?,
             .materials = .fromSlice(&.{MaterialAssetHandle.fromRepoPath("game:materials/grid.mat").?}),
+            .visable = true,
+        };
+
+        self.entites.appendAssumeCapacity(entity);
+    }
+
+    pub fn addShip(self: *Self, allocator: std.mem.Allocator, transform: Transform, velocity: zm.Vec) !void {
+        const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
+        const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
+        const global = @import("global.zig");
+
+        var entity: Entity = .init(
+            .{
+                .position = transform.position,
+                .rotation = transform.rotation,
+            },
+            .dynamic,
+        );
+        entity.behavior = .ship;
+        entity.rigid_body.linear_velocity = velocity;
+
+        const ship_mesh_asset = MeshAssetHandle.fromRepoPath("game:models/CubeLander.mesh").?;
+
+        const physics_shape: jolt.Shape = shp: {
+            var mesh = try global.assets.meshes.loadAsset(allocator, ship_mesh_asset);
+            defer mesh.deinit(allocator);
+
+            var cube_shape = jolt.Shape.initBox(.{ 3, 3, 6 }, 100.0, 0);
+            defer cube_shape.deinit();
+
+            var physics_mesh: @import("world_gen.zig").PhysicsMesh = try .fromMesh(allocator, mesh);
+            defer physics_mesh.deinit(allocator);
+
+            break :shp jolt.Shape.initMeshWithMass(physics_mesh.positions, physics_mesh.indices, cube_shape.getMassProperties(), 0);
+        };
+
+        _ = entity.rigid_body.body.addShape(physics_shape, .{ 0.0, 0.0, 0.0 }, .{ 0.0, 0.0, 0.0, 1.0 }, 0);
+        entity.rigid_body.body.commitShapeChanges();
+
+        entity.collider = physics_shape;
+
+        self.physics_world.addBody(entity.rigid_body.body);
+
+        entity.mesh = .{
+            .mesh = ship_mesh_asset,
+            .materials = .fromSlice(&.{MaterialAssetHandle.fromRepoPath("game:materials/uv_grid.mat").?}),
             .visable = true,
         };
 
