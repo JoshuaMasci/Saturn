@@ -179,11 +179,11 @@ const PhysicsMeshes = struct {
 };
 
 //TODO: save seprate physics meshes as asset?
-const PhysicsMesh = struct {
+pub const PhysicsMesh = struct {
     positions: [][3]f32,
     indices: []u32,
 
-    fn fromMesh(allocator: std.mem.Allocator, mesh: Mesh) !@This() {
+    pub fn fromMesh(allocator: std.mem.Allocator, mesh: Mesh) !@This() {
         var pos_count: usize = 0;
         var index_count: usize = 0;
         for (mesh.primitives) |prim| {
@@ -218,7 +218,7 @@ const PhysicsMesh = struct {
         };
     }
 
-    fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+    pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
         allocator.free(self.positions);
         allocator.free(self.indices);
     }
