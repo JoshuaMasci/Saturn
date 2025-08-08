@@ -50,7 +50,8 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
     const color_space = .srgb_nonlinear_khr;
     const transform = surface_capabilities.current_transform;
     const composite_alpha: vk.CompositeAlphaFlagsKHR = .{ .opaque_bit_khr = true };
-    const present_mode = .fifo_khr;
+
+    const present_mode = getFirstSupportedPresentMode(device, surface, &.{.mailbox_khr}) orelse .fifo_khr;
 
     const handle = try device.proxy.createSwapchainKHR(&.{
         .flags = .{},
@@ -171,4 +172,29 @@ pub fn queuePresent(
         std.log.warn("queuePresentKHR Swapchain Suboptimal", .{});
         self.out_of_date = true;
     }
+}
+
+fn getFirstSupportedPresentMode(device: *VkDevice, surface: vk.SurfaceKHR, desired_present_modes: []const vk.PresentModeKHR) ?vk.PresentModeKHR {
+    var supported_present_modes: [8]vk.PresentModeKHR = undefined;
+    var supported_present_mode_count: u32 = 0;
+
+    _ = device.instance.getPhysicalDeviceSurfacePresentModesKHR(device.physical_device, surface, &supported_present_mode_count, null) catch |err| {
+        std.log.err("vkGetPhysicalDeviceSurfacePresentModesKHR Failed: {}", .{err});
+        return null;
+    };
+    supported_present_mode_count = @max(supported_present_mode_count, @as(u32, @intCast(supported_present_modes.len)));
+    _ = device.instance.getPhysicalDeviceSurfacePresentModesKHR(device.physical_device, surface, &supported_present_mode_count, &supported_present_modes) catch |err| {
+        std.log.err("vkGetPhysicalDeviceSurfacePresentModesKHR Failed: {}", .{err});
+        return null;
+    };
+
+    for (desired_present_modes) |desired_mode| {
+        for (supported_present_modes[0..supported_present_mode_count]) |supported_mode| {
+            if (desired_mode == supported_mode) {
+                return desired_mode;
+            }
+        }
+    }
+
+    return null;
 }
