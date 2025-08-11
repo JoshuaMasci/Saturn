@@ -44,7 +44,13 @@ public:
 
     void setVelocity(JPH::Vec3 new_linear_velocity, JPH::Vec3 new_angular_velocity);
 
-    void addForce(const JPH::Vec3 force, JPH::EActivation activation);
+    void addForce(JPH::Vec3 force, JPH::EActivation activation);
+
+    void addTorque(JPH::Vec3 torque, JPH::EActivation activation);
+
+	void addImpulse(JPH::Vec3 impulse);
+
+	void addAngularImpulse(JPH::Vec3 angular_impulse);
 
     SubShapeIndex addShape(const SubShape &shape);
 

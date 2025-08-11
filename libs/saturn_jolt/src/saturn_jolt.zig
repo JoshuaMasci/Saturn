@@ -259,6 +259,18 @@ pub const Body = struct {
         c.bodyAddForce(self.ptr, @ptrCast(&force[0]), activate);
     }
 
+    pub fn addTorque(self: *Self, torque: Vec3, activate: bool) void {
+        c.bodyAddTorque(self.ptr, @ptrCast(&torque[0]), activate);
+    }
+
+    pub fn addImpulse(self: *Self, impulse: Vec3) void {
+        c.bodyAddImpulse(self.ptr, @ptrCast(&impulse[0]));
+    }
+
+    pub fn addAngularImpulse(self: *Self, angular_impulse: Vec3) void {
+        c.bodyAddAngularImpulse(self.ptr, @ptrCast(&angular_impulse[0]));
+    }
+
     pub fn addShape(self: *Self, shape: Shape, position: Vec3, rotation: Quat, user_data: UserData) SubShapeIndex {
         return c.bodyAddShape(self.ptr, shape.handle, @ptrCast(&position[0]), @ptrCast(&rotation[0]), user_data);
     }

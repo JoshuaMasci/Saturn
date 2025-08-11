@@ -237,18 +237,35 @@ pub const World = struct {
     }
 
     pub fn updateShip(self: *Self, entity: *Entity, input: *PlatformInput) void {
-        const thust_n = 1000000.0;
 
-        const x_axis_input = getControllerAxis(input, .left_x);
-        const y_axis_input = getControllerButtonAxis(input, .right_shoulder, .left_shoulder);
-        const z_axis_input = getControllerAxis(input, .left_y);
+        //Linear Movement
+        {
+            const thust_n = 1000000.0;
 
-        if (@abs(x_axis_input) > 0.1 or @abs(y_axis_input) > 0.1 or @abs(z_axis_input) > 0.1) {
-            const vec_input: zm.Vec = .{ x_axis_input, y_axis_input, z_axis_input, 0.0 };
-            const relative_force: zm.Vec = vec_input * zm.splat(zm.Vec, thust_n);
-            const force = zm.rotate(entity.transform.rotation, relative_force);
-            entity.rigid_body.body.addForce(zm.vecToArr3(force), true);
-            std.log.info("Adding Force: {any}", .{zm.vecToArr3(force)});
+            const x_axis_input = getControllerAxis(input, .left_x);
+            const y_axis_input = getControllerButtonAxis(input, .right_shoulder, .left_shoulder);
+            const z_axis_input = getControllerAxis(input, .left_y);
+
+            if (@abs(x_axis_input) > 0.1 or @abs(y_axis_input) > 0.1 or @abs(z_axis_input) > 0.1) {
+                const vec_input: zm.Vec = .{ x_axis_input, y_axis_input, z_axis_input, 0.0 };
+                const relative_force: zm.Vec = vec_input * zm.splat(zm.Vec, thust_n);
+                const force = zm.rotate(entity.transform.rotation, relative_force);
+                entity.rigid_body.body.addForce(zm.vecToArr3(force), true);
+                std.log.info("Adding Force: {any}", .{zm.vecToArr3(force)});
+            }
+        }
+
+        //Angular Movement
+        {
+            const pitch_input = getControllerAxis(input, .right_y);
+            const yaw_input = getControllerAxis(input, .right_x);
+            _ = yaw_input; // autofix
+
+            if (@abs(pitch_input) > 0.1) {
+                const vec_input: zm.Vec = .{ pitch_input * 10000.0, 0.0, 0.0, 0.0 };
+                const angular_impulse = zm.rotate(entity.transform.rotation, vec_input);
+                entity.rigid_body.body.addTorque(zm.vecToArr3(angular_impulse), true);
+            }
         }
 
         //Do Gravity Calculations

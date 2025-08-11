@@ -93,6 +93,23 @@ void Body::addForce(const JPH::Vec3 force, JPH::EActivation activation) {
     }
 }
 
+void Body::addTorque(const JPH::Vec3 torque, JPH::EActivation activation) {
+    if (this->world_ptr != nullptr) {
+        this->world_ptr->physics_system->GetBodyInterface().AddTorque(this->body_id, torque, activation);
+    }
+}
+
+void Body::addImpulse(JPH::Vec3 impulse) {
+	if (this->world_ptr != nullptr) {
+		this->world_ptr->physics_system->GetBodyInterface().AddImpulse(this->body_id, impulse);
+	}
+}
+
+void Body::addAngularImpulse(JPH::Vec3 angular_impulse) {
+	if (this->world_ptr != nullptr) {
+		this->world_ptr->physics_system->GetBodyInterface().AddAngularImpulse(this->body_id, angular_impulse);
+	}
+}
 
 JPH::BodyCreationSettings Body::getCreateSettings() {
 	auto settings = JPH::BodyCreationSettings();
@@ -117,6 +134,7 @@ JPH::BodyCreationSettings Body::getCreateSettings() {
 	case 2:
 		settings.mMotionType = JPH::EMotionType::Dynamic;
 		break;
+	default:;
 	}
 
 	settings.mIsSensor = false;

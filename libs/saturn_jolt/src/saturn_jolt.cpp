@@ -339,6 +339,18 @@ void bodyAddForce(Body *body_ptr, const Vec3 force, bool activate) {
 	body_ptr->addForce(loadVec3(force), activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
 }
 
+void bodyAddTorque(Body *body_ptr, const Vec3 torque, bool activate) {
+	body_ptr->addTorque(loadVec3(torque), activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+}
+
+void bodyAddImpulse(Body *body_ptr, const Vec3 impulse) {
+	body_ptr->addImpulse(loadVec3(impulse));
+}
+
+void bodyAddAngularImpulse(Body *body_ptr, const Vec3 angular_impulse) {
+	body_ptr->addAngularImpulse(loadVec3(angular_impulse));
+}
+
 SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Vec3 position, const Quat rotation, UserData user_data) {
 	shape_pool_mutex.lock();
 	auto shape_ref = shape_pool->get(shape);

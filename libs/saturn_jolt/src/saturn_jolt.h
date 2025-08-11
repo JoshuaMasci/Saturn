@@ -244,7 +244,11 @@ Transform bodyGetTransform(Body *body_ptr);
 void bodySetTransform(Body *body_ptr, const Transform *c_transform);
 Velocity bodyGetVelocity(Body *body_ptr);
 void bodySetVelocity(Body *body_ptr, const Velocity *c_velocity);
+
 void bodyAddForce(Body *body_ptr, const Vec3 force, bool activate);
+void bodyAddTorque(Body *body_ptr, const Vec3 torque, bool activate);
+void bodyAddImpulse(Body *body_ptr, const Vec3 impulse);
+void bodyAddAngularImpulse(Body *body_ptr, const Vec3 angular_impulse);
 
 SubShapeIndex bodyAddShape(Body *body_ptr, Shape shape, const Vec3 position, const Quat rotation, UserData user_data);
 void bodyRemoveShape(Body *body_ptr, SubShapeIndex index);
