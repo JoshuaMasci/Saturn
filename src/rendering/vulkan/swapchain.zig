@@ -11,6 +11,7 @@ pub const SwapchainImage = struct {
     swapchain: vk.SwapchainKHR,
     index: u32,
     image: ImageInterface,
+    present_semaphore: vk.Semaphore,
 };
 
 const Self = @This();
@@ -22,6 +23,7 @@ handle: vk.SwapchainKHR,
 
 image_count: usize,
 images: [MAX_IMAGE_COUNT]ImageInterface,
+image_present_semaphores: [MAX_IMAGE_COUNT]vk.Semaphore,
 
 extent: vk.Extent2D,
 format: vk.Format,
@@ -81,7 +83,9 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
     _ = try device.proxy.getSwapchainImagesKHR(handle, &actual_image_count, &image_handles);
 
     var images: [MAX_IMAGE_COUNT]ImageInterface = undefined;
-    for (image_handles[0..actual_image_count], images[0..actual_image_count]) |image_handle, *swapchain_image| {
+    var image_present_semaphores: [MAX_IMAGE_COUNT]vk.Semaphore = undefined;
+
+    for (image_handles[0..actual_image_count], images[0..actual_image_count], image_present_semaphores[0..actual_image_count]) |image_handle, *swapchain_image, *semaphore| {
         const view_handle = try device.proxy.createImageView(&.{
             .view_type = .@"2d",
             .image = image_handle,
@@ -104,6 +108,7 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
             .view_handle = view_handle,
             .sampled_binding = null, //TODO: bind swapchain if requested
         };
+        semaphore.* = try device.proxy.createSemaphore(&.{}, null);
     }
 
     return .{
@@ -112,6 +117,7 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
         .handle = handle,
         .image_count = actual_image_count,
         .images = images,
+        .image_present_semaphores = image_present_semaphores,
         .extent = extent,
         .format = format,
         .color_space = color_space,
@@ -122,8 +128,9 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
 }
 
 pub fn deinit(self: Self) void {
-    for (self.images[0..self.image_count]) |image| {
+    for (self.images[0..self.image_count], self.image_present_semaphores[0..self.image_count]) |image, semaphore| {
         self.device.proxy.destroyImageView(image.view_handle, null);
+        self.device.proxy.destroySemaphore(semaphore, null);
     }
 
     self.device.proxy.destroySwapchainKHR(self.handle, null);
@@ -151,6 +158,7 @@ pub fn acquireNextImage(
         .swapchain = self.handle,
         .index = result.image_index,
         .image = self.images[result.image_index],
+        .present_semaphore = self.image_present_semaphores[result.image_index],
     };
 }
 

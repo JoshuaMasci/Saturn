@@ -1,3 +1,5 @@
+// Main File for Asset Pipeline
+
 const std = @import("std");
 
 pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8;

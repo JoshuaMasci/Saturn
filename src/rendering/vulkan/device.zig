@@ -20,6 +20,8 @@ const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
 pub const BufferHandle = BufferPool.Handle;
 pub const ImageHandle = ImagePool.Handle;
+pub const RenderGraph = rg.RenderGraph;
+pub const RenderPass = rg.RenderPass;
 
 const SurfaceSwapchain = struct {
     surface: vk.SurfaceKHR,
@@ -189,6 +191,8 @@ pub fn claimWindow(self: *Self, window: Window) !void {
 }
 
 pub fn releaseWindow(self: *Self, window: Window) void {
+    _ = self.device.proxy.deviceWaitIdle() catch {};
+
     if (self.swapchains.fetchSwapRemove(window)) |entry| {
         entry.value.swapchain.deinit();
         Vulkan.destroySurface(self.instance.instance.handle, entry.value.surface, null);
@@ -322,7 +326,6 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         }
 
         const wait_semaphore = try frame_data.semaphore_pool.get();
-        const present_semaphore = try frame_data.semaphore_pool.get();
         const swapchain_image = swapchain.acquireNextImage(null, wait_semaphore, .null_handle) catch |err| {
             if (err == error.OutOfDateKHR) {
                 swapchain.out_of_date = true;
@@ -335,7 +338,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
             .index = swapchain_image.index,
             .image = swapchain_image.image,
             .wait_semaphore = wait_semaphore,
-            .present_semaphore = present_semaphore,
+            .present_semaphore = swapchain_image.present_semaphore,
             .resource_index = undefined,
         };
     }
