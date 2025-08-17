@@ -84,7 +84,7 @@ pub const RenderThread = struct {
 
         const scene_renderer = SceneRenderer.init(
             allocator,
-            &global.assets.registry,
+            global.asset_registry,
             device,
             swapchain_format,
             depth_format,
@@ -93,7 +93,7 @@ pub const RenderThread = struct {
 
         const physics_renderer = PhysicsRenderer.init(
             allocator,
-            &global.assets.registry,
+            global.asset_registry,
             device,
             swapchain_format,
             depth_format,
@@ -102,7 +102,7 @@ pub const RenderThread = struct {
 
         const imgui_renderer = ImguiRenderer.init(
             allocator,
-            &global.assets.registry,
+            global.asset_registry,
             device,
             imgui,
             swapchain_format,

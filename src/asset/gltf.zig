@@ -1,15 +1,15 @@
 const std = @import("std");
 
-const zm = @import("zmath");
-const Transform = @import("../transform.zig");
-
-const Mesh = @import("mesh.zig");
-const Texture2D = @import("texture.zig");
-const Material = @import("material.zig");
-const Scene = @import("scene.zig");
-
-const stbi = @import("stbi.zig");
 const zgltf = @import("zgltf");
+const zm = @import("zmath");
+
+const Transform = @import("../transform.zig");
+const AssetHandle = @import("registry.zig").Handle;
+const Material = @import("material.zig");
+const Mesh = @import("mesh.zig");
+const Scene = @import("scene.zig");
+const stbi = @import("stbi.zig");
+const Texture2D = @import("texture.zig");
 
 //TODO: move to a string utils
 fn replaceExt(allocator: std.mem.Allocator, path: []const u8, new_ext: []const u8) ![]const u8 {
@@ -161,7 +161,7 @@ pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize)
         .blend => .alpha_blend,
     };
 
-    var base_color_texture: ?Texture2D.Registry.Handle = null;
+    var base_color_texture: ?AssetHandle = null;
     if (gltf_material.metallic_roughness.base_color_texture) |texture| {
         if (self.gltf_file.data.textures.items[texture.index].source) |texture_index| {
             base_color_texture = self.asset_info.images[texture_index].handle;
@@ -243,7 +243,7 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
     var mesh: ?Scene.Mesh = null;
     if (gltf_node.mesh) |mesh_index| {
         const gltf_mesh = self.gltf_file.data.meshes.items[mesh_index];
-        var materials = try allocator.alloc(Material.Registry.Handle, gltf_mesh.primitives.items.len);
+        var materials = try allocator.alloc(AssetHandle, gltf_mesh.primitives.items.len);
         errdefer allocator.free(materials);
 
         for (gltf_mesh.primitives.items, 0..) |prim, i| {
@@ -288,7 +288,7 @@ fn AssetInfo(comptime Handle: type, comptime sub_path: []const u8, comptime file
             return .{
                 .name = asset_name,
                 .path = path,
-                .handle = .fromRepoPathSeprate(repo, path),
+                .handle = .fromRepoPath(repo, path),
             };
         }
 
@@ -300,9 +300,9 @@ fn AssetInfo(comptime Handle: type, comptime sub_path: []const u8, comptime file
 }
 
 const AssetHandles = struct {
-    const MeshAssetInfo = AssetInfo(Mesh.Registry.Handle, "/meshes/", ".mesh");
-    const ImageAssetInfo = AssetInfo(Texture2D.Registry.Handle, "/textures/", ".tex");
-    const MaterialAssetInfo = AssetInfo(Material.Registry.Handle, "/materials/", ".mat");
+    const MeshAssetInfo = AssetInfo(AssetHandle, "/meshes/", ".asset");
+    const ImageAssetInfo = AssetInfo(AssetHandle, "/textures/", ".asset");
+    const MaterialAssetInfo = AssetInfo(AssetHandle, "/materials/", ".asset");
 
     allocator: std.mem.Allocator,
 

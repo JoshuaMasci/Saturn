@@ -1,9 +1,7 @@
 const std = @import("std");
+
 const serde = @import("../serde.zig");
-
-const TextureAssetHandle = @import("texture.zig").Registry.Handle;
-
-pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".mat"});
+const AssetHandle = @import("registry.zig").Handle;
 
 pub const AlphaMode = enum(u32) {
     alpha_opaque,
@@ -51,40 +49,40 @@ name: []const u8,
 alpha_mode: AlphaMode = .alpha_opaque,
 alpha_cutoff: f32 = 0.0,
 
-base_color_texture: ?TextureAssetHandle = null,
+base_color_texture: ?AssetHandle = null,
 base_color_factor: [4]f32 = [_]f32{1.0} ** 4,
 
-metallic_roughness_texture: ?TextureAssetHandle = null,
+metallic_roughness_texture: ?AssetHandle = null,
 metallic_roughness_factor: [2]f32 = .{ 0.0, 1.0 },
 
-emissive_texture: ?TextureAssetHandle = null,
+emissive_texture: ?AssetHandle = null,
 emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
 
-occlusion_texture: ?TextureAssetHandle = null,
-normal_texture: ?TextureAssetHandle = null,
+occlusion_texture: ?AssetHandle = null,
+normal_texture: ?AssetHandle = null,
 
 pub fn initFromJson(allocator: std.mem.Allocator, json: *const Json) !Self {
     const name = try allocator.dupe(u8, json.name);
 
-    var base_color_texture: ?TextureAssetHandle = null;
+    var base_color_texture: ?AssetHandle = null;
     if (json.base_color_texture) |texture_string|
-        base_color_texture = TextureAssetHandle.fromRepoPath(texture_string);
+        base_color_texture = .fromRepoPathCombined(texture_string);
 
-    var metallic_roughness_texture: ?TextureAssetHandle = null;
+    var metallic_roughness_texture: ?AssetHandle = null;
     if (json.metallic_roughness_texture) |texture_string|
-        metallic_roughness_texture = TextureAssetHandle.fromRepoPath(texture_string);
+        metallic_roughness_texture = .fromRepoPathCombined(texture_string);
 
-    var emissive_texture: ?TextureAssetHandle = null;
+    var emissive_texture: ?AssetHandle = null;
     if (json.emissive_texture) |texture_string|
-        emissive_texture = TextureAssetHandle.fromRepoPath(texture_string);
+        emissive_texture = .fromRepoPathCombined(texture_string);
 
-    var occlusion_texture: ?TextureAssetHandle = null;
+    var occlusion_texture: ?AssetHandle = null;
     if (json.occlusion_texture) |texture_string|
-        occlusion_texture = TextureAssetHandle.fromRepoPath(texture_string);
+        occlusion_texture = .fromRepoPathCombined(texture_string);
 
-    var normal_texture: ?TextureAssetHandle = null;
+    var normal_texture: ?AssetHandle = null;
     if (json.normal_texture) |texture_string|
-        normal_texture = TextureAssetHandle.fromRepoPath(texture_string);
+        normal_texture = .fromRepoPathCombined(texture_string);
 
     return .{
         .name = name,
@@ -108,12 +106,12 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.name);
 }
 
-pub fn serialize(self: Self, writer: std.fs.File.Writer) !void {
+pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.name);
     try writer.writeStructEndian(PackedMaterial.pack(self), .little);
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     var value = (try reader.readStruct(PackedMaterial)).unpack();
     value.name = name;
@@ -141,7 +139,7 @@ const PackedMaterial = extern struct {
     has_normal_texture: bool,
     normal_texture: u64,
 
-    fn unwrapHandle(handle_opt: ?TextureAssetHandle) u64 {
+    fn unwrapHandle(handle_opt: ?AssetHandle) u64 {
         if (handle_opt) |handle| {
             return handle.toU64();
         } else {
@@ -180,17 +178,17 @@ const PackedMaterial = extern struct {
             .alpha_mode = @enumFromInt(material.alpha_mode),
             .alpha_cutoff = material.alpha_cutoff,
 
-            .base_color_texture = if (material.has_base_color_texture) TextureAssetHandle.fromU64(material.base_color_texture) else null,
+            .base_color_texture = if (material.has_base_color_texture) AssetHandle.fromU64(material.base_color_texture) else null,
             .base_color_factor = material.base_color_factor,
 
-            .metallic_roughness_texture = if (material.has_metallic_roughness_texture) TextureAssetHandle.fromU64(material.metallic_roughness_texture) else null,
+            .metallic_roughness_texture = if (material.has_metallic_roughness_texture) AssetHandle.fromU64(material.metallic_roughness_texture) else null,
             .metallic_roughness_factor = material.metallic_roughness_factor,
 
-            .emissive_texture = if (material.has_emissive_texture) TextureAssetHandle.fromU64(material.emissive_texture) else null,
+            .emissive_texture = if (material.has_emissive_texture) AssetHandle.fromU64(material.emissive_texture) else null,
             .emissive_factor = material.emissive_factor,
 
-            .occlusion_texture = if (material.has_occlusion_texture) TextureAssetHandle.fromU64(material.occlusion_texture) else null,
-            .normal_texture = if (material.has_normal_texture) TextureAssetHandle.fromU64(material.normal_texture) else null,
+            .occlusion_texture = if (material.has_occlusion_texture) AssetHandle.fromU64(material.occlusion_texture) else null,
+            .normal_texture = if (material.has_normal_texture) AssetHandle.fromU64(material.normal_texture) else null,
         };
     }
 };

@@ -1,8 +1,7 @@
 const std = @import("std");
 
+const AssetHandle = @import("../asset/registry.zig").Handle;
 const Transform = @import("../transform.zig");
-const MeshHandle = @import("mesh.zig").Registry.Handle;
-const MaterialHandle = @import("material.zig").Registry.Handle;
 
 const Self = @This();
 
@@ -44,6 +43,6 @@ pub const Node = struct {
 };
 
 pub const Mesh = struct {
-    mesh: MeshHandle,
-    materials: []const MaterialHandle,
+    mesh: AssetHandle,
+    materials: []const AssetHandle,
 };

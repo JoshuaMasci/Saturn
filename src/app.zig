@@ -54,8 +54,8 @@ pub const App = struct {
     average_dt: f32 = 0.0,
 
     pub fn init() !Self {
-        try global.assets.addDir("engine", "zig-out/assets");
-        try global.assets.addDir("game", "zig-out/game-assets");
+        try global.asset_registry.addRepository("engine", "zig-out/assets");
+        try global.asset_registry.addRepository("game", "zig-out/game-assets");
 
         try sdl3.init(global.global_allocator);
 
@@ -95,7 +95,12 @@ pub const App = struct {
         const orbital_speed = kiss.calcOrbitalVelocity(sun_mass, 50.0);
         const orbital_velocity = zm.normalize3(zm.f32x4(1.0, 0.5, 0.0, 0.0)) * zm.splat(zm.Vec, orbital_speed);
         new_world.addPlanet(.{ .position = .{ 0.0, 0.0, 50.0, 0.0 } }, orbital_velocity, .dynamic, 5.0, PLANET_DENSITY_KG_M3);
-        try new_world.addShip(global.global_allocator, .{ .position = .{ 0.0, 0.0, -50.0, 0.0 } }, orbital_velocity * zm.splat(zm.Vec, -1.0));
+        try new_world.addShip(
+            global.global_allocator,
+            global.asset_registry,
+            .{ .position = .{ 0.0, 0.0, -50.0, 0.0 } },
+            orbital_velocity * zm.splat(zm.Vec, -1.0),
+        );
 
         return .{
             .should_quit = false,

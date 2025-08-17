@@ -19,6 +19,15 @@ pub const AssetHandle = struct {
         return .{ .repo_hash = repo_hash, .asset_hash = asset_hash };
     }
 
+    pub fn fromRepoPathCombined(repo_path: []const u8) ?Handle {
+        var split = std.mem.splitSequence(u8, repo_path, ":");
+        const repo = split.next() orelse return null;
+        const path = split.next() orelse return null;
+        const repo_hash = HashMethod(repo);
+        const asset_hash = HashMethod(path);
+        return .{ .repo_hash = repo_hash, .asset_hash = asset_hash };
+    }
+
     pub fn toU64(self: AssetHandle) u64 {
         return (@as(u64, self.repo_hash) << 32) | @as(u64, self.asset_hash);
     }
@@ -30,6 +39,7 @@ pub const AssetHandle = struct {
         };
     }
 };
+pub const Handle = AssetHandle;
 
 pub const AssetInfo = struct {
     file_path: []const u8,
@@ -53,7 +63,7 @@ pub const Repository = struct {
         while (try walker.next()) |entry| {
             if (entry.kind == .file) {
                 const file_extension = std.fs.path.extension(entry.path);
-                if (std.mem.eql(u8, AssetExtension, file_extension) or true) {
+                if (std.mem.eql(u8, AssetExtension, file_extension)) {
                     var header: HeaderV1 = undefined;
                     const read_bytes = try dir.readFile(entry.path, std.mem.asBytes(&header));
 

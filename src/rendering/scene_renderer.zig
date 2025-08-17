@@ -31,13 +31,14 @@ pub const BuildCommandBufferData = struct {
 const Self = @This();
 
 allocator: std.mem.Allocator,
+registry: *const AssetRegistry,
 device: *Device,
 
 mesh_pipeline: vk.Pipeline,
 
-static_mesh_map: std.AutoArrayHashMap(MeshAsset.Registry.Handle, Mesh),
-texture_map: std.AutoArrayHashMap(Texture2dAsset.Registry.Handle, Device.ImageHandle),
-material_map: std.AutoArrayHashMap(MaterialAsset.Registry.Handle, MaterialAsset),
+static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, Mesh),
+texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, Device.ImageHandle),
+material_map: std.AutoArrayHashMap(AssetRegistry.Handle, MaterialAsset),
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -47,10 +48,10 @@ pub fn init(
     depth_format: vk.Format,
     pipeline_layout: vk.PipelineLayout,
 ) !Self {
-    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh.vert.shader"));
+    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh.vert.asset"));
     defer device.device.proxy.destroyShaderModule(vertex_shader, null);
 
-    const opaque_fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/opaque.frag.shader"));
+    const opaque_fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/opaque.frag.asset"));
     defer device.device.proxy.destroyShaderModule(opaque_fragment_shader, null);
 
     const bindings = [_]vk.VertexInputBindingDescription{
@@ -110,6 +111,7 @@ pub fn init(
 
     return .{
         .allocator = allocator,
+        .registry = registry,
         .device = device,
         .mesh_pipeline = mesh_pipeline,
         .static_mesh_map = .init(allocator),
@@ -281,9 +283,9 @@ pub fn loadSceneData(self: *Self, temp_allocator: std.mem.Allocator, scene: *con
     }
 }
 
-pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: MeshAsset.Registry.Handle) void {
+pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
     if (!self.static_mesh_map.contains(handle)) {
-        if (global.assets.meshes.loadAsset(temp_allocator, handle)) |mesh| {
+        if (self.registry.loadAsset(MeshAsset, temp_allocator, handle)) |mesh| {
             defer mesh.deinit(temp_allocator);
             const gpu_mesh = Mesh.init(self.allocator, self.device, &mesh) catch return;
 
@@ -297,9 +299,9 @@ pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: MeshA
     }
 }
 
-pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: Texture2dAsset.Registry.Handle) void {
+pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
     if (!self.texture_map.contains(handle)) {
-        if (global.assets.textures.loadAsset(temp_allocator, handle)) |texture| {
+        if (self.registry.loadAsset(Texture2dAsset, temp_allocator, handle)) |texture| {
             defer texture.deinit(temp_allocator);
 
             const format: vk.Format = switch (texture.format) {
@@ -320,10 +322,10 @@ pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: Te
     }
 }
 
-pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: MaterialAsset.Registry.Handle) void {
+pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
     if (!self.material_map.contains(handle)) {
         //Need to load the asset using the non temp allocator, otherwise the name will be invalid
-        if (global.assets.materials.loadAsset(self.allocator, handle)) |material| {
+        if (self.registry.loadAsset(MaterialAsset, self.allocator, handle)) |material| {
             if (material.base_color_texture) |texture_handle|
                 self.tryLoadTexture(temp_allocator, texture_handle);
 

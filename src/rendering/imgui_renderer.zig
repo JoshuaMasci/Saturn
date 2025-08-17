@@ -31,10 +31,10 @@ pub fn init(
     color_format: vk.Format,
     pipeline_layout: vk.PipelineLayout,
 ) !Self {
-    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/imgui.vert.shader"));
+    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/imgui.vert.asset"));
     defer device.device.proxy.destroyShaderModule(vertex_shader, null);
 
-    const fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/imgui.frag.shader"));
+    const fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/imgui.frag.asset"));
     defer device.device.proxy.destroyShaderModule(fragment_shader, null);
 
     const bindings = [_]vk.VertexInputBindingDescription{

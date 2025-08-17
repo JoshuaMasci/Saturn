@@ -5,6 +5,7 @@ const std = @import("std");
 const jolt = @import("physics");
 const zm = @import("zmath");
 
+const AssetRegistry = @import("asset/registry.zig");
 const PlatformInput = @import("platform/sdl3.zig").Input;
 const Controller = @import("platform/sdl3/controller.zig");
 const rendering = @import("rendering/scene.zig");
@@ -123,9 +124,6 @@ pub const World = struct {
     }
 
     pub fn addPlanet(self: *Self, transform: Transform, velocity: zm.Vec, motion_type: jolt.MotionType, radius: f32, density: f32) void {
-        const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
-        const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
-
         var entity: Entity = .init(
             .{
                 .position = transform.position,
@@ -146,18 +144,16 @@ pub const World = struct {
         self.physics_world.addBody(entity.rigid_body.body);
 
         entity.mesh = .{
-            .mesh = MeshAssetHandle.fromRepoPath("engine:shapes/sphere.mesh").?,
-            .materials = .fromSlice(&.{MaterialAssetHandle.fromRepoPath("game:materials/grid.mat").?}),
+            .mesh = .fromRepoPath("engine", "shapes/sphere.asset"),
+            .materials = .fromSlice(&.{.fromRepoPath("game", "materials/grid.asset")}),
             .visable = true,
         };
 
         self.entites.appendAssumeCapacity(entity);
     }
 
-    pub fn addShip(self: *Self, allocator: std.mem.Allocator, transform: Transform, velocity: zm.Vec) !void {
-        const MaterialAssetHandle = @import("asset/material.zig").Registry.Handle;
-        const MeshAssetHandle = @import("asset/mesh.zig").Registry.Handle;
-        const global = @import("global.zig");
+    pub fn addShip(self: *Self, allocator: std.mem.Allocator, registry: *const AssetRegistry, transform: Transform, velocity: zm.Vec) !void {
+        const MeshAsset = @import("asset/mesh.zig");
 
         var entity: Entity = .init(
             .{
@@ -169,11 +165,10 @@ pub const World = struct {
         entity.behavior = .ship;
         entity.rigid_body.linear_velocity = velocity;
 
-        // const ship_mesh_asset = MeshAssetHandle.fromRepoPath("game:models/CubeLander.mesh").?;
-        const ship_mesh_asset = MeshAssetHandle.fromRepoPath("engine:shapes/cube.mesh").?;
+        const ship_mesh_asset: AssetRegistry.AssetHandle = .fromRepoPath("game", "models/CubeLander.asset");
 
         const physics_shape: jolt.Shape = shp: {
-            var mesh = try global.assets.meshes.loadAsset(allocator, ship_mesh_asset);
+            var mesh = try registry.loadAsset(MeshAsset, allocator, ship_mesh_asset);
             defer mesh.deinit(allocator);
 
             var cube_shape = jolt.Shape.initBox(.{ 3, 3, 6 }, 100.0, 0);
@@ -194,7 +189,7 @@ pub const World = struct {
 
         entity.mesh = .{
             .mesh = ship_mesh_asset,
-            .materials = .fromSlice(&.{MaterialAssetHandle.fromRepoPath("game:materials/uv_grid.mat").?}),
+            .materials = .fromSlice(&.{.fromRepoPath("game", "materials/uv_grid.asset")}),
             .visable = true,
         };
 

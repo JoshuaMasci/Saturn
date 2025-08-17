@@ -1,7 +1,8 @@
 const std = @import("std");
-const serde = @import("../serde.zig");
 
-pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".mesh"});
+const zmath = @import("zmath");
+
+const serde = @import("../serde.zig");
 
 //TODO: can compress this down by storing types in ints
 pub const Vertex = extern struct {
@@ -33,7 +34,7 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.primitives);
 }
 
-pub fn serialize(self: Self, writer: std.fs.File.Writer) !void {
+pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.name);
 
     try writer.writeAll(&std.mem.toBytes(self.sphere_pos_radius));
@@ -47,7 +48,7 @@ pub fn serialize(self: Self, writer: std.fs.File.Writer) !void {
     }
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     errdefer allocator.free(name);
 
@@ -69,8 +70,6 @@ pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !Se
         .primitives = primitives,
     };
 }
-
-const zmath = @import("zmath");
 
 pub fn calcBoundingSphere(self: *Self) void {
     var mesh_min = zmath.splat(zmath.Vec, std.math.inf(f32));

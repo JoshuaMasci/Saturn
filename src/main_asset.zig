@@ -2,18 +2,15 @@
 
 const std = @import("std");
 
-pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8;
-
-const io = @import("asset/io.zig");
+const Gltf = @import("asset/gltf.zig");
 const AssetType = @import("asset/header.zig").AssetType;
-
-const Material = @import("asset/material.zig");
-
-//Asset Loaders
 const hlsl = @import("asset/hlsl.zig");
+const io = @import("asset/io.zig");
+const Material = @import("asset/material.zig");
 const obj = @import("asset/obj.zig");
 const stbi = @import("asset/stbi.zig");
-const Gltf = @import("asset/gltf.zig");
+
+pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8;
 
 var repo_name: []const u8 = &.{};
 var input_dir: std.fs.Dir = undefined;
@@ -157,7 +154,7 @@ fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
         return errorString(allocator, "Failed to open obj({s}): {}", .{ file_path, err });
     defer processed_mesh.deinit(allocator);
 
-    const new_path = replaceExt(allocator, file_path, ".mesh") catch |err|
+    const new_path = replaceExt(allocator, file_path, ".asset") catch |err|
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
@@ -174,7 +171,7 @@ fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const
         return errorString(allocator, "Failed to open file({s}): {}", .{ file_path, err });
     defer texture.deinit(allocator);
 
-    const new_path = replaceExt(allocator, file_path, ".tex") catch |err|
+    const new_path = replaceExt(allocator, file_path, ".asset") catch |err|
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
@@ -195,7 +192,7 @@ fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]
         return errorString(allocator, "Failed to parse create material({s}): {}", .{ file_path, err });
     defer material.deinit(allocator);
 
-    const new_path = replaceExt(allocator, file_path, ".mat") catch |err|
+    const new_path = replaceExt(allocator, file_path, ".asset") catch |err|
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 
@@ -211,7 +208,7 @@ fn processShader(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]co
     defer shader.deinit(allocator);
 
     const file_path = removeExt(meta_file_path);
-    const new_path = std.fmt.allocPrint(allocator, "{s}.shader", .{file_path}) catch |err|
+    const new_path = std.fmt.allocPrint(allocator, "{s}.asset", .{file_path}) catch |err|
         return errorString(allocator, "Failed to allocate string: {}", .{err});
     defer allocator.free(new_path);
 

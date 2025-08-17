@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const header_v1 = @import("header.zig");
 
 pub fn writeFile(dir: std.fs.Dir, atype: header_v1.AssetType, path: []const u8, asset: anytype) !void {

@@ -1,7 +1,6 @@
 const std = @import("std");
 
-const MaterialAssetHandle = @import("../asset/material.zig").Registry.Handle;
-const MeshAssetHandle = @import("../asset/mesh.zig").Registry.Handle;
+const AssetRegistry = @import("../asset/registry.zig");
 const Transform = @import("../transform.zig");
 
 const CubeTextureAssetHandle = u32;
@@ -10,17 +9,17 @@ pub const MaterialArray = struct {
     const Self = @This();
     const BufferSize = 32;
 
-    buffer: [BufferSize]MaterialAssetHandle,
+    buffer: [BufferSize]AssetRegistry.Handle,
     len: usize,
 
     pub fn init() Self {
         return .{ .buffer = undefined, .len = 0 };
     }
 
-    pub fn fromSlice(src: []const MaterialAssetHandle) Self {
+    pub fn fromSlice(src: []const AssetRegistry.Handle) Self {
         std.debug.assert(src.len <= BufferSize);
-        var buffer: [BufferSize]MaterialAssetHandle = .{MaterialAssetHandle{ .repo_hash = 0, .asset_hash = 42 }} ** BufferSize;
-        std.mem.copyForwards(MaterialAssetHandle, &buffer, src);
+        var buffer: [BufferSize]AssetRegistry.Handle = .{AssetRegistry.Handle{ .repo_hash = 0, .asset_hash = 42 }} ** BufferSize;
+        std.mem.copyForwards(AssetRegistry.Handle, &buffer, src);
 
         return .{
             .buffer = buffer,
@@ -28,14 +27,14 @@ pub const MaterialArray = struct {
         };
     }
 
-    pub fn constSlice(self: *const Self) []const MaterialAssetHandle {
+    pub fn constSlice(self: *const Self) []const AssetRegistry.Handle {
         return self.buffer[0..self.len];
     }
 };
 
 pub const StaticMeshComponent = struct {
     visable: bool = true,
-    mesh: MeshAssetHandle,
+    mesh: AssetRegistry.Handle,
     materials: MaterialArray,
 };
 

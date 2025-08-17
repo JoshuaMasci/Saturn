@@ -1,7 +1,6 @@
 const std = @import("std");
-const serde = @import("../serde.zig");
 
-pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".tex"});
+const serde = @import("../serde.zig");
 
 pub const TextureType = enum(u32) {
     @"2d",
