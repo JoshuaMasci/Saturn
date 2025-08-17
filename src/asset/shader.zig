@@ -1,7 +1,6 @@
 const std = @import("std");
-const serde = @import("../serde.zig");
 
-pub const Registry = @import("system.zig").AssetSystem(Self, &[_][]const u8{".shader"});
+const serde = @import("../serde.zig");
 
 pub const Meta = struct {
     target: Target = .vulkan, //TODO: change default to vulkan

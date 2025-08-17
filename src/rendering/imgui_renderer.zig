@@ -5,11 +5,10 @@ const vk = @import("vulkan");
 const zimgui = @import("zimgui");
 
 const AssetRegistry = @import("../asset/registry.zig");
-const ShaderAsset = @import("../asset/shader.zig");
-const ShaderAssetHandle = ShaderAsset.Registry.Handle;
 const Device = @import("vulkan/device.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
+const utils = @import("vulkan/utils.zig");
 
 const Self = @This();
 
@@ -24,42 +23,19 @@ font_texture: Device.ImageHandle,
 
 imgui: Imgui,
 
-pub fn initNew(allocator: std.mem.Allocator, registry: *const AssetRegistry, device: *Device, imgui: Imgui, color_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
-    var vertex_shader = try registry.loadAsset(ShaderAsset, allocator, .fromRepoPath("engine", "shaders/vulkan/imgui.vert.shader"));
-    defer vertex_shader.deinit(allocator);
-
-    var fragment_shader = try registry.loadAsset(ShaderAsset, allocator, .fromRepoPath("engine", "shaders/vulkan/imgui.frag.shader"));
-    defer fragment_shader.deinit(allocator);
-
-    return try initInternal(allocator, device, imgui, color_format, pipeline_layout, vertex_shader, fragment_shader);
-}
-
-pub fn init(allocator: std.mem.Allocator, device: *Device, imgui: Imgui, color_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
-    const global = @import("../global.zig");
-
-    var vertex_shader = try global.assets.shaders.loadAsset(allocator, .fromRepoPathSeprate("engine", "shaders/vulkan/imgui.vert.shader"));
-    defer vertex_shader.deinit(allocator);
-
-    var fragment_shader = try global.assets.shaders.loadAsset(allocator, .fromRepoPathSeprate("engine", "shaders/vulkan/imgui.frag.shader"));
-    defer fragment_shader.deinit(allocator);
-
-    return try initInternal(allocator, device, imgui, color_format, pipeline_layout, vertex_shader, fragment_shader);
-}
-
-fn initInternal(
+pub fn init(
     allocator: std.mem.Allocator,
+    registry: *const AssetRegistry,
     device: *Device,
     imgui: Imgui,
     color_format: vk.Format,
     pipeline_layout: vk.PipelineLayout,
-    vertex_shader: ShaderAsset,
-    fragment_shader: ShaderAsset,
 ) !Self {
-    const vertex_module = try createShaderModule(device.device.proxy, vertex_shader);
-    defer device.device.proxy.destroyShaderModule(vertex_module, null);
+    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/imgui.vert.shader"));
+    defer device.device.proxy.destroyShaderModule(vertex_shader, null);
 
-    const fragment_module = try createShaderModule(device.device.proxy, fragment_shader);
-    defer device.device.proxy.destroyShaderModule(fragment_module, null);
+    const fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/imgui.frag.shader"));
+    defer device.device.proxy.destroyShaderModule(fragment_shader, null);
 
     const bindings = [_]vk.VertexInputBindingDescription{
         .{
@@ -102,8 +78,8 @@ fn initInternal(
             .enable_blending = true,
         },
         .{ .bindings = &bindings, .attributes = &attributes },
-        vertex_module,
-        fragment_module,
+        vertex_shader,
+        fragment_shader,
     );
 
     const font_data = imgui.getFontAtlasAsR8().?;
@@ -370,16 +346,4 @@ fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Re
         command_buffer.setScissor(0, 1, @ptrCast(&draw_command.scissor));
         command_buffer.drawIndexed(draw_command.index_count, 1, draw_command.first_index, draw_command.vertex_offset, 0);
     }
-}
-
-fn createShaderModule(device: vk.DeviceProxy, shader: ShaderAsset) !vk.ShaderModule {
-    if (shader.target != .vulkan) {
-        return error.InvalidShaderTarget;
-    }
-
-    return try device.createShaderModule(&.{
-        .flags = .{},
-        .code_size = shader.spirv_code.len * @sizeOf(u32), //Code size is in bytes, despite the p_code being a u32ptr
-        .p_code = @alignCast(@ptrCast(shader.spirv_code.ptr)),
-    }, null);
 }

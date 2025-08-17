@@ -76,7 +76,7 @@ const App = struct {
 
         try vulkan_device.claimWindow(window);
 
-        var imgui_renderer: ImguiRenderer = try .initNew(
+        var imgui_renderer: ImguiRenderer = try .init(
             allocator,
             &asset_registry,
             vulkan_device,
@@ -104,7 +104,6 @@ const App = struct {
         self.vulkan_device.waitIdle();
 
         self.imgui_renderer.deinit();
-
         self.vulkan_device.releaseWindow(self.window);
         self.vulkan_device.deinit();
         self.allocator.destroy(self.vulkan_device);

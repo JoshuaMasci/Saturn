@@ -1,13 +1,12 @@
 const std = @import("std");
+
 const vk = @import("vulkan");
 
+const AssetRegistry = @import("../../asset/registry.zig");
 const ShaderAsset = @import("../../asset/shader.zig");
-const ShaderAssetHandle = ShaderAsset.Registry.Handle;
 
-const global = @import("../../global.zig");
-
-pub fn loadGraphicsShader(allocator: std.mem.Allocator, device: vk.DeviceProxy, handle: ShaderAssetHandle) !vk.ShaderModule {
-    var shader = try global.assets.shaders.loadAsset(allocator, handle);
+pub fn loadGraphicsShader(allocator: std.mem.Allocator, registry: *const AssetRegistry, device: vk.DeviceProxy, handle: AssetRegistry.AssetHandle) !vk.ShaderModule {
+    var shader = try registry.loadAsset(ShaderAsset, allocator, handle);
     defer shader.deinit(allocator);
 
     if (shader.target != .vulkan) {

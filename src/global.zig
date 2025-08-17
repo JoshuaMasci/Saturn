@@ -2,7 +2,7 @@ const std = @import("std");
 
 const MaterialRegistry = @import("asset/material.zig").Registry;
 const MeshRegistry = @import("asset/mesh.zig").Registry;
-const ShaderRegistry = @import("asset/shader.zig").Registry;
+const AssetRegistry = @import("asset/registry.zig");
 const AssetSystem = @import("asset/system.zig");
 const TextureRegistry = @import("asset/texture.zig").Registry;
 
@@ -14,14 +14,14 @@ const Assets = struct {
     meshes: MeshRegistry,
     textures: TextureRegistry,
     materials: MaterialRegistry,
-    shaders: ShaderRegistry,
+    registry: AssetRegistry,
 
     fn init(allocator: std.mem.Allocator) Self {
         return .{
-            .meshes = MeshRegistry.init(allocator),
-            .textures = TextureRegistry.init(allocator),
-            .materials = MaterialRegistry.init(allocator),
-            .shaders = ShaderRegistry.init(allocator),
+            .meshes = .init(allocator),
+            .textures = .init(allocator),
+            .materials = .init(allocator),
+            .registry = .init(allocator),
         };
     }
 
@@ -29,7 +29,7 @@ const Assets = struct {
         self.meshes.deinit();
         self.textures.deinit();
         self.materials.deinit();
-        self.shaders.deinit();
+        self.registry.deinit();
     }
 
     pub fn addDir(self: *Self, repo_name: []const u8, dir_path: []const u8) !void {
@@ -37,7 +37,7 @@ const Assets = struct {
         try self.meshes.addDir(repo_hash, dir_path);
         try self.textures.addDir(repo_hash, dir_path);
         try self.materials.addDir(repo_hash, dir_path);
-        try self.shaders.addDir(repo_hash, dir_path);
+        try self.registry.addRepository(repo_name, dir_path);
     }
 };
 pub var assets: *Assets = undefined;

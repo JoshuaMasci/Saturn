@@ -1,12 +1,10 @@
 const std = @import("std");
 
+const physics = @import("physics");
 const vk = @import("vulkan");
 const zm = @import("zmath");
-const physics = @import("physics");
 
-const ShaderAsset = @import("../asset/shader.zig");
-const ShaderAssetHandle = ShaderAsset.Registry.Handle;
-const global = @import("../global.zig");
+const AssetRegistry = @import("../asset/registry.zig");
 const c = @import("../platform/sdl3.zig").c;
 const Window = @import("../platform/sdl3.zig").Window;
 const Transform = @import("../transform.zig");
@@ -53,11 +51,18 @@ meshes: std.AutoArrayHashMap(physics.MeshPrimitive, MeshPrimitive),
 //Frame Draw Data
 draw_wireframe_meshs: std.ArrayList(DrawMeshData),
 
-pub fn init(allocator: std.mem.Allocator, device: *Device, color_format: vk.Format, depth_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
-    const vertex_shader = try utils.loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/physics_mesh.vert.shader").?);
+pub fn init(
+    allocator: std.mem.Allocator,
+    registry: *const AssetRegistry,
+    device: *Device,
+    color_format: vk.Format,
+    depth_format: vk.Format,
+    pipeline_layout: vk.PipelineLayout,
+) !Self {
+    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/physics_mesh.vert.shader"));
     defer device.device.proxy.destroyShaderModule(vertex_shader, null);
 
-    const fragment_shader = try utils.loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/physics_mesh.frag.shader").?);
+    const fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/physics_mesh.frag.shader"));
     defer device.device.proxy.destroyShaderModule(fragment_shader, null);
 
     const bindings = [_]vk.VertexInputBindingDescription{

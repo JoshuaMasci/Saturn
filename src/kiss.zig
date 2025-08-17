@@ -5,11 +5,10 @@ const std = @import("std");
 const jolt = @import("physics");
 const zm = @import("zmath");
 
-const rendering = @import("rendering/scene.zig");
-const Transform = @import("transform.zig");
-
 const PlatformInput = @import("platform/sdl3.zig").Input;
 const Controller = @import("platform/sdl3/controller.zig");
+const rendering = @import("rendering/scene.zig");
+const Transform = @import("transform.zig");
 
 const GRAVITATION_CONST: f32 = 0.00000000006674;
 
@@ -170,7 +169,8 @@ pub const World = struct {
         entity.behavior = .ship;
         entity.rigid_body.linear_velocity = velocity;
 
-        const ship_mesh_asset = MeshAssetHandle.fromRepoPath("game:models/CubeLander.mesh").?;
+        // const ship_mesh_asset = MeshAssetHandle.fromRepoPath("game:models/CubeLander.mesh").?;
+        const ship_mesh_asset = MeshAssetHandle.fromRepoPath("engine:shapes/cube.mesh").?;
 
         const physics_shape: jolt.Shape = shp: {
             var mesh = try global.assets.meshes.loadAsset(allocator, ship_mesh_asset);

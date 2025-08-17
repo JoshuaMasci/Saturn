@@ -7,11 +7,11 @@ const Window = Platform.Window;
 const Vulkan = Platform.Vulkan;
 const Transform = @import("../transform.zig");
 const Camera = @import("camera.zig").Camera;
-const SceneRenderer = @import("scene_renderer.zig");
-const PhysicsRenderer = @import("physics_renderer.zig");
 const ImguiRenderer = @import("imgui_renderer.zig");
+const PhysicsRenderer = @import("physics_renderer.zig");
 const rendering_scene = @import("scene.zig");
 const RenderSettings = @import("settings.zig").RenderSettings;
+const SceneRenderer = @import("scene_renderer.zig");
 const Device = @import("vulkan/device.zig");
 const rg = @import("vulkan/render_graph.zig");
 
@@ -84,6 +84,7 @@ pub const RenderThread = struct {
 
         const scene_renderer = SceneRenderer.init(
             allocator,
+            &global.assets.registry,
             device,
             swapchain_format,
             depth_format,
@@ -92,6 +93,7 @@ pub const RenderThread = struct {
 
         const physics_renderer = PhysicsRenderer.init(
             allocator,
+            &global.assets.registry,
             device,
             swapchain_format,
             depth_format,
@@ -100,6 +102,7 @@ pub const RenderThread = struct {
 
         const imgui_renderer = ImguiRenderer.init(
             allocator,
+            &global.assets.registry,
             device,
             imgui,
             swapchain_format,
