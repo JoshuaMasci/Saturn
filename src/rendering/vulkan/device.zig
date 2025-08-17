@@ -12,6 +12,8 @@ const Image = @import("image.zig");
 const Instance = @import("instance.zig");
 const object_pools = @import("object_pools.zig");
 const rg = @import("render_graph.zig");
+pub const RenderGraph = rg.RenderGraph;
+pub const RenderPass = rg.RenderPass;
 const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
 const VkDevice = @import("vulkan_device.zig");
@@ -20,9 +22,6 @@ const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
 pub const BufferHandle = BufferPool.Handle;
 pub const ImageHandle = ImagePool.Handle;
-pub const RenderGraph = rg.RenderGraph;
-pub const RenderPass = rg.RenderPass;
-
 const SurfaceSwapchain = struct {
     surface: vk.SurfaceKHR,
     swapchain: *Swapchain,
@@ -176,6 +175,10 @@ pub fn deinit(self: *Self) void {
     self.instance.deinit();
 }
 
+pub fn waitIdle(self: *const Self) void {
+    _ = self.device.proxy.deviceWaitIdle() catch {};
+}
+
 pub fn claimWindow(self: *Self, window: Window) !void {
     const surface = Vulkan.createSurface(self.instance.instance.handle, window, null).?;
     errdefer Vulkan.destroySurface(self.instance.instance.handle, surface, null);
@@ -314,6 +317,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         var swapchain = surface_swapchain.swapchain;
 
         if (swapchain.out_of_date) {
+            _ = self.device.proxy.deviceWaitIdle() catch {};
             const window_size = window.getSize();
             const new_swapchain = try Swapchain.init(
                 self.device,

@@ -1,17 +1,19 @@
 const std = @import("std");
 
+const Imgui = @import("zimgui");
 const vk = @import("vulkan");
 const zimgui = @import("zimgui");
 
+const AssetRegistry = @import("../asset/registry.zig");
 const ShaderAsset = @import("../asset/shader.zig");
 const ShaderAssetHandle = ShaderAsset.Registry.Handle;
-const global = @import("../global.zig");
 const Device = @import("vulkan/device.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
-const Imgui = @import("zimgui");
 
 const Self = @This();
+
+const VERTEX_HANDLE: AssetRegistry.AssetHandle = .fromRepoPath("engine", "shaders/vulkan/imgui.vert.shader");
 
 allocator: std.mem.Allocator,
 device: *Device,
@@ -22,12 +24,42 @@ font_texture: Device.ImageHandle,
 
 imgui: Imgui,
 
-pub fn init(allocator: std.mem.Allocator, device: *Device, imgui: Imgui, color_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
-    const vertex_shader = try loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/imgui.vert.shader").?);
-    defer device.device.proxy.destroyShaderModule(vertex_shader, null);
+pub fn initNew(allocator: std.mem.Allocator, registry: *const AssetRegistry, device: *Device, imgui: Imgui, color_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
+    var vertex_shader = try registry.loadAsset(ShaderAsset, allocator, .fromRepoPath("engine", "shaders/vulkan/imgui.vert.shader"));
+    defer vertex_shader.deinit(allocator);
 
-    const fragment_shader = try loadGraphicsShader(allocator, device.device.proxy, ShaderAssetHandle.fromRepoPath("engine:shaders/vulkan/imgui.frag.shader").?);
-    defer device.device.proxy.destroyShaderModule(fragment_shader, null);
+    var fragment_shader = try registry.loadAsset(ShaderAsset, allocator, .fromRepoPath("engine", "shaders/vulkan/imgui.frag.shader"));
+    defer fragment_shader.deinit(allocator);
+
+    return try initInternal(allocator, device, imgui, color_format, pipeline_layout, vertex_shader, fragment_shader);
+}
+
+pub fn init(allocator: std.mem.Allocator, device: *Device, imgui: Imgui, color_format: vk.Format, pipeline_layout: vk.PipelineLayout) !Self {
+    const global = @import("../global.zig");
+
+    var vertex_shader = try global.assets.shaders.loadAsset(allocator, .fromRepoPathSeprate("engine", "shaders/vulkan/imgui.vert.shader"));
+    defer vertex_shader.deinit(allocator);
+
+    var fragment_shader = try global.assets.shaders.loadAsset(allocator, .fromRepoPathSeprate("engine", "shaders/vulkan/imgui.frag.shader"));
+    defer fragment_shader.deinit(allocator);
+
+    return try initInternal(allocator, device, imgui, color_format, pipeline_layout, vertex_shader, fragment_shader);
+}
+
+fn initInternal(
+    allocator: std.mem.Allocator,
+    device: *Device,
+    imgui: Imgui,
+    color_format: vk.Format,
+    pipeline_layout: vk.PipelineLayout,
+    vertex_shader: ShaderAsset,
+    fragment_shader: ShaderAsset,
+) !Self {
+    const vertex_module = try createShaderModule(device.device.proxy, vertex_shader);
+    defer device.device.proxy.destroyShaderModule(vertex_module, null);
+
+    const fragment_module = try createShaderModule(device.device.proxy, fragment_shader);
+    defer device.device.proxy.destroyShaderModule(fragment_module, null);
 
     const bindings = [_]vk.VertexInputBindingDescription{
         .{
@@ -70,8 +102,8 @@ pub fn init(allocator: std.mem.Allocator, device: *Device, imgui: Imgui, color_f
             .enable_blending = true,
         },
         .{ .bindings = &bindings, .attributes = &attributes },
-        vertex_shader,
-        fragment_shader,
+        vertex_module,
+        fragment_module,
     );
 
     const font_data = imgui.getFontAtlasAsR8().?;
@@ -340,10 +372,7 @@ fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Re
     }
 }
 
-fn loadGraphicsShader(allocator: std.mem.Allocator, device: vk.DeviceProxy, handle: ShaderAssetHandle) !vk.ShaderModule {
-    var shader = try global.assets.shaders.loadAsset(allocator, handle);
-    defer shader.deinit(allocator);
-
+fn createShaderModule(device: vk.DeviceProxy, shader: ShaderAsset) !vk.ShaderModule {
     if (shader.target != .vulkan) {
         return error.InvalidShaderTarget;
     }

@@ -1,13 +1,35 @@
 const std = @import("std");
-
-const HeaderV1 = @import("header.zig").HeaderV1;
-const AssetType = @import("header.zig").AssetType;
-
 const HashMethod = std.hash.Fnv1a_32.hash;
+
+const AssetType = @import("header.zig").AssetType;
+const HeaderV1 = @import("header.zig").HeaderV1;
+
 const HashType = u32;
 
 const AssetExtension: []const u8 = ".asset";
 const AssetPackExtension: []const u8 = ".pak";
+
+pub const AssetHandle = struct {
+    repo_hash: HashType,
+    asset_hash: HashType,
+
+    pub fn fromRepoPath(repo: []const u8, path: []const u8) AssetHandle {
+        const repo_hash = HashMethod(repo);
+        const asset_hash = HashMethod(path);
+        return .{ .repo_hash = repo_hash, .asset_hash = asset_hash };
+    }
+
+    pub fn toU64(self: AssetHandle) u64 {
+        return (@as(u64, self.repo_hash) << 32) | @as(u64, self.asset_hash);
+    }
+
+    pub fn fromU64(id: u64) AssetHandle {
+        return .{
+            .repo_hash = @intCast(id >> 32),
+            .asset_hash = @intCast(id & 0xFFFF_FFFF),
+        };
+    }
+};
 
 pub const AssetInfo = struct {
     file_path: []const u8,
@@ -62,7 +84,7 @@ pub const Repository = struct {
         };
     }
 
-    fn deinit(self: *@This()) void {
+    pub fn deinit(self: *Repository) void {
         self.dir.close();
         self.assets.deinit();
     }
@@ -95,4 +117,45 @@ pub fn addRepository(self: *Self, repo_name: []const u8, dir_path: []const u8) !
     const repo = try Repository.init(self.allocator, self.string_arena.allocator(), dir_path);
     std.log.info("Loaded Asset Repo \"{s}\" with {} assets", .{ repo_name, repo.assets.count() });
     try self.repositories.putNoClobber(HashMethod(repo_name), repo);
+}
+
+pub fn loadAsset(
+    self: *const Self,
+    comptime T: type,
+    allocator: std.mem.Allocator,
+    handle: AssetHandle,
+) !T {
+    if (self.repositories.get(handle.repo_hash)) |repository| {
+        if (repository.assets.get(handle.asset_hash)) |asset_info| {
+            const asset_buffer = try loadAssetBuffer(allocator, repository.dir, asset_info);
+            defer allocator.free(asset_buffer);
+
+            var buffer_stream = std.io.fixedBufferStream(asset_buffer);
+            const buffer_stream_reader = buffer_stream.reader();
+            return try T.deserialzie(allocator, buffer_stream_reader);
+        } else {
+            return error.InvalidAssetHash;
+        }
+    } else {
+        return error.InvalidRepoHash;
+    }
+}
+
+fn loadAssetBuffer(allocator: std.mem.Allocator, dir: std.fs.Dir, asset_info: AssetInfo) ![]const u8 {
+    const buffer = try allocator.alloc(u8, asset_info.len);
+    errdefer allocator.free(buffer);
+
+    //TODO: validate asset header (in debug builds only?)
+    // Not really a huge deal since they are validated when the AssetInfo is generated
+    // But might be useful if the file is modified after startup
+    var file = try dir.openFile(asset_info.file_path, .{});
+    defer file.close();
+
+    try file.seekTo(asset_info.offset);
+    const read_amount = try file.readAll(buffer);
+    if (read_amount != asset_info.len) {
+        return error.UnexpectedEOF;
+    }
+
+    return buffer;
 }

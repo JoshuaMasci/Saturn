@@ -1,6 +1,7 @@
 // Main File for Game Sandbox
 
 const std = @import("std");
+
 const App = @import("app.zig").App;
 const global = @import("global.zig");
 
