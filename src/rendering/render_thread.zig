@@ -6,7 +6,7 @@ const Platform = @import("../platform/sdl3.zig");
 const Window = Platform.Window;
 const Vulkan = Platform.Vulkan;
 const Transform = @import("../transform.zig");
-const Camera = @import("camera.zig").Camera;
+const Camera = @import("camera.zig");
 const ImguiRenderer = @import("imgui_renderer.zig");
 const PhysicsRenderer = @import("physics_renderer.zig");
 const rendering_scene = @import("scene.zig");
@@ -74,13 +74,21 @@ pub const RenderThread = struct {
         const device = try allocator.create(Device);
         errdefer allocator.destroy(device);
 
-        device.* = try .init(allocator, 3);
+        const FRAME_IN_FLIGHT_COUNT = 3;
+        const swapchain_format = .b8g8r8a8_unorm;
+        const depth_format = .d16_unorm;
+
+        device.* = try .init(allocator, FRAME_IN_FLIGHT_COUNT);
         errdefer device.deinit();
 
-        try device.claimWindow(window);
-
-        const swapchain_format = .b8g8r8a8_unorm;
-        const depth_format = .d32_sfloat;
+        try device.claimWindow(
+            window,
+            .{
+                .image_count = FRAME_IN_FLIGHT_COUNT,
+                .format = swapchain_format,
+                .present_mode = .immediate_khr,
+            },
+        );
 
         const scene_renderer = SceneRenderer.init(
             allocator,
@@ -198,7 +206,7 @@ fn renderThreadMain(
         if (render_thread_data.draw_scene) |scene_data| {
             const depth_texture = render_graph.createTransientTexture(.{
                 .extent = .{ .relative = swapchain_texture },
-                .format = .d32_sfloat,
+                .format = .d16_unorm,
                 .usage = .{ .depth_stencil_attachment_bit = true },
             }) catch |err| {
                 std.log.err("failed to create transient texture: {}", .{err});

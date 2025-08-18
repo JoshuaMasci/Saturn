@@ -3,10 +3,15 @@
 const std = @import("std");
 
 const AssetRegistry = @import("asset/registry.zig");
+const Scene = @import("asset/scene.zig");
 const Imgui = @import("imgui.zig");
 const sdl3 = @import("platform/sdl3.zig");
+const Camera = @import("rendering/camera.zig");
 const ImguiRenderer = @import("rendering/imgui_renderer.zig");
+const RenderScene = @import("rendering/scene.zig").RenderScene;
+const SceneRenderer = @import("rendering/scene_renderer.zig");
 const Device = @import("rendering/vulkan/device.zig");
+const Transform = @import("transform.zig");
 
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }){};
@@ -17,6 +22,24 @@ pub fn main() !void {
 
     var app: App = try .init(allocator);
     defer app.deinit();
+
+    const scene_filepath = "zig-out/game-assets/Bistro/scene.json";
+    {
+        var scene_json: std.json.Parsed(Scene) = undefined;
+        {
+            var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
+            defer file.close();
+            scene_json = try Scene.deserialzie(allocator, file.reader());
+        }
+        defer scene_json.deinit();
+
+        const render_scene = try scene_json.value.createRenderScene(allocator, .{});
+        app.scene_info = .{
+            .scene = render_scene,
+            .camera = .Default,
+            .camera_transform = .{},
+        };
+    }
 
     var last_frame_time_ns = std.time.nanoTimestamp();
 
@@ -37,10 +60,17 @@ const App = struct {
     platform_input: sdl3.Input,
     window: sdl3.Window,
     imgui: Imgui,
-    asset_registry: AssetRegistry,
+    asset_registry: *AssetRegistry,
 
     vulkan_device: *Device,
+    scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
+
+    scene_info: ?struct {
+        scene: RenderScene,
+        camera: Camera,
+        camera_transform: Transform,
+    } = null,
 
     temp_allocator: std.heap.ArenaAllocator,
 
@@ -49,7 +79,10 @@ const App = struct {
     average_dt: f32 = 0.0,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        var asset_registry: AssetRegistry = .init(allocator);
+        const asset_registry = try allocator.create(AssetRegistry);
+        errdefer allocator.destroy(asset_registry);
+
+        asset_registry.* = .init(allocator);
         try asset_registry.addRepository("engine", "zig-out/assets");
         try asset_registry.addRepository("game", "zig-out/game-assets");
         errdefer asset_registry.deinit();
@@ -68,17 +101,35 @@ const App = struct {
         const vulkan_device = try allocator.create(Device);
         errdefer allocator.destroy(vulkan_device);
 
-        vulkan_device.* = try .init(allocator, 3);
+        const FRAME_IN_FLIGHT_COUNT = 3;
+        const swapchain_format = .b8g8r8a8_unorm;
+        const depth_format = .d16_unorm;
+
+        vulkan_device.* = try .init(allocator, FRAME_IN_FLIGHT_COUNT);
         errdefer vulkan_device.deinit();
 
-        //TODO: fetch or force swapchain to this
-        const swapchain_format = .b8g8r8a8_unorm;
+        try vulkan_device.claimWindow(
+            window,
+            .{
+                .image_count = FRAME_IN_FLIGHT_COUNT,
+                .format = swapchain_format,
+                .present_mode = .immediate_khr,
+            },
+        );
 
-        try vulkan_device.claimWindow(window);
+        var scene_renderer: SceneRenderer = try .init(
+            allocator,
+            asset_registry,
+            vulkan_device,
+            swapchain_format,
+            depth_format,
+            vulkan_device.bindless_layout,
+        );
+        errdefer scene_renderer.deinit();
 
         var imgui_renderer: ImguiRenderer = try .init(
             allocator,
-            &asset_registry,
+            asset_registry,
             vulkan_device,
             imgui.context,
             swapchain_format,
@@ -93,16 +144,22 @@ const App = struct {
             .window = window,
             .imgui = imgui,
             .vulkan_device = vulkan_device,
+            .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
             .temp_allocator = .init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
+        if (self.scene_info) |*info| {
+            info.scene.deinit();
+        }
+
         self.temp_allocator.deinit();
 
         self.vulkan_device.waitIdle();
 
+        self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
         self.vulkan_device.releaseWindow(self.window);
         self.vulkan_device.deinit();
@@ -115,6 +172,7 @@ const App = struct {
         sdl3.deinit();
 
         self.asset_registry.deinit();
+        self.allocator.destroy(self.asset_registry);
     }
 
     pub fn is_running(self: Self) bool {
@@ -163,13 +221,32 @@ const App = struct {
 
         {
             const swapchain_texture = try render_graph.acquireSwapchainTexture(self.window);
-            var render_pass = try Device.RenderPass.init(temp_allocator, "Screen Pass");
-            try render_pass.addColorAttachment(.{
-                .texture = swapchain_texture,
-                .clear = .{ .float_32 = @splat(0.25) },
-                .store = true,
-            });
-            try render_graph.render_passes.append(render_pass);
+
+            if (self.scene_info) |info| {
+                const depth_texture = try render_graph.createTransientTexture(.{
+                    .extent = .{ .relative = swapchain_texture },
+                    .format = .d16_unorm,
+                    .usage = .{ .depth_stencil_attachment_bit = true },
+                });
+
+                try self.scene_renderer.createRenderPass(
+                    temp_allocator,
+                    swapchain_texture,
+                    depth_texture,
+                    &info.scene,
+                    info.camera,
+                    info.camera_transform,
+                    &render_graph,
+                );
+            } else {
+                var render_pass = try Device.RenderPass.init(temp_allocator, "Screen Pass");
+                try render_pass.addColorAttachment(.{
+                    .texture = swapchain_texture,
+                    .clear = .{ .float_32 = @splat(0.25) },
+                    .store = true,
+                });
+                try render_graph.render_passes.append(render_pass);
+            }
 
             try self.imgui_renderer.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
         }

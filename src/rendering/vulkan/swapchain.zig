@@ -7,6 +7,12 @@ const VkDevice = @import("vulkan_device.zig");
 
 const MAX_IMAGE_COUNT: u32 = 8;
 
+pub const Settings = struct {
+    image_count: u32,
+    format: vk.Format,
+    present_mode: vk.PresentModeKHR,
+};
+
 pub const SwapchainImage = struct {
     swapchain: vk.SwapchainKHR,
     index: u32,
@@ -32,16 +38,20 @@ transform: vk.SurfaceTransformFlagsKHR,
 composite_alpha: vk.CompositeAlphaFlagsKHR,
 present_mode: vk.PresentModeKHR,
 
-pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2D, old_swapchain: ?vk.SwapchainKHR) !Self {
+pub fn init(
+    device: *VkDevice,
+    surface: vk.SurfaceKHR,
+    window_extent: vk.Extent2D,
+    settings: Settings,
+    old_swapchain: ?vk.SwapchainKHR,
+) !Self {
     const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface);
 
-    //TODO: take all of this in from settings
-    const image_count = std.math.clamp(3, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
+    const image_count = std.math.clamp(settings.image_count, surface_capabilities.min_image_count, @min(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
     const extent: vk.Extent2D = .{
         .width = std.math.clamp(window_extent.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
         .height = std.math.clamp(window_extent.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),
     };
-    const format = .b8g8r8a8_unorm;
     const usage = vk.ImageUsageFlags{
         .transfer_src_bit = false,
         .transfer_dst_bit = false,
@@ -53,13 +63,13 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
     const transform = surface_capabilities.current_transform;
     const composite_alpha: vk.CompositeAlphaFlagsKHR = .{ .opaque_bit_khr = true };
 
-    const present_mode = getFirstSupportedPresentMode(device, surface, &.{.mailbox_khr}) orelse .fifo_khr;
+    //const present_mode = getFirstSupportedPresentMode(device, surface, &.{.mailbox_khr}) orelse .fifo_khr;
 
     const handle = try device.proxy.createSwapchainKHR(&.{
         .flags = .{},
         .surface = surface,
         .min_image_count = image_count,
-        .image_format = format,
+        .image_format = settings.format,
         .image_color_space = color_space,
         .image_extent = extent,
         .image_array_layers = 1,
@@ -67,7 +77,7 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
         .image_sharing_mode = .exclusive,
         .pre_transform = transform,
         .composite_alpha = composite_alpha,
-        .present_mode = present_mode,
+        .present_mode = settings.present_mode,
         .clipped = 0,
         .old_swapchain = old_swapchain orelse .null_handle,
     }, null);
@@ -89,7 +99,7 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
         const view_handle = try device.proxy.createImageView(&.{
             .view_type = .@"2d",
             .image = image_handle,
-            .format = format,
+            .format = settings.format,
             .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
             .subresource_range = .{
                 .aspect_mask = .{ .color_bit = true },
@@ -102,7 +112,7 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
         swapchain_image.* = .{
             .layout = .undefined,
             .extent = extent,
-            .format = format,
+            .format = settings.format,
             .usage = usage,
             .handle = image_handle,
             .view_handle = view_handle,
@@ -119,11 +129,11 @@ pub fn init(device: *VkDevice, surface: vk.SurfaceKHR, window_extent: vk.Extent2
         .images = images,
         .image_present_semaphores = image_present_semaphores,
         .extent = extent,
-        .format = format,
+        .format = settings.format,
         .color_space = color_space,
         .transform = transform,
         .composite_alpha = composite_alpha,
-        .present_mode = present_mode,
+        .present_mode = settings.present_mode,
     };
 }
 
@@ -134,6 +144,14 @@ pub fn deinit(self: Self) void {
     }
 
     self.device.proxy.destroySwapchainKHR(self.handle, null);
+}
+
+pub fn getSettings(self: Self) Settings {
+    return .{
+        .image_count = @intCast(self.image_count),
+        .format = self.format,
+        .present_mode = self.present_mode,
+    };
 }
 
 pub fn acquireNextImage(

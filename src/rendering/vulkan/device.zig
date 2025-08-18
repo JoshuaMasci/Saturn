@@ -179,18 +179,26 @@ pub fn waitIdle(self: *const Self) void {
     _ = self.device.proxy.deviceWaitIdle() catch {};
 }
 
-pub fn claimWindow(self: *Self, window: Window) !void {
-    const surface = Vulkan.createSurface(self.instance.instance.handle, window, null).?;
-    errdefer Vulkan.destroySurface(self.instance.instance.handle, surface, null);
+pub fn claimWindow(self: *Self, window: Window, settings: Swapchain.Settings) !void {
+    if (!self.swapchains.contains(window)) {
+        const surface = Vulkan.createSurface(self.instance.instance.handle, window, null).?;
+        errdefer Vulkan.destroySurface(self.instance.instance.handle, surface, null);
 
-    const window_size = window.getSize();
-    const swapchain = try self.allocator.create(Swapchain);
-    errdefer self.allocator.destroy(swapchain);
+        const window_size = window.getSize();
+        const swapchain = try self.allocator.create(Swapchain);
+        errdefer self.allocator.destroy(swapchain);
 
-    swapchain.* = try Swapchain.init(self.device, surface, .{ .width = window_size[0], .height = window_size[1] }, null);
-    errdefer swapchain.deinit();
+        swapchain.* = try Swapchain.init(
+            self.device,
+            surface,
+            .{ .width = window_size[0], .height = window_size[1] },
+            settings,
+            null,
+        );
+        errdefer swapchain.deinit();
 
-    try self.swapchains.put(window, .{ .surface = surface, .swapchain = swapchain });
+        try self.swapchains.put(window, .{ .surface = surface, .swapchain = swapchain });
+    }
 }
 
 pub fn releaseWindow(self: *Self, window: Window) void {
@@ -323,6 +331,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
                 self.device,
                 surface_swapchain.surface,
                 .{ .width = window_size[0], .height = window_size[1] },
+                swapchain.getSettings(),
                 swapchain.handle,
             );
             swapchain.deinit();

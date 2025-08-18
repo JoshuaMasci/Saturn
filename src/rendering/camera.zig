@@ -1,5 +1,7 @@
 const std = @import("std");
+
 const zm = @import("zmath");
+
 const Transform = @import("../transform.zig");
 
 pub const Fov = union(enum) {
@@ -23,24 +25,20 @@ test "camera.fov" {
 }
 
 pub const PerspectiveCamera = struct {
-    const Self = @This();
-
     fov: Fov = .{ .y = 45.0 },
     near: f32 = 0.1,
     far: f32 = 1000.0,
 
-    pub fn getPerspectiveMatrix(self: Self, aspect_ratio: f32) zm.Mat {
+    pub fn getPerspectiveMatrix(self: PerspectiveCamera, aspect_ratio: f32) zm.Mat {
         return zm.perspectiveFovRh(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far);
     }
 };
 
-pub const Camera = union(enum) {
-    const Self = @This();
+const Self = @This();
 
-    pub const Default: Self = .{ .perspective = .{} };
-    perspective: PerspectiveCamera,
+pub const Default: Self = .{ .perspective = .{} };
+perspective: PerspectiveCamera,
 
-    pub fn getProjectionMatrix(self: Self, aspect_ratio: f32) zm.Mat {
-        return self.perspective.getPerspectiveMatrix(aspect_ratio);
-    }
-};
+pub fn getProjectionMatrix(self: Self, aspect_ratio: f32) zm.Mat {
+    return self.perspective.getPerspectiveMatrix(aspect_ratio);
+}

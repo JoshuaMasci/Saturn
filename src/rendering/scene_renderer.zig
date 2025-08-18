@@ -12,7 +12,7 @@ const c = @import("../platform/sdl3.zig").c;
 const Window = @import("../platform/sdl3.zig").Window;
 const Settings = @import("../rendering/settings.zig");
 const Transform = @import("../transform.zig");
-const Camera = @import("camera.zig").Camera;
+const Camera = @import("camera.zig");
 const RenderScene = @import("scene.zig").RenderScene;
 const Device = @import("vulkan/device.zig");
 const Image = @import("vulkan/image.zig");
@@ -161,7 +161,7 @@ pub fn createRenderPass(
         .store = true,
     });
 
-    self.loadSceneData(temp_allocator, scene);
+    self.loadSceneData(self.allocator, scene);
 
     const scene_build_data = try temp_allocator.create(BuildCommandBufferData);
     scene_build_data.* = .{
