@@ -2,11 +2,13 @@
 
 const std = @import("std");
 
+const zm = @import("zmath");
+
 const AssetRegistry = @import("asset/registry.zig");
 const Scene = @import("asset/scene.zig");
 const Imgui = @import("imgui.zig");
 const sdl3 = @import("platform/sdl3.zig");
-const Camera = @import("rendering/camera.zig");
+const Camera = @import("rendering/camera.zig").Camera;
 const ImguiRenderer = @import("rendering/imgui_renderer.zig");
 const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");
@@ -34,10 +36,23 @@ pub fn main() !void {
         defer scene_json.deinit();
 
         const render_scene = try scene_json.value.createRenderScene(allocator, .{});
+
+        var camera: Camera = .Default;
+        var camera_transform: Transform = .{};
+
+        if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
+            if (scene_json.value.nodes[camera_node].camera) |node_camera| {
+                camera = node_camera;
+            }
+
+            camera_transform = scene_json.value.calcNodeGlobalTransform(camera_node);
+            camera_transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), camera_transform.rotation);
+        }
+
         app.scene_info = .{
             .scene = render_scene,
-            .camera = .Default,
-            .camera_transform = .{},
+            .camera = camera,
+            .camera_transform = camera_transform,
         };
     }
 

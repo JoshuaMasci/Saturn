@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const AssetHandle = @import("../asset/registry.zig").Handle;
+const Camera = @import("../rendering/camera.zig").Camera;
 const RenderScene = @import("../rendering/scene.zig").RenderScene;
 const Transform = @import("../transform.zig");
 
@@ -38,15 +39,38 @@ pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !st
 
 pub const Node = struct {
     name: []const u8,
-    local_transform: Transform = .{},
+    local_transform: Transform,
+    parent: ?usize,
     children: []const usize,
-    mesh: ?Mesh = null,
+    mesh: ?Mesh,
+    camera: ?Camera,
 };
 
 pub const Mesh = struct {
     mesh: AssetHandle,
     materials: []const AssetHandle,
 };
+
+pub fn getNodeFromName(self: Self, name: []const u8) ?usize {
+    for (self.nodes, 0..) |node, i| {
+        if (std.mem.eql(u8, node.name, name)) {
+            return i;
+        }
+    }
+    return null;
+}
+
+pub fn calcNodeGlobalTransform(self: Self, index: usize) Transform {
+    var node: *const Node = &self.nodes[index];
+    var transform: Transform = node.local_transform;
+
+    while (node.parent) |parent| {
+        node = &self.nodes[parent];
+        transform = node.local_transform.applyTransform(&transform);
+    }
+
+    return transform;
+}
 
 pub fn createRenderScene(self: Self, allocator: std.mem.Allocator, root_transform: Transform) !RenderScene {
     var render_scene: RenderScene = .init(allocator);

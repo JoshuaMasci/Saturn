@@ -3,6 +3,7 @@ const std = @import("std");
 const zgltf = @import("zgltf");
 const zm = @import("zmath");
 
+const Camera = @import("../rendering/camera.zig").Camera;
 const Transform = @import("../transform.zig");
 const AssetHandle = @import("registry.zig").Handle;
 const Material = @import("material.zig");
@@ -256,6 +257,26 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
         };
     }
 
+    var camera: ?Camera = null;
+    if (gltf_node.camera) |camera_index| {
+        const gltf_camera = self.gltf_file.data.cameras.items[camera_index];
+
+        camera = switch (gltf_camera.type) {
+            .perspective => |perspective| .{ .perspective = .{
+                .fov = .{ .y = perspective.yfov },
+                .near = perspective.znear,
+                .far = perspective.zfar orelse 1000.0,
+            } },
+            .orthographic => |orthographic| .{ .orthographic = .{
+                .size = .{ .width = orthographic.xmag },
+                .near = orthographic.znear,
+                .far = orthographic.zfar,
+            } },
+        };
+    }
+
+    const parent: ?usize = gltf_node.parent;
+
     const children = try allocator.alloc(usize, gltf_node.children.items.len);
     errdefer allocator.free(children);
     for (gltf_node.children.items, 0..) |child_index, list_index| {
@@ -266,8 +287,10 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
     try nodes.append(.{
         .name = name,
         .local_transform = transform,
-        .mesh = mesh,
+        .parent = parent,
         .children = children,
+        .mesh = mesh,
+        .camera = camera,
     });
     return node_index;
 }
