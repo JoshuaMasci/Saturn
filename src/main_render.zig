@@ -2,6 +2,7 @@
 
 const std = @import("std");
 
+const vk = @import("vulkan");
 const zm = @import("zmath");
 
 const AssetRegistry = @import("asset/registry.zig");
@@ -14,6 +15,8 @@ const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");
 const Device = @import("rendering/vulkan/device.zig");
 const Transform = @import("transform.zig");
+
+const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }){};
@@ -118,7 +121,6 @@ const App = struct {
 
         const FRAME_IN_FLIGHT_COUNT = 3;
         const swapchain_format = .b8g8r8a8_unorm;
-        const depth_format = .d16_unorm;
 
         vulkan_device.* = try .init(allocator, FRAME_IN_FLIGHT_COUNT);
         errdefer vulkan_device.deinit();
@@ -137,7 +139,7 @@ const App = struct {
             asset_registry,
             vulkan_device,
             swapchain_format,
-            depth_format,
+            DEPTH_FORMAT,
             vulkan_device.bindless_layout,
         );
         errdefer scene_renderer.deinit();
@@ -229,6 +231,16 @@ const App = struct {
                 }
             }
             self.imgui.context.end();
+
+            if (self.scene_info) |*info| {
+                if (self.imgui.context.begin("Camera", null, .{})) {
+                    var camera_pos = zm.vecToArr3(info.camera_transform.position);
+                    if (self.imgui.context.sliderFloat3("Position", "%.3f", -100.0, 100.0, &camera_pos)) {
+                        info.camera_transform.position = zm.loadArr3(camera_pos);
+                    }
+                }
+                self.imgui.context.end();
+            }
         }
 
         var render_graph = Device.RenderGraph.init(temp_allocator);
@@ -240,7 +252,7 @@ const App = struct {
             if (self.scene_info) |info| {
                 const depth_texture = try render_graph.createTransientTexture(.{
                     .extent = .{ .relative = swapchain_texture },
-                    .format = .d16_unorm,
+                    .format = DEPTH_FORMAT,
                     .usage = .{ .depth_stencil_attachment_bit = true },
                 });
 

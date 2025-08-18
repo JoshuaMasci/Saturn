@@ -263,9 +263,9 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
 
         camera = switch (gltf_camera.type) {
             .perspective => |perspective| .{ .perspective = .{
-                .fov = .{ .y = perspective.yfov },
+                .fov = .{ .y = std.math.radiansToDegrees(perspective.yfov) },
                 .near = perspective.znear,
-                .far = perspective.zfar orelse 1000.0,
+                .far = perspective.zfar,
             } },
             .orthographic => |orthographic| .{ .orthographic = .{
                 .size = .{ .width = orthographic.xmag },

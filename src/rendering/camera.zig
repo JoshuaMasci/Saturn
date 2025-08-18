@@ -27,10 +27,11 @@ test "camera.fov" {
 pub const PerspectiveCamera = struct {
     fov: Fov = .{ .y = 45.0 },
     near: f32 = 0.1,
-    far: f32 = 1000.0,
+    far: ?f32 = null,
 
     pub fn getPerspectiveMatrix(self: PerspectiveCamera, aspect_ratio: f32) zm.Mat {
-        return zm.perspectiveFovRh(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far);
+        //TODO: create infinte perspective matrix
+        return zm.perspectiveFovRh(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far orelse 1000.0);
     }
 };
 
