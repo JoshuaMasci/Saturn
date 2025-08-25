@@ -47,7 +47,7 @@ pub fn init(
 ) !Self {
     const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface);
 
-    const image_count = std.math.clamp(settings.image_count, surface_capabilities.min_image_count, @min(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
+    const image_count = std.math.clamp(settings.image_count, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
     const extent: vk.Extent2D = .{
         .width = std.math.clamp(window_extent.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
         .height = std.math.clamp(window_extent.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),

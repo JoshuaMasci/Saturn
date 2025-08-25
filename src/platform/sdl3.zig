@@ -20,6 +20,9 @@ pub fn init(allocator: std.mem.Allocator) !void {
         return error.sdlInitFailed;
     }
 
+    const compile_version = c.SDL_VERSION;
+    std.log.info("compiled against sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(compile_version), c.SDL_VERSIONNUM_MINOR(compile_version), c.SDL_VERSIONNUM_MICRO(compile_version) });
+
     const version = c.SDL_GetVersion();
     std.log.info("Starting sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
 

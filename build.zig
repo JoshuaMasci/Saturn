@@ -21,13 +21,6 @@ pub fn build(b: *std.Build) !void {
     if (!no_render) {
         try buildRender(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
     }
-
-    const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    _ = unit_tests; // autofix
 }
 
 fn buildAsset(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !void {
@@ -95,22 +88,21 @@ fn buildGame(
         build_sdl3: bool = false,
     },
 ) !void {
-    const exe = b.addExecutable(.{
-        .name = "saturn",
+    const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main_game.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     if (options.build_sdl3) {
-        const sdl3 = b.dependency("sdl3", .{
+        const sdl3 = b.dependency("sdl", .{
             .target = target,
             .optimize = optimize,
             .preferred_link_mode = .dynamic,
         });
-        exe.linkLibrary(sdl3.artifact("SDL3"));
+        exe_mod.linkLibrary(sdl3.artifact("SDL3"));
     } else {
-        exe.linkSystemLibrary("SDL3");
+        exe_mod.linkSystemLibrary("SDL3", .{});
     }
 
     // dear imgui
@@ -118,34 +110,34 @@ fn buildGame(
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("zimgui", zimgui.module("zimgui"));
+    exe_mod.addImport("zimgui", zimgui.module("zimgui"));
 
     // saturn physics abstraction
     const saturn_jolt = b.dependency("saturn_jolt", .{ .enable_debug_renderer = true });
-    exe.root_module.addImport("physics", saturn_jolt.module("root"));
+    exe_mod.addImport("physics", saturn_jolt.module("root"));
 
     // zmath
     const zmath = b.dependency("zmath", .{});
-    exe.root_module.addImport("zmath", zmath.module("root"));
+    exe_mod.addImport("zmath", zmath.module("root"));
 
     // zstbi
     const zstbi = b.dependency("zstbi", .{});
-    exe.root_module.addImport("zstbi", zstbi.module("root"));
+    exe_mod.addImport("zstbi", zstbi.module("root"));
 
     // zgltf
     const zgltf = b.dependency("zgltf", .{});
-    exe.root_module.addImport("zgltf", zgltf.module("zgltf"));
+    exe_mod.addImport("zgltf", zgltf.module("zgltf"));
 
     // zobj
     const zobj = b.dependency("zobj", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("zobj", zobj.module("obj"));
+    exe_mod.addImport("zobj", zobj.module("obj"));
 
     // vulkan
     const vulkan_headers = b.dependency("vulkan_headers", .{});
     const vulkan = b.dependency("vulkan_zig", .{
         .registry = vulkan_headers.path("registry/vk.xml"),
     }).module("vulkan-zig");
-    exe.root_module.addImport("vulkan", vulkan);
+    exe_mod.addImport("vulkan", vulkan);
 
     // zlua
     const zlua = b.dependency("zlua", .{
@@ -153,9 +145,14 @@ fn buildGame(
         .optimize = optimize,
         .lang = .lua54,
     });
-    exe.root_module.addImport("zlua", zlua.module("zlua"));
+    exe_mod.addImport("zlua", zlua.module("zlua"));
 
+    const exe = b.addExecutable(.{
+        .name = "saturn",
+        .root_module = exe_mod,
+    });
     b.installArtifact(exe);
+
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
@@ -173,22 +170,21 @@ fn buildRender(
         build_sdl3: bool = false,
     },
 ) !void {
-    const exe = b.addExecutable(.{
-        .name = "saturn",
+    const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main_render.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     if (options.build_sdl3) {
-        const sdl3 = b.dependency("sdl3", .{
+        const sdl3 = b.dependency("sdl", .{
             .target = target,
             .optimize = optimize,
-            .preferred_link_mode = .dynamic,
+            .preferred_linkage = .dynamic,
         });
-        exe.linkLibrary(sdl3.artifact("SDL3"));
+        exe_mod.linkLibrary(sdl3.artifact("SDL3"));
     } else {
-        exe.linkSystemLibrary("SDL3");
+        exe_mod.linkSystemLibrary("SDL3", .{ .preferred_link_mode = .dynamic });
     }
 
     // dear imgui
@@ -196,18 +192,24 @@ fn buildRender(
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("zimgui", zimgui.module("zimgui"));
+    exe_mod.addImport("zimgui", zimgui.module("zimgui"));
 
     // zmath
     const zmath = b.dependency("zmath", .{});
-    exe.root_module.addImport("zmath", zmath.module("root"));
+    exe_mod.addImport("zmath", zmath.module("root"));
 
     // vulkan
     const vulkan_headers = b.dependency("vulkan_headers", .{});
     const vulkan = b.dependency("vulkan_zig", .{
         .registry = vulkan_headers.path("registry/vk.xml"),
     }).module("vulkan-zig");
-    exe.root_module.addImport("vulkan", vulkan);
+    exe_mod.addImport("vulkan", vulkan);
+
+    const exe = b.addExecutable(.{
+        .name = "saturn_renderer",
+        .root_module = exe_mod,
+    });
+    b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

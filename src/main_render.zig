@@ -130,7 +130,7 @@ const App = struct {
             .{
                 .image_count = FRAME_IN_FLIGHT_COUNT,
                 .format = swapchain_format,
-                .present_mode = .immediate_khr,
+                .present_mode = .fifo_khr,
             },
         );
 
@@ -211,7 +211,10 @@ const App = struct {
             }
         }
 
-        try self.platform_input.proccessEvents(.{});
+        try self.platform_input.proccessEvents(.{
+            .data = @ptrCast(self),
+            .resize = window_resize,
+        });
         self.imgui.updateInput(&self.platform_input);
 
         {
@@ -235,7 +238,7 @@ const App = struct {
             if (self.scene_info) |*info| {
                 if (self.imgui.context.begin("Camera", null, .{})) {
                     var camera_pos = zm.vecToArr3(info.camera_transform.position);
-                    if (self.imgui.context.sliderFloat3("Position", "%.3f", -100.0, 100.0, &camera_pos)) {
+                    if (self.imgui.context.sliderFloat3("Position", "%.3f", -100.0, 100.0, &camera_pos, .{})) {
                         info.camera_transform.position = zm.loadArr3(camera_pos);
                     }
                 }
@@ -281,3 +284,13 @@ const App = struct {
         try self.vulkan_device.render(temp_allocator, render_graph);
     }
 };
+
+fn window_resize(data: ?*anyopaque, window: sdl3.Window, size: [2]u32) void {
+    _ = size; // autofix
+    const app: *App = @alignCast(@ptrCast(data.?));
+
+    //IDK if I should do this here, it probably could cause a race condition
+    if (app.vulkan_device.swapchains.get(window)) |swapchain| {
+        swapchain.swapchain.out_of_date = true;
+    }
+}
