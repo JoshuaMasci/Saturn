@@ -10,12 +10,26 @@ pub const AppInfo = struct {
     version: vk.Version,
 };
 
+// List from here: https://www.reddit.com/r/vulkan/comments/4ta9nj/is_there_a_comprehensive_list_of_the_names_and/
+//TODO: find a more complete list?
+pub const VendorId = enum(u32) {
+    Amd = 0x1002,
+    Arm = 0x13B5,
+    ImgTec = 0x1010,
+    Intel = 0x8086,
+    Nvidia = 0x10DE,
+    Qualcomm = 0x5132,
+    Broadcom = 0x14e4,
+    _,
+};
+
 pub const PhysicalDevice = struct {
     handle: vk.PhysicalDevice,
     graphics_queue_index: ?u32 = null,
     compute_queue_index: ?u32 = null,
     transfer_queue_index: ?u32 = null,
 
+    vendor: VendorId,
     properties: vk.PhysicalDeviceProperties,
 };
 
@@ -78,9 +92,12 @@ pub fn init(
     for (physical_device_handles, 0..) |handle, i| {
         const properties = instance.getPhysicalDeviceProperties(handle);
 
+        const vendor: VendorId = @enumFromInt(properties.vendor_id);
+
         physical_devices[i] = .{
             .handle = handle,
             .graphics_queue_index = 0,
+            .vendor = vendor,
             .properties = properties,
         };
     }

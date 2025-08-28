@@ -12,5 +12,15 @@
     "program": "$ZED_WORKTREE_ROOT/zig-out/bin/saturn",
     "request": "launch",
     "adapter": "CodeLLDB"
+  },
+  {
+    "label": "Build Run Saturn Render",
+    "build": {
+      "command": "zig",
+      "args": ["build"]
+    },
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/saturn_renderer",
+    "request": "launch",
+    "adapter": "CodeLLDB"
   }
 ]

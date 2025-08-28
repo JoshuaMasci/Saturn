@@ -22,6 +22,7 @@ const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
 pub const BufferHandle = BufferPool.Handle;
 pub const ImageHandle = ImagePool.Handle;
+
 const SurfaceSwapchain = struct {
     surface: vk.SurfaceKHR,
     swapchain: *Swapchain,
@@ -331,7 +332,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
                 self.device,
                 surface_swapchain.surface,
                 .{ .width = window_size[0], .height = window_size[1] },
-                swapchain.getSettings(),
+                swapchain.settings,
                 swapchain.handle,
             );
             swapchain.deinit();

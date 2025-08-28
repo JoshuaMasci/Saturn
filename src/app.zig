@@ -154,11 +154,14 @@ pub const App = struct {
             }
         }
 
-        try self.platform_input.proccessEvents(.{
-            .data = @ptrCast(self),
-            .resize = window_resize,
-            .close_requested = window_close_requested,
-        });
+        try self.platform_input.proccessEvents(
+            .{},
+            .{
+                .data = @ptrCast(self),
+                .resize = window_resize,
+                .close_requested = window_close_requested,
+            },
+        );
         self.imgui.updateInput(&self.platform_input);
 
         self.world.update(delta_time, &self.platform_input);
@@ -174,7 +177,7 @@ pub const App = struct {
                 self.imgui.context.textFmt("Delta Time {d:.3} ms", .{self.average_dt * 1000});
                 self.imgui.context.textFmt("FPS {d:.3}", .{1.0 / self.average_dt});
                 if (mem_usage_opt) |mem_usage| {
-                    const formatted_string: ?[]const u8 = @import("utils.zig").format_bytes(frame_allocator, mem_usage) catch null;
+                    const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(frame_allocator, mem_usage) catch null;
                     if (formatted_string) |mem_usage_string| {
                         defer frame_allocator.free(mem_usage_string);
                         self.imgui.context.textFmt("Memory Usage {s}", .{mem_usage_string});

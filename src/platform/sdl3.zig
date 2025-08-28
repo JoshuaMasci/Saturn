@@ -3,7 +3,7 @@ const std = @import("std");
 const App = @import("../app.zig").App;
 const Settings = @import("../rendering/settings.zig");
 
-const Controller = @import("sdl3/controller.zig");
+pub const Controller = @import("sdl3/controller.zig");
 
 pub const c = @cImport({
     @cDefine("SDL_DISABLE_OLD_NAMES", {});
@@ -70,6 +70,12 @@ pub const Window = struct {
         _ = c.SDL_GetWindowSize(self.handle, &w, &h);
         return .{ @intCast(w), @intCast(h) };
     }
+};
+
+pub const Event = c.SDL_Event;
+pub const EventCallback = struct {
+    data: ?*anyopaque = null,
+    on_event: ?*const fn (data: ?*anyopaque, event: *const Event) void = null,
 };
 
 pub const WindowCallbacks = struct {
@@ -176,7 +182,7 @@ pub const Input = struct {
         return null;
     }
 
-    pub fn proccessEvents(self: *Self, window_callbacks: WindowCallbacks) !void {
+    pub fn proccessEvents(self: *Self, event_callback: EventCallback, window_callbacks: WindowCallbacks) !void {
         if (self.keyboard) |keyboard| {
             keyboard.beginFrame();
         }
@@ -191,6 +197,10 @@ pub const Input = struct {
 
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event)) {
+            if (event_callback.on_event) |on_event| {
+                on_event(event_callback.data, &event);
+            }
+
             switch (event.type) {
                 c.SDL_EVENT_WINDOW_RESIZED => {
                     if (window_callbacks.resize) |resize_fn| {

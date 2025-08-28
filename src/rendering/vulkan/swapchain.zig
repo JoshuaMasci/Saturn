@@ -10,7 +10,7 @@ const MAX_IMAGE_COUNT: u32 = 8;
 pub const Settings = struct {
     image_count: u32,
     format: vk.Format,
-    present_mode: vk.PresentModeKHR,
+    vsync: bool,
 };
 
 pub const SwapchainImage = struct {
@@ -38,6 +38,8 @@ transform: vk.SurfaceTransformFlagsKHR,
 composite_alpha: vk.CompositeAlphaFlagsKHR,
 present_mode: vk.PresentModeKHR,
 
+settings: Settings,
+
 pub fn init(
     device: *VkDevice,
     surface: vk.SurfaceKHR,
@@ -63,7 +65,13 @@ pub fn init(
     const transform = surface_capabilities.current_transform;
     const composite_alpha: vk.CompositeAlphaFlagsKHR = .{ .opaque_bit_khr = true };
 
-    //const present_mode = getFirstSupportedPresentMode(device, surface, &.{.mailbox_khr}) orelse .fifo_khr;
+    //Default to fifo if the desired aren't available
+    var present_mode: vk.PresentModeKHR = .fifo_khr;
+    if (!settings.vsync) {
+        if (getFirstSupportedPresentMode(device, surface, &.{ .mailbox_khr, .immediate_khr })) |supported_mode| {
+            present_mode = supported_mode;
+        }
+    }
 
     const handle = try device.proxy.createSwapchainKHR(&.{
         .flags = .{},
@@ -77,7 +85,7 @@ pub fn init(
         .image_sharing_mode = .exclusive,
         .pre_transform = transform,
         .composite_alpha = composite_alpha,
-        .present_mode = settings.present_mode,
+        .present_mode = present_mode,
         .clipped = 0,
         .old_swapchain = old_swapchain orelse .null_handle,
     }, null);
@@ -133,7 +141,8 @@ pub fn init(
         .color_space = color_space,
         .transform = transform,
         .composite_alpha = composite_alpha,
-        .present_mode = settings.present_mode,
+        .present_mode = present_mode,
+        .settings = settings,
     };
 }
 
@@ -144,14 +153,6 @@ pub fn deinit(self: Self) void {
     }
 
     self.device.proxy.destroySwapchainKHR(self.handle, null);
-}
-
-pub fn getSettings(self: Self) Settings {
-    return .{
-        .image_count = @intCast(self.image_count),
-        .format = self.format,
-        .present_mode = self.present_mode,
-    };
 }
 
 pub fn acquireNextImage(

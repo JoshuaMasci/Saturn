@@ -16,6 +16,22 @@
             .url = "git+https://github.com/zig-gamedev/zmath.git#ccf7297ef6c01e21b2d51ad81b5b6ce929e86a00",
             .hash = "zmath-0.11.0-dev-wjwivZY1AwDO7yxNmZ5HWoU03f9mFBet8LN9-oYc3i29",
         },
+        .sdl = .{
+            .url = "git+https://github.com/castholm/SDL.git#1994ca5dbad5a3e3c670a9ab8533d86cfd97bdc0",
+            .hash = "sdl-0.2.6+3.2.20-7uIn9NgjfwHH5a6HhyLHat2nHU3OP5B05QHhKJKuxEex",
+        },
+        .vulkan_zig = .{
+            .url = "git+https://github.com/Snektron/vulkan-zig.git#42e7a8409b8150e1cbd57a8ff8cec219114bac74",
+            .hash = "vulkan-0.0.0-r7Ytx2dUAwDhoUvuIqliqPUbyDZZi0bl_CQIwspUpHs_",
+        },
+        .vulkan_headers = .{
+            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#e2e53a724677f6eba8ff0ce1ccb64ee321785cbd",
+            .hash = "N-V-__8AAMjV7gGH3DKcxHoM9tIKAxu9ypDzlJHSgEhQ8v_f",
+        },
+        .cimgui_zig = .{
+            .url = "git+https://github.com/tiawl/cimgui.zig#ff1e39da339f62742901408016bbbf5c2910d5bb",
+            .hash = "cimgui_zig-1.0.0-2XubkqR8XwAzhx4hjU-j7vGSfO9arVurVsA4PZ0sVYUy",
+        },
         .zgltf = .{
             .url = "git+https://github.com/JoshuaMasci/zgltf.git#41ee56340664e20e7d9f3699a76702c124c0ba6f",
             .hash = "zgltf-0.1.0-sX6QAswGAgBcYNNhNXbrCw45plFQRiYOXkv_jFhZhZVD",
@@ -28,14 +44,6 @@
             .url = "git+https://github.com/zig-gamedev/zstbi.git#094c4bba5cdbec167d3f6aaa98cccccd5c99145f",
             .hash = "zstbi-0.11.0-dev-L0Ea_-eVBwCl8RYA98PhLDw3Fhw5k7FJOHSMDKWDOvqx",
         },
-        .vulkan_zig = .{
-            .url = "git+https://github.com/Snektron/vulkan-zig.git#42e7a8409b8150e1cbd57a8ff8cec219114bac74",
-            .hash = "vulkan-0.0.0-r7Ytx2dUAwDhoUvuIqliqPUbyDZZi0bl_CQIwspUpHs_",
-        },
-        .vulkan_headers = .{
-            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#e2e53a724677f6eba8ff0ce1ccb64ee321785cbd",
-            .hash = "N-V-__8AAMjV7gGH3DKcxHoM9tIKAxu9ypDzlJHSgEhQ8v_f",
-        },
         .zimgui = .{
             .url = "git+https://github.com/JoshuaMasci/zimgui.git#7876b01d09b8a72d404f8b5de5adc86b866c9398",
             .hash = "zimgui-0.0.0-KY3Tl37OQQDVJ1QlzquTgxshoP6kY6fOv1ZLhb1OEPon",
@@ -43,10 +51,6 @@
         .zlua = .{
             .url = "git+https://github.com/natecraddock/ziglua#b1fa62844dafb782219631d88b7fc70e0b7cfe37",
             .hash = "zlua-0.1.0-hGRpCxwbBQCft7Dgs_DsO0OGBbCUGgXn_mQd5c382Jn5",
-        },
-        .sdl = .{
-            .url = "git+https://github.com/castholm/SDL.git#1994ca5dbad5a3e3c670a9ab8533d86cfd97bdc0",
-            .hash = "sdl-0.2.6+3.2.20-7uIn9NgjfwHH5a6HhyLHat2nHU3OP5B05QHhKJKuxEex",
         },
     },
 }

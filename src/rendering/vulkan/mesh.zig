@@ -8,6 +8,8 @@ const Device = @import("device.zig");
 const Buffer = @import("buffer.zig");
 
 pub const Primitive = struct {
+    sphere_pos_radius: [4]f32,
+
     vertex_buffer: Device.BufferHandle,
     index_buffer: ?Device.BufferHandle,
 
@@ -19,6 +21,7 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 backend: *Device,
+sphere_pos_radius: [4]f32,
 primitives: []Primitive,
 
 pub fn init(allocator: std.mem.Allocator, backend: *Device, mesh: *const MeshAsset) !Self {
@@ -32,6 +35,7 @@ pub fn init(allocator: std.mem.Allocator, backend: *Device, mesh: *const MeshAss
         }
 
         primitives[i] = .{
+            .sphere_pos_radius = primitive.sphere_pos_radius,
             .vertex_buffer = vertex_buffer,
             .index_buffer = index_buffer,
             .vertex_count = @intCast(primitive.vertices.len),
@@ -42,6 +46,7 @@ pub fn init(allocator: std.mem.Allocator, backend: *Device, mesh: *const MeshAss
     return .{
         .allocator = allocator,
         .backend = backend,
+        .sphere_pos_radius = mesh.sphere_pos_radius,
         .primitives = primitives,
     };
 }

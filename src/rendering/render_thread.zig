@@ -86,7 +86,7 @@ pub const RenderThread = struct {
             .{
                 .image_count = FRAME_IN_FLIGHT_COUNT,
                 .format = swapchain_format,
-                .present_mode = .fifo_khr,
+                .vsync = true,
             },
         );
 

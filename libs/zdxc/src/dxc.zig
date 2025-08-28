@@ -104,7 +104,7 @@ pub fn compileVertexShader(
         allocator,
         hlsl_source,
         entry_point,
-        "vs_6_0",
+        "vs_5_1",
     );
 }
 
@@ -120,7 +120,7 @@ pub fn compilePixelShader(
         allocator,
         hlsl_source,
         entry_point,
-        "ps_6_0",
+        "ps_5_1",
     );
 }
 
@@ -136,7 +136,7 @@ pub fn compileComputeShader(
         allocator,
         hlsl_source,
         entry_point,
-        "cs_6_0",
+        "cs_5_1",
     );
 }
 

@@ -105,6 +105,13 @@ fn buildGame(
         exe_mod.linkSystemLibrary("SDL3", .{});
     }
 
+    // vulkan
+    const vulkan_headers = b.dependency("vulkan_headers", .{});
+    const vulkan = b.dependency("vulkan_zig", .{
+        .registry = vulkan_headers.path("registry/vk.xml"),
+    }).module("vulkan-zig");
+    exe_mod.addImport("vulkan", vulkan);
+
     // dear imgui
     const zimgui = b.dependency("zimgui", .{
         .target = target,
@@ -131,13 +138,6 @@ fn buildGame(
     // zobj
     const zobj = b.dependency("zobj", .{ .target = target, .optimize = optimize });
     exe_mod.addImport("zobj", zobj.module("obj"));
-
-    // vulkan
-    const vulkan_headers = b.dependency("vulkan_headers", .{});
-    const vulkan = b.dependency("vulkan_zig", .{
-        .registry = vulkan_headers.path("registry/vk.xml"),
-    }).module("vulkan-zig");
-    exe_mod.addImport("vulkan", vulkan);
 
     // zlua
     const zlua = b.dependency("zlua", .{
@@ -187,23 +187,25 @@ fn buildRender(
         exe_mod.linkSystemLibrary("SDL3", .{ .preferred_link_mode = .dynamic });
     }
 
-    // dear imgui
-    const zimgui = b.dependency("zimgui", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe_mod.addImport("zimgui", zimgui.module("zimgui"));
-
-    // zmath
-    const zmath = b.dependency("zmath", .{});
-    exe_mod.addImport("zmath", zmath.module("root"));
-
     // vulkan
     const vulkan_headers = b.dependency("vulkan_headers", .{});
     const vulkan = b.dependency("vulkan_zig", .{
         .registry = vulkan_headers.path("registry/vk.xml"),
     }).module("vulkan-zig");
     exe_mod.addImport("vulkan", vulkan);
+
+    const CIMGUI = @import("cimgui_zig");
+    const cimgui = b.dependency("cimgui_zig", .{
+        .target = target,
+        .optimize = optimize,
+        .platform = CIMGUI.Platform.SDL3,
+        .renderer = CIMGUI.Renderer.Vulkan,
+    });
+    exe_mod.linkLibrary(cimgui.artifact("cimgui"));
+
+    // zmath
+    const zmath = b.dependency("zmath", .{});
+    exe_mod.addImport("zmath", zmath.module("root"));
 
     const exe = b.addExecutable(.{
         .name = "saturn_renderer",

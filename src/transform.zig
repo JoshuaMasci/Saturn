@@ -44,6 +44,10 @@ pub fn getRelativeTransform(parent: *const Self, child: *const Self) Self {
     };
 }
 
+pub fn transformPoint(self: *const Self, point: zm.Vec) zm.Vec {
+    return (zm.rotate(self.rotation, point) * self.scale) + self.position;
+}
+
 pub fn getModelMatrix(self: Self) zm.Mat {
     const translation_matrix = zm.translationV(self.position);
     const rotation_matrix = zm.matFromQuat(self.rotation);

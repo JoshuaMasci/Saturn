@@ -20,6 +20,7 @@ const Mesh = @import("vulkan/mesh.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
 const utils = @import("vulkan/utils.zig");
+const culling = @import("culling.zig");
 
 pub const BuildCommandBufferData = struct {
     self: *const Self,
@@ -39,6 +40,9 @@ mesh_pipeline: vk.Pipeline,
 static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, Mesh),
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, Device.ImageHandle),
 material_map: std.AutoArrayHashMap(AssetRegistry.Handle, MaterialAsset),
+
+//Debug Values
+enable_culling: bool = false,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -206,6 +210,8 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     };
     command_buffer.setScissor(0, 1, (&scissor)[0..1]);
 
+    const frustum: culling.Frustum = .fromViewProjectionMatrix(view_projection_matrix);
+
     for (data.scene.static_meshes.items) |static_mesh| {
         if (static_mesh.component.visable == false) {
             continue;
@@ -216,6 +222,12 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
 
             const materials = static_mesh.component.materials.constSlice();
             for (mesh.primitives, materials) |primtive, material| {
+                if (self.enable_culling) {
+                    if (!frustum.intersects(culling.Sphere, .initWorld(primtive.sphere_pos_radius, &static_mesh.transform))) {
+                        continue;
+                    }
+                }
+
                 const PushData = extern struct {
                     view_projection_matrix: zm.Mat,
                     model_matrix: zm.Mat,

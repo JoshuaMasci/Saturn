@@ -7,10 +7,10 @@ const zm = @import("zmath");
 
 const AssetRegistry = @import("asset/registry.zig");
 const Scene = @import("asset/scene.zig");
-const Imgui = @import("imgui.zig");
+const imgui = @import("imgui2.zig").c;
 const sdl3 = @import("platform/sdl3.zig");
 const Camera = @import("rendering/camera.zig").Camera;
-const ImguiRenderer = @import("rendering/imgui_renderer.zig");
+const ImguiRenderer = @import("rendering/imgui_renderer2.zig");
 const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");
 const Device = @import("rendering/vulkan/device.zig");
@@ -28,7 +28,7 @@ pub fn main() !void {
     var app: App = try .init(allocator);
     defer app.deinit();
 
-    const scene_filepath = "zig-out/game-assets/Bistro/scene.json";
+    const scene_filepath = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
     {
         var scene_json: std.json.Parsed(Scene) = undefined;
         {
@@ -77,7 +77,6 @@ const App = struct {
     allocator: std.mem.Allocator,
     platform_input: sdl3.Input,
     window: sdl3.Window,
-    imgui: Imgui,
     asset_registry: *AssetRegistry,
 
     vulkan_device: *Device,
@@ -107,9 +106,6 @@ const App = struct {
 
         try sdl3.init(allocator);
 
-        const imgui: Imgui = try .init(allocator);
-        errdefer imgui.deinit();
-
         var platform_input: sdl3.Input = try .init(allocator);
         errdefer platform_input.deinit();
 
@@ -125,14 +121,16 @@ const App = struct {
         vulkan_device.* = try .init(allocator, FRAME_IN_FLIGHT_COUNT);
         errdefer vulkan_device.deinit();
 
+        //For best Perf testing, the renderer should not be limited to monitor refresh
         try vulkan_device.claimWindow(
             window,
             .{
                 .image_count = FRAME_IN_FLIGHT_COUNT,
                 .format = swapchain_format,
-                .present_mode = .fifo_khr,
+                .vsync = false,
             },
         );
+        errdefer vulkan_device.releaseWindow(window);
 
         var scene_renderer: SceneRenderer = try .init(
             allocator,
@@ -144,13 +142,26 @@ const App = struct {
         );
         errdefer scene_renderer.deinit();
 
+        //Imgui Init
+
+        _ = imgui.ImGui_CreateContext(null) orelse return error.ImGuiCreateContextFailure;
+        errdefer imgui.ImGui_DestroyContext(null);
+
+        imgui.ImGui_StyleColorsClassic(null);
+
+        var io: *imgui.ImGuiIO = imgui.ImGui_GetIO();
+        io.ConfigFlags |= imgui.ImGuiConfigFlags_NavEnableKeyboard;
+        io.ConfigFlags |= imgui.ImGuiConfigFlags_NavEnableGamepad;
+        io.ConfigFlags |= imgui.ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= imgui.ImGuiConfigFlags_ViewportsEnable;
+
+        if (!imgui.cImGui_ImplSDL3_InitForVulkan(@ptrCast(window.handle))) return error.cImGui_ImplSDL3_InitForVulkanFailure;
+        errdefer imgui.cImGui_ImplSDL3_Shutdown();
+
         var imgui_renderer: ImguiRenderer = try .init(
             allocator,
-            asset_registry,
             vulkan_device,
-            imgui.context,
             swapchain_format,
-            vulkan_device.bindless_layout,
         );
         errdefer imgui_renderer.deinit();
 
@@ -159,7 +170,6 @@ const App = struct {
             .asset_registry = asset_registry,
             .platform_input = platform_input,
             .window = window,
-            .imgui = imgui,
             .vulkan_device = vulkan_device,
             .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
@@ -182,7 +192,9 @@ const App = struct {
         self.vulkan_device.deinit();
         self.allocator.destroy(self.vulkan_device);
 
-        self.imgui.deinit();
+        imgui.cImGui_ImplSDL3_Shutdown();
+        imgui.ImGui_DestroyContext(null);
+
         self.window.deinit();
         self.platform_input.deinit();
 
@@ -211,38 +223,61 @@ const App = struct {
             }
         }
 
-        try self.platform_input.proccessEvents(.{
-            .data = @ptrCast(self),
-            .resize = window_resize,
-        });
-        self.imgui.updateInput(&self.platform_input);
+        try self.platform_input.proccessEvents(
+            .{
+                .on_event = on_event,
+            },
+            .{
+                .data = @ptrCast(self),
+                .resize = window_resize,
+            },
+        );
+
+        //Camera Movement
+        if (self.scene_info) |*info| {
+            const LINEAR_SPEED: zm.Vec = zm.splat(zm.Vec, 5.0);
+            const ANGULAR_SPEED: zm.Vec = zm.splat(zm.Vec, std.math.pi);
+            _ = ANGULAR_SPEED; // autofix
+
+            const x_axis_input = -getControllerAxis(&self.platform_input, .left_x);
+            const y_axis_input = getControllerButtonAxis(&self.platform_input, .right_shoulder, .left_shoulder);
+            const z_axis_input = -getControllerAxis(&self.platform_input, .left_y);
+            const linear_input: zm.Vec = .{ x_axis_input, y_axis_input, z_axis_input, 0 };
+            info.camera_transform.position += zm.rotate(info.camera_transform.rotation, (linear_input * LINEAR_SPEED * zm.splat(zm.Vec, delta_time)));
+        }
 
         {
-            const window_size = self.window.getSize();
-            self.imgui.startFrame(window_size, delta_time);
-            defer self.imgui.context.endFrame();
+            imgui.cImGui_ImplVulkan_NewFrame();
+            imgui.cImGui_ImplSDL3_NewFrame();
+            imgui.ImGui_NewFrame();
+            imgui.ImGui_ShowDemoWindow(null);
+        }
 
-            if (self.imgui.context.begin("Performance", null, .{})) {
-                self.imgui.context.textFmt("Delta Time: {d:.3} ms", .{self.average_dt * 1000});
-                self.imgui.context.textFmt("FPS: {d:.3}", .{1.0 / self.average_dt});
+        {
+            if (imgui.ImGui_Begin("Performance", null, 0)) {
+                const dt_str: [:0]const u8 = std.fmt.allocPrintZ(temp_allocator, "Delta Time: {d:.3} ms", .{self.average_dt * 1000}) catch "Out Of Memory";
+                imgui.ImGui_Text(dt_str);
+
+                const fps_str: [:0]const u8 = std.fmt.allocPrintZ(temp_allocator, "FPS: {d:.3}", .{1.0 / self.average_dt}) catch "Out Of Memory";
+                imgui.ImGui_Text(fps_str);
+
                 if (mem_usage_opt) |mem_usage| {
-                    const formatted_string: ?[]const u8 = @import("utils.zig").format_bytes(temp_allocator, mem_usage) catch null;
+                    const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(temp_allocator, mem_usage) catch null;
                     if (formatted_string) |mem_usage_string| {
-                        defer temp_allocator.free(mem_usage_string);
-                        self.imgui.context.textFmt("Memory Usage: {s}", .{mem_usage_string});
+                        const mem_str: [:0]const u8 = std.fmt.allocPrintZ(temp_allocator, "Memory Usage: {s}", .{mem_usage_string}) catch "Out Of Memory";
+                        imgui.ImGui_Text(mem_str);
                     }
                 }
             }
-            self.imgui.context.end();
+            imgui.ImGui_End();
+        }
 
-            if (self.scene_info) |*info| {
-                if (self.imgui.context.begin("Camera", null, .{})) {
-                    var camera_pos = zm.vecToArr3(info.camera_transform.position);
-                    if (self.imgui.context.sliderFloat3("Position", "%.3f", -100.0, 100.0, &camera_pos, .{})) {
-                        info.camera_transform.position = zm.loadArr3(camera_pos);
-                    }
-                }
-                self.imgui.context.end();
+        {
+            imgui.ImGui_EndFrame();
+            const io: *imgui.ImGuiIO = imgui.ImGui_GetIO();
+            if ((io.ConfigFlags & imgui.ImGuiConfigFlags_ViewportsEnable) != 0) {
+                imgui.ImGui_UpdatePlatformWindows();
+                imgui.ImGui_RenderPlatformWindowsDefault();
             }
         }
 
@@ -285,6 +320,11 @@ const App = struct {
     }
 };
 
+fn on_event(data: ?*anyopaque, event: *const sdl3.Event) void {
+    _ = data; // autofix
+    _ = imgui.cImGui_ImplSDL3_ProcessEvent(@ptrCast(event));
+}
+
 fn window_resize(data: ?*anyopaque, window: sdl3.Window, size: [2]u32) void {
     _ = size; // autofix
     const app: *App = @alignCast(@ptrCast(data.?));
@@ -293,4 +333,34 @@ fn window_resize(data: ?*anyopaque, window: sdl3.Window, size: [2]u32) void {
     if (app.vulkan_device.swapchains.get(window)) |swapchain| {
         swapchain.swapchain.out_of_date = true;
     }
+}
+
+pub fn getControllerAxis(input: *sdl3.Input, axis: sdl3.Controller.Axis) f32 {
+    const controllers = input.controllers.values();
+    if (controllers.len > 0) {
+        const controller = controllers[0];
+        const value = controller.axis_state[@intFromEnum(axis)].value;
+        if (@abs(value) > 0.1) {
+            return value;
+        }
+    }
+
+    return 0.0;
+}
+
+pub fn getControllerButtonAxis(input: *sdl3.Input, pos: sdl3.Controller.Button, neg: sdl3.Controller.Button) f32 {
+    const controllers = input.controllers.values();
+    if (controllers.len > 0) {
+        const controller = controllers[0];
+        const pos_state = controller.button_state[@intFromEnum(pos)].is_pressed;
+        const neg_state = controller.button_state[@intFromEnum(neg)].is_pressed;
+
+        if (pos_state and !neg_state) {
+            return 1.0;
+        } else if (!pos_state and neg_state) {
+            return -1.0;
+        }
+    }
+
+    return 0.0;
 }

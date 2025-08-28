@@ -39,7 +39,7 @@ pub fn format_human_readable_bytes(allocator: std.mem.Allocator, bytes: usize) ?
     return std.fmt.allocPrint(allocator, comptime "{} {s}", .{ value, unit }) catch null;
 }
 
-pub fn format_bytes(allocator: std.mem.Allocator, bytes: usize) ![]const u8 {
+pub fn formatBytes(allocator: std.mem.Allocator, bytes: usize) ![]const u8 {
     const units = [_][]const u8{ "B", "KB", "MB", "GB", "TB", "PB", "EB" };
     var size = @as(f64, @floatFromInt(bytes));
     var unit_index: usize = 0;
@@ -49,7 +49,5 @@ pub fn format_bytes(allocator: std.mem.Allocator, bytes: usize) ![]const u8 {
         unit_index += 1;
     }
 
-    // Format the float with two decimal places and append the unit
-    const formatted = try std.fmt.allocPrint(allocator, "{d:.0} {s}", .{ size, units[unit_index] });
-    return formatted;
+    return try std.fmt.allocPrint(allocator, "{d:.0} {s}", .{ size, units[unit_index] });
 }
