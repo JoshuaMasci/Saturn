@@ -3,10 +3,6 @@ const std = @import("std");
 const physics_system = @import("physics");
 const zlua = @import("zlua");
 const zm = @import("zmath");
-
-const Entity = @import("entity/entity.zig");
-const Universe = @import("entity/universe.zig");
-const World = @import("entity/world.zig");
 const global = @import("global.zig");
 const Imgui = @import("imgui.zig");
 const kiss = @import("kiss.zig");

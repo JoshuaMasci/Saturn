@@ -10,6 +10,7 @@ const PlatformInput = @import("platform/sdl3.zig").Input;
 const Controller = @import("platform/sdl3/controller.zig");
 const rendering = @import("rendering/scene.zig");
 const Transform = @import("transform.zig");
+const Mesh = @import("asset/mesh.zig");
 
 const GRAVITATION_CONST: f32 = 0.00000000006674;
 
@@ -174,7 +175,7 @@ pub const World = struct {
             var cube_shape = jolt.Shape.initBox(.{ 3, 3, 6 }, 100.0, 0);
             defer cube_shape.deinit();
 
-            var physics_mesh: @import("world_gen.zig").PhysicsMesh = try .fromMesh(allocator, mesh);
+            var physics_mesh: PhysicsMesh = try .fromMesh(allocator, mesh);
             defer physics_mesh.deinit(allocator);
 
             break :shp jolt.Shape.initMeshWithMass(physics_mesh.positions, physics_mesh.indices, cube_shape.getMassProperties(), 0);
@@ -298,3 +299,48 @@ pub fn getControllerButtonAxis(input: *PlatformInput, pos: Controller.Button, ne
 
     return 0.0;
 }
+
+pub const PhysicsMesh = struct {
+    positions: [][3]f32,
+    indices: []u32,
+
+    pub fn fromMesh(allocator: std.mem.Allocator, mesh: Mesh) !@This() {
+        var pos_count: usize = 0;
+        var index_count: usize = 0;
+        for (mesh.primitives) |prim| {
+            pos_count += prim.vertices.len;
+            index_count += prim.indices.len;
+        }
+
+        const positions = try allocator.alloc([3]f32, pos_count);
+        errdefer allocator.free(positions);
+
+        const indices = try allocator.alloc(u32, index_count);
+        errdefer allocator.free(indices);
+
+        var p_index: usize = 0;
+        var i_index: usize = 0;
+        for (mesh.primitives) |prim| {
+            for (prim.vertices, 0..) |vertex, i| {
+                positions[p_index + i] = vertex.position;
+            }
+
+            for (prim.indices, 0..) |idx, i| {
+                indices[i_index + i] = idx + @as(u32, @intCast(p_index));
+            }
+
+            p_index += prim.vertices.len;
+            i_index += prim.indices.len;
+        }
+
+        return .{
+            .positions = positions,
+            .indices = indices,
+        };
+    }
+
+    pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.positions);
+        allocator.free(self.indices);
+    }
+};
