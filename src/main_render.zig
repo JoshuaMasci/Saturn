@@ -15,6 +15,7 @@ const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");
 const Device = @import("rendering/vulkan/device.zig");
 const Transform = @import("transform.zig");
+const DebugCamera = @import("debug_camera.zig");
 
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
@@ -41,21 +42,25 @@ pub fn main() !void {
         const render_scene = try scene_json.value.createRenderScene(allocator, .{});
 
         var camera: Camera = .Default;
-        var camera_transform: Transform = .{};
+        var transform: Transform = .{};
 
         if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
             if (scene_json.value.nodes[camera_node].camera) |node_camera| {
                 camera = node_camera;
             }
 
-            camera_transform = scene_json.value.calcNodeGlobalTransform(camera_node);
-            camera_transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), camera_transform.rotation);
+            transform = scene_json.value.calcNodeGlobalTransform(camera_node);
+            transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), transform.rotation);
         }
+
+        const debug_camera: DebugCamera = .{
+            .camera = camera,
+            .transform = transform,
+        };
 
         app.scene_info = .{
             .scene = render_scene,
-            .camera = camera,
-            .camera_transform = camera_transform,
+            .camera = debug_camera,
         };
     }
 
@@ -85,8 +90,7 @@ const App = struct {
 
     scene_info: ?struct {
         scene: RenderScene,
-        camera: Camera,
-        camera_transform: Transform,
+        camera: DebugCamera,
     } = null,
 
     temp_allocator: std.heap.ArenaAllocator,
@@ -235,15 +239,7 @@ const App = struct {
 
         //Camera Movement
         if (self.scene_info) |*info| {
-            const LINEAR_SPEED: zm.Vec = zm.splat(zm.Vec, 5.0);
-            const ANGULAR_SPEED: zm.Vec = zm.splat(zm.Vec, std.math.pi);
-            _ = ANGULAR_SPEED; // autofix
-
-            const x_axis_input = -getControllerAxis(&self.platform_input, .left_x);
-            const y_axis_input = getControllerButtonAxis(&self.platform_input, .right_shoulder, .left_shoulder);
-            const z_axis_input = -getControllerAxis(&self.platform_input, .left_y);
-            const linear_input: zm.Vec = .{ x_axis_input, y_axis_input, z_axis_input, 0 };
-            info.camera_transform.position += zm.rotate(info.camera_transform.rotation, (linear_input * LINEAR_SPEED * zm.splat(zm.Vec, delta_time)));
+            info.camera.update(&self.platform_input, delta_time);
         }
 
         {
@@ -299,8 +295,8 @@ const App = struct {
                     swapchain_texture,
                     depth_texture,
                     &info.scene,
-                    info.camera,
-                    info.camera_transform,
+                    info.camera.camera,
+                    info.camera.transform,
                     &render_graph,
                 );
             } else {
