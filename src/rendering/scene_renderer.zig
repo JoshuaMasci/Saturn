@@ -35,7 +35,8 @@ allocator: std.mem.Allocator,
 registry: *const AssetRegistry,
 device: *Device,
 
-mesh_pipeline: vk.Pipeline,
+opaque_mesh_pipeline: vk.Pipeline,
+//alpha_cutoff_mesh_pipeline: vk.Pipeline,
 
 static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, Mesh),
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, Device.ImageHandle),
@@ -99,7 +100,7 @@ pub fn init(
         },
     };
 
-    const mesh_pipeline = try Pipeline.createGraphicsPipeline(
+    const opaque_mesh_pipeline = try Pipeline.createGraphicsPipeline(
         allocator,
         device.device.proxy,
         pipeline_layout,
@@ -117,7 +118,7 @@ pub fn init(
         .allocator = allocator,
         .registry = registry,
         .device = device,
-        .mesh_pipeline = mesh_pipeline,
+        .opaque_mesh_pipeline = opaque_mesh_pipeline,
         .static_mesh_map = .init(allocator),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
@@ -140,7 +141,7 @@ pub fn deinit(self: *Self) void {
     }
     self.material_map.deinit();
 
-    self.device.device.proxy.destroyPipeline(self.mesh_pipeline, null);
+    self.device.device.proxy.destroyPipeline(self.opaque_mesh_pipeline, null);
 }
 
 pub fn createRenderPass(
@@ -193,7 +194,7 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     projection_matrix[1][1] *= -1.0;
     const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
-    command_buffer.bindPipeline(.graphics, self.mesh_pipeline);
+    command_buffer.bindPipeline(.graphics, self.opaque_mesh_pipeline);
 
     const viewport = vk.Viewport{
         .x = 0.0,

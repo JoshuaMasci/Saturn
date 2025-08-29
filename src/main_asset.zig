@@ -12,14 +12,23 @@ const stbi = @import("asset/stbi.zig");
 
 pub const ProcessFn = *const fn (allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8;
 
-var repo_name: []const u8 = &.{};
-var input_dir: std.fs.Dir = undefined;
-var output_dir: std.fs.Dir = undefined;
+pub const MetaFileBase = struct {
+    type: []const u8,
+};
 
-var error_count = std.atomic.Value(usize).init(0);
-
-var global_allocator: std.mem.Allocator = undefined;
-var thread_pool: std.Thread.Pool = undefined;
+fn HandleError(func: anytype) type {
+    return struct {
+        fn process(allocator: std.mem.Allocator, path: []const u8) ?[]const u8 {
+            func(allocator, path) catch |err| {
+                return errorString(allocator, "{}", .{err});
+                //std.log.err("Failed to process file {s} -> {s}", .{ path, err });
+                // _ = error_count.fetchAnd(1, .monotonic);
+            };
+            //std.log.info("Succesfully processed file {s}", .{path});
+            return null;
+        }
+    };
+}
 
 pub fn thread_worker(process_fn: ProcessFn, path: []const u8) void {
     defer global_allocator.free(path);
@@ -32,6 +41,22 @@ pub fn thread_worker(process_fn: ProcessFn, path: []const u8) void {
         std.log.info("Succesfully processed file {s}", .{path});
     }
 }
+
+pub fn readMetaType(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) ?[]const u8 {
+    const meta_base = loadZonFile(MetaFileBase, allocator, dir, file_path, .{ .ignore_unknown_fields = true }) catch return null;
+    defer std.zon.parse.free(allocator, meta_base);
+
+    return allocator.dupe(u8, meta_base.type) catch null;
+}
+
+var repo_name: []const u8 = &.{};
+var input_dir: std.fs.Dir = undefined;
+var output_dir: std.fs.Dir = undefined;
+
+var error_count = std.atomic.Value(usize).init(0);
+
+var global_allocator: std.mem.Allocator = undefined;
+var thread_pool: std.Thread.Pool = undefined;
 
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{}){};
@@ -64,9 +89,6 @@ pub fn main() !void {
     output_dir = try std.fs.cwd().openDir(output_path, .{});
     defer output_dir.close();
 
-    var walker = try input_dir.walk(global_allocator);
-    defer walker.deinit();
-
     var process_fns = std.StringHashMap(ProcessFn).init(global_allocator);
     defer process_fns.deinit();
 
@@ -76,26 +98,39 @@ pub fn main() !void {
     //Materials
     try process_fns.put(".json_mat", processMaterial);
 
-    //Shaders
-    {
-        try process_fns.put(".vert", processShader);
-        try process_fns.put(".frag", processShader);
-        try process_fns.put(".comp", processShader);
-    }
-
     //Meshes
     {
-        try process_fns.put(".obj", processObj);
+        try process_fns.put(".obj", HandleError(processObj).process);
         try process_fns.put(".glb", processGltf);
         try process_fns.put(".gltf", processGltf);
     }
 
+    //New approch that reads the "type" field of the metadata file do select callback
+    var meta_type_process_fns = std.StringHashMap(ProcessFn).init(global_allocator);
+    defer meta_type_process_fns.deinit();
+
+    //Shaders
+    {
+        try meta_type_process_fns.put("shader-dir", HandleError(processShaderDir).process);
+    }
+
     var wait_group = std.Thread.WaitGroup{};
 
+    var walker = try input_dir.walk(global_allocator);
+    defer walker.deinit();
     while (try walker.next()) |entry| {
         if (entry.kind == .file) {
             const meta_file_ext = std.fs.path.extension(entry.basename);
             if (std.mem.eql(u8, meta_file_ext, ".meta")) {
+
+                //New way of reading meta files
+                if (readMetaType(global_allocator, input_dir, entry.path)) |meta_type| {
+                    defer global_allocator.free(meta_type);
+                    if (meta_type_process_fns.get(meta_type)) |process_fn| {
+                        thread_pool.spawnWg(&wait_group, thread_worker, .{ process_fn, try global_allocator.dupe(u8, entry.path) });
+                        continue;
+                    }
+                }
 
                 // Get the file ext of real file
                 const file_ext = std.fs.path.extension(std.fs.path.stem(entry.basename));
@@ -147,21 +182,16 @@ fn errorString(allocator: std.mem.Allocator, comptime fmt: []const u8, args: any
     return std.fmt.allocPrint(allocator, fmt, args) catch "Failed to alloc string";
 }
 
-fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
+fn processObj(allocator: std.mem.Allocator, meta_file_path: []const u8) !void {
     const file_path = removeExt(meta_file_path);
 
-    const processed_mesh = obj.loadObjMesh(allocator, input_dir, file_path) catch |err|
-        return errorString(allocator, "Failed to open obj({s}): {}", .{ file_path, err });
+    const processed_mesh = try obj.loadObjMesh(allocator, input_dir, file_path);
     defer processed_mesh.deinit(allocator);
 
-    const new_path = replaceExt(allocator, file_path, ".asset") catch |err|
-        return errorString(allocator, "Failed to allocate string: {}", .{err});
+    const new_path = try replaceExt(allocator, file_path, ".asset");
     defer allocator.free(new_path);
 
-    io.writeFile(output_dir, .mesh, new_path, processed_mesh) catch |err|
-        return errorString(allocator, "Failed to write asset file: {}", .{err});
-
-    return null;
+    try io.writeFile(output_dir, .mesh, new_path, processed_mesh);
 }
 
 fn processStb(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
@@ -202,20 +232,62 @@ fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]
     return null;
 }
 
-fn processShader(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]const u8 {
-    const shader = hlsl.compileShader(allocator, input_dir, meta_file_path) catch |err|
-        return errorString(allocator, "Failed to compile shader: {}", .{err});
-    defer shader.deinit(allocator);
+fn processShaderDir(allocator: std.mem.Allocator, meta_file_path: []const u8) !void {
+    const meta_data = try loadZonFile(hlsl.DirectoryMeta, allocator, input_dir, meta_file_path, .{ .ignore_unknown_fields = true });
+    defer std.zon.parse.free(allocator, meta_data);
 
-    const file_path = removeExt(meta_file_path);
-    const new_path = std.fmt.allocPrint(allocator, "{s}.asset", .{file_path}) catch |err|
-        return errorString(allocator, "Failed to allocate string: {}", .{err});
-    defer allocator.free(new_path);
+    const shader_dir_path = std.fs.path.dirname(meta_file_path) orelse return error.failedToGetDirName;
 
-    io.writeFile(output_dir, .shader, new_path, shader) catch |err|
-        return errorString(allocator, "Failed to write asset file: {}", .{err});
+    var shader_dir = try input_dir.openDir(shader_dir_path, .{ .iterate = true, .access_sub_paths = false });
+    defer shader_dir.close();
 
-    return null;
+    var shader_out_dir = try output_dir.makeOpenPath(shader_dir_path, .{});
+    defer shader_out_dir.close();
+
+    const compiler = try hlsl.Compiler.init(meta_data, shader_dir);
+    defer compiler.deinit();
+
+    var local_error_count: usize = 0;
+
+    var walker = try shader_dir.walk(global_allocator);
+    defer walker.deinit();
+    while (try walker.next()) |entry| {
+        if (entry.kind == .file) {
+            const shader_ext = std.fs.path.extension(entry.path);
+            if (hlsl.getShaderStage(shader_ext)) |stage| {
+                const shader_code = shader_dir.readFileAllocOptions(allocator, entry.path, std.math.maxInt(usize), null, 4, 0) catch |err| {
+                    std.log.err("Failed to read shader {s}: {}", .{ entry.path, err });
+                    local_error_count += 1;
+                    continue;
+                };
+                defer allocator.free(shader_code);
+
+                const shader = compiler.compile(allocator, entry.basename, shader_code, stage) catch |err| {
+                    std.log.err("Failed to compile shader {s}: {}", .{ entry.path, err });
+                    local_error_count += 1;
+                    continue;
+                };
+                defer shader.deinit(allocator);
+
+                const new_path = std.fmt.allocPrint(allocator, "{s}.asset", .{entry.path}) catch |err| {
+                    std.log.err("Failed to allocate string: {}", .{err});
+                    local_error_count += 1;
+                    continue;
+                };
+                defer allocator.free(new_path);
+
+                io.writeFile(shader_out_dir, .shader, new_path, shader) catch |err| {
+                    std.log.err("Failed to write asset file: {}", .{err});
+                    local_error_count += 1;
+                    continue;
+                };
+            }
+        }
+    }
+
+    if (local_error_count != 0) {
+        return error.FailedToCompileShader;
+    }
 }
 
 fn GltfResourceWorker(comptime load_fn: anytype, comptime asset_name: []const u8, comptime atype: AssetType) type {
@@ -282,4 +354,15 @@ fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]cons
     thread_pool.waitAndWork(&wait_group);
 
     return null;
+}
+
+pub fn loadZonFile(comptime T: type, allocator: std.mem.Allocator, dir: std.fs.Dir, path: []const u8, options: std.zon.parse.Options) !T {
+    const file = try dir.openFile(path, .{});
+    defer file.close();
+
+    const bytes = try file.readToEndAllocOptions(allocator, 1024 * 1024, 1024, @alignOf(u8), 0);
+    defer allocator.free(bytes);
+
+    const t = try std.zon.parse.fromSlice(T, allocator, bytes, null, options);
+    return t;
 }

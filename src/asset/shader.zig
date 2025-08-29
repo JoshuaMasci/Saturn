@@ -2,8 +2,14 @@ const std = @import("std");
 
 const serde = @import("../serde.zig");
 
+pub const DirectoryMeta = struct {
+    target: Target = .vulkan,
+    target_profile: []const u8,
+    include_directories: []const []const u8,
+};
+
 pub const Meta = struct {
-    target: Target = .vulkan, //TODO: change default to vulkan
+    target: Target = .vulkan,
     entry: ?[]const u8 = null,
 };
 
@@ -15,6 +21,14 @@ pub const Stage = enum(u32) {
     vertex,
     fragment,
     compute,
+
+    pub fn getProfileString(self: Stage) []const u8 {
+        return switch (self) {
+            .vertex => "vs",
+            .fragment => "ps",
+            .compute => "cs",
+        };
+    }
 };
 
 const Bindings = struct {

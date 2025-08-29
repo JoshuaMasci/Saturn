@@ -1,5 +1,3 @@
-//#include "bindless.hlsl"
-
 //Bindless Textures
 //TODO: use imports instead
 [[vk::binding(2, 0)]]

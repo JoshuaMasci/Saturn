@@ -92,54 +92,6 @@ pub const Compiler = struct {
     }
 };
 
-pub fn compileVertexShader(
-    allocator: std.mem.Allocator,
-    hlsl_source: []const u8,
-    entry_point: []const u8,
-) CompileError!CompileResult {
-    const compiler = try Compiler.init();
-    defer compiler.deinit();
-
-    return compiler.compileHlslToSpirv(
-        allocator,
-        hlsl_source,
-        entry_point,
-        "vs_5_1",
-    );
-}
-
-pub fn compilePixelShader(
-    allocator: std.mem.Allocator,
-    hlsl_source: []const u8,
-    entry_point: []const u8,
-) CompileError!CompileResult {
-    const compiler = try Compiler.init();
-    defer compiler.deinit();
-
-    return compiler.compileHlslToSpirv(
-        allocator,
-        hlsl_source,
-        entry_point,
-        "ps_5_1",
-    );
-}
-
-pub fn compileComputeShader(
-    allocator: std.mem.Allocator,
-    hlsl_source: []const u8,
-    entry_point: []const u8,
-) CompileError!CompileResult {
-    const compiler = try Compiler.init();
-    defer compiler.deinit();
-
-    return compiler.compileHlslToSpirv(
-        allocator,
-        hlsl_source,
-        entry_point,
-        "cs_5_1",
-    );
-}
-
 // Tests
 test "compiler initialization" {
     const compiler = Compiler.init() catch |err| switch (err) {
@@ -199,27 +151,4 @@ test "simple vertex shader compilation" {
         const magic = std.mem.readInt(u32, result.spirv_data[0..4], .little);
         try testing.expectEqual(@as(u32, 0x07230203), magic);
     }
-}
-
-test "convenience function" {
-    const hlsl_source =
-        \\float4 main() : SV_TARGET {
-        \\    return float4(1.0, 0.0, 0.0, 1.0);
-        \\}
-    ;
-
-    const result = compilePixelShader(
-        testing.allocator,
-        hlsl_source,
-        "main",
-    ) catch |err| switch (err) {
-        CompileError.InitializationFailed, CompileError.CompilationFailed => {
-            std.log.warn("DXC not available or compilation failed, skipping", .{});
-            return;
-        },
-        else => return err,
-    };
-    defer result.deinit();
-
-    try testing.expect(result.spirv_data.len > 0);
 }
