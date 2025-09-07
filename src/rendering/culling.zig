@@ -41,12 +41,19 @@ pub const Plane = struct {
         };
     }
 
+    pub fn initPosNormal(pos: zm.Vec, normal: zm.Vec) @This() {
+        return .{
+            .normal_distance = .{ normal[0], normal[1], normal[2], zm.dot3(pos, normal)[0] },
+        };
+    }
+
     pub fn distanceTo(self: @This(), point: zm.Vec) f32 {
         return zm.dot3(self.normal_distance, point)[0] - self.normal_distance[3];
     }
 };
 
 pub const Frustum = struct {
+    plane_count: usize,
     planes: [6]Plane,
 
     pub fn fromViewProjectionMatrix(view_projection_matrix: zm.Mat) @This() {
@@ -56,12 +63,13 @@ pub const Frustum = struct {
         const row3 = view_projection_matrix[3];
 
         return .{
+            .plane_count = 4,
             .planes = .{
                 .initNormlized(row3 + row0), // Left
                 .initNormlized(row3 - row0), // Right
                 .initNormlized(row3 + row1), // Bottom
                 .initNormlized(row3 - row1), // Top
-                .initNormlized(row3 + row2), // Near
+                .initNormlized(row2), // Near
                 .initNormlized(row3 - row2), // Far
             },
         };
@@ -72,11 +80,22 @@ pub const Frustum = struct {
             @compileError("Frustum::intersects T requires intersectsPlane function");
         };
 
-        for (self.planes) |plane| {
+        for (self.planes[0..self.plane_count]) |plane| {
             if (!shape.intersectsPlane(plane)) {
                 return false;
             }
         }
         return true;
     }
+};
+
+pub const Frustum2 = struct {
+    left: Plane,
+    right: Plane,
+
+    up: Plane,
+    down: Plane,
+
+    far: ?Plane,
+    near: Plane,
 };

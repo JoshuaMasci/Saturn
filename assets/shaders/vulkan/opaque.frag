@@ -1,16 +1,5 @@
-//#include "bindless.hlsl"
-
-//Bindless Textures
-//TODO: use imports instead
-[[vk::binding(2, 0)]]
-SamplerState BindlessSamplers[] : register(s2, space0);
-[[vk::binding(2, 0)]]
-Texture2D BindlessTextures[] : register(t2, space0);
-
-float4 sampleTexture(uint index, float2 uv)
-{
-    return BindlessTextures[index].Sample(BindlessSamplers[index], uv);
-}
+#include "bindless.hlsl"
+#include "material.hlsl"
 
 struct PixelInput
 {

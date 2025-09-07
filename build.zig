@@ -2,10 +2,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
-    const build_sdl3 = b.option(bool, "build_sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
-    const no_assets = b.option(bool, "no_assets", "Don't compile asset pipeline") orelse false;
-    const no_game = b.option(bool, "no_game", "Don't compile game project") orelse false;
-    const no_render = b.option(bool, "no_render", "Don't compile render sandbox") orelse false;
+    const build_sdl3 = b.option(bool, "build-sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
+    const no_assets = b.option(bool, "no-assets", "Don't compile asset pipeline") orelse false;
+    const no_game = b.option(bool, "no-game", "Don't compile game project") orelse false;
+    const no_render = b.option(bool, "no-render", "Don't compile render sandbox") orelse false;
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -62,7 +62,7 @@ fn buildAsset(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
     build_engine_assets.addArg("zig-out/assets");
 
     //TODO: get this path from builder
-    const run_engine_assets_step = b.step("engine_assets", "Process engine assets");
+    const run_engine_assets_step = b.step("engine-assets", "Process engine assets");
     run_engine_assets_step.dependOn(&build_engine_assets.step);
 
     const build_game_assets = b.addRunArtifact(exe);

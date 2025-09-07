@@ -11,15 +11,17 @@ const DxcCompileResult = extern struct {
 const DxcCompiler = opaque {};
 
 extern fn dxc_create_compiler() ?*DxcCompiler;
+extern fn dxc_destroy_compiler(ctx: *DxcCompiler) void;
+extern fn dxc_add_include_path(ctx: *DxcCompiler, include_path: [*:0]const u8) void;
 extern fn dxc_compile_hlsl_to_spirv(
     ctx: *DxcCompiler,
+    source_name: [*]const u8,
     source_code: [*]const u8,
     source_size: usize,
     entry_point: [*:0]const u8,
     target_profile: [*:0]const u8,
 ) DxcCompileResult;
 extern fn dxc_free_result(result: *DxcCompileResult) void;
-extern fn dxc_destroy_compiler(ctx: *DxcCompiler) void;
 
 pub const CompileError = error{
     InitializationFailed,
@@ -48,14 +50,28 @@ pub const Compiler = struct {
         dxc_destroy_compiler(self.ctx);
     }
 
+    pub fn addIncludeDirectory(self: Compiler, allocator: std.mem.Allocator, dir: std.fs.Dir, sub_path: []const u8) !void {
+        const realpath: []const u8 = try dir.realpathAlloc(allocator, sub_path);
+        defer allocator.free(realpath);
+
+        const realpath_z: [:0]const u8 = try allocator.dupeZ(u8, realpath);
+        defer allocator.free(realpath_z);
+
+        dxc_add_include_path(self.ctx, realpath_z);
+    }
+
     pub fn compileHlslToSpirv(
         self: Compiler,
         allocator: std.mem.Allocator,
+        source_name: []const u8,
         hlsl_source: []const u8,
         entry_point: []const u8,
         target_profile: []const u8,
     ) CompileError!CompileResult {
         // Ensure null-terminated strings
+        const source_name_z = try allocator.dupeZ(u8, source_name);
+        defer allocator.free(source_name_z);
+
         const entry_point_z = try allocator.dupeZ(u8, entry_point);
         defer allocator.free(entry_point_z);
 
@@ -64,6 +80,7 @@ pub const Compiler = struct {
 
         var result = dxc_compile_hlsl_to_spirv(
             self.ctx,
+            source_name_z.ptr,
             hlsl_source.ptr,
             hlsl_source.len,
             entry_point_z.ptr,

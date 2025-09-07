@@ -55,6 +55,10 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .p_next = @ptrCast(&features_12),
         .dynamic_rendering = VK_TRUE,
         .synchronization_2 = VK_TRUE,
+
+        //Required for hlsl shaders
+        .shader_demote_to_helper_invocation = VK_TRUE,
+        .shader_terminate_invocation = VK_TRUE,
     };
     var features_robustness2 = vk.PhysicalDeviceRobustness2FeaturesEXT{
         .p_next = @ptrCast(&features_13),

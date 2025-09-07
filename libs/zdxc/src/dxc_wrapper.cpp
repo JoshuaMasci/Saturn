@@ -23,6 +23,7 @@ struct DxcCompiler {
   IDxcCompiler3 *compiler;
   IDxcUtils *utils;
   IDxcIncludeHandler *include_handler;
+  std::vector<std::wstring> include_directories;
 };
 
 DxcCompiler *dxc_create_compiler() {
@@ -53,7 +54,13 @@ DxcCompiler *dxc_create_compiler() {
   return ctx;
 }
 
+void dxc_add_include_path(DxcCompiler *ctx, const char *include_path) {
+    std::wstring w_include_path = stringToWstring(std::string(include_path));
+    ctx->include_directories.push_back(w_include_path);
+}
+
 DxcCompileResult dxc_compile_hlsl_to_spirv(DxcCompiler *ctx,
+                                           const char *source_name,
                                            const char *source_code,
                                            size_t source_size,
                                            const char *entry_point,
@@ -74,6 +81,8 @@ DxcCompileResult dxc_compile_hlsl_to_spirv(DxcCompiler *ctx,
     return result;
   }
 
+
+  std::wstring w_source_name = stringToWstring(std::string(source_name));
   std::wstring w_entry_point = stringToWstring(std::string(entry_point));
   std::wstring w_target_profile = stringToWstring(std::string(target_profile));
 
@@ -88,6 +97,11 @@ DxcCompileResult dxc_compile_hlsl_to_spirv(DxcCompiler *ctx,
 
   arguments.push_back(L"-T");
   arguments.push_back(w_target_profile.c_str());
+
+  for (const auto& path : ctx->include_directories) {
+      arguments.push_back(L"-I");
+      arguments.push_back(path.c_str());
+  }
 
   DxcBuffer source_buffer = {};
   source_buffer.Ptr = source_blob->GetBufferPointer();

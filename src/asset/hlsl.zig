@@ -38,11 +38,20 @@ pub const Compiler = struct {
     compiler: dxc.Compiler,
     settings: DirectoryMeta,
 
-    pub fn init(settings: DirectoryMeta, dir: std.fs.Dir) !Self {
-        _ = dir; // autofix
+    pub fn init(
+        allocator: std.mem.Allocator,
+        dir: std.fs.Dir,
+        settings: DirectoryMeta,
+    ) !Self {
+        var compiler: dxc.Compiler = try .init();
+        errdefer compiler.deinit();
+
+        for (settings.include_directories) |include_dir| {
+            try compiler.addIncludeDirectory(allocator, dir, include_dir);
+        }
 
         return .{
-            .compiler = try .init(),
+            .compiler = compiler,
             .settings = settings,
         };
     }
@@ -55,7 +64,7 @@ pub const Compiler = struct {
         const profile = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ shader_stage.getProfileString(), self.settings.target_profile });
         defer allocator.free(profile);
 
-        const compile_result = try self.compiler.compileHlslToSpirv(allocator, shader_code, "main", profile);
+        const compile_result = try self.compiler.compileHlslToSpirv(allocator, shader_name, shader_code, "main", profile);
         defer compile_result.deinit();
 
         const spirv_code: []u32 = try dupeBytesToU32(allocator, compile_result.spirv_data);

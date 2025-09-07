@@ -23,7 +23,7 @@ const utils = @import("vulkan/utils.zig");
 const culling = @import("culling.zig");
 
 pub const BuildCommandBufferData = struct {
-    self: *const Self,
+    self: *Self,
     scene: *const RenderScene,
     camera: Camera,
     camera_transform: Transform,
@@ -36,7 +36,7 @@ registry: *const AssetRegistry,
 device: *Device,
 
 opaque_mesh_pipeline: vk.Pipeline,
-//alpha_cutoff_mesh_pipeline: vk.Pipeline,
+alpha_cutoff_mesh_pipeline: vk.Pipeline,
 
 static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, Mesh),
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, Device.ImageHandle),
@@ -44,6 +44,9 @@ material_map: std.AutoArrayHashMap(AssetRegistry.Handle, MaterialAsset),
 
 //Debug Values
 enable_culling: bool = false,
+total_primitives: usize = 0,
+rendered_primitives: usize = 0,
+culled_primitives: usize = 0,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -53,12 +56,6 @@ pub fn init(
     depth_format: vk.Format,
     pipeline_layout: vk.PipelineLayout,
 ) !Self {
-    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh.vert.asset"));
-    defer device.device.proxy.destroyShaderModule(vertex_shader, null);
-
-    const opaque_fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/opaque.frag.asset"));
-    defer device.device.proxy.destroyShaderModule(opaque_fragment_shader, null);
-
     const bindings = [_]vk.VertexInputBindingDescription{
         .{
             .binding = 0,
@@ -100,6 +97,15 @@ pub fn init(
         },
     };
 
+    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh.vert.asset"));
+    defer device.device.proxy.destroyShaderModule(vertex_shader, null);
+
+    const opaque_fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/opaque.frag.asset"));
+    defer device.device.proxy.destroyShaderModule(opaque_fragment_shader, null);
+
+    const alpha_cutoff_fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/alpha_cutoff.frag.asset"));
+    defer device.device.proxy.destroyShaderModule(alpha_cutoff_fragment_shader, null);
+
     const opaque_mesh_pipeline = try Pipeline.createGraphicsPipeline(
         allocator,
         device.device.proxy,
@@ -107,11 +113,25 @@ pub fn init(
         .{
             .color_format = color_format,
             .depth_format = depth_format,
-            .cull_mode = .{},
+            .cull_mode = .{ .back_bit = true },
         },
         .{ .bindings = &bindings, .attributes = &attributes },
         vertex_shader,
         opaque_fragment_shader,
+    );
+
+    const alpha_cutoff_mesh_pipeline = try Pipeline.createGraphicsPipeline(
+        allocator,
+        device.device.proxy,
+        pipeline_layout,
+        .{
+            .color_format = color_format,
+            .depth_format = depth_format,
+            .cull_mode = .{ .back_bit = true },
+        },
+        .{ .bindings = &bindings, .attributes = &attributes },
+        vertex_shader,
+        alpha_cutoff_fragment_shader,
     );
 
     return .{
@@ -119,6 +139,7 @@ pub fn init(
         .registry = registry,
         .device = device,
         .opaque_mesh_pipeline = opaque_mesh_pipeline,
+        .alpha_cutoff_mesh_pipeline = alpha_cutoff_mesh_pipeline,
         .static_mesh_map = .init(allocator),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
@@ -142,6 +163,7 @@ pub fn deinit(self: *Self) void {
     self.material_map.deinit();
 
     self.device.device.proxy.destroyPipeline(self.opaque_mesh_pipeline, null);
+    self.device.device.proxy.destroyPipeline(self.alpha_cutoff_mesh_pipeline, null);
 }
 
 pub fn createRenderPass(
@@ -186,6 +208,11 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
     const self = data.self;
 
+    //Clear stats
+    self.total_primitives = 0;
+    self.rendered_primitives = 0;
+    self.culled_primitives = 0;
+
     const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
     const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
     const aspect_ratio: f32 = width_float / height_float;
@@ -193,8 +220,6 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     var projection_matrix = data.camera.getProjectionMatrix(aspect_ratio);
     projection_matrix[1][1] *= -1.0;
     const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
-
-    command_buffer.bindPipeline(.graphics, self.opaque_mesh_pipeline);
 
     const viewport = vk.Viewport{
         .x = 0.0,
@@ -212,6 +237,7 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     command_buffer.setScissor(0, 1, (&scissor)[0..1]);
 
     const frustum: culling.Frustum = .fromViewProjectionMatrix(view_projection_matrix);
+    //const frustum: culling.Frustum = data.camera.getFrustum(aspect_ratio, data.camera_transform);
 
     for (data.scene.static_meshes.items) |static_mesh| {
         if (static_mesh.component.visable == false) {
@@ -223,22 +249,34 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
 
             const materials = static_mesh.component.materials.constSlice();
             for (mesh.primitives, materials) |primtive, material| {
+                self.total_primitives += 1;
                 if (self.enable_culling) {
                     if (!frustum.intersects(culling.Sphere, .initWorld(primtive.sphere_pos_radius, &static_mesh.transform))) {
+                        self.culled_primitives += 1;
                         continue;
                     }
                 }
+                self.rendered_primitives += 1;
 
                 const PushData = extern struct {
                     view_projection_matrix: zm.Mat,
                     model_matrix: zm.Mat,
                     base_color_factor: zm.Vec,
                     base_color_texture: u32,
+                    alpha_cutoff: f32,
                 };
 
                 var base_color_factor: zm.Vec = .{ 1.0, 0.27, 0.63, 1.0 };
                 var base_color_texture: u32 = 0;
+                var alpha_cutoff: f32 = 0.0;
                 if (self.material_map.get(material)) |mat| {
+                    command_buffer.bindPipeline(.graphics, switch (mat.alpha_mode) {
+                        .alpha_opaque => self.opaque_mesh_pipeline,
+                        .alpha_mask => continue, //TODO: this
+                        .alpha_blend => continue, //TODO: this
+                    });
+                    alpha_cutoff = mat.alpha_cutoff;
+
                     base_color_factor = mat.base_color_factor;
 
                     if (mat.base_color_texture) |handle| {
@@ -248,6 +286,8 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
                             }
                         }
                     }
+                } else {
+                    command_buffer.bindPipeline(.graphics, self.opaque_mesh_pipeline);
                 }
 
                 const push_data = PushData{
@@ -255,6 +295,7 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
                     .model_matrix = model_matrix,
                     .base_color_factor = base_color_factor,
                     .base_color_texture = base_color_texture,
+                    .alpha_cutoff = alpha_cutoff,
                 };
                 command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
 
@@ -342,17 +383,17 @@ pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: A
             if (material.base_color_texture) |texture_handle|
                 self.tryLoadTexture(temp_allocator, texture_handle);
 
-            if (material.metallic_roughness_texture) |texture_handle|
-                self.tryLoadTexture(temp_allocator, texture_handle);
+            // if (material.metallic_roughness_texture) |texture_handle|
+            //     self.tryLoadTexture(temp_allocator, texture_handle);
 
-            if (material.emissive_texture) |texture_handle|
-                self.tryLoadTexture(temp_allocator, texture_handle);
+            // if (material.emissive_texture) |texture_handle|
+            //     self.tryLoadTexture(temp_allocator, texture_handle);
 
-            if (material.occlusion_texture) |texture_handle|
-                self.tryLoadTexture(temp_allocator, texture_handle);
+            // if (material.occlusion_texture) |texture_handle|
+            //     self.tryLoadTexture(temp_allocator, texture_handle);
 
-            if (material.normal_texture) |texture_handle|
-                self.tryLoadTexture(temp_allocator, texture_handle);
+            // if (material.normal_texture) |texture_handle|
+            //     self.tryLoadTexture(temp_allocator, texture_handle);
 
             self.material_map.put(handle, material) catch |err| {
                 std.log.err("Failed to append material to list {}", .{err});

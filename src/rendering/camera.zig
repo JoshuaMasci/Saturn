@@ -2,6 +2,7 @@ const std = @import("std");
 
 const zm = @import("zmath");
 
+const culling = @import("culling.zig");
 const Transform = @import("../transform.zig");
 
 pub const Fov = union(enum) {
@@ -32,6 +33,27 @@ pub const PerspectiveCamera = struct {
     pub fn getPerspectiveMatrix(self: PerspectiveCamera, aspect_ratio: f32) zm.Mat {
         //TODO: create infinte perspective matrix
         return zm.perspectiveFovRh(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far orelse 1000.0);
+    }
+
+    pub fn getFrustum(self: PerspectiveCamera, aspect_ratio: f32, transform: Transform) culling.Frustum {
+        _ = aspect_ratio; // autofix
+        //const fov_y = self.fov.get_fov_y_rad(aspect_ratio);
+        const forward = transform.getForward();
+        const position = transform.position;
+
+        var plane_count: usize = 1;
+        var planes: [6]culling.Plane = undefined;
+        planes[0] = .initPosNormal(position + (forward * zm.f32x4s(self.near)), forward);
+
+        if (self.far) |zfar| {
+            planes[plane_count] = .initPosNormal(position + (forward * zm.f32x4s(zfar)), -forward);
+            plane_count += 1;
+        }
+
+        return .{
+            .plane_count = plane_count,
+            .planes = planes,
+        };
     }
 };
 
@@ -72,6 +94,13 @@ pub const Camera = union(enum) {
         return switch (self) {
             .perspective => |perspective| perspective.getPerspectiveMatrix(aspect_ratio),
             .orthographic => |orthographic| orthographic.getPerspectiveMatrix(aspect_ratio),
+        };
+    }
+
+    pub fn getFrustum(self: Self, aspect_ratio: f32, transform: Transform) culling.Frustum {
+        return switch (self) {
+            .perspective => |perspective| perspective.getFrustum(aspect_ratio, transform),
+            .orthographic => unreachable,
         };
     }
 };

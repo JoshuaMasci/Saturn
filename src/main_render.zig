@@ -29,7 +29,8 @@ pub fn main() !void {
     var app: App = try .init(allocator);
     defer app.deinit();
 
-    const scene_filepath = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
+    //const scene_filepath = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
+    const scene_filepath = "zig-out/game-assets/Bistro/scene.json";
     {
         var scene_json: std.json.Parsed(Scene) = undefined;
         {
@@ -251,19 +252,25 @@ const App = struct {
 
         {
             if (imgui.ImGui_Begin("Performance", null, 0)) {
-                const dt_str: [:0]const u8 = std.fmt.allocPrintZ(temp_allocator, "Delta Time: {d:.3} ms", .{self.average_dt * 1000}) catch "Out Of Memory";
-                imgui.ImGui_Text(dt_str);
-
-                const fps_str: [:0]const u8 = std.fmt.allocPrintZ(temp_allocator, "FPS: {d:.3}", .{1.0 / self.average_dt}) catch "Out Of Memory";
-                imgui.ImGui_Text(fps_str);
+                try ImFmtText(temp_allocator, "Delta Time: {d:.3} ms", .{self.average_dt * 1000});
+                try ImFmtText(temp_allocator, "FPS: {d:.3}", .{1.0 / self.average_dt});
 
                 if (mem_usage_opt) |mem_usage| {
                     const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(temp_allocator, mem_usage) catch null;
                     if (formatted_string) |mem_usage_string| {
-                        const mem_str: [:0]const u8 = std.fmt.allocPrintZ(temp_allocator, "Memory Usage: {s}", .{mem_usage_string}) catch "Out Of Memory";
-                        imgui.ImGui_Text(mem_str);
+                        try ImFmtText(temp_allocator, "Memory Usage: {s}", .{mem_usage_string});
                     }
                 }
+            }
+            imgui.ImGui_End();
+        }
+
+        {
+            if (imgui.ImGui_Begin("Debug", null, 0)) {
+                _ = imgui.ImGui_Checkbox("Frustum Culling", &self.scene_renderer.enable_culling);
+                try ImFmtText(temp_allocator, "Total Primitives: {}", .{self.scene_renderer.total_primitives});
+                try ImFmtText(temp_allocator, "Rendered Primitives: {}", .{self.scene_renderer.rendered_primitives});
+                try ImFmtText(temp_allocator, "Culled Primitives: {}", .{self.scene_renderer.culled_primitives});
             }
             imgui.ImGui_End();
         }
@@ -359,4 +366,10 @@ pub fn getControllerButtonAxis(input: *sdl3.Input, pos: sdl3.Controller.Button, 
     }
 
     return 0.0;
+}
+
+pub fn ImFmtText(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) !void {
+    const fmt_str: [:0]const u8 = try std.fmt.allocPrintZ(allocator, fmt, args);
+    defer allocator.free(fmt_str);
+    imgui.ImGui_Text(fmt_str);
 }

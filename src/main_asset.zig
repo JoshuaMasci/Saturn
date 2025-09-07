@@ -244,7 +244,7 @@ fn processShaderDir(allocator: std.mem.Allocator, meta_file_path: []const u8) !v
     var shader_out_dir = try output_dir.makeOpenPath(shader_dir_path, .{});
     defer shader_out_dir.close();
 
-    const compiler = try hlsl.Compiler.init(meta_data, shader_dir);
+    const compiler = try hlsl.Compiler.init(allocator, shader_dir, meta_data);
     defer compiler.deinit();
 
     var local_error_count: usize = 0;

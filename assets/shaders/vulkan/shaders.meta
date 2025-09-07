@@ -2,6 +2,6 @@
     .type = "shader-dir",
     .language = .hlsl,
     .target = .vulkan,
-    .target_profile = "5_1",
-    .include_directories = .{"./"}
+    .target_profile = "6_5",
+    .include_directories = .{"./", "./include"}
 }
