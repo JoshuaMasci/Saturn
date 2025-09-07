@@ -266,7 +266,7 @@ const App = struct {
         }
 
         {
-            if (imgui.ImGui_Begin("Debug", null, 0)) {
+            if (imgui.ImGui_Begin("Culling (Broken)", null, 0)) {
                 _ = imgui.ImGui_Checkbox("Frustum Culling", &self.scene_renderer.enable_culling);
                 try ImFmtText(temp_allocator, "Total Primitives: {}", .{self.scene_renderer.total_primitives});
                 try ImFmtText(temp_allocator, "Rendered Primitives: {}", .{self.scene_renderer.rendered_primitives});

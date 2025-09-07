@@ -66,6 +66,9 @@ linear_sampler: Sampler,
 frame_index: usize = 0,
 frame_data: []PerFrameData,
 
+//Features
+gpu_memory_mappable: bool,
+
 pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     if (frames_in_flight_count == 0) {
         return error.InvalidFramesInFlightCount;
@@ -125,6 +128,34 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
         };
     }
 
+    var gpu_memory_mappable = false;
+
+    {
+        const props = device.instance.getPhysicalDeviceMemoryProperties(device.physical_device);
+
+        var device_local_bytes: u64 = 0;
+        var device_local_mappable_bytes: u64 = 0;
+
+        heap_loop: for (props.memory_heaps[0..props.memory_heap_count], 0..) |heap, i| {
+            if (heap.flags.device_local_bit) {
+                device_local_bytes += heap.size;
+
+                //Search if any memory type supports host access
+                for (props.memory_types[0..props.memory_type_count]) |mtype| {
+                    if (mtype.heap_index == i and (mtype.property_flags.host_visible_bit and mtype.property_flags.host_coherent_bit)) {
+                        device_local_mappable_bytes += heap.size;
+                        continue :heap_loop;
+                    }
+                }
+            }
+        }
+
+        // This is an attempt to determine if the device memory is all host accessable (Likey because the GPU is either itegrated or has reBAR enabled),
+        // which should allow may transfers to be done as mem copies instead
+        // Older GPUs may only have a small amount of BAR memory, if this is the case buffer allocations will avoid using it and rely on transfer queues as normal
+        gpu_memory_mappable = device_local_bytes == device_local_mappable_bytes;
+    }
+
     return .{
         .allocator = allocator,
         .instance = instance,
@@ -137,6 +168,8 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
         .linear_sampler = try .init(device, .linear, .repeat),
 
         .frame_data = frame_data,
+
+        .gpu_memory_mappable = gpu_memory_mappable,
     };
 }
 
@@ -213,7 +246,7 @@ pub fn releaseWindow(self: *Self, window: Window) void {
 }
 
 pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !BufferPool.Handle {
-    const buffer: Buffer = try .init(self.device, size, usage, .gpu_only);
+    const buffer: Buffer = try .init(self.device, size, usage, if (self.gpu_memory_mappable) .gpu_mappable else .gpu_only);
     errdefer buffer.deinit();
 
     //TOOD: buffer bindings
@@ -221,11 +254,12 @@ pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !Buffe
     return self.buffers.insert(buffer);
 }
 pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []const u8) !BufferPool.Handle {
-    var buffer: Buffer = try .init(self.device, data.len, usage, .gpu_only);
+    var buffer: Buffer = try .init(self.device, data.len, usage, if (self.gpu_memory_mappable) .gpu_mappable else .gpu_only);
     errdefer buffer.deinit();
 
     if (buffer.allocation.getMappedByteSlice()) |buffer_slice| {
-        @memcpy(buffer_slice, data);
+        std.debug.assert(buffer_slice.len >= data.len);
+        @memcpy(buffer_slice[0..data.len], data);
     } else {
         //TODO: slow transfer upload
         try buffer.uploadBufferData(self.device, self.device.graphics_queue, data);

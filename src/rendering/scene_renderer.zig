@@ -29,6 +29,22 @@ pub const BuildCommandBufferData = struct {
     camera_transform: Transform,
 };
 
+pub const GpuMaterial = extern struct {
+    alpha_mode: i32,
+    alpha_cutoff: f32,
+    base_color_texture: i32,
+    metallic_roughness_texture: i32,
+
+    emissive_texture: i32,
+    occlusion_texture: i32,
+    normal_texture: i32,
+    pad0: i32,
+
+    base_color_factor: [4]f32,
+    metallic_roughness_factor_pad2: [4]f32,
+    emissive_factor_pad: [4]f32,
+};
+
 const Self = @This();
 
 allocator: std.mem.Allocator,
@@ -40,7 +56,9 @@ alpha_cutoff_mesh_pipeline: vk.Pipeline,
 
 static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, Mesh),
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, Device.ImageHandle),
+
 material_map: std.AutoArrayHashMap(AssetRegistry.Handle, MaterialAsset),
+material_buffer: Device.BufferHandle,
 
 //Debug Values
 enable_culling: bool = false,
@@ -134,6 +152,9 @@ pub fn init(
         alpha_cutoff_fragment_shader,
     );
 
+    const MAX_MATERIAL_COUNT = 2048;
+    const material_buffer: Device.BufferHandle = try device.createBuffer(@sizeOf(GpuMaterial) * MAX_MATERIAL_COUNT, .{ .storage_buffer_bit = true, .transfer_src_bit = true });
+
     return .{
         .allocator = allocator,
         .registry = registry,
@@ -143,6 +164,7 @@ pub fn init(
         .static_mesh_map = .init(allocator),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
+        .material_buffer = material_buffer,
     };
 }
 
@@ -161,6 +183,7 @@ pub fn deinit(self: *Self) void {
         material.deinit(self.allocator);
     }
     self.material_map.deinit();
+    self.device.destroyBuffer(self.material_buffer);
 
     self.device.device.proxy.destroyPipeline(self.opaque_mesh_pipeline, null);
     self.device.device.proxy.destroyPipeline(self.alpha_cutoff_mesh_pipeline, null);
