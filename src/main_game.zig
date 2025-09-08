@@ -15,10 +15,6 @@ pub fn main() !void {
     try global.init(allocator);
     defer global.deinit();
 
-    const zstbi = @import("zstbi");
-    zstbi.init(allocator);
-    defer zstbi.deinit();
-
     var app = try App.init();
     defer app.deinit();
 
