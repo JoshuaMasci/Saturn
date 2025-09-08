@@ -127,18 +127,6 @@ fn buildGame(
     const zmath = b.dependency("zmath", .{});
     exe_mod.addImport("zmath", zmath.module("root"));
 
-    // zstbi
-    const zstbi = b.dependency("zstbi", .{});
-    exe_mod.addImport("zstbi", zstbi.module("root"));
-
-    // zgltf
-    const zgltf = b.dependency("zgltf", .{});
-    exe_mod.addImport("zgltf", zgltf.module("zgltf"));
-
-    // zobj
-    const zobj = b.dependency("zobj", .{ .target = target, .optimize = optimize });
-    exe_mod.addImport("zobj", zobj.module("obj"));
-
     // zlua
     const zlua = b.dependency("zlua", .{
         .target = target,

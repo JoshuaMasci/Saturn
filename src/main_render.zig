@@ -147,11 +147,8 @@ const App = struct {
         );
         errdefer scene_renderer.deinit();
 
-        //Imgui Init
-
         _ = imgui.ImGui_CreateContext(null) orelse return error.ImGuiCreateContextFailure;
         errdefer imgui.ImGui_DestroyContext(null);
-
         imgui.ImGui_StyleColorsClassic(null);
 
         var io: *imgui.ImGuiIO = imgui.ImGui_GetIO();

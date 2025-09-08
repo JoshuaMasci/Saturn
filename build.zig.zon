@@ -11,7 +11,6 @@
     },
     .dependencies = .{
         .saturn_jolt = .{ .path = "libs/saturn_jolt" },
-        .zdxc = .{ .path = "libs/zdxc" },
         .zmath = .{
             .url = "git+https://github.com/zig-gamedev/zmath.git#ccf7297ef6c01e21b2d51ad81b5b6ce929e86a00",
             .hash = "zmath-0.11.0-dev-wjwivZY1AwDO7yxNmZ5HWoU03f9mFBet8LN9-oYc3i29",
@@ -32,6 +31,20 @@
             .url = "git+https://github.com/tiawl/cimgui.zig#ff1e39da339f62742901408016bbbf5c2910d5bb",
             .hash = "cimgui_zig-1.0.0-2XubkqR8XwAzhx4hjU-j7vGSfO9arVurVsA4PZ0sVYUy",
         },
+        .zimgui = .{
+            .url = "git+https://github.com/JoshuaMasci/zimgui.git#7876b01d09b8a72d404f8b5de5adc86b866c9398",
+            .hash = "zimgui-0.0.0-KY3Tl37OQQDVJ1QlzquTgxshoP6kY6fOv1ZLhb1OEPon",
+        },
+        .zlua = .{
+            .url = "git+https://github.com/natecraddock/ziglua#b1fa62844dafb782219631d88b7fc70e0b7cfe37",
+            .hash = "zlua-0.1.0-hGRpCxwbBQCft7Dgs_DsO0OGBbCUGgXn_mQd5c382Jn5",
+        },
+
+        //Assets
+        .zdxc = .{
+            .path = "libs/zdxc",
+            .optional = true,
+        },
         .zgltf = .{
             .url = "git+https://github.com/JoshuaMasci/zgltf.git#41ee56340664e20e7d9f3699a76702c124c0ba6f",
             .hash = "zgltf-0.1.0-sX6QAswGAgBcYNNhNXbrCw45plFQRiYOXkv_jFhZhZVD",
@@ -43,14 +56,6 @@
         .zstbi = .{
             .url = "git+https://github.com/zig-gamedev/zstbi.git#094c4bba5cdbec167d3f6aaa98cccccd5c99145f",
             .hash = "zstbi-0.11.0-dev-L0Ea_-eVBwCl8RYA98PhLDw3Fhw5k7FJOHSMDKWDOvqx",
-        },
-        .zimgui = .{
-            .url = "git+https://github.com/JoshuaMasci/zimgui.git#7876b01d09b8a72d404f8b5de5adc86b866c9398",
-            .hash = "zimgui-0.0.0-KY3Tl37OQQDVJ1QlzquTgxshoP6kY6fOv1ZLhb1OEPon",
-        },
-        .zlua = .{
-            .url = "git+https://github.com/natecraddock/ziglua#b1fa62844dafb782219631d88b7fc70e0b7cfe37",
-            .hash = "zlua-0.1.0-hGRpCxwbBQCft7Dgs_DsO0OGBbCUGgXn_mQd5c382Jn5",
         },
     },
 }
