@@ -11,6 +11,7 @@ const ImguiRenderer = @import("imgui_renderer.zig");
 const PhysicsRenderer = @import("physics_renderer.zig");
 const rendering_scene = @import("scene.zig");
 const RenderSettings = @import("settings.zig").RenderSettings;
+const Resources = @import("resources.zig");
 const SceneRenderer = @import("scene_renderer.zig");
 const Device = @import("vulkan/device.zig");
 const rg = @import("vulkan/render_graph.zig");
@@ -30,6 +31,7 @@ pub const RenderThreadData = struct {
     window: Window,
 
     device: *Device,
+    resources: Resources,
     scene_renderer: SceneRenderer,
     physics_renderer: PhysicsRenderer,
     imgui_renderer: ImguiRenderer,
@@ -41,6 +43,7 @@ pub const RenderThreadData = struct {
 
     pub fn deinit(self: *Self) void {
         _ = self.device.device.proxy.deviceWaitIdle() catch {};
+        self.resources.deinit();
         self.scene_renderer.deinit();
         self.physics_renderer.deinit();
         self.imgui_renderer.deinit();
@@ -90,6 +93,8 @@ pub const RenderThread = struct {
             },
         );
 
+        const resources: Resources = .init(allocator, global.asset_registry, device);
+
         const scene_renderer = SceneRenderer.init(
             allocator,
             global.asset_registry,
@@ -122,6 +127,7 @@ pub const RenderThread = struct {
             .allocator = allocator,
             .window = window,
             .device = device,
+            .resources = resources,
             .scene_renderer = scene_renderer,
             .physics_renderer = physics_renderer,
             .imgui_renderer = imgui_renderer,
@@ -217,6 +223,7 @@ fn renderThreadMain(
                 temp_allocator,
                 swapchain_texture,
                 depth_texture,
+                &render_thread_data.resources,
                 &scene_data.scene,
                 scene_data.camera,
                 scene_data.camera_transform,

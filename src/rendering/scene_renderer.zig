@@ -3,62 +3,44 @@ const std = @import("std");
 const vk = @import("vulkan");
 const zm = @import("zmath");
 
-const MaterialAsset = @import("../asset/material.zig");
 const MeshAsset = @import("../asset/mesh.zig");
 const AssetRegistry = @import("../asset/registry.zig");
-const Texture2dAsset = @import("../asset/texture.zig");
+
 const global = @import("../global.zig");
 const c = @import("../platform/sdl3.zig").c;
 const Window = @import("../platform/sdl3.zig").Window;
 const Settings = @import("../rendering/settings.zig");
+
 const Transform = @import("../transform.zig");
 const Camera = @import("camera.zig").Camera;
 const RenderScene = @import("scene.zig").RenderScene;
+const culling = @import("culling.zig");
+
 const Device = @import("vulkan/device.zig");
 const Image = @import("vulkan/image.zig");
 const Mesh = @import("vulkan/mesh.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
 const utils = @import("vulkan/utils.zig");
-const culling = @import("culling.zig");
+
+const Resources = @import("resources.zig");
 
 pub const BuildCommandBufferData = struct {
     self: *Self,
+    resources: *const Resources,
+    material_buffer_handle: rg.RenderGraphBufferHandle,
     scene: *const RenderScene,
     camera: Camera,
     camera_transform: Transform,
 };
 
-pub const GpuMaterial = extern struct {
-    alpha_mode: i32,
-    alpha_cutoff: f32,
-    base_color_texture: i32,
-    metallic_roughness_texture: i32,
-
-    emissive_texture: i32,
-    occlusion_texture: i32,
-    normal_texture: i32,
-    pad0: i32,
-
-    base_color_factor: [4]f32,
-    metallic_roughness_factor_pad2: [4]f32,
-    emissive_factor_pad: [4]f32,
-};
-
 const Self = @This();
 
 allocator: std.mem.Allocator,
-registry: *const AssetRegistry,
 device: *Device,
 
 opaque_mesh_pipeline: vk.Pipeline,
 alpha_cutoff_mesh_pipeline: vk.Pipeline,
-
-static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, Mesh),
-texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, Device.ImageHandle),
-
-material_map: std.AutoArrayHashMap(AssetRegistry.Handle, MaterialAsset),
-material_buffer: Device.BufferHandle,
 
 //Debug Values
 enable_culling: bool = false,
@@ -86,31 +68,31 @@ pub fn init(
         .{
             .binding = 0,
             .location = 0,
-            .format = .r32g32b32_sfloat, // FLOAT3
+            .format = .r32g32b32_sfloat,
             .offset = @offsetOf(MeshAsset.Vertex, "position"),
         },
         .{
             .binding = 0,
             .location = 1,
-            .format = .r32g32b32_sfloat, // FLOAT3
+            .format = .r32g32b32_sfloat,
             .offset = @offsetOf(MeshAsset.Vertex, "normal"),
         },
         .{
             .binding = 0,
             .location = 2,
-            .format = .r32g32b32a32_sfloat, // FLOAT4
+            .format = .r32g32b32a32_sfloat,
             .offset = @offsetOf(MeshAsset.Vertex, "tangent"),
         },
         .{
             .binding = 0,
             .location = 3,
-            .format = .r32g32_sfloat, // FLOAT2
+            .format = .r32g32_sfloat,
             .offset = @offsetOf(MeshAsset.Vertex, "uv0"),
         },
         .{
             .binding = 0,
             .location = 4,
-            .format = .r32g32_sfloat, // FLOAT2
+            .format = .r32g32_sfloat,
             .offset = @offsetOf(MeshAsset.Vertex, "uv1"),
         },
     };
@@ -152,39 +134,15 @@ pub fn init(
         alpha_cutoff_fragment_shader,
     );
 
-    const MAX_MATERIAL_COUNT = 2048;
-    const material_buffer: Device.BufferHandle = try device.createBuffer(@sizeOf(GpuMaterial) * MAX_MATERIAL_COUNT, .{ .storage_buffer_bit = true, .transfer_src_bit = true });
-
     return .{
         .allocator = allocator,
-        .registry = registry,
         .device = device,
         .opaque_mesh_pipeline = opaque_mesh_pipeline,
         .alpha_cutoff_mesh_pipeline = alpha_cutoff_mesh_pipeline,
-        .static_mesh_map = .init(allocator),
-        .texture_map = .init(allocator),
-        .material_map = .init(allocator),
-        .material_buffer = material_buffer,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    for (self.static_mesh_map.values()) |mesh| {
-        mesh.deinit();
-    }
-    self.static_mesh_map.deinit();
-
-    for (self.texture_map.values()) |texture| {
-        self.device.destroyImage(texture);
-    }
-    self.texture_map.deinit();
-
-    for (self.material_map.values()) |material| {
-        material.deinit(self.allocator);
-    }
-    self.material_map.deinit();
-    self.device.destroyBuffer(self.material_buffer);
-
     self.device.device.proxy.destroyPipeline(self.opaque_mesh_pipeline, null);
     self.device.device.proxy.destroyPipeline(self.alpha_cutoff_mesh_pipeline, null);
 }
@@ -194,11 +152,14 @@ pub fn createRenderPass(
     temp_allocator: std.mem.Allocator,
     color_target: rg.RenderGraphTextureHandle,
     depth_target: rg.RenderGraphTextureHandle,
+    resources: *const Resources,
     scene: *const RenderScene,
     camera: Camera,
     camera_transform: Transform,
     render_graph: *rg.RenderGraph,
 ) !void {
+    const material_buffer_handle = try resources.createMaterialBuffer(temp_allocator, render_graph);
+
     var render_pass = try rg.RenderPass.init(temp_allocator, "Scene Pass");
     try render_pass.addColorAttachment(.{
         .texture = color_target,
@@ -211,14 +172,14 @@ pub fn createRenderPass(
         .store = true,
     });
 
-    self.loadSceneData(self.allocator, scene);
-
     const scene_build_data = try temp_allocator.create(BuildCommandBufferData);
     scene_build_data.* = .{
         .self = self,
+        .resources = resources,
+        .material_buffer_handle = material_buffer_handle,
+        .scene = scene,
         .camera = camera,
         .camera_transform = camera_transform,
-        .scene = scene,
     };
     render_pass.addBuildFn(buildCommandBuffer, scene_build_data);
 
@@ -226,8 +187,6 @@ pub fn createRenderPass(
 }
 
 pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
-    _ = resources; // autofix
-
     const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
     const self = data.self;
 
@@ -235,6 +194,8 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     self.total_primitives = 0;
     self.rendered_primitives = 0;
     self.culled_primitives = 0;
+
+    const material_buffer = resources.buffers[data.material_buffer_handle.index];
 
     const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
     const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
@@ -267,11 +228,11 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
             continue;
         }
 
-        if (self.static_mesh_map.get(static_mesh.component.mesh)) |mesh| {
+        if (data.resources.static_mesh_map.get(static_mesh.component.mesh)) |entry| {
             const model_matrix = static_mesh.transform.getModelMatrix();
 
             const materials = static_mesh.component.materials.constSlice();
-            for (mesh.primitives, materials) |primtive, material| {
+            for (entry.mesh.primitives, materials) |primtive, material| {
                 self.total_primitives += 1;
                 if (self.enable_culling) {
                     if (!frustum.intersects(culling.Sphere, .initWorld(primtive.sphere_pos_radius, &static_mesh.transform))) {
@@ -284,45 +245,27 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
                 const PushData = extern struct {
                     view_projection_matrix: zm.Mat,
                     model_matrix: zm.Mat,
-                    base_color_factor: zm.Vec,
-                    base_color_texture: u32,
-                    alpha_cutoff: f32,
+                    material_binding: u32,
+                    material_index: u32,
                 };
 
-                var base_color_factor: zm.Vec = .{ 1.0, 0.27, 0.63, 1.0 };
-                var base_color_texture: u32 = 0;
-                var alpha_cutoff: f32 = 0.0;
-                if (self.material_map.get(material)) |mat| {
-                    command_buffer.bindPipeline(.graphics, switch (mat.alpha_mode) {
+                if (data.resources.material_map.get(material)) |mat_entry| {
+                    command_buffer.bindPipeline(.graphics, switch (mat_entry.material.alpha_mode) {
                         .alpha_opaque => self.opaque_mesh_pipeline,
                         .alpha_mask => continue, //TODO: this
                         .alpha_blend => continue, //TODO: this
                     });
-                    alpha_cutoff = mat.alpha_cutoff;
 
-                    base_color_factor = mat.base_color_factor;
+                    const push_data = PushData{
+                        .view_projection_matrix = view_projection_matrix,
+                        .model_matrix = model_matrix,
+                        .material_binding = material_buffer.storage_binding.?,
+                        .material_index = mat_entry.buffer_index,
+                    };
+                    command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
 
-                    if (mat.base_color_texture) |handle| {
-                        if (self.texture_map.get(handle)) |tex_handle| {
-                            if (device.images.get(tex_handle)) |image| {
-                                base_color_texture = image.sampled_binding.?;
-                            }
-                        }
-                    }
-                } else {
-                    command_buffer.bindPipeline(.graphics, self.opaque_mesh_pipeline);
+                    drawPrimitive(device, command_buffer, primtive);
                 }
-
-                const push_data = PushData{
-                    .view_projection_matrix = view_projection_matrix,
-                    .model_matrix = model_matrix,
-                    .base_color_factor = base_color_factor,
-                    .base_color_texture = base_color_texture,
-                    .alpha_cutoff = alpha_cutoff,
-                };
-                command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
-
-                drawPrimitive(device, command_buffer, primtive);
             }
         }
     }
@@ -347,82 +290,5 @@ pub fn drawPrimitive(
         command_buffer.drawIndexed(primitive.index_count, 1, 0, 0, 0);
     } else {
         command_buffer.draw(primitive.vertex_count, 1, 0, 0);
-    }
-}
-
-pub fn loadSceneData(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) void {
-    for (scene.static_meshes.items) |static_mesh| {
-        self.tryLoadMesh(temp_allocator, static_mesh.component.mesh);
-
-        for (static_mesh.component.materials.constSlice()) |material| {
-            self.tryLoadMaterial(temp_allocator, material);
-        }
-    }
-}
-
-pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
-    if (!self.static_mesh_map.contains(handle)) {
-        if (self.registry.loadAsset(MeshAsset, temp_allocator, handle)) |mesh| {
-            defer mesh.deinit(temp_allocator);
-            const gpu_mesh = Mesh.init(self.allocator, self.device, &mesh) catch return;
-
-            self.static_mesh_map.put(handle, gpu_mesh) catch |err| {
-                gpu_mesh.deinit();
-                std.log.err("Failed to append static mesh to list {}", .{err});
-            };
-        } else |err| {
-            std.log.err("Failed to load static mesh {}", .{err});
-        }
-    }
-}
-
-pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
-    if (!self.texture_map.contains(handle)) {
-        if (self.registry.loadAsset(Texture2dAsset, temp_allocator, handle)) |texture| {
-            defer texture.deinit(temp_allocator);
-
-            const format: vk.Format = switch (texture.format) {
-                .r8 => .r8_unorm,
-                .rg8 => .r8g8_unorm,
-                .rgba8 => .r8g8b8a8_unorm,
-            };
-
-            const image = self.device.createImageWithData(.{ texture.width, texture.height }, format, .{ .transfer_dst_bit = true, .sampled_bit = true }, texture.data) catch return;
-
-            self.texture_map.put(handle, image) catch |err| {
-                self.device.destroyImage(image);
-                std.log.err("Failed to append texture to list {}", .{err});
-            };
-        } else |err| {
-            std.log.err("Failed to load texture {}", .{err});
-        }
-    }
-}
-
-pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
-    if (!self.material_map.contains(handle)) {
-        //Need to load the asset using the non temp allocator, otherwise the name will be invalid
-        if (self.registry.loadAsset(MaterialAsset, self.allocator, handle)) |material| {
-            if (material.base_color_texture) |texture_handle|
-                self.tryLoadTexture(temp_allocator, texture_handle);
-
-            // if (material.metallic_roughness_texture) |texture_handle|
-            //     self.tryLoadTexture(temp_allocator, texture_handle);
-
-            // if (material.emissive_texture) |texture_handle|
-            //     self.tryLoadTexture(temp_allocator, texture_handle);
-
-            // if (material.occlusion_texture) |texture_handle|
-            //     self.tryLoadTexture(temp_allocator, texture_handle);
-
-            // if (material.normal_texture) |texture_handle|
-            //     self.tryLoadTexture(temp_allocator, texture_handle);
-
-            self.material_map.put(handle, material) catch |err| {
-                std.log.err("Failed to append material to list {}", .{err});
-            };
-        } else |err| {
-            std.log.err("Failed to load material {}", .{err});
-        }
     }
 }

@@ -18,6 +18,7 @@
         .sdl = .{
             .url = "git+https://github.com/castholm/SDL.git#1994ca5dbad5a3e3c670a9ab8533d86cfd97bdc0",
             .hash = "sdl-0.2.6+3.2.20-7uIn9NgjfwHH5a6HhyLHat2nHU3OP5B05QHhKJKuxEex",
+            .lazy = true,
         },
         .vulkan_zig = .{
             .url = "git+https://github.com/Snektron/vulkan-zig.git#42e7a8409b8150e1cbd57a8ff8cec219114bac74",

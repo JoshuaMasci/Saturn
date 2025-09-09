@@ -11,6 +11,7 @@ const imgui = @import("imgui2.zig").c;
 const sdl3 = @import("platform/sdl3.zig");
 const Camera = @import("rendering/camera.zig").Camera;
 const ImguiRenderer = @import("rendering/imgui_renderer2.zig");
+const Resources = @import("rendering/resources.zig");
 const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");
 const Device = @import("rendering/vulkan/device.zig");
@@ -59,6 +60,12 @@ pub fn main() !void {
             .transform = transform,
         };
 
+        const now = std.time.nanoTimestamp();
+        app.resources.loadSceneAssets(allocator, &render_scene);
+        const duration_ns = std.time.nanoTimestamp() - now;
+        const duration_ns_f: f32 = @floatFromInt(duration_ns);
+        std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
+
         app.scene_info = .{
             .scene = render_scene,
             .camera = debug_camera,
@@ -86,6 +93,7 @@ const App = struct {
     asset_registry: *AssetRegistry,
 
     vulkan_device: *Device,
+    resources: Resources,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
 
@@ -137,6 +145,9 @@ const App = struct {
         );
         errdefer vulkan_device.releaseWindow(window);
 
+        var resources: Resources = .init(allocator, asset_registry, vulkan_device);
+        errdefer resources.deinit();
+
         var scene_renderer: SceneRenderer = try .init(
             allocator,
             asset_registry,
@@ -173,6 +184,7 @@ const App = struct {
             .platform_input = platform_input,
             .window = window,
             .vulkan_device = vulkan_device,
+            .resources = resources,
             .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
             .temp_allocator = .init(allocator),
@@ -190,6 +202,7 @@ const App = struct {
 
         self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
+        self.resources.deinit();
         self.vulkan_device.releaseWindow(self.window);
         self.vulkan_device.deinit();
         self.allocator.destroy(self.vulkan_device);
@@ -244,7 +257,7 @@ const App = struct {
             imgui.cImGui_ImplVulkan_NewFrame();
             imgui.cImGui_ImplSDL3_NewFrame();
             imgui.ImGui_NewFrame();
-            imgui.ImGui_ShowDemoWindow(null);
+            //imgui.ImGui_ShowDemoWindow(null);
         }
 
         {
@@ -298,6 +311,7 @@ const App = struct {
                     temp_allocator,
                     swapchain_texture,
                     depth_texture,
+                    &self.resources,
                     &info.scene,
                     info.camera.camera,
                     info.camera.transform,

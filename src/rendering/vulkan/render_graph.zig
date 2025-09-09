@@ -14,6 +14,18 @@ pub const QueueType = enum {
     prefer_async_transfer,
 };
 
+pub fn SliceUploadFn(comptime T: type) type {
+    return struct {
+        pub fn uploadFn(data: ?*anyopaque, dst: []u8) usize {
+            const temp_slice_ptr: *const []const T = @ptrCast(@alignCast(data.?));
+            const temp_slice_size: usize = @sizeOf(T) * temp_slice_ptr.len;
+            const temp_slice_byte: []const u8 = std.mem.sliceAsBytes(temp_slice_ptr.*);
+            @memcpy(dst[0..temp_slice_size], temp_slice_byte);
+            return temp_slice_size;
+        }
+    };
+}
+
 /// Function should returns amount of data actually written
 pub const UploadFn = *const fn (data: ?*anyopaque, dst: []u8) usize;
 

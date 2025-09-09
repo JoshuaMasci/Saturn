@@ -32,39 +32,48 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     defer device_extentions.deinit();
     try device_extentions.append("VK_KHR_swapchain");
 
-    const VK_TRUE: u32 = 1;
+    {
+        var features_12: vk.PhysicalDeviceVulkan12Features = .{};
+        var features2: vk.PhysicalDeviceFeatures2 = .{ .p_next = &features_12, .features = .{} };
+        instance.getPhysicalDeviceFeatures2(physical_device, &features2);
+        std.debug.assert(features_12.descriptor_indexing == vk.TRUE);
+    }
 
     var features = vk.PhysicalDeviceFeatures{
-        .robust_buffer_access = VK_TRUE,
-        .fill_mode_non_solid = VK_TRUE,
+        .robust_buffer_access = vk.TRUE,
+        .fill_mode_non_solid = vk.TRUE,
     };
 
     var features_12 = vk.PhysicalDeviceVulkan12Features{
-        .runtime_descriptor_array = VK_TRUE,
-        .descriptor_indexing = VK_TRUE,
-        .descriptor_binding_uniform_buffer_update_after_bind = VK_TRUE,
-        .descriptor_binding_storage_buffer_update_after_bind = VK_TRUE,
-        .descriptor_binding_sampled_image_update_after_bind = VK_TRUE,
-        .descriptor_binding_storage_image_update_after_bind = VK_TRUE,
-        .shader_uniform_buffer_array_non_uniform_indexing = VK_TRUE,
-        .shader_storage_buffer_array_non_uniform_indexing = VK_TRUE,
-        .shader_sampled_image_array_non_uniform_indexing = VK_TRUE,
-        .shader_storage_image_array_non_uniform_indexing = VK_TRUE,
+        .runtime_descriptor_array = vk.TRUE,
+        .descriptor_indexing = vk.TRUE,
+        .descriptor_binding_update_unused_while_pending = vk.TRUE,
+        .descriptor_binding_partially_bound = vk.TRUE,
+
+        .descriptor_binding_uniform_buffer_update_after_bind = vk.TRUE,
+        .descriptor_binding_storage_buffer_update_after_bind = vk.TRUE,
+        .descriptor_binding_sampled_image_update_after_bind = vk.TRUE,
+        .descriptor_binding_storage_image_update_after_bind = vk.TRUE,
+
+        .shader_uniform_buffer_array_non_uniform_indexing = vk.TRUE,
+        .shader_storage_buffer_array_non_uniform_indexing = vk.TRUE,
+        .shader_sampled_image_array_non_uniform_indexing = vk.TRUE,
+        .shader_storage_image_array_non_uniform_indexing = vk.TRUE,
     };
     var features_13 = vk.PhysicalDeviceVulkan13Features{
         .p_next = @ptrCast(&features_12),
-        .dynamic_rendering = VK_TRUE,
-        .synchronization_2 = VK_TRUE,
+        .dynamic_rendering = vk.TRUE,
+        .synchronization_2 = vk.TRUE,
 
         //Required for hlsl shaders
-        .shader_demote_to_helper_invocation = VK_TRUE,
-        .shader_terminate_invocation = VK_TRUE,
+        .shader_demote_to_helper_invocation = vk.TRUE,
+        .shader_terminate_invocation = vk.TRUE,
     };
     var features_robustness2 = vk.PhysicalDeviceRobustness2FeaturesEXT{
         .p_next = @ptrCast(&features_13),
-        .null_descriptor = VK_TRUE,
-        .robust_buffer_access_2 = VK_TRUE,
-        .robust_image_access_2 = VK_TRUE,
+        .null_descriptor = vk.TRUE,
+        .robust_buffer_access_2 = vk.TRUE,
+        .robust_image_access_2 = vk.TRUE,
     };
 
     const create_info: vk.DeviceCreateInfo = .{

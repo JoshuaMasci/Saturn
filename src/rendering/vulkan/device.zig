@@ -87,7 +87,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     errdefer allocator.destroy(bindless_descriptor);
 
     const DESCRIPTOR_COUNT = 1024;
-    bindless_descriptor.* = try BindlessDescriptor.init(device, .{
+    bindless_descriptor.* = try BindlessDescriptor.init(allocator, device, .{
         .uniform_buffers = DESCRIPTOR_COUNT,
         .storage_buffers = DESCRIPTOR_COUNT,
         .sampled_images = DESCRIPTOR_COUNT,
@@ -246,16 +246,30 @@ pub fn releaseWindow(self: *Self, window: Window) void {
 }
 
 pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !BufferPool.Handle {
-    const buffer: Buffer = try .init(self.device, size, usage, if (self.gpu_memory_mappable) .gpu_mappable else .gpu_only);
+    var buffer: Buffer = try .init(self.device, size, usage, if (self.gpu_memory_mappable) .gpu_mappable else .gpu_only);
     errdefer buffer.deinit();
 
-    //TOOD: buffer bindings
+    if (usage.contains(.{ .uniform_buffer_bit = true })) {
+        buffer.uniform_binding = self.bindless_descriptor.uniform_buffer_array.bind(buffer);
+    }
+
+    if (usage.contains(.{ .storage_buffer_bit = true })) {
+        buffer.storage_binding = self.bindless_descriptor.storage_buffer_array.bind(buffer);
+    }
 
     return self.buffers.insert(buffer);
 }
 pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []const u8) !BufferPool.Handle {
     var buffer: Buffer = try .init(self.device, data.len, usage, if (self.gpu_memory_mappable) .gpu_mappable else .gpu_only);
     errdefer buffer.deinit();
+
+    if (usage.contains(.{ .uniform_buffer_bit = true })) {
+        buffer.uniform_binding = self.bindless_descriptor.uniform_buffer_array.bind(buffer);
+    }
+
+    if (usage.contains(.{ .storage_buffer_bit = true })) {
+        buffer.storage_binding = self.bindless_descriptor.storage_buffer_array.bind(buffer);
+    }
 
     if (buffer.allocation.getMappedByteSlice()) |buffer_slice| {
         std.debug.assert(buffer_slice.len >= data.len);
@@ -269,6 +283,14 @@ pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []con
 }
 pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
     if (self.buffers.remove(handle)) |buffer| {
+        if (buffer.uniform_binding) |binding| {
+            self.bindless_descriptor.uniform_buffer_array.clear(binding);
+        }
+
+        if (buffer.storage_binding) |binding| {
+            self.bindless_descriptor.storage_buffer_array.clear(binding);
+        }
+
         buffer.deinit(); //TODO: delete after buffer has left pipeline
     } else {
         std.log.err("Invalid Buffer Handle: {}", .{handle});

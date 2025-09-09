@@ -9,39 +9,6 @@ pub const AlphaMode = enum(u32) {
     alpha_mask,
 };
 
-pub const Json = struct {
-    name: []const u8,
-    alpha_mode: AlphaMode = .alpha_opaque,
-    alpha_cutoff: f32 = 0.0,
-
-    base_color_texture: ?[]const u8 = null,
-    base_color_factor: [4]f32 = [_]f32{1.0} ** 4,
-
-    metallic_roughness_texture: ?[]const u8 = null,
-    metallic_roughness_factor: [2]f32 = .{ 0.0, 1.0 },
-
-    emissive_texture: ?[]const u8 = null,
-    emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
-
-    occlusion_texture: ?[]const u8 = null,
-    normal_texture: ?[]const u8 = null,
-
-    pub fn read(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !std.json.Parsed(Json) {
-        const file_buffer = try dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
-        defer allocator.free(file_buffer);
-        return try std.json.parseFromSlice(Json, allocator, file_buffer, .{ .allocate = .alloc_always });
-    }
-
-    pub fn write(self: @This(), allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !void {
-        const json_string = try std.json.stringifyAlloc(allocator, self, .{ .whitespace = .indent_tab });
-        defer allocator.free(json_string);
-        try dir.writeFile(.{
-            .sub_path = file_path,
-            .data = json_string,
-        });
-    }
-};
-
 const Self = @This();
 
 name: []const u8,
@@ -108,17 +75,96 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
 
 pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.name);
-    try writer.writeStructEndian(PackedMaterial.pack(self), .little);
+    try writer.writeStructEndian(Packed.pack(self), .little);
 }
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     const name = try serde.deserialzieSlice(allocator, u8, reader);
-    var value = (try reader.readStruct(PackedMaterial)).unpack();
+    var value = (try reader.readStruct(Packed)).unpack();
     value.name = name;
     return value;
 }
 
-const PackedMaterial = extern struct {
+//Json Material
+pub const Json = struct {
+    name: []const u8,
+    alpha_mode: AlphaMode = .alpha_opaque,
+    alpha_cutoff: f32 = 0.0,
+
+    base_color_texture: ?[]const u8 = null,
+    base_color_factor: [4]f32 = [_]f32{1.0} ** 4,
+
+    metallic_roughness_texture: ?[]const u8 = null,
+    metallic_roughness_factor: [2]f32 = .{ 0.0, 1.0 },
+
+    emissive_texture: ?[]const u8 = null,
+    emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
+
+    occlusion_texture: ?[]const u8 = null,
+    normal_texture: ?[]const u8 = null,
+
+    pub fn read(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !std.json.Parsed(Json) {
+        const file_buffer = try dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+        defer allocator.free(file_buffer);
+        return try std.json.parseFromSlice(Json, allocator, file_buffer, .{ .allocate = .alloc_always });
+    }
+
+    pub fn write(self: @This(), allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !void {
+        const json_string = try std.json.stringifyAlloc(allocator, self, .{ .whitespace = .indent_tab });
+        defer allocator.free(json_string);
+        try dir.writeFile(.{
+            .sub_path = file_path,
+            .data = json_string,
+        });
+    }
+};
+
+// Gpu Material
+pub const Gpu = extern struct {
+    const ExspectedSize: usize = @sizeOf([4]f32) * 5;
+    comptime {
+        if (@sizeOf(Gpu) != ExspectedSize) {
+            @compileError("Material.Gpu is incorrect size");
+        }
+    }
+
+    // Block 1 (Vec4 size)
+    alpha_mode: i32,
+    alpha_cutoff: f32,
+    base_color_texture: i32,
+    metallic_roughness_texture: i32,
+
+    // Block 2 (Vec4 size)
+    emissive_texture: i32,
+    occlusion_texture: i32,
+    normal_texture: i32,
+    pad0: i32 = 0,
+
+    // Block 3 (3 * Vec4 size)
+    base_color_factor: [4]f32,
+    metallic_roughness_factor_pad2: [4]f32,
+    emissive_factor_pad: [4]f32,
+
+    pub fn pack(material: Self) Gpu {
+        return .{
+            .alpha_mode = @intCast(@intFromEnum(material.alpha_mode)),
+            .alpha_cutoff = material.alpha_cutoff,
+            .base_color_texture = 0,
+            .metallic_roughness_texture = 0,
+
+            .emissive_texture = 0,
+            .occlusion_texture = 0,
+            .normal_texture = 0,
+
+            .base_color_factor = material.base_color_factor,
+            .metallic_roughness_factor_pad2 = .{ material.metallic_roughness_factor[0], material.metallic_roughness_factor[1], 0.0, 0.0 },
+            .emissive_factor_pad = .{ material.emissive_factor[0], material.emissive_factor[1], material.emissive_factor[2], 0.0 },
+        };
+    }
+};
+
+// Packed Material for asset system
+const Packed = extern struct {
     alpha_mode: u32,
     alpha_cutoff: f32,
 
@@ -147,7 +193,7 @@ const PackedMaterial = extern struct {
         }
     }
 
-    pub fn pack(material: Self) PackedMaterial {
+    pub fn pack(material: Self) Packed {
         return .{
             .alpha_mode = @intFromEnum(material.alpha_mode),
             .alpha_cutoff = material.alpha_cutoff,
@@ -171,7 +217,7 @@ const PackedMaterial = extern struct {
         };
     }
 
-    pub fn unpack(material: *const PackedMaterial) Self {
+    pub fn unpack(material: *const Packed) Self {
         return .{
             .name = &.{},
 

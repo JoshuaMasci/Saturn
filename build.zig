@@ -95,11 +95,11 @@ fn buildGame(
     });
 
     if (options.build_sdl3) {
-        const sdl3 = b.dependency("sdl", .{
+        const sdl3 = b.lazyDependency("sdl", .{
             .target = target,
             .optimize = optimize,
             .preferred_link_mode = .dynamic,
-        });
+        }).?;
         exe_mod.linkLibrary(sdl3.artifact("SDL3"));
     } else {
         exe_mod.linkSystemLibrary("SDL3", .{});
@@ -165,11 +165,11 @@ fn buildRender(
     });
 
     if (options.build_sdl3) {
-        const sdl3 = b.dependency("sdl", .{
+        const sdl3 = b.lazyDependency("sdl", .{
             .target = target,
             .optimize = optimize,
             .preferred_linkage = .dynamic,
-        });
+        }).?;
         exe_mod.linkLibrary(sdl3.artifact("SDL3"));
     } else {
         exe_mod.linkSystemLibrary("SDL3", .{ .preferred_link_mode = .dynamic });
@@ -182,12 +182,11 @@ fn buildRender(
     }).module("vulkan-zig");
     exe_mod.addImport("vulkan", vulkan);
 
-    const CIMGUI = @import("cimgui_zig");
     const cimgui = b.dependency("cimgui_zig", .{
         .target = target,
         .optimize = optimize,
-        .platform = CIMGUI.Platform.SDL3,
-        .renderer = CIMGUI.Renderer.Vulkan,
+        .platform = .SDL3,
+        .renderer = .Vulkan,
     });
     exe_mod.linkLibrary(cimgui.artifact("cimgui"));
 
