@@ -140,7 +140,7 @@ const App = struct {
             .{
                 .image_count = FRAME_IN_FLIGHT_COUNT,
                 .format = swapchain_format,
-                .vsync = false,
+                .vsync = true,
             },
         );
         errdefer vulkan_device.releaseWindow(window);
@@ -237,6 +237,8 @@ const App = struct {
                 self.frames = 0;
             }
         }
+
+        std.time.sleep(16 * std.time.ns_per_ms);
 
         try self.platform_input.proccessEvents(
             .{
