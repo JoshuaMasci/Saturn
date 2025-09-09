@@ -301,9 +301,12 @@ pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.Image
     var image: Image = try .init2D(self.device, .{ .width = size[0], .height = size[1] }, format, usage, .gpu_only);
     errdefer image.deinit();
 
-    //TOOD: storage bindings
     if (usage.contains(.{ .sampled_bit = true })) {
-        image.sampled_binding = self.bindless_descriptor.bindSampledImage(image, self.linear_sampler);
+        image.sampled_binding = self.bindless_descriptor.sampled_image_array.bind(image, self.linear_sampler);
+    }
+
+    if (usage.contains(.{ .storage_bit = true })) {
+        image.storage_binding = self.bindless_descriptor.storage_image_array.bind(image, null);
     }
 
     return self.images.insert(image);
@@ -312,9 +315,12 @@ pub fn createImageWithData(self: *Self, size: [2]u32, format: vk.Format, usage: 
     var image: Image = try .init2D(self.device, .{ .width = size[0], .height = size[1] }, format, usage, .gpu_only);
     errdefer image.deinit();
 
-    //TOOD: storage bindings
     if (usage.contains(.{ .sampled_bit = true })) {
-        image.sampled_binding = self.bindless_descriptor.bindSampledImage(image, self.linear_sampler);
+        image.sampled_binding = self.bindless_descriptor.sampled_image_array.bind(image, self.linear_sampler);
+    }
+
+    if (usage.contains(.{ .storage_bit = true })) {
+        image.storage_binding = self.bindless_descriptor.storage_image_array.bind(image, null);
     }
 
     //TODO: use host_image_copy if avalible
@@ -324,6 +330,14 @@ pub fn createImageWithData(self: *Self, size: [2]u32, format: vk.Format, usage: 
 }
 pub fn destroyImage(self: *Self, handle: ImagePool.Handle) void {
     if (self.images.remove(handle)) |image| {
+        if (image.sampled_binding) |binding| {
+            self.bindless_descriptor.sampled_image_array.clear(binding);
+        }
+
+        if (image.storage_binding) |binding| {
+            self.bindless_descriptor.storage_image_array.clear(binding);
+        }
+
         image.deinit(); //TODO: delete after image has left pipeline
     } else {
         std.log.err("Invalid Image Handle: {}", .{handle});

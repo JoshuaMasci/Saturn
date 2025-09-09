@@ -5,6 +5,7 @@ const vk = @import("vulkan");
 const GpuAllocator = @import("gpu_allocator.zig");
 const Queue = @import("queue.zig");
 const VkDevice = @import("vulkan_device.zig");
+const Binding = @import("bindless_descriptor.zig").Binding;
 
 pub const Interface = struct {
     layout: vk.ImageLayout = .undefined,
@@ -13,7 +14,9 @@ pub const Interface = struct {
     usage: vk.ImageUsageFlags = .{},
     handle: vk.Image = .null_handle,
     view_handle: vk.ImageView = .null_handle,
+
     sampled_binding: ?u32 = null,
+    storage_binding: ?u32 = null,
 
     pub fn transitionLazy(self: *@This(), new_layout: vk.ImageLayout) ?vk.ImageMemoryBarrier2 {
         if (new_layout == self.layout) {
@@ -57,7 +60,8 @@ handle: vk.Image,
 view_handle: vk.ImageView,
 allocation: GpuAllocator.Allocation,
 
-sampled_binding: ?u32 = null,
+sampled_binding: ?Binding = null,
+storage_binding: ?Binding = null,
 
 pub fn init2D(device: *VkDevice, extent: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
     const handle = try device.proxy.createImage(&.{
@@ -134,7 +138,8 @@ pub fn interface(self: Self) Interface {
         .usage = self.usage,
         .handle = self.handle,
         .view_handle = self.view_handle,
-        .sampled_binding = self.sampled_binding,
+        .sampled_binding = if (self.sampled_binding) |binding| binding.index else null,
+        .storage_binding = if (self.storage_binding) |binding| binding.index else null,
     };
 }
 

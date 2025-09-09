@@ -131,13 +131,13 @@ pub const Gpu = extern struct {
     // Block 1 (Vec4 size)
     alpha_mode: i32,
     alpha_cutoff: f32,
-    base_color_texture: i32,
-    metallic_roughness_texture: i32,
+    base_color_texture: u32,
+    metallic_roughness_texture: u32,
 
     // Block 2 (Vec4 size)
-    emissive_texture: i32,
-    occlusion_texture: i32,
-    normal_texture: i32,
+    emissive_texture: u32,
+    occlusion_texture: u32,
+    normal_texture: u32,
     pad0: i32 = 0,
 
     // Block 3 (3 * Vec4 size)

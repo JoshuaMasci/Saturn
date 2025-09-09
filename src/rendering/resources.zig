@@ -148,11 +148,11 @@ pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: As
     }
 }
 
-fn tryGetTextureBinding(self: *const Self, handle: AssetRegistry.Handle) i32 {
+fn tryGetTextureSampledBinding(self: *const Self, handle: AssetRegistry.Handle) u32 {
     if (self.texture_map.get(handle)) |entry| {
         if (self.device.images.get(entry.image_handle)) |image| {
             if (image.sampled_binding) |binding| {
-                return @intCast(binding);
+                return binding.index;
             }
         }
     }
@@ -167,27 +167,27 @@ pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: A
 
             if (material.base_color_texture) |texture_handle| {
                 self.tryLoadTexture(temp_allocator, texture_handle);
-                gpu_pack.base_color_texture = self.tryGetTextureBinding(texture_handle);
+                gpu_pack.base_color_texture = self.tryGetTextureSampledBinding(texture_handle);
             }
 
             if (material.metallic_roughness_texture) |texture_handle| {
                 self.tryLoadTexture(temp_allocator, texture_handle);
-                gpu_pack.metallic_roughness_texture = self.tryGetTextureBinding(texture_handle);
+                gpu_pack.metallic_roughness_texture = self.tryGetTextureSampledBinding(texture_handle);
             }
 
             if (material.emissive_texture) |texture_handle| {
                 self.tryLoadTexture(temp_allocator, texture_handle);
-                gpu_pack.emissive_texture = self.tryGetTextureBinding(texture_handle);
+                gpu_pack.emissive_texture = self.tryGetTextureSampledBinding(texture_handle);
             }
 
             if (material.occlusion_texture) |texture_handle| {
                 self.tryLoadTexture(temp_allocator, texture_handle);
-                gpu_pack.occlusion_texture = self.tryGetTextureBinding(texture_handle);
+                gpu_pack.occlusion_texture = self.tryGetTextureSampledBinding(texture_handle);
             }
 
             if (material.normal_texture) |texture_handle| {
                 self.tryLoadTexture(temp_allocator, texture_handle);
-                gpu_pack.normal_texture = self.tryGetTextureBinding(texture_handle);
+                gpu_pack.normal_texture = self.tryGetTextureSampledBinding(texture_handle);
             }
 
             const buffer_index = self.material_buffer.add(gpu_pack);

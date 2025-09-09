@@ -6,12 +6,12 @@ struct Material
 {
     int alpha_mode;
     float alpha_cutoff;
-    int base_color_texture;
-    int metallic_roughness_texture;
+    uint base_color_texture;
+    uint metallic_roughness_texture;
 
-    int emissive_texture;
-    int occlusion_texture;
-    int normal_texture;
+    uint emissive_texture;
+    uint occlusion_texture;
+    uint normal_texture;
     int pad0;
 
     float4 base_color_factor;

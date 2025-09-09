@@ -40,6 +40,8 @@ set: vk.DescriptorSet,
 
 uniform_buffer_array: BufferDescriptor,
 storage_buffer_array: BufferDescriptor,
+sampled_image_array: ImageDescriptor,
+storage_image_array: ImageDescriptor,
 
 next_sampled_texture_id: u16 = 1,
 
@@ -127,6 +129,8 @@ pub fn init(allocator: std.mem.Allocator, device: *VkDevice, descriptor_counts: 
         .set = set,
         .uniform_buffer_array = .init(allocator, device, set, 0, .uniform_buffer, descriptor_counts.uniform_buffers),
         .storage_buffer_array = .init(allocator, device, set, 1, .storage_buffer, descriptor_counts.storage_buffers),
+        .sampled_image_array = .init(allocator, device, set, 2, .combined_image_sampler, .shader_read_only_optimal, descriptor_counts.sampled_images),
+        .storage_image_array = .init(allocator, device, set, 3, .storage_image, .general, descriptor_counts.storage_images),
     };
 }
 
@@ -136,6 +140,8 @@ pub fn deinit(self: *Self) void {
 
     self.uniform_buffer_array.deinit();
     self.storage_buffer_array.deinit();
+    self.sampled_image_array.deinit();
+    self.storage_image_array.deinit();
 }
 
 pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy, layout: vk.PipelineLayout) void {
@@ -143,32 +149,6 @@ pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy, layout: vk.Pipeli
     for (bind_points) |bind_point| {
         command_buffer.bindDescriptorSets(bind_point, layout, 0, 1, (&self.set)[0..1], 0, null);
     }
-}
-
-pub fn bindSampledImage(self: *Self, image: Image, sampler: Sampler) u32 {
-    const index = self.next_sampled_texture_id;
-    self.next_sampled_texture_id += 1;
-
-    const image_info = vk.DescriptorImageInfo{
-        .image_layout = .shader_read_only_optimal,
-        .image_view = image.view_handle,
-        .sampler = sampler.handle,
-    };
-
-    const descriptor_update = vk.WriteDescriptorSet{
-        .descriptor_count = 1,
-        .descriptor_type = .combined_image_sampler,
-        .dst_set = self.set,
-        .dst_binding = 2,
-        .dst_array_element = @intCast(index),
-        .p_buffer_info = undefined,
-        .p_image_info = @ptrCast(&image_info),
-        .p_texel_buffer_view = undefined,
-    };
-
-    self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
-
-    return @intCast(index);
 }
 
 pub const Binding = struct {
@@ -245,6 +225,84 @@ const BufferDescriptor = struct {
             .dst_array_element = @intCast(binding.index),
             .p_buffer_info = @ptrCast(&buffer_info),
             .p_image_info = undefined,
+            .p_texel_buffer_view = undefined,
+        };
+        self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
+    }
+};
+
+const ImageDescriptor = struct {
+    device: *VkDevice,
+    set: vk.DescriptorSet,
+
+    descriptor_index: u32,
+    descriptor_type: vk.DescriptorType,
+    image_layout: vk.ImageLayout,
+
+    index_list: IndexList,
+
+    pub fn init(
+        allocator: std.mem.Allocator,
+        device: *VkDevice,
+        set: vk.DescriptorSet,
+        descriptor_index: u32,
+        descriptor_type: vk.DescriptorType,
+        image_layout: vk.ImageLayout,
+        array_count: u32,
+    ) ImageDescriptor {
+        return .{
+            .device = device,
+            .set = set,
+            .descriptor_index = descriptor_index,
+            .descriptor_type = descriptor_type,
+            .image_layout = image_layout,
+            .index_list = .init(allocator, 1, array_count),
+        };
+    }
+
+    pub fn deinit(self: *ImageDescriptor) void {
+        self.index_list.deinit();
+    }
+
+    pub fn bind(self: *ImageDescriptor, image: Image, sampler: ?Sampler) Binding {
+        const index = self.index_list.get().?;
+
+        const image_info = vk.DescriptorImageInfo{
+            .sampler = if (sampler) |some| some.handle else .null_handle,
+            .image_view = image.view_handle,
+            .image_layout = self.image_layout,
+        };
+        const descriptor_update = vk.WriteDescriptorSet{
+            .descriptor_count = 1,
+            .descriptor_type = self.descriptor_type,
+            .dst_set = self.set,
+            .dst_binding = self.descriptor_index,
+            .dst_array_element = @intCast(index),
+            .p_image_info = @ptrCast(&image_info),
+            .p_buffer_info = undefined,
+            .p_texel_buffer_view = undefined,
+        };
+        self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
+
+        return .{ .binding = self.descriptor_index, .index = index };
+    }
+
+    pub fn clear(self: *ImageDescriptor, binding: Binding) void {
+        self.index_list.free(binding.index);
+
+        const image_info = vk.DescriptorImageInfo{
+            .sampler = .null_handle,
+            .image_view = .null_handle,
+            .image_layout = .undefined,
+        };
+        const descriptor_update = vk.WriteDescriptorSet{
+            .descriptor_count = 1,
+            .descriptor_type = self.descriptor_type,
+            .dst_set = self.set,
+            .dst_binding = self.descriptor_index,
+            .dst_array_element = @intCast(binding.index),
+            .p_image_info = @ptrCast(&image_info),
+            .p_buffer_info = undefined,
             .p_texel_buffer_view = undefined,
         };
         self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);

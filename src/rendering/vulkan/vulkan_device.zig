@@ -32,13 +32,6 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     defer device_extentions.deinit();
     try device_extentions.append("VK_KHR_swapchain");
 
-    {
-        var features_12: vk.PhysicalDeviceVulkan12Features = .{};
-        var features2: vk.PhysicalDeviceFeatures2 = .{ .p_next = &features_12, .features = .{} };
-        instance.getPhysicalDeviceFeatures2(physical_device, &features2);
-        std.debug.assert(features_12.descriptor_indexing == vk.TRUE);
-    }
-
     var features = vk.PhysicalDeviceFeatures{
         .robust_buffer_access = vk.TRUE,
         .fill_mode_non_solid = vk.TRUE,
