@@ -121,9 +121,9 @@ pub const Json = struct {
 
 // Gpu Material
 pub const Gpu = extern struct {
-    const ExspectedSize: usize = @sizeOf([4]f32) * 5;
+    const ExpectedSize: usize = @sizeOf([4]f32) * 5;
     comptime {
-        if (@sizeOf(Gpu) != ExspectedSize) {
+        if (@sizeOf(Gpu) != ExpectedSize) {
             @compileError("Material.Gpu is incorrect size");
         }
     }

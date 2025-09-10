@@ -217,7 +217,7 @@ const MaterialBuffer = struct {
         return i;
     }
 
-    fn getSlice(self: @This()) []const MaterialAsset.Gpu {
+    fn getSlice(self: *const @This()) []const MaterialAsset.Gpu {
         return self.cpu_buffer[0..self.next_index];
     }
 };

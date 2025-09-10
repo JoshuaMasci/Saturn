@@ -16,7 +16,6 @@ struct PushConstants
 {
     float4x4 view_projection_matrix;
     float4x4 model_matrix;
-    float4 base_color_factor;
 };
 
 [[vk::push_constant]]

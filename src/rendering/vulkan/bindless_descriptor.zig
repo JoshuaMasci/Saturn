@@ -15,21 +15,6 @@ pub const DescriptorCounts = struct {
     accleration_structures: u32 = 0,
 };
 
-// fn Binding(comptime BindingType: u16) type {
-//     return struct {
-//         index: u16,
-//         pub fn toU32(self: @This()) u32 {
-//             const u32_index: u32 = @intCast(self.index);
-//             return BindingType | (u32_index >> 16);
-//         }
-//     };
-// }
-
-// pub const UniformBufferBinding = Binding(1);
-// pub const StorageBufferBinding = Binding(2);
-// pub const SampledImageBinding = Binding(3);
-// pub const StorageImageBinding = Binding(4);
-
 const Self = @This();
 
 device: *VkDevice,
@@ -201,8 +186,8 @@ const BufferDescriptor = struct {
             .dst_binding = self.descriptor_index,
             .dst_array_element = @intCast(index),
             .p_buffer_info = @ptrCast(&buffer_info),
-            .p_image_info = undefined,
-            .p_texel_buffer_view = undefined,
+            .p_image_info = &.{},
+            .p_texel_buffer_view = &.{},
         };
         self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
 
@@ -224,8 +209,8 @@ const BufferDescriptor = struct {
             .dst_binding = self.descriptor_index,
             .dst_array_element = @intCast(binding.index),
             .p_buffer_info = @ptrCast(&buffer_info),
-            .p_image_info = undefined,
-            .p_texel_buffer_view = undefined,
+            .p_image_info = &.{},
+            .p_texel_buffer_view = &.{},
         };
         self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
     }
@@ -279,8 +264,8 @@ const ImageDescriptor = struct {
             .dst_binding = self.descriptor_index,
             .dst_array_element = @intCast(index),
             .p_image_info = @ptrCast(&image_info),
-            .p_buffer_info = undefined,
-            .p_texel_buffer_view = undefined,
+            .p_buffer_info = &.{},
+            .p_texel_buffer_view = &.{},
         };
         self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
 
@@ -302,8 +287,8 @@ const ImageDescriptor = struct {
             .dst_binding = self.descriptor_index,
             .dst_array_element = @intCast(binding.index),
             .p_image_info = @ptrCast(&image_info),
-            .p_buffer_info = undefined,
-            .p_texel_buffer_view = undefined,
+            .p_buffer_info = &.{},
+            .p_texel_buffer_view = &.{},
         };
         self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
     }

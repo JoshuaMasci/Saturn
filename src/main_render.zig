@@ -351,36 +351,6 @@ fn window_resize(data: ?*anyopaque, window: sdl3.Window, size: [2]u32) void {
     }
 }
 
-pub fn getControllerAxis(input: *sdl3.Input, axis: sdl3.Controller.Axis) f32 {
-    const controllers = input.controllers.values();
-    if (controllers.len > 0) {
-        const controller = controllers[0];
-        const value = controller.axis_state[@intFromEnum(axis)].value;
-        if (@abs(value) > 0.1) {
-            return value;
-        }
-    }
-
-    return 0.0;
-}
-
-pub fn getControllerButtonAxis(input: *sdl3.Input, pos: sdl3.Controller.Button, neg: sdl3.Controller.Button) f32 {
-    const controllers = input.controllers.values();
-    if (controllers.len > 0) {
-        const controller = controllers[0];
-        const pos_state = controller.button_state[@intFromEnum(pos)].is_pressed;
-        const neg_state = controller.button_state[@intFromEnum(neg)].is_pressed;
-
-        if (pos_state and !neg_state) {
-            return 1.0;
-        } else if (!pos_state and neg_state) {
-            return -1.0;
-        }
-    }
-
-    return 0.0;
-}
-
 pub fn ImFmtText(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) !void {
     const fmt_str: [:0]const u8 = try std.fmt.allocPrintZ(allocator, fmt, args);
     defer allocator.free(fmt_str);
