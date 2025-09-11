@@ -140,7 +140,7 @@ const App = struct {
             .{
                 .image_count = FRAME_IN_FLIGHT_COUNT,
                 .format = swapchain_format,
-                .vsync = true,
+                .vsync = false,
             },
         );
         errdefer vulkan_device.releaseWindow(window);
@@ -238,8 +238,6 @@ const App = struct {
             }
         }
 
-        std.time.sleep(16 * std.time.ns_per_ms);
-
         try self.platform_input.proccessEvents(
             .{
                 .on_event = on_event,
@@ -278,7 +276,7 @@ const App = struct {
         }
 
         {
-            if (imgui.ImGui_Begin("Culling (Broken)", null, 0)) {
+            if (imgui.ImGui_Begin("Culling", null, 0)) {
                 _ = imgui.ImGui_Checkbox("Frustum Culling", &self.scene_renderer.enable_culling);
                 try ImFmtText(temp_allocator, "Total Primitives: {}", .{self.scene_renderer.total_primitives});
                 try ImFmtText(temp_allocator, "Rendered Primitives: {}", .{self.scene_renderer.rendered_primitives});

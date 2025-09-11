@@ -43,7 +43,7 @@ opaque_mesh_pipeline: vk.Pipeline,
 alpha_cutoff_mesh_pipeline: vk.Pipeline,
 
 //Debug Values
-enable_culling: bool = false,
+enable_culling: bool = true,
 total_primitives: usize = 0,
 rendered_primitives: usize = 0,
 culled_primitives: usize = 0,
@@ -220,8 +220,7 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     };
     command_buffer.setScissor(0, 1, (&scissor)[0..1]);
 
-    const frustum: culling.Frustum = .fromViewProjectionMatrix(view_projection_matrix);
-    //const frustum: culling.Frustum = data.camera.getFrustum(aspect_ratio, data.camera_transform);
+    const frustum: culling.Frustum = data.camera.getFrustum(aspect_ratio, data.camera_transform);
 
     for (data.scene.static_meshes.items) |static_mesh| {
         if (static_mesh.component.visable == false) {

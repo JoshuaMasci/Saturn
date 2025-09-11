@@ -56,24 +56,25 @@ pub const Frustum = struct {
     plane_count: usize,
     planes: [6]Plane,
 
-    pub fn fromViewProjectionMatrix(view_projection_matrix: zm.Mat) @This() {
-        const row0 = view_projection_matrix[0];
-        const row1 = view_projection_matrix[1];
-        const row2 = view_projection_matrix[2];
-        const row3 = view_projection_matrix[3];
+    // Broken
+    // pub fn fromViewProjectionMatrix(view_projection_matrix: zm.Mat) @This() {
+    //     const row0 = view_projection_matrix[0];
+    //     const row1 = view_projection_matrix[1];
+    //     const row2 = view_projection_matrix[2];
+    //     const row3 = view_projection_matrix[3];
 
-        return .{
-            .plane_count = 4,
-            .planes = .{
-                .initNormlized(row3 + row0), // Left
-                .initNormlized(row3 - row0), // Right
-                .initNormlized(row3 + row1), // Bottom
-                .initNormlized(row3 - row1), // Top
-                .initNormlized(row2), // Near
-                .initNormlized(row3 - row2), // Far
-            },
-        };
-    }
+    //     return .{
+    //         .plane_count = 4,
+    //         .planes = .{
+    //             .initNormlized(row3 + row0), // Left
+    //             .initNormlized(row3 - row0), // Right
+    //             .initNormlized(row3 + row1), // Bottom
+    //             .initNormlized(row3 - row1), // Top
+    //             .initNormlized(row2), // Near
+    //             .initNormlized(row3 - row2), // Far
+    //         },
+    //     };
+    // }
 
     pub fn intersects(self: @This(), comptime T: type, shape: T) bool {
         comptime if (!std.meta.hasFn(T, "intersectsPlane")) {
@@ -87,15 +88,4 @@ pub const Frustum = struct {
         }
         return true;
     }
-};
-
-pub const Frustum2 = struct {
-    left: Plane,
-    right: Plane,
-
-    up: Plane,
-    down: Plane,
-
-    far: ?Plane,
-    near: Plane,
 };

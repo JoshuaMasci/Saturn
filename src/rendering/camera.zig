@@ -36,14 +36,43 @@ pub const PerspectiveCamera = struct {
     }
 
     pub fn getFrustum(self: PerspectiveCamera, aspect_ratio: f32, transform: Transform) culling.Frustum {
-        _ = aspect_ratio; // autofix
-        //const fov_y = self.fov.get_fov_y_rad(aspect_ratio);
+        const fov_y = self.fov.get_fov_y_rad(aspect_ratio);
         const forward = transform.getForward();
+        const right = transform.getRight();
+        const up = transform.getUp();
         const position = transform.position;
 
-        var plane_count: usize = 1;
+        const tan_half_fov_y = @tan(fov_y / 2.0);
+        const tan_half_fov_x = tan_half_fov_y * aspect_ratio;
+
+        var plane_count: usize = 5;
         var planes: [6]culling.Plane = undefined;
-        planes[0] = .initPosNormal(position + (forward * zm.f32x4s(self.near)), forward);
+
+        // Left Plane
+        {
+            const left_dir = zm.normalize3(forward * zm.f32x4s(1.0) - right * zm.f32x4s(tan_half_fov_x));
+            planes[0] = .initPosNormal(position, zm.cross3(up, left_dir));
+        }
+
+        // Right Plane
+        {
+            const right_dir = zm.normalize3(forward * zm.f32x4s(1.0) + right * zm.f32x4s(tan_half_fov_x));
+            planes[1] = .initPosNormal(position, zm.cross3(right_dir, up));
+        }
+
+        // Top Plane
+        {
+            const top_dir = zm.normalize3(forward * zm.f32x4s(1.0) + up * zm.f32x4s(tan_half_fov_y));
+            planes[2] = .initPosNormal(position, zm.cross3(right, top_dir));
+        }
+
+        // Bottom Plane
+        {
+            const bottom_dir = zm.normalize3(forward * zm.f32x4s(1.0) - up * zm.f32x4s(tan_half_fov_y));
+            planes[3] = .initPosNormal(position, zm.cross3(bottom_dir, right));
+        }
+
+        planes[4] = .initPosNormal(position + (forward * zm.f32x4s(self.near)), forward);
 
         if (self.far) |zfar| {
             planes[plane_count] = .initPosNormal(position + (forward * zm.f32x4s(zfar)), -forward);
