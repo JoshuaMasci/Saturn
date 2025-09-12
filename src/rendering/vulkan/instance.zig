@@ -4,33 +4,16 @@ const vk = @import("vulkan");
 pub const makeVersion = vk.makeApiVersion;
 
 const VkDevice = @import("vulkan_device.zig");
+const Info = @import("physical_device_info.zig");
 
 pub const AppInfo = struct {
     name: [:0]const u8,
     version: vk.Version,
 };
 
-// List from here: https://www.reddit.com/r/vulkan/comments/4ta9nj/is_there_a_comprehensive_list_of_the_names_and/
-//TODO: find a more complete list?
-pub const VendorId = enum(u32) {
-    Amd = 0x1002,
-    Arm = 0x13B5,
-    ImgTec = 0x1010,
-    Intel = 0x8086,
-    Nvidia = 0x10DE,
-    Qualcomm = 0x5132,
-    Broadcom = 0x14e4,
-    _,
-};
-
 pub const PhysicalDevice = struct {
     handle: vk.PhysicalDevice,
-    graphics_queue_index: ?u32 = null,
-    compute_queue_index: ?u32 = null,
-    transfer_queue_index: ?u32 = null,
-
-    vendor: VendorId,
-    properties: vk.PhysicalDeviceProperties,
+    info: Info,
 };
 
 pub const ScoreFn = *const fn (instance: *vk.InstanceProxy, physics_device: vk.PhysicalDevice) ?usize;
@@ -90,15 +73,9 @@ pub fn init(
     const physical_devices = try allocator.alloc(PhysicalDevice, physical_device_handles.len);
 
     for (physical_device_handles, 0..) |handle, i| {
-        const properties = instance.getPhysicalDeviceProperties(handle);
-
-        const vendor: VendorId = @enumFromInt(properties.vendor_id);
-
         physical_devices[i] = .{
             .handle = handle,
-            .graphics_queue_index = 0,
-            .vendor = vendor,
-            .properties = properties,
+            .info = try .init(allocator, instance, handle),
         };
     }
 
@@ -124,8 +101,6 @@ pub fn pickDevice(self: *const Self, surface_opt: ?vk.SurfaceKHR) ?usize {
 }
 
 pub fn createDevice(self: Self, device_index: usize) !VkDevice {
-    std.log.info("Creating Vulkan Device {s}", .{self.physical_devices[device_index].properties.device_name});
-
     return .init(
         self.allocator,
         self.instance,

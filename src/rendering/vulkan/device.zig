@@ -77,10 +77,15 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     const instance = try Instance.init(allocator, Vulkan.getProcInstanceFunction().?, Vulkan.getInstanceExtensions(), .{ .name = "Saturn Engine", .version = Instance.makeVersion(0, 0, 0, 1) });
     errdefer instance.deinit();
 
+    std.log.info("Available Physical Devices: \n{any}", .{instance.physical_devices});
+
+    const device_index = 0; //TODO: select device rather than just assume 0 is good=
+    std.log.info("Picking Device {}: {s}", .{ device_index, instance.physical_devices[device_index].info.name });
+
     var device = try allocator.create(VkDevice);
     errdefer allocator.destroy(device);
 
-    device.* = try instance.createDevice(0);
+    device.* = try instance.createDevice(device_index);
     errdefer device.deinit();
 
     var bindless_descriptor = try allocator.create(BindlessDescriptor);
