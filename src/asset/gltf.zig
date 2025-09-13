@@ -50,7 +50,7 @@ pub fn init(
     const parent_path = std.fs.path.dirname(file_path) orelse ".";
     const parent_dir = try file_dir.openDir(parent_path, .{});
 
-    const file_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, .@"4", null);
+    const file_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, .@"16", null);
     try gltf_file.parse(file_buffer);
 
     var bin_buffer: ?[]align(4) const u8 = null;
@@ -58,7 +58,7 @@ pub fn init(
         const bin_path = try replaceExt(allocator, file_path, ".bin");
         defer allocator.free(bin_path);
 
-        bin_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, .@"4", null);
+        bin_buffer = try file_dir.readFileAllocOptions(allocator, bin_path, std.math.maxInt(usize), null, .@"16", null);
         gltf_file.glb_binary = bin_buffer.?;
     }
 
@@ -408,35 +408,25 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
 
         switch (accessor.component_type) {
             .unsigned_byte => {
-                const temp_indices = try gltf_file.getDataFromBufferView(u8, allocator, accessor, gltf_file.glb_binary.?);
-                defer allocator.free(temp_indices);
-
-                indices = try allocator.alloc(u32, temp_indices.len);
-                for (indices, temp_indices) |*index, temp_index| {
-                    index.* = @intCast(temp_index);
+                var it = accessor.iterator(u8, gltf_file, gltf_file.glb_binary.?);
+                indices = try allocator.alloc(u32, it.total_count);
+                for (indices) |*index| {
+                    index.* = @intCast(it.next().?[0]);
                 }
             },
             .unsigned_short => {
                 var it = accessor.iterator(u16, gltf_file, gltf_file.glb_binary.?);
-                std.log.info("It: {any}", .{it});
-
-                var temp: usize = 0;
-                while (it.next()) |indices_slice| {
-                    for (indices_slice) |index| {
-                        temp += @intCast(index);
-                    }
-                }
-
-                const temp_indices = try gltf_file.getDataFromBufferView(u16, allocator, accessor, gltf_file.glb_binary.?);
-                defer allocator.free(temp_indices);
-
-                indices = try allocator.alloc(u32, temp_indices.len);
-                for (indices, temp_indices) |*index, temp_index| {
-                    index.* = @intCast(temp_index);
+                indices = try allocator.alloc(u32, it.total_count);
+                for (indices) |*index| {
+                    index.* = @intCast(it.next().?[0]);
                 }
             },
             .unsigned_integer => {
-                indices = try gltf_file.getDataFromBufferView(u32, allocator, accessor, gltf_file.glb_binary.?);
+                var it = accessor.iterator(u32, gltf_file, gltf_file.glb_binary.?);
+                indices = try allocator.alloc(u32, it.total_count);
+                for (indices) |*index| {
+                    index.* = it.next().?[0];
+                }
             },
             else => |unknown_type| std.log.err("Unknown Index type: {}", .{unknown_type}),
         }

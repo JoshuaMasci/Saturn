@@ -42,11 +42,10 @@
             .path = "libs/zdxc",
             .optional = true,
         },
-        // .zgltf = .{
-        //     .url = "git+https://github.com/kooparse/zgltf#34fba4f48fac331b30316b4ace9b5be7b819d3a9",
-        //     .hash = "zgltf-0.1.0-sX6QAlESAgDC3JQJwE68MnU2xMLyNPSN60FT7KLjqUWt",
-        // },
-        .zgltf = .{ .path = "../zgltf" },
+        .zgltf = .{
+            .url = "git+https://github.com/kooparse/zgltf#34fba4f48fac331b30316b4ace9b5be7b819d3a9",
+            .hash = "zgltf-0.1.0-sX6QAlESAgDC3JQJwE68MnU2xMLyNPSN60FT7KLjqUWt",
+        },
         .zstbi = .{
             .url = "git+https://github.com/zig-gamedev/zstbi#2c4b3100ccb7aed90ecc9439030899764e2a8d47",
             .hash = "zstbi-0.11.0-dev-L0Ea_yaWBwAHwFoCuyjkFyaiSsbjt4UOrkntR0c_nmzz",

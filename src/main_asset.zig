@@ -65,7 +65,7 @@ pub fn main() !void {
     };
     global_allocator = debug_allocator.allocator();
 
-    try thread_pool.init(.{ .allocator = global_allocator, .n_jobs = 1 });
+    try thread_pool.init(.{ .allocator = global_allocator });
     defer thread_pool.deinit();
 
     //Asset Init
