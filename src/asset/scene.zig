@@ -26,8 +26,8 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.nodes);
 }
 
-pub fn serialize(self: Self, writer: anytype) !void {
-    try std.json.stringify(self, .{ .whitespace = .indent_tab }, writer);
+pub fn serialize(self: Self, writer: *std.io.Writer) !void {
+    try std.json.Stringify.value(self, .{ .whitespace = .indent_tab }, writer);
 }
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !std.json.Parsed(Self) {

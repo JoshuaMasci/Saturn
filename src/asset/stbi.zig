@@ -45,7 +45,7 @@ pub fn load(allocator: std.mem.Allocator, texture_name: []const u8, file_buffer:
 }
 
 pub fn loadFromFile(allocator: std.mem.Allocator, dir: std.fs.Dir, texture_name: []const u8, file_path: []const u8) !Texture {
-    const file_buffer = try dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+    const file_buffer = try dir.readFileAlloc(allocator, file_path, std.math.maxInt(usize));
     defer allocator.free(file_buffer);
     return load(allocator, texture_name, file_buffer);
 }

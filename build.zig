@@ -3,9 +3,12 @@ const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
     const build_sdl3 = b.option(bool, "build-sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
+    _ = build_sdl3; // autofix
     const no_assets = b.option(bool, "no-assets", "Don't compile asset pipeline") orelse false;
     const no_game = b.option(bool, "no-game", "Don't compile game project") orelse false;
+    _ = no_game; // autofix
     const no_render = b.option(bool, "no-render", "Don't compile render sandbox") orelse false;
+    _ = no_render; // autofix
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -14,18 +17,17 @@ pub fn build(b: *std.Build) !void {
         try buildAsset(b, target, optimize);
     }
 
-    if (!no_game) {
-        try buildGame(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
-    }
+    // if (!no_game) {
+    //     try buildGame(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
+    // }
 
-    if (!no_render) {
-        try buildRender(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
-    }
+    // if (!no_render) {
+    //     try buildRender(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
+    // }
 }
 
 fn buildAsset(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !void {
-    const exe = b.addExecutable(.{
-        .name = "saturn_assets",
+    const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main_asset.zig"),
         .target = target,
         .optimize = optimize,
@@ -33,26 +35,32 @@ fn buildAsset(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
 
     // zmath
     const zmath = b.dependency("zmath", .{});
-    exe.root_module.addImport("zmath", zmath.module("root"));
+    exe_mod.addImport("zmath", zmath.module("root"));
 
     // zstbi
     const zstbi = b.dependency("zstbi", .{});
-    exe.root_module.addImport("zstbi", zstbi.module("root"));
+    exe_mod.addImport("zstbi", zstbi.module("root"));
 
     // zgltf
     const zgltf = b.dependency("zgltf", .{});
-    exe.root_module.addImport("zgltf", zgltf.module("zgltf"));
+    exe_mod.addImport("zgltf", zgltf.module("zgltf"));
 
     // zobj
-    const zobj = b.dependency("zobj", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("zobj", zobj.module("obj"));
+    const zobj = b.dependency("obj", .{ .target = target, .optimize = optimize });
+    exe_mod.addImport("zobj", zobj.module("obj"));
 
     // zdxc
     const zdxc = b.dependency("zdxc", .{
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("dxc", zdxc.module("dxc"));
+    exe_mod.addImport("dxc", zdxc.module("dxc"));
+
+    const exe = b.addExecutable(.{
+        .name = "saturn_asset",
+        .root_module = exe_mod,
+        .use_llvm = true,
+    });
 
     b.installArtifact(exe);
     const build_engine_assets = b.addRunArtifact(exe);
@@ -107,7 +115,7 @@ fn buildGame(
 
     // vulkan
     const vulkan_headers = b.dependency("vulkan_headers", .{});
-    const vulkan = b.dependency("vulkan_zig", .{
+    const vulkan = b.dependency("vulkan", .{
         .registry = vulkan_headers.path("registry/vk.xml"),
     }).module("vulkan-zig");
     exe_mod.addImport("vulkan", vulkan);
@@ -177,7 +185,7 @@ fn buildRender(
 
     // vulkan
     const vulkan_headers = b.dependency("vulkan_headers", .{});
-    const vulkan = b.dependency("vulkan_zig", .{
+    const vulkan = b.dependency("vulkan", .{
         .registry = vulkan_headers.path("registry/vk.xml"),
     }).module("vulkan-zig");
     exe_mod.addImport("vulkan", vulkan);

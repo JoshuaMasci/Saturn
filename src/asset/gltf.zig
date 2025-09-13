@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const zgltf = @import("zgltf");
+const zgltf = @import("zgltf").Gltf;
 const zm = @import("zmath");
 
 const Camera = @import("../rendering/camera.zig").Camera;
@@ -50,7 +50,7 @@ pub fn init(
     const parent_path = std.fs.path.dirname(file_path) orelse ".";
     const parent_dir = try file_dir.openDir(parent_path, .{});
 
-    const file_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+    const file_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, .@"4", null);
     try gltf_file.parse(file_buffer);
 
     var bin_buffer: ?[]align(4) const u8 = null;
@@ -58,7 +58,7 @@ pub fn init(
         const bin_path = try replaceExt(allocator, file_path, ".bin");
         defer allocator.free(bin_path);
 
-        bin_buffer = try file_dir.readFileAllocOptions(allocator, bin_path, std.math.maxInt(usize), null, 4, null);
+        bin_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, .@"4", null);
         gltf_file.glb_binary = bin_buffer.?;
     }
 
@@ -88,29 +88,29 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn getMeshCount(self: Self) usize {
-    return self.gltf_file.data.meshes.items.len;
+    return self.gltf_file.data.meshes.len;
 }
 
 pub fn getTextureCount(self: Self) usize {
-    return self.gltf_file.data.images.items.len;
+    return self.gltf_file.data.images.len;
 }
 
 pub fn getMaterialCount(self: Self) usize {
-    return self.gltf_file.data.materials.items.len;
+    return self.gltf_file.data.materials.len;
 }
 
 pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, value: Mesh } {
-    if (gltf_index >= self.gltf_file.data.meshes.items.len) {
+    if (gltf_index >= self.gltf_file.data.meshes.len) {
         return error.indexOutOfRange;
     }
-    const gltf_mesh = self.gltf_file.data.meshes.items[gltf_index];
+    const gltf_mesh = self.gltf_file.data.meshes[gltf_index];
 
     const mesh_name: []const u8 = try allocator.dupe(u8, self.asset_info.meshes[gltf_index].name);
 
-    const primitives = try allocator.alloc(Mesh.Primitive, gltf_mesh.primitives.items.len);
+    const primitives = try allocator.alloc(Mesh.Primitive, gltf_mesh.primitives.len);
     errdefer allocator.free(primitives);
 
-    for (gltf_mesh.primitives.items, 0..) |primitive, i| {
+    for (gltf_mesh.primitives, 0..) |primitive, i| {
         primitives[i] = try loadGltfPrimitive(allocator, &self.gltf_file, &primitive);
     }
 
@@ -128,10 +128,10 @@ pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !st
 }
 
 pub fn loadTexture(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, value: Texture2D } {
-    if (gltf_index >= self.gltf_file.data.images.items.len) {
+    if (gltf_index >= self.gltf_file.data.images.len) {
         return error.indexOutOfRange;
     }
-    const gltf_image = self.gltf_file.data.images.items[gltf_index];
+    const gltf_image = self.gltf_file.data.images[gltf_index];
 
     if (gltf_image.data) |data| {
         return .{
@@ -151,10 +151,10 @@ pub fn loadTexture(self: Self, allocator: std.mem.Allocator, gltf_index: usize) 
 }
 
 pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, value: Material } {
-    if (gltf_index >= self.gltf_file.data.materials.items.len) {
+    if (gltf_index >= self.gltf_file.data.materials.len) {
         return error.indexOutOfRange;
     }
-    const gltf_material = self.gltf_file.data.materials.items[gltf_index];
+    const gltf_material = self.gltf_file.data.materials[gltf_index];
 
     const alpha_mode: Material.AlphaMode = switch (gltf_material.alpha_mode) {
         .@"opaque" => .alpha_opaque,
@@ -164,7 +164,7 @@ pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize)
 
     var base_color_texture: ?AssetHandle = null;
     if (gltf_material.metallic_roughness.base_color_texture) |texture| {
-        if (self.gltf_file.data.textures.items[texture.index].source) |texture_index| {
+        if (self.gltf_file.data.textures[texture.index].source) |texture_index| {
             base_color_texture = self.asset_info.images[texture_index].handle;
         }
     }
@@ -189,10 +189,10 @@ pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize)
 }
 
 pub fn loadScene(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !Scene {
-    if (gltf_index >= self.gltf_file.data.scenes.items.len) {
+    if (gltf_index >= self.gltf_file.data.scenes.len) {
         return error.indexOutOfRange;
     }
-    const gltf_scene = self.gltf_file.data.scenes.items[gltf_index];
+    const gltf_scene = self.gltf_file.data.scenes[gltf_index];
 
     var name: []const u8 = &.{};
     if (gltf_scene.name) |gltf_name| {
@@ -202,14 +202,14 @@ pub fn loadScene(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !S
     }
     errdefer allocator.free(name);
 
-    var nodes = std.ArrayList(Scene.Node).init(allocator);
-    defer nodes.deinit();
+    var nodes: std.ArrayList(Scene.Node) = .{};
+    defer nodes.deinit(allocator);
 
     var root_nodes: []usize = &.{};
     if (gltf_scene.nodes) |gltf_root_nodes| {
-        root_nodes = try allocator.alloc(usize, gltf_root_nodes.items.len);
+        root_nodes = try allocator.alloc(usize, gltf_root_nodes.len);
         errdefer allocator.free(root_nodes);
-        for (gltf_root_nodes.items, 0..) |child_index, list_index| {
+        for (gltf_root_nodes, 0..) |child_index, list_index| {
             root_nodes[list_index] = try self.loadNode(allocator, child_index, &nodes);
         }
     }
@@ -217,15 +217,15 @@ pub fn loadScene(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !S
     return .{
         .name = name,
         .root_nodes = root_nodes,
-        .nodes = try nodes.toOwnedSlice(),
+        .nodes = try nodes.toOwnedSlice(allocator),
     };
 }
 
 fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: *std.ArrayList(Scene.Node)) !usize {
-    if (gltf_index >= self.gltf_file.data.nodes.items.len) {
+    if (gltf_index >= self.gltf_file.data.nodes.len) {
         return error.indexOutOfRange;
     }
-    const gltf_node = self.gltf_file.data.nodes.items[gltf_index];
+    const gltf_node = self.gltf_file.data.nodes[gltf_index];
 
     var name: []const u8 = &.{};
     if (gltf_node.name) |gltf_name| {
@@ -243,11 +243,11 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
 
     var mesh: ?Scene.Mesh = null;
     if (gltf_node.mesh) |mesh_index| {
-        const gltf_mesh = self.gltf_file.data.meshes.items[mesh_index];
-        var materials = try allocator.alloc(AssetHandle, gltf_mesh.primitives.items.len);
+        const gltf_mesh = self.gltf_file.data.meshes[mesh_index];
+        var materials = try allocator.alloc(AssetHandle, gltf_mesh.primitives.len);
         errdefer allocator.free(materials);
 
-        for (gltf_mesh.primitives.items, 0..) |prim, i| {
+        for (gltf_mesh.primitives, 0..) |prim, i| {
             materials[i] = self.asset_info.materials[prim.material.?].handle;
         }
 
@@ -259,7 +259,7 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
 
     var camera: ?Camera = null;
     if (gltf_node.camera) |camera_index| {
-        const gltf_camera = self.gltf_file.data.cameras.items[camera_index];
+        const gltf_camera = self.gltf_file.data.cameras[camera_index];
 
         camera = switch (gltf_camera.type) {
             .perspective => |perspective| .{ .perspective = .{
@@ -277,14 +277,14 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
 
     const parent: ?usize = gltf_node.parent;
 
-    const children = try allocator.alloc(usize, gltf_node.children.items.len);
+    const children = try allocator.alloc(usize, gltf_node.children.len);
     errdefer allocator.free(children);
-    for (gltf_node.children.items, 0..) |child_index, list_index| {
+    for (gltf_node.children, 0..) |child_index, list_index| {
         children[list_index] = try self.loadNode(allocator, child_index, nodes);
     }
 
     const node_index = nodes.items.len;
-    try nodes.append(.{
+    try nodes.append(allocator, .{
         .name = name,
         .local_transform = transform,
         .parent = parent,
@@ -334,9 +334,9 @@ const AssetHandles = struct {
     materials: []MaterialAssetInfo,
 
     fn init(allocator: std.mem.Allocator, repo: []const u8, output_path: []const u8, gltf: *zgltf.Data) !@This() {
-        var meshes = try allocator.alloc(MeshAssetInfo, gltf.meshes.items.len);
+        var meshes = try allocator.alloc(MeshAssetInfo, gltf.meshes.len);
         errdefer allocator.free(meshes);
-        for (gltf.meshes.items, 0..) |mesh, i| {
+        for (gltf.meshes, 0..) |mesh, i| {
             var mesh_name: []const u8 = &.{};
             if (mesh.name) |name| {
                 mesh_name = try allocator.dupe(u8, name);
@@ -346,9 +346,9 @@ const AssetHandles = struct {
             meshes[i] = try MeshAssetInfo.init(allocator, repo, output_path, mesh_name);
         }
 
-        var images = try allocator.alloc(ImageAssetInfo, gltf.images.items.len);
+        var images = try allocator.alloc(ImageAssetInfo, gltf.images.len);
         errdefer allocator.free(images);
-        for (gltf.images.items, 0..) |image, i| {
+        for (gltf.images, 0..) |image, i| {
             var image_name: []const u8 = &.{};
             if (image.uri) |uri| {
                 image_name = try allocator.dupe(u8, std.fs.path.stem(uri));
@@ -360,9 +360,9 @@ const AssetHandles = struct {
             images[i] = try ImageAssetInfo.init(allocator, repo, output_path, image_name);
         }
 
-        var materials = try allocator.alloc(MaterialAssetInfo, gltf.materials.items.len);
+        var materials = try allocator.alloc(MaterialAssetInfo, gltf.materials.len);
         errdefer allocator.free(materials);
-        for (gltf.materials.items, 0..) |material, i| {
+        for (gltf.materials, 0..) |material, i| {
             var material_name: []const u8 = &.{};
             if (material.name) |name| {
                 material_name = try allocator.dupe(u8, name);
@@ -403,42 +403,40 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
     errdefer allocator.free(indices);
 
     if (gltf_primitive.indices) |indices_index| {
-        const accessor = gltf_file.data.accessors.items[indices_index];
+        const accessor = gltf_file.data.accessors[indices_index];
         std.debug.assert(accessor.type == .scalar);
 
         switch (accessor.component_type) {
             .unsigned_byte => {
-                var it = accessor.iterator(u8, gltf_file, gltf_file.glb_binary.?);
-                indices = try allocator.alloc(u32, it.total_count);
-                var i: usize = 0;
-                while (it.next()) |indices_slice| {
-                    for (indices_slice) |indexes| {
-                        indices[i] = @intCast(indexes);
-                        i += 1;
-                    }
+                const temp_indices = try gltf_file.getDataFromBufferView(u8, allocator, accessor, gltf_file.glb_binary.?);
+                defer allocator.free(temp_indices);
+
+                indices = try allocator.alloc(u32, temp_indices.len);
+                for (indices, temp_indices) |*index, temp_index| {
+                    index.* = @intCast(temp_index);
                 }
             },
             .unsigned_short => {
                 var it = accessor.iterator(u16, gltf_file, gltf_file.glb_binary.?);
-                indices = try allocator.alloc(u32, it.total_count);
-                var i: usize = 0;
+                std.log.info("It: {any}", .{it});
+
+                var temp: usize = 0;
                 while (it.next()) |indices_slice| {
-                    for (indices_slice) |indexes| {
-                        indices[i] = @intCast(indexes);
-                        i += 1;
+                    for (indices_slice) |index| {
+                        temp += @intCast(index);
                     }
+                }
+
+                const temp_indices = try gltf_file.getDataFromBufferView(u16, allocator, accessor, gltf_file.glb_binary.?);
+                defer allocator.free(temp_indices);
+
+                indices = try allocator.alloc(u32, temp_indices.len);
+                for (indices, temp_indices) |*index, temp_index| {
+                    index.* = @intCast(temp_index);
                 }
             },
             .unsigned_integer => {
-                var it = accessor.iterator(u32, gltf_file, gltf_file.glb_binary.?);
-                indices = try allocator.alloc(u32, it.total_count);
-                var i: usize = 0;
-                while (it.next()) |indices_slice| {
-                    for (indices_slice) |indexes| {
-                        indices[i] = @intCast(indexes);
-                        i += 1;
-                    }
-                }
+                indices = try gltf_file.getDataFromBufferView(u32, allocator, accessor, gltf_file.glb_binary.?);
             },
             else => |unknown_type| std.log.err("Unknown Index type: {}", .{unknown_type}),
         }
@@ -453,16 +451,18 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
     var tangents: [][4]f32 = &.{};
     defer allocator.free(tangents);
 
-    var uv_arrays = try std.BoundedArray([][2]f32, 8).init(0);
-    defer for (uv_arrays.slice()) |uv_array| {
+    const UV_ARRAY = [][2]f32;
+    var uv_array_count: usize = 0;
+    var uv_arrays: [8]UV_ARRAY = undefined;
+    defer for (uv_arrays[0..uv_array_count]) |uv_array| {
         allocator.free(uv_array);
     };
 
-    for (gltf_primitive.attributes.items) |attribute| {
+    for (gltf_primitive.attributes) |attribute| {
         switch (attribute) {
             .position => |index| {
                 std.debug.assert(positions.len == 0);
-                const accessor = gltf_file.data.accessors.items[index];
+                const accessor = gltf_file.data.accessors[index];
                 std.debug.assert(accessor.type == .vec3);
                 std.debug.assert(accessor.component_type == .float);
                 var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
@@ -476,7 +476,7 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
             },
             .normal => |index| {
                 std.debug.assert(normals.len == 0);
-                const accessor = gltf_file.data.accessors.items[index];
+                const accessor = gltf_file.data.accessors[index];
                 std.debug.assert(accessor.type == .vec3);
                 std.debug.assert(accessor.component_type == .float);
                 var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
@@ -490,12 +490,13 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
             },
             .tangent => |index| {
                 std.debug.assert(tangents.len == 0);
-                const accessor = gltf_file.data.accessors.items[index];
+                const accessor = gltf_file.data.accessors[index];
                 std.debug.assert(accessor.type == .vec4);
                 std.debug.assert(accessor.component_type == .float);
                 var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
 
                 tangents = try allocator.alloc([4]f32, it.total_count);
+
                 var i: usize = 0;
                 while (it.next()) |tangent_slice| {
                     tangents[i] = .{ tangent_slice[0], tangent_slice[1], tangent_slice[2], tangent_slice[3] };
@@ -503,18 +504,23 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
                 }
             },
             .texcoord => |index| {
-                const accessor = gltf_file.data.accessors.items[index];
+                if (uv_array_count >= uv_arrays.len) {
+                    continue;
+                }
+
+                const accessor = gltf_file.data.accessors[index];
                 std.debug.assert(accessor.type == .vec2);
                 std.debug.assert(accessor.component_type == .float);
                 var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
 
-                var uvs = try allocator.alloc([2]f32, it.total_count);
+                var uvs: UV_ARRAY = try allocator.alloc([2]f32, it.total_count);
                 var i: usize = 0;
                 while (it.next()) |uv_slice| {
                     uvs[i] = .{ uv_slice[0], uv_slice[1] };
                     i += 1;
                 }
-                uv_arrays.appendAssumeCapacity(uvs);
+                uv_arrays[uv_array_count] = uvs;
+                uv_array_count += 1;
             },
             else => {},
         }
@@ -542,15 +548,15 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
         }
     }
 
-    if (uv_arrays.len >= 1) {
-        const uv0s = uv_arrays.get(0);
+    if (uv_array_count >= 1) {
+        const uv0s: UV_ARRAY = uv_arrays[0];
         for (vertices, uv0s) |*vertex, uv| {
             vertex.uv0 = uv;
         }
     }
 
-    if (uv_arrays.len >= 2) {
-        const uv1s = uv_arrays.get(0);
+    if (uv_array_count >= 2) {
+        const uv1s: UV_ARRAY = uv_arrays[1];
         for (vertices, uv1s) |*vertex, uv| {
             vertex.uv1 = uv;
         }

@@ -73,9 +73,9 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.name);
 }
 
-pub fn serialize(self: Self, writer: anytype) !void {
+pub fn serialize(self: Self, writer: *std.Io.Writer) !void {
     try serde.serialzieSlice(u8, writer, self.name);
-    try writer.writeStructEndian(Packed.pack(self), .little);
+    try writer.writeStruct(Packed.pack(self), .little);
 }
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
@@ -104,7 +104,7 @@ pub const Json = struct {
     normal_texture: ?[]const u8 = null,
 
     pub fn read(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !std.json.Parsed(Json) {
-        const file_buffer = try dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+        const file_buffer = try dir.readFileAlloc(allocator, file_path, std.math.maxInt(usize));
         defer allocator.free(file_buffer);
         return try std.json.parseFromSlice(Json, allocator, file_buffer, .{ .allocate = .alloc_always });
     }

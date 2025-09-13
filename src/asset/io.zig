@@ -7,11 +7,14 @@ pub fn writeFile(dir: std.fs.Dir, atype: header_v1.AssetType, path: []const u8, 
     const file = try dir.createFile(path, .{});
     defer file.close();
 
-    const writer = file.writer();
+    var writer_buffer: [1024]u8 = undefined;
+    var writer_old = file.writer(&writer_buffer);
+    var writer = &writer_old.interface;
     try writer.writeStruct(header_v1.HeaderV1{
         .atype = atype,
-    });
+    }, .little);
     try asset.serialize(writer);
+    try writer.flush();
 }
 
 pub fn readFile(allocator: std.mem.Allocator, reader: std.fs.File.Reader, comptime T: type) !T {
