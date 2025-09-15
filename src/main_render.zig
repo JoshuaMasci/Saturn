@@ -32,12 +32,16 @@ pub fn main() !void {
 
     //const scene_filepath = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
     const scene_filepath = "zig-out/game-assets/Bistro/scene.json";
+
     {
         var scene_json: std.json.Parsed(Scene) = undefined;
         {
             var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
             defer file.close();
-            scene_json = try Scene.deserialzie(allocator, file.reader());
+
+            var read_buffer: [1024]u8 = undefined;
+            var reader = file.reader(&read_buffer);
+            scene_json = try Scene.deserialzie(allocator, &reader.interface);
         }
         defer scene_json.deinit();
 
@@ -60,11 +64,13 @@ pub fn main() !void {
             .transform = transform,
         };
 
-        const now = std.time.nanoTimestamp();
-        app.resources.loadSceneAssets(allocator, &render_scene);
-        const duration_ns = std.time.nanoTimestamp() - now;
-        const duration_ns_f: f32 = @floatFromInt(duration_ns);
-        std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
+        {
+            const now = std.time.nanoTimestamp();
+            app.resources.loadSceneAssets(allocator, &render_scene);
+            const duration_ns = std.time.nanoTimestamp() - now;
+            const duration_ns_f: f32 = @floatFromInt(duration_ns);
+            std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
+        }
 
         app.scene_info = .{
             .scene = render_scene,
@@ -324,7 +330,7 @@ const App = struct {
                     .clear = .{ .float_32 = @splat(0.25) },
                     .store = true,
                 });
-                try render_graph.render_passes.append(render_pass);
+                try render_graph.render_passes.append(render_graph.allocator, render_pass);
             }
 
             try self.imgui_renderer.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
@@ -341,7 +347,7 @@ fn on_event(data: ?*anyopaque, event: *const sdl3.Event) void {
 
 fn window_resize(data: ?*anyopaque, window: sdl3.Window, size: [2]u32) void {
     _ = size; // autofix
-    const app: *App = @alignCast(@ptrCast(data.?));
+    const app: *App = @ptrCast(@alignCast(data.?));
 
     //IDK if I should do this here, it probably could cause a race condition
     if (app.vulkan_device.swapchains.get(window)) |swapchain| {
@@ -350,7 +356,7 @@ fn window_resize(data: ?*anyopaque, window: sdl3.Window, size: [2]u32) void {
 }
 
 pub fn ImFmtText(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) !void {
-    const fmt_str: [:0]const u8 = try std.fmt.allocPrintZ(allocator, fmt, args);
+    const fmt_str: [:0]const u8 = try std.fmt.allocPrintSentinel(allocator, fmt, args, 0);
     defer allocator.free(fmt_str);
     imgui.ImGui_Text(fmt_str);
 }

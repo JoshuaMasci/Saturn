@@ -63,7 +63,7 @@ pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: 
 
     render_pass.addBuildFn(buildCommandBuffer, null);
 
-    try render_graph.render_passes.append(render_pass);
+    try render_graph.render_passes.append(render_graph.allocator, render_pass);
 }
 
 fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
@@ -77,7 +77,7 @@ fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Re
     imgui.cImGui_ImplVulkan_RenderDrawData(draw_data, @ptrFromInt(@intFromEnum(command_buffer.handle)));
 }
 
-fn loader(name: [*c]const u8, instance: ?*anyopaque) callconv(.C) ?*const fn () callconv(.C) void {
+fn loader(name: [*c]const u8, instance: ?*anyopaque) callconv(.c) ?*const fn () callconv(.c) void {
     const vkGetInstanceProcAddr: imgui.PFN_vkGetInstanceProcAddr = @ptrCast(sdl3.Vulkan.getProcInstanceFunction());
     const func = vkGetInstanceProcAddr.?(@ptrCast(instance), name);
     return func;

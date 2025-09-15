@@ -34,7 +34,7 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.primitives);
 }
 
-pub fn serialize(self: Self, writer: *std.Io.Writer) !void {
+pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.name);
 
     try writer.writeAll(&std.mem.toBytes(self.sphere_pos_radius));

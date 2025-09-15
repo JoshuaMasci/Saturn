@@ -30,8 +30,8 @@ pub fn serialize(self: Self, writer: *std.io.Writer) !void {
     try std.json.Stringify.value(self, .{ .whitespace = .indent_tab }, writer);
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: std.fs.File.Reader) !std.json.Parsed(Self) {
-    const data = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
+pub fn deserialzie(allocator: std.mem.Allocator, reader: *std.io.Reader) !std.json.Parsed(Self) {
+    const data = try reader.allocRemaining(allocator, .unlimited);
     defer allocator.free(data);
 
     return try std.json.parseFromSlice(Self, allocator, data, .{ .allocate = .alloc_always });
@@ -88,7 +88,7 @@ fn createRenderSceneNode(nodes: []const Node, node_index: usize, parent_transfor
     const transform = parent_transform.applyTransform(&node.local_transform);
 
     if (node.mesh) |mesh| {
-        try render_scene.static_meshes.append(.{
+        try render_scene.static_meshes.append(render_scene.allocator, .{
             .transform = transform,
             .component = .{ .mesh = mesh.mesh, .materials = .fromSlice(mesh.materials) },
         });

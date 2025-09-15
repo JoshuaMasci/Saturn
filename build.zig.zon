@@ -21,16 +21,16 @@
             .lazy = true,
         },
         .vulkan = .{
-            .url = "git+https://github.com/Snektron/vulkan-zig#4b7b9a8b949f326d85d9eff5013f445fb95ffbab",
-            .hash = "vulkan-0.0.0-r7Ytx5BBAwCay_2JFZPIdfMhfu28r5znPs1-DXRmuMIk",
+            .url = "git+https://github.com/Snektron/vulkan-zig#c9c4dae70356766f0954ae7d2b8aba4d1dd53a2a",
+            .hash = "vulkan-0.0.0-r7Ytx6hBAwBUnt0XA-uOkR2hda4fAHFhQITNTgJpnFkY",
         },
         .vulkan_headers = .{
-            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#e2e53a724677f6eba8ff0ce1ccb64ee321785cbd",
-            .hash = "N-V-__8AAMjV7gGH3DKcxHoM9tIKAxu9ypDzlJHSgEhQ8v_f",
+            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#d1cd37e925510a167d4abef39340dbdea47d8989",
+            .hash = "N-V-__8AAESg9gHKzlANbo03d4Fcb5m_5aZXJXIhYbWzCe4G",
         },
         .cimgui_zig = .{
-            .url = "git+https://github.com/tiawl/cimgui.zig#0d5b0bad0b009787a1ef26504d5044ecc2494aec",
-            .hash = "cimgui_zig-1.0.0-2XubkvumVQCaJ1I3VFroE8bxTIQGuHUp_4-HCjccQ7qy",
+            .url = "git+https://github.com/tiawl/cimgui.zig#96f83bf17520755d18447206d5cbff4588f521b6",
+            .hash = "cimgui_zig-1.0.0-2Xubkid9XwBPdCRaz0NeLppDmNQP8xA4O6pMO1rQ-oZq",
         },
         .zlua = .{
             .url = "git+https://github.com/natecraddock/ziglua#31d1abd4c27a31d557d6feadb4520d661122afc6",

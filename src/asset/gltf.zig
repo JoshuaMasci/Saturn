@@ -50,15 +50,19 @@ pub fn init(
     const parent_path = std.fs.path.dirname(file_path) orelse ".";
     const parent_dir = try file_dir.openDir(parent_path, .{});
 
-    const file_buffer = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, .@"16", null);
+    const file_buffer: []align(4) const u8 = try file_dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, .@"16", null);
     try gltf_file.parse(file_buffer);
 
-    var bin_buffer: ?[]align(4) const u8 = null;
+    var bin_buffer: ?[]align(4) u8 = null;
     if (gltf_file.glb_binary == null) {
         const bin_path = try replaceExt(allocator, file_path, ".bin");
         defer allocator.free(bin_path);
 
         bin_buffer = try file_dir.readFileAllocOptions(allocator, bin_path, std.math.maxInt(usize), null, .@"16", null);
+        gltf_file.glb_binary = bin_buffer.?;
+    } else {
+        bin_buffer = try allocator.alignedAlloc(u8, .@"16", gltf_file.glb_binary.?.len);
+        @memcpy(bin_buffer.?, gltf_file.glb_binary.?);
         gltf_file.glb_binary = bin_buffer.?;
     }
 
@@ -76,14 +80,15 @@ pub fn init(
 }
 
 pub fn deinit(self: *Self) void {
-    self.parent_dir.close();
-    self.gltf_file.deinit();
-    self.asset_info.deinit();
-
     if (self.bin_buffer) |buffer| {
         self.allocator.free(buffer);
         self.gltf_file.glb_binary = null;
     }
+
+    self.parent_dir.close();
+    self.gltf_file.deinit();
+    self.asset_info.deinit();
+
     self.allocator.free(self.file_buffer);
 }
 
@@ -408,25 +413,23 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
 
         switch (accessor.component_type) {
             .unsigned_byte => {
-                var it = accessor.iterator(u8, gltf_file, gltf_file.glb_binary.?);
-                indices = try allocator.alloc(u32, it.total_count);
-                for (indices) |*index| {
-                    index.* = @intCast(it.next().?[0]);
+                const temp_indices = try gltf_file.getDataFromBufferView(u8, allocator, accessor, gltf_file.glb_binary.?);
+                defer allocator.free(temp_indices);
+                indices = try allocator.alloc(u32, temp_indices.len);
+                for (indices, temp_indices) |*index, temp_index| {
+                    index.* = @intCast(temp_index);
                 }
             },
             .unsigned_short => {
-                var it = accessor.iterator(u16, gltf_file, gltf_file.glb_binary.?);
-                indices = try allocator.alloc(u32, it.total_count);
-                for (indices) |*index| {
-                    index.* = @intCast(it.next().?[0]);
+                const temp_indices = try gltf_file.getDataFromBufferView(u16, allocator, accessor, gltf_file.glb_binary.?);
+                defer allocator.free(temp_indices);
+                indices = try allocator.alloc(u32, temp_indices.len);
+                for (indices, temp_indices) |*index, temp_index| {
+                    index.* = @intCast(temp_index);
                 }
             },
             .unsigned_integer => {
-                var it = accessor.iterator(u32, gltf_file, gltf_file.glb_binary.?);
-                indices = try allocator.alloc(u32, it.total_count);
-                for (indices) |*index| {
-                    index.* = it.next().?[0];
-                }
+                indices = try gltf_file.getDataFromBufferView(u32, allocator, accessor, gltf_file.glb_binary.?);
             },
             else => |unknown_type| std.log.err("Unknown Index type: {}", .{unknown_type}),
         }
@@ -455,43 +458,24 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
                 const accessor = gltf_file.data.accessors[index];
                 std.debug.assert(accessor.type == .vec3);
                 std.debug.assert(accessor.component_type == .float);
-                var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
 
-                positions = try allocator.alloc([3]f32, it.total_count);
-                var i: usize = 0;
-                while (it.next()) |position_slice| {
-                    positions[i] = .{ position_slice[0], position_slice[1], position_slice[2] };
-                    i += 1;
-                }
+                positions = try loadAttribueFloatArray(3, allocator, gltf_file, accessor);
             },
             .normal => |index| {
                 std.debug.assert(normals.len == 0);
                 const accessor = gltf_file.data.accessors[index];
                 std.debug.assert(accessor.type == .vec3);
                 std.debug.assert(accessor.component_type == .float);
-                var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
 
-                normals = try allocator.alloc([3]f32, it.total_count);
-                var i: usize = 0;
-                while (it.next()) |normal_slice| {
-                    normals[i] = .{ normal_slice[0], normal_slice[1], normal_slice[2] };
-                    i += 1;
-                }
+                normals = try loadAttribueFloatArray(3, allocator, gltf_file, accessor);
             },
             .tangent => |index| {
                 std.debug.assert(tangents.len == 0);
                 const accessor = gltf_file.data.accessors[index];
                 std.debug.assert(accessor.type == .vec4);
                 std.debug.assert(accessor.component_type == .float);
-                var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
 
-                tangents = try allocator.alloc([4]f32, it.total_count);
-
-                var i: usize = 0;
-                while (it.next()) |tangent_slice| {
-                    tangents[i] = .{ tangent_slice[0], tangent_slice[1], tangent_slice[2], tangent_slice[3] };
-                    i += 1;
-                }
+                tangents = try loadAttribueFloatArray(4, allocator, gltf_file, accessor);
             },
             .texcoord => |index| {
                 if (uv_array_count >= uv_arrays.len) {
@@ -501,15 +485,8 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
                 const accessor = gltf_file.data.accessors[index];
                 std.debug.assert(accessor.type == .vec2);
                 std.debug.assert(accessor.component_type == .float);
-                var it = accessor.iterator(f32, gltf_file, gltf_file.glb_binary.?);
 
-                var uvs: UV_ARRAY = try allocator.alloc([2]f32, it.total_count);
-                var i: usize = 0;
-                while (it.next()) |uv_slice| {
-                    uvs[i] = .{ uv_slice[0], uv_slice[1] };
-                    i += 1;
-                }
-                uv_arrays[uv_array_count] = uvs;
+                uv_arrays[uv_array_count] = try loadAttribueFloatArray(2, allocator, gltf_file, accessor);
                 uv_array_count += 1;
             },
             else => {},
@@ -519,22 +496,15 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
     const vertices = try allocator.alloc(Mesh.Vertex, positions.len);
     errdefer allocator.free(vertices);
 
-    for (vertices, positions) |*vertex, position| {
+    for (vertices, positions, normals, 0..) |*vertex, position, normal, i| {
         vertex.position = position;
-    }
-
-    for (vertices, normals) |*vertex, normal| {
         vertex.normal = normal;
-    }
 
-    if (tangents.len != 0) {
-        for (vertices, tangents) |*vertex, tangent| {
-            vertex.tangent = tangent;
-        }
-    } else {
-        //TODO: gen tangets if non are provided
-        for (vertices) |*vertex| {
-            vertex.tangent = .{ 0, 0, 0, 1 };
+        if (tangents.len != 0) {
+            vertex.tangent = tangents[i];
+        } else {
+            vertex.tangent = .{ 0, 0, 0, 1 }; //TODO: gen tangets if non are provided
+
         }
     }
 
@@ -557,4 +527,27 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
         .vertices = vertices,
         .indices = indices,
     };
+}
+
+fn loadAttribueFloatArray(
+    comptime SliceCount: comptime_int,
+    allocator: std.mem.Allocator,
+    gltf_file: *const zgltf,
+    accessor: zgltf.Accessor,
+) ![][SliceCount]f32 {
+    const float_array = try gltf_file.getDataFromBufferView(f32, allocator, accessor, gltf_file.glb_binary.?);
+    defer allocator.free(float_array);
+
+    std.debug.assert(accessor.count == (float_array.len / SliceCount));
+
+    const attributes = try allocator.alloc([SliceCount]f32, accessor.count);
+    for (attributes, 0..) |*value, i| {
+        const float_i: usize = i * SliceCount;
+
+        //Really hope that the compiler loop unrolls this cause its comptime known
+        for (0..SliceCount) |sub_i| {
+            value.*[sub_i] = float_array[float_i + sub_i];
+        }
+    }
+    return attributes;
 }

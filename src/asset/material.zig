@@ -73,14 +73,14 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.name);
 }
 
-pub fn serialize(self: Self, writer: *std.Io.Writer) !void {
+pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.name);
-    try writer.writeStruct(Packed.pack(self), .little);
+    try writer.writeStructEndian(Packed.pack(self), .little);
 }
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     const name = try serde.deserialzieSlice(allocator, u8, reader);
-    var value = (try reader.readStruct(Packed)).unpack();
+    var value = (try reader.readStructEndian(Packed, .little)).unpack();
     value.name = name;
     return value;
 }

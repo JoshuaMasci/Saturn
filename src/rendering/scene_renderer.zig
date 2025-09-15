@@ -183,7 +183,7 @@ pub fn createRenderPass(
     };
     render_pass.addBuildFn(buildCommandBuffer, scene_build_data);
 
-    try render_graph.render_passes.append(render_pass);
+    try render_graph.render_passes.append(render_graph.allocator, render_pass);
 }
 
 pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {

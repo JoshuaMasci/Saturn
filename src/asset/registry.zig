@@ -142,7 +142,7 @@ pub fn loadAsset(
 
             var buffer_stream = std.io.fixedBufferStream(asset_buffer);
             const buffer_stream_reader = buffer_stream.reader();
-            return try T.deserialzie(allocator, buffer_stream_reader);
+            return try T.deserialzie(allocator, &buffer_stream_reader);
         } else {
             return error.InvalidAssetHash;
         }

@@ -3,12 +3,10 @@ const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
     const build_sdl3 = b.option(bool, "build-sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
-    _ = build_sdl3; // autofix
     const no_assets = b.option(bool, "no-assets", "Don't compile asset pipeline") orelse false;
     const no_game = b.option(bool, "no-game", "Don't compile game project") orelse false;
     _ = no_game; // autofix
     const no_render = b.option(bool, "no-render", "Don't compile render sandbox") orelse false;
-    _ = no_render; // autofix
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -21,9 +19,9 @@ pub fn build(b: *std.Build) !void {
     //     try buildGame(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
     // }
 
-    // if (!no_render) {
-    //     try buildRender(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
-    // }
+    if (!no_render) {
+        try buildRender(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
+    }
 }
 
 fn buildAsset(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !void {

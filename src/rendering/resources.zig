@@ -84,7 +84,7 @@ pub fn createMaterialBuffer(self: Self, temp_allocator: std.mem.Allocator, rende
         },
     });
 
-    try render_graph.buffer_upload_passes.append(.{
+    try render_graph.buffer_upload_passes.append(render_graph.allocator, .{
         .target = temp_buffer,
         .offset = 0,
         .size = temp_slice_size,

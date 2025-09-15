@@ -148,6 +148,7 @@ const BufferDescriptor = struct {
     descriptor_index: u32,
     descriptor_type: vk.DescriptorType,
 
+    allocator: std.mem.Allocator,
     index_list: IndexList,
 
     fn init(
@@ -159,16 +160,17 @@ const BufferDescriptor = struct {
         array_count: u32,
     ) BufferDescriptor {
         return .{
+            .allocator = allocator,
             .device = device,
             .set = set,
             .descriptor_index = descriptor_index,
             .descriptor_type = descriptor_type,
-            .index_list = .init(allocator, 1, array_count),
+            .index_list = .init(1, array_count),
         };
     }
 
     fn deinit(self: *BufferDescriptor) void {
-        self.index_list.deinit();
+        self.index_list.deinit(self.allocator);
     }
 
     pub fn bind(self: *BufferDescriptor, buffer: Buffer) Binding {
@@ -195,7 +197,7 @@ const BufferDescriptor = struct {
     }
 
     pub fn clear(self: *BufferDescriptor, binding: Binding) void {
-        self.index_list.free(binding.index);
+        self.index_list.free(self.allocator, binding.index);
 
         const buffer_info = vk.DescriptorBufferInfo{
             .buffer = .null_handle,
@@ -224,6 +226,7 @@ const ImageDescriptor = struct {
     descriptor_type: vk.DescriptorType,
     image_layout: vk.ImageLayout,
 
+    allocator: std.mem.Allocator,
     index_list: IndexList,
 
     pub fn init(
@@ -236,17 +239,18 @@ const ImageDescriptor = struct {
         array_count: u32,
     ) ImageDescriptor {
         return .{
+            .allocator = allocator,
             .device = device,
             .set = set,
             .descriptor_index = descriptor_index,
             .descriptor_type = descriptor_type,
             .image_layout = image_layout,
-            .index_list = .init(allocator, 1, array_count),
+            .index_list = .init(1, array_count),
         };
     }
 
     pub fn deinit(self: *ImageDescriptor) void {
-        self.index_list.deinit();
+        self.index_list.deinit(self.allocator);
     }
 
     pub fn bind(self: *ImageDescriptor, image: Image, sampler: ?Sampler) Binding {
@@ -273,7 +277,7 @@ const ImageDescriptor = struct {
     }
 
     pub fn clear(self: *ImageDescriptor, binding: Binding) void {
-        self.index_list.free(binding.index);
+        self.index_list.free(self.allocator, binding.index);
 
         const image_info = vk.DescriptorImageInfo{
             .sampler = .null_handle,
@@ -295,22 +299,21 @@ const ImageDescriptor = struct {
 };
 
 const IndexList = struct {
-    freed: std.ArrayList(u32),
+    freed: std.ArrayList(u32) = .empty,
     next: u32,
     min: u32,
     max: u32,
 
-    pub fn init(allocator: std.mem.Allocator, min: u32, max: u32) IndexList {
+    pub fn init(min: u32, max: u32) IndexList {
         return IndexList{
-            .freed = .init(allocator),
             .next = min,
             .min = min,
             .max = max,
         };
     }
 
-    pub fn deinit(self: *IndexList) void {
-        self.freed.deinit();
+    pub fn deinit(self: *IndexList, allocator: std.mem.Allocator) void {
+        self.freed.deinit(allocator);
     }
 
     pub fn get(self: *IndexList) ?u32 {
@@ -325,8 +328,8 @@ const IndexList = struct {
         }
     }
 
-    pub fn free(self: *IndexList, index: u32) void {
+    pub fn free(self: *IndexList, allocator: std.mem.Allocator, index: u32) void {
         if (index < self.min or index > self.max) return;
-        self.freed.append(index) catch {}; // ignore OOM
+        self.freed.append(allocator, index) catch {}; // ignore OOM
     }
 };

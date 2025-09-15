@@ -15,7 +15,7 @@ pub const CommandBufferPool = struct {
 
     pub fn init(allocator: std.mem.Allocator, device: *VkDevice, queue: Queue) !Self {
         return Self{
-            .objects = std.ArrayList(vk.CommandBuffer).init(allocator),
+            .objects = .empty,
             .next_free = 0,
             .device = device,
             .command_pool = try device.proxy.createCommandPool(&.{ .flags = .{ .reset_command_buffer_bit = true }, .queue_family_index = queue.family_index }, null),
@@ -25,7 +25,7 @@ pub const CommandBufferPool = struct {
 
     pub fn deinit(self: *Self) void {
         self.shrink(0) catch {};
-        self.objects.deinit();
+        self.objects.deinit(self.allocator);
         self.device.proxy.destroyCommandPool(self.command_pool, null);
     }
 
@@ -50,7 +50,7 @@ pub const CommandBufferPool = struct {
 
         try self.device.proxy.allocateCommandBuffers(&alloc_info, command_buffers[0..4].ptr);
 
-        try self.objects.appendSlice(&command_buffers);
+        try self.objects.appendSlice(self.allocator, &command_buffers);
         const cmd_buf = self.objects.items[self.next_free];
         self.next_free += 1;
         return cmd_buf;
@@ -72,7 +72,7 @@ pub const CommandBufferPool = struct {
             );
         }
 
-        self.objects.shrinkAndFree(target_capacity);
+        self.objects.shrinkAndFree(self.allocator, target_capacity);
         if (self.next_free > target_capacity) {
             self.next_free = target_capacity;
         }
@@ -95,7 +95,7 @@ pub const FencePool = struct {
 
     pub fn init(allocator: std.mem.Allocator, device: *VkDevice, create_flags: vk.FenceCreateFlags) Self {
         return Self{
-            .objects = std.ArrayList(vk.Fence).init(allocator),
+            .objects = .empty,
             .next_free = 0,
             .device = device,
             .create_flags = create_flags,
@@ -105,7 +105,7 @@ pub const FencePool = struct {
 
     pub fn deinit(self: *Self) void {
         self.shrink(0) catch {};
-        self.objects.deinit();
+        self.objects.deinit(self.allocator);
     }
 
     pub fn get(self: *Self) !vk.Fence {
@@ -123,7 +123,7 @@ pub const FencePool = struct {
         };
 
         const fence = try self.device.proxy.createFence(&create_info, null);
-        try self.objects.append(fence);
+        try self.objects.append(self.allocator, fence);
         self.next_free += 1;
         return fence;
     }
@@ -140,7 +140,7 @@ pub const FencePool = struct {
             self.device.proxy.destroyFence(fence, null);
         }
 
-        self.objects.shrinkAndFree(target_capacity);
+        self.objects.shrinkAndFree(self.allocator, target_capacity);
         if (self.next_free > target_capacity) {
             self.next_free = target_capacity;
         }
@@ -164,7 +164,7 @@ pub const SemaphorePool = struct {
 
     pub fn init(allocator: std.mem.Allocator, device: *VkDevice, semaphore_type: vk.SemaphoreType, initial_value: u64) Self {
         return Self{
-            .objects = std.ArrayList(vk.Semaphore).init(allocator),
+            .objects = .empty,
             .next_free = 0,
             .device = device,
             .semaphore_type = semaphore_type,
@@ -175,7 +175,7 @@ pub const SemaphorePool = struct {
 
     pub fn deinit(self: *Self) void {
         self.shrink(0) catch {};
-        self.objects.deinit();
+        self.objects.deinit(self.allocator);
     }
 
     pub fn get(self: *Self) !vk.Semaphore {
@@ -198,7 +198,7 @@ pub const SemaphorePool = struct {
         }
 
         const semaphore = try self.device.proxy.createSemaphore(&create_info, null);
-        try self.objects.append(semaphore);
+        try self.objects.append(self.allocator, semaphore);
         self.next_free += 1;
         return semaphore;
     }
@@ -215,7 +215,7 @@ pub const SemaphorePool = struct {
             self.device.proxy.destroySemaphore(semaphore, null);
         }
 
-        self.objects.shrinkAndFree(target_capacity);
+        self.objects.shrinkAndFree(self.allocator, target_capacity);
         if (self.next_free > target_capacity) {
             self.next_free = target_capacity;
         }
