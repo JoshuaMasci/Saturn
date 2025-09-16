@@ -1,6 +1,0 @@
-zig-out/
-.zig-cache/
-
-.idea
-cmake-build-debug
-.cache
