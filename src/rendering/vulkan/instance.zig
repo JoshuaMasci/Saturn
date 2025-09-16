@@ -42,17 +42,17 @@ pub fn init(
         .api_version = @bitCast(vk.API_VERSION_1_3),
     };
 
-    var instance_layers = std.ArrayList([*c]const u8).init(allocator);
-    defer instance_layers.deinit();
+    var instance_layers: std.ArrayList([*c]const u8) = .empty;
+    defer instance_layers.deinit(allocator);
 
     const builtin = @import("builtin");
     if (builtin.mode == .Debug) {
-        try instance_layers.append("VK_LAYER_KHRONOS_validation");
+        try instance_layers.append(allocator, "VK_LAYER_KHRONOS_validation");
     }
 
-    var instance_extentions = std.ArrayList([*c]const u8).init(allocator);
-    defer instance_extentions.deinit();
-    try instance_extentions.appendSlice(platform_extensions);
+    var instance_extentions: std.ArrayList([*c]const u8) = .empty;
+    defer instance_extentions.deinit(allocator);
+    try instance_extentions.appendSlice(allocator, platform_extensions);
 
     const instance_handle = try base.createInstance(&.{
         .p_application_info = &app_info,

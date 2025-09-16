@@ -80,7 +80,7 @@ pub fn serialize(self: Self, writer: anytype) !void {
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     const name = try serde.deserialzieSlice(allocator, u8, reader);
-    var value = (try reader.readStruct(Packed)).unpack();
+    var value = (try reader.readStructEndian(Packed, .little)).unpack();
     value.name = name;
     return value;
 }
@@ -104,7 +104,7 @@ pub const Json = struct {
     normal_texture: ?[]const u8 = null,
 
     pub fn read(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !std.json.Parsed(Json) {
-        const file_buffer = try dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+        const file_buffer = try dir.readFileAlloc(allocator, file_path, std.math.maxInt(usize));
         defer allocator.free(file_buffer);
         return try std.json.parseFromSlice(Json, allocator, file_buffer, .{ .allocate = .alloc_always });
     }

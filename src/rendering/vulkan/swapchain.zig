@@ -86,7 +86,7 @@ pub fn init(
         .pre_transform = transform,
         .composite_alpha = composite_alpha,
         .present_mode = present_mode,
-        .clipped = 0,
+        .clipped = .false,
         .old_swapchain = old_swapchain orelse .null_handle,
     }, null);
 

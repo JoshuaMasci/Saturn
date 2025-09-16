@@ -183,7 +183,7 @@ pub fn createRenderPass(
     };
     render_pass.addBuildFn(buildCommandBuffer, scene_build_data);
 
-    try render_graph.render_passes.append(render_pass);
+    try render_graph.render_passes.append(render_graph.allocator, render_pass);
 }
 
 pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
@@ -251,7 +251,7 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
                 if (data.resources.material_map.get(material)) |mat_entry| {
                     command_buffer.bindPipeline(.graphics, switch (mat_entry.material.alpha_mode) {
                         .alpha_opaque => self.opaque_mesh_pipeline,
-                        .alpha_mask => continue, //TODO: this
+                        .alpha_mask => self.alpha_cutoff_mesh_pipeline,
                         .alpha_blend => continue, //TODO: this
                     });
 

@@ -1,47 +1,59 @@
 # Saturn Game Framework
 
-## RoadMap (Subject to change)
+A game framework written in Zig with focus on performance and simplicity.
 
-### V0.1 (Done)
-- Move entities between worlds
-- Global entity list + entity create/delete in systems
-- Comptime hash based entity components/systems
-- Sdl3
-	- Windowing
-	- Input
-		- Keyboard/Mouse
-		- Gamepad
-		- Joystick
-	- SDL_GPU rendering
-	- Dear imgui (using sdl3 backend)
-- Physics Debug Renderer
-- Rewrite physics allocator functions to get rid of hashmap
+## Features
 
-### V0.2
-- Job System for game/physics
-- Add meshoptimizer to asset processing
-- Custom Vulkan renderer
-	- Add debug labels
-	- Sync2
-	- host_image_copy
-	- Imgui
-	- Physics Debug Renderer
-- Switch libraries (SDL, Vulkan, and zdxc) to use zig allocator in place of libc malloc/free
-- Input binding config files
+- SDL3 integration for windowing, input, and rendering
+- Vulkan renderer support
+- Jolt Physics integration
+- Dear ImGui for debug interfaces
+- Asset processing pipeline
 
+## Requirements
 
-### V0.3
-- Switch subsystems to zig modules
-- Audio (Either from Sdl3 or SteamAudio)
-- First pass on lighting/shading
-- Investigate the Slang shading language
-- Networking (Either from Sdl3 or SteamNetworking)
-- Save/Load system
-- Example projects
-- Imgui viewport support
-- Tracy integration
+- Zig 0.14.0
+- Vulkan SDK (for graphics)
+- System dependencies:
+  - Linux: libDXC,
+  - Windows: Not Supported Yet
+  - macOS: Not Supported Yet
 
-### Someday Maybe
-- Android build target
-- Metal Rendering, IOS build target (If I buy a Mac)
-- meshshading, rtx, workgraphs
+## Building
+
+Clone the repository with submodules:
+```bash
+git clone --recursive https://github.com/your-repo/Saturn.git
+cd Saturn
+```
+
+Build the project:
+```bash
+
+# Build and runs the assets pipeline
+zig build assets
+
+# Build and runs the assets pipeline only on engine assets
+zig build engine-assets
+
+# Build and runs the assets pipeline only on untracked game assets
+zig build game-assets
+
+# Builds and runs the game test project
+zig build run-game
+
+# Builds and runs the render test project
+zig build run-render
+
+```
+
+## Project Structure
+
+- `src/` - Core framework source code
+- `libs/` - Third-party libraries (Jolt Physics, etc.)
+- `assets/` - Engine asset source files
+- `game-assets/` - Untracked asset source files
+
+## License
+
+See LICENSE.md for details.

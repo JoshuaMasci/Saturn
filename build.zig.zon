@@ -10,53 +10,49 @@
         "README.md",
     },
     .dependencies = .{
-        .saturn_jolt = .{ .path = "libs/saturn_jolt" },
         .zmath = .{
-            .url = "git+https://github.com/zig-gamedev/zmath.git#ccf7297ef6c01e21b2d51ad81b5b6ce929e86a00",
-            .hash = "zmath-0.11.0-dev-wjwivZY1AwDO7yxNmZ5HWoU03f9mFBet8LN9-oYc3i29",
+            .url = "git+https://github.com/zig-gamedev/zmath#3a5955b2b72cd081563fbb084eff05bffd1e3fbb",
+            .hash = "zmath-0.11.0-dev-wjwivdMsAwD-xaLj76YHUq3t9JDH-X16xuMTmnDzqbu2",
         },
         .sdl = .{
             .url = "git+https://github.com/castholm/SDL.git#1994ca5dbad5a3e3c670a9ab8533d86cfd97bdc0",
             .hash = "sdl-0.2.6+3.2.20-7uIn9NgjfwHH5a6HhyLHat2nHU3OP5B05QHhKJKuxEex",
             .lazy = true,
         },
-        .vulkan_zig = .{
-            .url = "git+https://github.com/Snektron/vulkan-zig.git#42e7a8409b8150e1cbd57a8ff8cec219114bac74",
-            .hash = "vulkan-0.0.0-r7Ytx2dUAwDhoUvuIqliqPUbyDZZi0bl_CQIwspUpHs_",
+        .vulkan = .{
+            .url = "git+https://github.com/Snektron/vulkan-zig#c9c4dae70356766f0954ae7d2b8aba4d1dd53a2a",
+            .hash = "vulkan-0.0.0-r7Ytx6hBAwBUnt0XA-uOkR2hda4fAHFhQITNTgJpnFkY",
         },
         .vulkan_headers = .{
-            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#e2e53a724677f6eba8ff0ce1ccb64ee321785cbd",
-            .hash = "N-V-__8AAMjV7gGH3DKcxHoM9tIKAxu9ypDzlJHSgEhQ8v_f",
+            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers.git#d1cd37e925510a167d4abef39340dbdea47d8989",
+            .hash = "N-V-__8AAESg9gHKzlANbo03d4Fcb5m_5aZXJXIhYbWzCe4G",
         },
         .cimgui_zig = .{
-            .url = "git+https://github.com/tiawl/cimgui.zig#ff1e39da339f62742901408016bbbf5c2910d5bb",
-            .hash = "cimgui_zig-1.0.0-2XubkqR8XwAzhx4hjU-j7vGSfO9arVurVsA4PZ0sVYUy",
-        },
-        .zimgui = .{
-            .url = "git+https://github.com/JoshuaMasci/zimgui.git#7876b01d09b8a72d404f8b5de5adc86b866c9398",
-            .hash = "zimgui-0.0.0-KY3Tl37OQQDVJ1QlzquTgxshoP6kY6fOv1ZLhb1OEPon",
+            .url = "git+https://github.com/tiawl/cimgui.zig#96f83bf17520755d18447206d5cbff4588f521b6",
+            .hash = "cimgui_zig-1.0.0-2Xubkid9XwBPdCRaz0NeLppDmNQP8xA4O6pMO1rQ-oZq",
         },
         .zlua = .{
-            .url = "git+https://github.com/natecraddock/ziglua#b1fa62844dafb782219631d88b7fc70e0b7cfe37",
-            .hash = "zlua-0.1.0-hGRpCxwbBQCft7Dgs_DsO0OGBbCUGgXn_mQd5c382Jn5",
+            .url = "git+https://github.com/natecraddock/ziglua#31d1abd4c27a31d557d6feadb4520d661122afc6",
+            .hash = "zlua-0.1.0-hGRpC0Q1BQAzutKvY4BcmRioElQE5bU2VUSt9boEq2pD",
         },
 
         //Assets
         .zdxc = .{
-            .path = "libs/zdxc",
+            .url = "git+https://github.com/JoshuaMasci/zdxc.git#7d8ab0be5503ece5b3d2c5cd308ac2da6a05e187",
+            .hash = "zdxc-0.1.0-wvzYRVRJAADHNQ6oj7oD4ERRQL_vVaDrBqyqzxn5OCy0",
             .optional = true,
         },
         .zgltf = .{
-            .url = "git+https://github.com/JoshuaMasci/zgltf.git#41ee56340664e20e7d9f3699a76702c124c0ba6f",
-            .hash = "zgltf-0.1.0-sX6QAswGAgBcYNNhNXbrCw45plFQRiYOXkv_jFhZhZVD",
-        },
-        .zobj = .{
-            .url = "git+https://github.com/chip2n/zig-obj.git#a2965b5860220538241fad5a5aa290312ca4e08a",
-            .hash = "obj-2.0.1-v8OfiljJAAAJx4eT9RzWIn2m9-AkEJx94-DYD28jEoz3",
+            .url = "git+https://github.com/kooparse/zgltf#34fba4f48fac331b30316b4ace9b5be7b819d3a9",
+            .hash = "zgltf-0.1.0-sX6QAlESAgDC3JQJwE68MnU2xMLyNPSN60FT7KLjqUWt",
         },
         .zstbi = .{
-            .url = "git+https://github.com/zig-gamedev/zstbi.git#094c4bba5cdbec167d3f6aaa98cccccd5c99145f",
-            .hash = "zstbi-0.11.0-dev-L0Ea_-eVBwCl8RYA98PhLDw3Fhw5k7FJOHSMDKWDOvqx",
+            .url = "git+https://github.com/zig-gamedev/zstbi#2c4b3100ccb7aed90ecc9439030899764e2a8d47",
+            .hash = "zstbi-0.11.0-dev-L0Ea_yaWBwAHwFoCuyjkFyaiSsbjt4UOrkntR0c_nmzz",
+        },
+        .obj = .{
+            .url = "git+https://github.com/chip2n/zig-obj.git#c49e1575b267aecaa5ebf29c9ba456690ebd2407",
+            .hash = "obj-3.0.1-v8OfiujLAABIhb_JGPB7s_4Tc4tkelEazCeOzOMjXV4A",
         },
     },
 }

@@ -110,5 +110,5 @@ pub fn uploadBufferData(
         .p_command_buffers = &command_buffers,
     };
     try device.proxy.queueSubmit(queue.handle, 1, (&submit_info)[0..1], fence);
-    _ = try device.proxy.waitForFences(1, (&fence)[0..1], 1, std.math.maxInt(u64));
+    _ = try device.proxy.waitForFences(1, (&fence)[0..1], .true, std.math.maxInt(u64));
 }

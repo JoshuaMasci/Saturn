@@ -22,5 +22,12 @@
     "program": "$ZED_WORKTREE_ROOT/zig-out/bin/saturn_renderer",
     "request": "launch",
     "adapter": "CodeLLDB"
+  },
+  {
+    "label": "Run Saturn Assets",
+    "args": ["game", "game-assets/", "zig-out/game-assets/"],
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/saturn_asset",
+    "request": "launch",
+    "adapter": "CodeLLDB"
   }
 ]

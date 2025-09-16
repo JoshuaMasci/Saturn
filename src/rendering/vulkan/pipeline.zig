@@ -65,7 +65,7 @@ pub fn createGraphicsPipeline(
     const input_assembly = vk.PipelineInputAssemblyStateCreateInfo{
         .flags = .{},
         .topology = .triangle_list,
-        .primitive_restart_enable = vk.FALSE,
+        .primitive_restart_enable = .false,
     };
 
     // Viewport state (using dynamic state)
@@ -80,13 +80,13 @@ pub fn createGraphicsPipeline(
     // Rasterization state
     const rasterizer = vk.PipelineRasterizationStateCreateInfo{
         .flags = .{},
-        .depth_clamp_enable = vk.FALSE,
-        .rasterizer_discard_enable = vk.FALSE,
+        .depth_clamp_enable = .false,
+        .rasterizer_discard_enable = .false,
         .polygon_mode = config.polygon_mode,
         .line_width = 1.0,
         .cull_mode = config.cull_mode,
         .front_face = config.front_face,
-        .depth_bias_enable = vk.FALSE,
+        .depth_bias_enable = .false,
         .depth_bias_constant_factor = 0.0,
         .depth_bias_clamp = 0.0,
         .depth_bias_slope_factor = 0.0,
@@ -95,24 +95,24 @@ pub fn createGraphicsPipeline(
     // Multisampling state
     const multisampling = vk.PipelineMultisampleStateCreateInfo{
         .flags = .{},
-        .sample_shading_enable = vk.FALSE,
+        .sample_shading_enable = .false,
         .rasterization_samples = config.sample_count,
         .min_sample_shading = 1.0,
         .p_sample_mask = null,
-        .alpha_to_coverage_enable = vk.FALSE,
-        .alpha_to_one_enable = vk.FALSE,
+        .alpha_to_coverage_enable = .false,
+        .alpha_to_one_enable = .false,
     };
 
     // Depth stencil state
     const depth_stencil = vk.PipelineDepthStencilStateCreateInfo{
         .flags = .{},
-        .depth_test_enable = if (config.enable_depth_test and config.depth_format != null) vk.TRUE else vk.FALSE,
-        .depth_write_enable = if (config.enable_depth_write and config.depth_format != null) vk.TRUE else vk.FALSE,
+        .depth_test_enable = if (config.enable_depth_test and config.depth_format != null) .true else .false,
+        .depth_write_enable = if (config.enable_depth_write and config.depth_format != null) .true else .false,
         .depth_compare_op = config.depth_compare_op,
-        .depth_bounds_test_enable = vk.FALSE,
+        .depth_bounds_test_enable = .false,
         .min_depth_bounds = 0.0,
         .max_depth_bounds = 1.0,
-        .stencil_test_enable = vk.FALSE,
+        .stencil_test_enable = .false,
         .front = std.mem.zeroes(vk.StencilOpState),
         .back = std.mem.zeroes(vk.StencilOpState),
     };
@@ -120,7 +120,7 @@ pub fn createGraphicsPipeline(
     // Color blend attachment state
     const color_blend_attachment: [1]vk.PipelineColorBlendAttachmentState = .{.{
         .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
-        .blend_enable = if (config.enable_blending) vk.TRUE else vk.FALSE,
+        .blend_enable = if (config.enable_blending) .true else .false,
         .src_color_blend_factor = .src_alpha,
         .dst_color_blend_factor = .one_minus_src_alpha,
         .color_blend_op = .add,
@@ -132,7 +132,7 @@ pub fn createGraphicsPipeline(
     // Color blend state
     const color_blending = vk.PipelineColorBlendStateCreateInfo{
         .flags = .{},
-        .logic_op_enable = vk.FALSE,
+        .logic_op_enable = .false,
         .logic_op = .copy,
         .attachment_count = @intCast(color_blend_attachment.len),
         .p_attachments = @ptrCast(&color_blend_attachment),

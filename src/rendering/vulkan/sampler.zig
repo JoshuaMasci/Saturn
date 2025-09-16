@@ -19,14 +19,14 @@ pub fn init(device: *VkDevice, filter_mode: vk.Filter, address_mode: vk.SamplerA
         .address_mode_v = address_mode,
         .address_mode_w = address_mode,
         .mip_lod_bias = 0.0,
-        .anisotropy_enable = 0,
+        .anisotropy_enable = .false,
         .max_anisotropy = 0.0,
-        .compare_enable = 0,
+        .compare_enable = .false,
         .compare_op = .always,
         .min_lod = 0.0,
         .max_lod = vk.LOD_CLAMP_NONE,
         .border_color = .float_opaque_black,
-        .unnormalized_coordinates = 0,
+        .unnormalized_coordinates = .false,
     }, null);
     errdefer device.proxy.destroySampler(handle, null);
 

@@ -3,7 +3,7 @@ const zobj = @import("zobj");
 const Mesh = @import("mesh.zig");
 
 pub fn loadObjMesh(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []const u8) !Mesh {
-    const file_buffer = try dir.readFileAllocOptions(allocator, file_path, std.math.maxInt(usize), null, 4, null);
+    const file_buffer = try dir.readFileAlloc(allocator, file_path, std.math.maxInt(usize));
     defer allocator.free(file_buffer);
 
     var model = try zobj.parseObj(allocator, file_buffer);

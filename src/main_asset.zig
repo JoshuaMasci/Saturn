@@ -255,7 +255,7 @@ fn processShaderDir(allocator: std.mem.Allocator, meta_file_path: []const u8) !v
         if (entry.kind == .file) {
             const shader_ext = std.fs.path.extension(entry.path);
             if (hlsl.getShaderStage(shader_ext)) |stage| {
-                const shader_code = shader_dir.readFileAllocOptions(allocator, entry.path, std.math.maxInt(usize), null, 4, 0) catch |err| {
+                const shader_code = shader_dir.readFileAllocOptions(allocator, entry.path, std.math.maxInt(usize), null, .@"4", 0) catch |err| {
                     std.log.err("Failed to read shader {s}: {}", .{ entry.path, err });
                     local_error_count += 1;
                     continue;
@@ -348,7 +348,10 @@ fn processGltf(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]cons
         const output_file = gltf_dir.createFile(output_file_path, .{}) catch |err| return errorString(allocator, "Failed to create file: {}", .{err});
         defer output_file.close();
 
-        scene.serialize(output_file.writer()) catch |err| return errorString(allocator, "Failed to serialize file: {}", .{err});
+        var buffer: [1024]u8 = undefined;
+        var writer = output_file.writer(&buffer);
+        scene.serialize(&writer.interface) catch |err| return errorString(allocator, "Failed to serialize file: {}", .{err});
+        writer.interface.flush() catch |err| return errorString(allocator, "Failed to flush file: {}", .{err});
     }
 
     thread_pool.waitAndWork(&wait_group);
@@ -360,7 +363,7 @@ pub fn loadZonFile(comptime T: type, allocator: std.mem.Allocator, dir: std.fs.D
     const file = try dir.openFile(path, .{});
     defer file.close();
 
-    const bytes = try file.readToEndAllocOptions(allocator, 1024 * 1024, 1024, @alignOf(u8), 0);
+    const bytes = try file.readToEndAllocOptions(allocator, 1024 * 1024, null, .@"1", 0);
     defer allocator.free(bytes);
 
     const t = try std.zon.parse.fromSlice(T, allocator, bytes, null, options);

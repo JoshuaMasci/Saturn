@@ -46,15 +46,16 @@ pub const SceneStaticMesh = struct {
 pub const RenderScene = struct {
     const Self = @This();
 
+    allocator: std.mem.Allocator,
     skybox: ?CubeTextureAssetHandle = null,
-    static_meshes: std.ArrayList(SceneStaticMesh),
+    static_meshes: std.ArrayList(SceneStaticMesh) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) Self {
-        return .{ .static_meshes = std.ArrayList(SceneStaticMesh).init(allocator) };
+        return .{ .allocator = allocator };
     }
 
     pub fn deinit(self: *Self) void {
-        self.static_meshes.deinit();
+        self.static_meshes.deinit(self.allocator);
     }
 
     pub fn clear(self: *Self) void {

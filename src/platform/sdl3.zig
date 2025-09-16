@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const App = @import("../app.zig").App;
 const Settings = @import("../rendering/settings.zig");
 
 pub const Controller = @import("sdl3/controller.zig");
@@ -419,7 +418,7 @@ pub const Vulkan = struct {
     pub fn createSurface(instance: vk.Instance, window: Window, allocator: ?*const vk.AllocationCallbacks) ?vk.SurfaceKHR {
         var c_surface: c.VkSurfaceKHR = undefined;
         const c_instance: c.VkInstance = @ptrFromInt(@intFromEnum(instance));
-        const c_allocator: ?*c.VkAllocationCallbacks = @constCast(@ptrCast(allocator));
+        const c_allocator: ?*c.VkAllocationCallbacks = @ptrCast(@constCast(allocator));
 
         if (c.SDL_Vulkan_CreateSurface(window.handle, c_instance, c_allocator, &c_surface)) {
             const surface: vk.SurfaceKHR = @enumFromInt(@intFromPtr(c_surface));
@@ -430,7 +429,7 @@ pub const Vulkan = struct {
 
     pub fn destroySurface(instance: vk.Instance, surface: vk.SurfaceKHR, allocator: ?*const vk.AllocationCallbacks) void {
         const c_instance: c.VkInstance = @ptrFromInt(@intFromEnum(instance));
-        const c_allocator: ?*c.VkAllocationCallbacks = @constCast(@ptrCast(allocator));
+        const c_allocator: ?*c.VkAllocationCallbacks = @ptrCast(@constCast(allocator));
         c.SDL_Vulkan_DestroySurface(c_instance, @ptrFromInt(@intFromEnum(surface)), c_allocator);
     }
 };

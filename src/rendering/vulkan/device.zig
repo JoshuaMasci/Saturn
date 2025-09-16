@@ -77,7 +77,10 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     const instance = try Instance.init(allocator, Vulkan.getProcInstanceFunction().?, Vulkan.getInstanceExtensions(), .{ .name = "Saturn Engine", .version = Instance.makeVersion(0, 0, 0, 1) });
     errdefer instance.deinit();
 
-    std.log.info("Available Physical Devices: \n{any}", .{instance.physical_devices});
+    std.log.info("Available Physical Devices:", .{});
+    for (instance.physical_devices, 0..) |physical_device, i| {
+        std.log.info("{}: {f}", .{ i, physical_device.info });
+    }
 
     const device_index = 0; //TODO: select device rather than just assume 0 is good=
     std.log.info("Picking Device {}: {s}", .{ device_index, instance.physical_devices[device_index].info.name });
@@ -124,12 +127,12 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
 
     for (frame_data) |*data| {
         data.* = .{
-            .frame_wait_fences = .init(allocator),
+            .frame_wait_fences = .empty,
             .graphics_command_pool = try .init(allocator, device, device.graphics_queue),
             .semaphore_pool = .init(allocator, device, .binary, 0),
             .fence_pool = .init(allocator, device, .{}),
-            .transient_buffers = .init(allocator),
-            .transient_images = .init(allocator),
+            .transient_buffers = .empty,
+            .transient_images = .empty,
         };
     }
 
@@ -182,12 +185,12 @@ pub fn deinit(self: *Self) void {
     _ = self.device.proxy.deviceWaitIdle() catch {};
 
     for (self.frame_data) |*data| {
-        data.frame_wait_fences.deinit();
+        data.frame_wait_fences.deinit(self.allocator);
         data.graphics_command_pool.deinit();
         data.semaphore_pool.deinit();
         data.fence_pool.deinit();
-        data.transient_buffers.deinit();
-        data.transient_images.deinit();
+        data.transient_buffers.deinit(self.allocator);
+        data.transient_images.deinit(self.allocator);
 
         if (data.upload_src_buffer) |buffer| {
             buffer.deinit();
@@ -369,7 +372,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
 
     //Wait for previous frame to finish
     if (frame_data.frame_wait_fences.items.len > 0) {
-        _ = try self.device.proxy.waitForFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr, 1, std.math.maxInt(u64));
+        _ = try self.device.proxy.waitForFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr, .true, std.math.maxInt(u64));
         frame_data.frame_wait_fences.clearRetainingCapacity();
     }
 
@@ -384,7 +387,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
     frame_data.reset();
 
     const fence = try frame_data.fence_pool.get();
-    try frame_data.frame_wait_fences.append(fence);
+    try frame_data.frame_wait_fences.append(self.allocator, fence);
     errdefer {
         self.device.proxy.resetFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr) catch |err| {
             std.log.err("Failed to reset frame_wait_fences: {}", .{err});
@@ -440,7 +443,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
     defer temp_allocator.free(images);
 
     // Transient Buffers
-    try frame_data.transient_buffers.resize(render_graph.transient_buffers.items.len);
+    try frame_data.transient_buffers.resize(self.allocator, render_graph.transient_buffers.items.len);
 
     for (buffers, render_graph.buffers.items) |*buffer, rg_buffer| {
         buffer.* = switch (rg_buffer) {
@@ -454,7 +457,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
     }
 
     // Transient Images
-    try frame_data.transient_images.resize(render_graph.transient_textures.items.len);
+    try frame_data.transient_images.resize(self.allocator, render_graph.transient_textures.items.len);
 
     for (images, render_graph.textures.items, 0..) |*image, rg_texture, i| {
         image.* = switch (rg_texture) {
@@ -569,7 +572,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
 
         if (render_pass.raster_pass) |raster_pass| {
             var image_barriers: std.ArrayList(vk.ImageMemoryBarrier2) = try .initCapacity(temp_allocator, raster_pass.color_attachments.items.len + 1);
-            defer image_barriers.deinit();
+            defer image_barriers.deinit(temp_allocator);
 
             const color_attachments = try temp_allocator.alloc(vk.RenderingAttachmentInfo, raster_pass.color_attachments.items.len);
             defer temp_allocator.free(color_attachments);

@@ -14,13 +14,8 @@ pub const VendorID = enum(u32) {
 
     pub fn format(
         self: @This(),
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
+        writer: *std.Io.Writer,
     ) !void {
-        _ = fmt; // autofix
-        _ = options; // autofix
-
         if (std.enums.tagName(@This(), self)) |tag_name| {
             return writer.print("{s}", .{tag_name});
         } else {
@@ -59,18 +54,14 @@ extensions: Extensions,
 
 pub fn format(
     self: @This(),
-    comptime fmt: []const u8,
-    options: std.fmt.FormatOptions,
-    writer: anytype,
+    writer: *std.Io.Writer,
 ) !void {
-    _ = fmt; // autofix
-    _ = options; // autofix
     return writer.print(
         \\DeviceInfo {{
         \\  name: {s}
         \\  device_id: 0x{x}
         \\  api_version: {}.{}.{}.{}
-        \\  vendor_id: {}
+        \\  vendor_id: {f}
         \\  type: {}
         \\  memory: {}
         \\  queues: {}

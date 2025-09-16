@@ -29,18 +29,20 @@ pub fn HandlePool(comptime T: type) type {
             }
         };
 
+        allocator: Allocator,
         list: std.ArrayList(ListEntry),
         first_freed: ?u32,
 
         pub fn init(allocator: Allocator) Self {
             return .{
-                .list = std.ArrayList(ListEntry).init(allocator),
+                .allocator = allocator,
+                .list = .empty,
                 .first_freed = null,
             };
         }
 
         pub fn deinit(self: *Self) void {
-            self.list.deinit();
+            self.list.deinit(self.allocator);
         }
 
         pub fn deinit_with_entries(self: *Self) void {
@@ -69,7 +71,7 @@ pub fn HandlePool(comptime T: type) type {
             } else {
                 const index: u32 = @intCast(self.list.items.len);
                 const revision: u32 = 0;
-                try self.list.append(.{
+                try self.list.append(self.allocator, .{
                     .revision = revision,
                     .value = value,
                     .next_freed = null,
@@ -185,137 +187,5 @@ pub fn HandlePool(comptime T: type) type {
                 it.index = 0;
             }
         };
-    };
-}
-
-pub fn HandlePtrPool(comptime Handle: type, comptime T: type) type {
-    return struct {
-        const Self = @This();
-
-        mutex: std.Thread.Mutex,
-        pool: std.heap.MemoryPool(T),
-        map: std.AutoArrayHashMap(Handle, *T),
-
-        pub fn init(allocator: std.mem.Allocator) Self {
-            return Self{
-                .pool = .init(allocator),
-                .map = .init(allocator),
-                .mutex = .{},
-            };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.mutex.lock();
-
-            if (comptime std.meta.hasFn(T, "deinit")) {
-                for (self.map.values()) |value| {
-                    value.deinit();
-                }
-            }
-
-            self.pool.deinit();
-            self.map.deinit();
-        }
-
-        pub fn create(self: *Self, handle: Handle) *T {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            // Check if the object is already created
-            if (self.map.contains(handle)) {
-                std.debug.panic("Handle({}) already exists in map", .{handle});
-            }
-
-            // Create a new object from the pool
-            const obj = self.pool.create() catch |err| std.debug.panic("Failed to alloc from pool: {}", .{err});
-            self.map.put(handle, obj) catch |err| std.debug.panic("Failed to insert into map: {}", .{err});
-            return obj;
-        }
-
-        pub fn destroy(self: *Self, handle: Handle) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            // Remove the object from the map
-            if (self.map.contains(handle)) {
-                const value = self.map.get(handle) orelse return;
-
-                if (comptime std.meta.hasFn(T, "deinit")) {
-                    value.deinit();
-                }
-
-                self.pool.destroy(value);
-                _ = self.map.swapRemove(handle);
-            }
-        }
-
-        pub fn get(self: *Self, handle: Handle) ?*T {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            return self.map.get(handle);
-        }
-
-        pub fn getValues(self: *Self, temp_allocator: std.mem.Allocator) []*T {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-            return temp_allocator.dupe(*T, self.map.values()) catch |err| std.debug.panic("Failed to alloc from temp list: {}", .{err});
-        }
-    };
-}
-
-pub fn LockQueue(comptime T: type) type {
-    return struct {
-        const Self = @This();
-
-        pub const LockedList = struct {
-            mutex: *std.Thread.Mutex,
-            list: []T,
-
-            pub fn deinit(self: @This()) void {
-                self.mutex.unlock();
-            }
-        };
-
-        mutex: std.Thread.Mutex,
-        list: std.ArrayList(T),
-
-        pub fn init(allocator: std.mem.Allocator) Self {
-            return .{
-                .mutex = .{},
-                .list = std.ArrayList(T).init(allocator),
-            };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.mutex.lock();
-            self.list.deinit();
-        }
-
-        pub fn push(self: *Self, value: T) !void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-            try self.list.append(value);
-        }
-
-        pub fn pop(self: *Self) ?T {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-            return self.list.popOrNull();
-        }
-
-        pub fn popAll(self: *Self) ?LockedList {
-            self.mutex.lock();
-
-            if (self.list.items.len == 0) {
-                self.mutex.unlock();
-                return null;
-            }
-
-            return .{
-                .mutex = &self.mutex,
-                .list = self.list.items,
-            };
-        }
     };
 }

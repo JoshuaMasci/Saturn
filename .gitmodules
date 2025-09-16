@@ -1,3 +1,0 @@
-[submodule "libs/saturn_physics/JoltPhysics"]
-	path = libs/saturn_jolt/JoltPhysics
-	url = https://github.com/jrouwe/JoltPhysics.git

@@ -128,16 +128,16 @@ pub const RenderPass = struct {
     pub fn addColorAttachment(self: *Self, attachment: ColorAttachment) !void {
         if (self.raster_pass == null) {
             self.raster_pass = RasterPass{
-                .color_attachments = std.ArrayList(ColorAttachment).init(self.allocator),
+                .color_attachments = .empty,
             };
         }
-        try self.raster_pass.?.color_attachments.append(attachment);
+        try self.raster_pass.?.color_attachments.append(self.allocator, attachment);
     }
 
     pub fn addDepthAttachment(self: *Self, attachment: DepthAttachment) void {
         if (self.raster_pass == null) {
             self.raster_pass = RasterPass{
-                .color_attachments = std.ArrayList(ColorAttachment).init(self.allocator),
+                .color_attachments = .empty,
             };
         }
         self.raster_pass.?.depth_attachment = attachment;
@@ -167,62 +167,62 @@ pub const RenderGraph = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .swapchains = .init(allocator),
-            .transient_buffers = .init(allocator),
-            .transient_textures = .init(allocator),
-            .buffers = .init(allocator),
-            .textures = .init(allocator),
-            .buffer_upload_passes = .init(allocator),
-            .render_passes = .init(allocator),
+            .swapchains = .empty,
+            .transient_buffers = .empty,
+            .transient_textures = .empty,
+            .buffers = .empty,
+            .textures = .empty,
+            .buffer_upload_passes = .empty,
+            .render_passes = .empty,
         };
     }
 
-    pub fn deinit(self: Self) void {
-        self.swapchains.deinit();
-        self.transient_buffers.deinit();
-        self.transient_textures.deinit();
-        self.buffers.deinit();
-        self.textures.deinit();
-        self.buffer_upload_passes.deinit();
-        self.render_passes.deinit();
+    pub fn deinit(self: *Self) void {
+        self.swapchains.deinit(self.allocator);
+        self.transient_buffers.deinit(self.allocator);
+        self.transient_textures.deinit(self.allocator);
+        self.buffers.deinit(self.allocator);
+        self.textures.deinit(self.allocator);
+        self.buffer_upload_passes.deinit(self.allocator);
+        self.render_passes.deinit(self.allocator);
     }
 
     pub fn importBuffer(self: *Self, handle: BufferHandle) !RenderGraphBuffer {
         const buffer_index = self.buffers.items.len;
-        try self.buffer.append(.{ .persistent = handle });
+        try self.buffer.append(self.allocator, .{ .persistent = handle });
         return .{ .index = buffer_index };
     }
 
     pub fn createTransientBuffer(self: *Self, definition: TransientBuffer) !RenderGraphBufferHandle {
         const transient_index = self.transient_buffers.items.len;
-        try self.transient_buffers.append(definition);
+        try self.transient_buffers.append(self.allocator, definition);
 
         const buffer_index = self.buffers.items.len;
-        try self.buffers.append(.{ .transient = transient_index });
+        try self.buffers.append(self.allocator, .{ .transient = transient_index });
         return .{ .index = buffer_index };
     }
 
     pub fn importTexture(self: *Self, handle: ImageHandle) !RenderGraphTextureHandle {
         const texture_index = self.textures.items.len;
-        try self.textures.append(.{ .persistent = handle });
+        try self.textures.append(self.allocator, .{ .persistent = handle });
         return .{ .index = texture_index };
     }
 
     pub fn createTransientTexture(self: *Self, definition: TransientTexture) !RenderGraphTextureHandle {
         const transient_index = self.transient_textures.items.len;
-        try self.transient_textures.append(definition);
+        try self.transient_textures.append(self.allocator, definition);
 
         const texture_index = self.textures.items.len;
-        try self.textures.append(.{ .transient = transient_index });
+        try self.textures.append(self.allocator, .{ .transient = transient_index });
         return .{ .index = texture_index };
     }
 
     pub fn acquireSwapchainTexture(self: *Self, window: Window) !RenderGraphTextureHandle {
         const swapchain_index = self.swapchains.items.len;
-        try self.swapchains.append(window);
+        try self.swapchains.append(self.allocator, window);
 
         const texture_index = self.textures.items.len;
-        try self.textures.append(.{ .swapchain = swapchain_index });
+        try self.textures.append(self.allocator, .{ .swapchain = swapchain_index });
         return .{ .index = texture_index };
     }
 };
