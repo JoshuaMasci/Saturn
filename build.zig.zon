@@ -10,7 +10,6 @@
         "README.md",
     },
     .dependencies = .{
-        .saturn_jolt = .{ .path = "libs/saturn_jolt" },
         .zmath = .{
             .url = "git+https://github.com/zig-gamedev/zmath#3a5955b2b72cd081563fbb084eff05bffd1e3fbb",
             .hash = "zmath-0.11.0-dev-wjwivdMsAwD-xaLj76YHUq3t9JDH-X16xuMTmnDzqbu2",
@@ -39,7 +38,8 @@
 
         //Assets
         .zdxc = .{
-            .path = "libs/zdxc",
+            .url = "git+https://github.com/JoshuaMasci/zdxc.git#7d8ab0be5503ece5b3d2c5cd308ac2da6a05e187",
+            .hash = "zdxc-0.1.0-wvzYRVRJAADHNQ6oj7oD4ERRQL_vVaDrBqyqzxn5OCy0",
             .optional = true,
         },
         .zgltf = .{
