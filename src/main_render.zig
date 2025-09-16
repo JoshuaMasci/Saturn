@@ -7,10 +7,10 @@ const zm = @import("zmath");
 
 const AssetRegistry = @import("asset/registry.zig");
 const Scene = @import("asset/scene.zig");
-const imgui = @import("imgui2.zig").c;
+const imgui = @import("imgui.zig").c;
 const sdl3 = @import("platform/sdl3.zig");
 const Camera = @import("rendering/camera.zig").Camera;
-const ImguiRenderer = @import("rendering/imgui_renderer2.zig");
+const ImguiRenderer = @import("rendering/imgui_renderer.zig");
 const Resources = @import("rendering/resources.zig");
 const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");

@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const vk = @import("vulkan");
-const imgui = @import("../imgui2.zig").c;
+const imgui = @import("../imgui.zig").c;
 const sdl3 = @import("../platform/sdl3.zig");
 
 const Device = @import("vulkan/device.zig");
