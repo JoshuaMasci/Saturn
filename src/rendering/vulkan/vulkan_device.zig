@@ -89,7 +89,6 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     };
 
     var features_12 = vk.PhysicalDeviceVulkan12Features{
-        .p_next = if (physical_device.info.extensions.mesh_shader_support) &feature_mesh_shading else null,
         .runtime_descriptor_array = .true,
         .descriptor_indexing = .true,
         .descriptor_binding_update_unused_while_pending = .true,
@@ -106,7 +105,6 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .shader_storage_image_array_non_uniform_indexing = .true,
     };
     var features_13 = vk.PhysicalDeviceVulkan13Features{
-        .p_next = @ptrCast(&features_12),
         .dynamic_rendering = .true,
         .synchronization_2 = .true,
 
@@ -115,20 +113,26 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .shader_terminate_invocation = .true,
     };
     var features_robustness2 = vk.PhysicalDeviceRobustness2FeaturesEXT{
-        .p_next = @ptrCast(&features_13),
         .null_descriptor = .true,
         .robust_buffer_access_2 = .true,
         .robust_image_access_2 = .true,
     };
 
-    const create_info: vk.DeviceCreateInfo = .{
-        .p_next = @ptrCast(&features_robustness2),
+    var create_info: vk.DeviceCreateInfo = .{
         .queue_create_info_count = queue_info_count,
         .p_queue_create_infos = &queue_info,
         .pp_enabled_extension_names = @ptrCast(device_extentions.items),
         .enabled_extension_count = @intCast(device_extentions.items.len),
         .p_enabled_features = &features,
     };
+
+    if (physical_device.info.extensions.mesh_shader_support) {
+        appendNextPtrChain(&create_info, &feature_mesh_shading);
+    }
+
+    appendNextPtrChain(&create_info, &features_robustness2);
+    appendNextPtrChain(&create_info, &features_13);
+    appendNextPtrChain(&create_info, &features_12);
 
     const device_handle = try instance.createDevice(
         physical_device.handle,
@@ -195,4 +199,9 @@ pub fn setDebugName(self: Self, object_type: vk.ObjectType, handle: u64, name: [
     }) catch |err| {
         std.log.err("Failed to set object name \"{s}\" for  {}: {}", .{ name, handle, err });
     };
+}
+
+fn appendNextPtrChain(root: anytype, next_struct: anytype) void {
+    next_struct.*.p_next = @constCast(root.*.p_next); //Don't care about the const since im only modifiying the p_next field
+    root.*.p_next = next_struct;
 }

@@ -87,9 +87,13 @@ pub fn createRenderPass(
 }
 
 pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
-    _ = build_data; // autofix
     _ = device; // autofix
     _ = resources; // autofix
-    _ = command_buffer; // autofix
     _ = raster_pass_extent; // autofix
+
+    const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
+    const self = data.self;
+
+    command_buffer.bindPipeline(.graphics, self.triangle_pipeline);
+    command_buffer.drawMeshTasksEXT(1, 1, 1);
 }
