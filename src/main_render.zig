@@ -7,16 +7,17 @@ const zm = @import("zmath");
 
 const AssetRegistry = @import("asset/registry.zig");
 const Scene = @import("asset/scene.zig");
+const DebugCamera = @import("debug_camera.zig");
 const imgui = @import("imgui.zig").c;
 const sdl3 = @import("platform/sdl3.zig");
 const Camera = @import("rendering/camera.zig").Camera;
 const ImguiRenderer = @import("rendering/imgui_renderer.zig");
+const MeshShading = @import("rendering/mesh_shading.zig");
 const Resources = @import("rendering/resources.zig");
 const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");
 const Device = @import("rendering/vulkan/device.zig");
 const Transform = @import("transform.zig");
-const DebugCamera = @import("debug_camera.zig");
 
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
@@ -33,7 +34,7 @@ pub fn main() !void {
     //const scene_filepath = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
     const scene_filepath = "zig-out/game-assets/Bistro/scene.json";
 
-    {
+    if (false) {
         var scene_json: std.json.Parsed(Scene) = undefined;
         {
             var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
@@ -102,6 +103,7 @@ const App = struct {
     resources: Resources,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
+    mesh_shading: MeshShading,
 
     scene_info: ?struct {
         scene: RenderScene,
@@ -177,7 +179,7 @@ const App = struct {
         io.ConfigFlags |= imgui.ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= imgui.ImGuiConfigFlags_NavEnableGamepad;
         io.ConfigFlags |= imgui.ImGuiConfigFlags_DockingEnable;
-        io.ConfigFlags |= imgui.ImGuiConfigFlags_ViewportsEnable;
+        //io.ConfigFlags |= imgui.ImGuiConfigFlags_ViewportsEnable;
 
         if (!imgui.cImGui_ImplSDL3_InitForVulkan(@ptrCast(window.handle))) return error.cImGui_ImplSDL3_InitForVulkanFailure;
         errdefer imgui.cImGui_ImplSDL3_Shutdown();
@@ -189,6 +191,15 @@ const App = struct {
         );
         errdefer imgui_renderer.deinit();
 
+        var mesh_shading: MeshShading = try .init(
+            allocator,
+            asset_registry,
+            vulkan_device,
+            swapchain_format,
+            vulkan_device.bindless_layout,
+        );
+        errdefer mesh_shading.deinit();
+
         return .{
             .allocator = allocator,
             .asset_registry = asset_registry,
@@ -198,6 +209,7 @@ const App = struct {
             .resources = resources,
             .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
+            .mesh_shading = mesh_shading,
             .temp_allocator = .init(allocator),
         };
     }
@@ -211,6 +223,7 @@ const App = struct {
 
         self.vulkan_device.waitIdle();
 
+        self.mesh_shading.deinit();
         self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
         self.resources.deinit();
@@ -359,6 +372,8 @@ const App = struct {
                 });
                 try render_graph.render_passes.append(render_graph.allocator, render_pass);
             }
+
+            try self.mesh_shading.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
 
             try self.imgui_renderer.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
         }

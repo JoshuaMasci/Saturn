@@ -21,12 +21,16 @@ pub const Stage = enum(u32) {
     vertex,
     fragment,
     compute,
+    task,
+    mesh,
 
     pub fn getProfileString(self: Stage) []const u8 {
         return switch (self) {
             .vertex => "vs",
             .fragment => "ps",
             .compute => "cs",
+            .task => "as",
+            .mesh => "ms",
         };
     }
 };

@@ -1,5 +1,8 @@
 const std = @import("std");
+
 const vk = @import("vulkan");
+
+//TODO: reduce duplicate code in create functions
 
 pub const PipelineConfig = struct {
     color_format: vk.Format,
@@ -26,7 +29,6 @@ pub const PipelineError = error{
 };
 
 pub fn createGraphicsPipeline(
-    allocator: std.mem.Allocator,
     device: vk.DeviceProxy,
     pipeline_layout: vk.PipelineLayout,
     config: PipelineConfig,
@@ -34,8 +36,6 @@ pub fn createGraphicsPipeline(
     vertex_module: vk.ShaderModule,
     fragment_module: ?vk.ShaderModule,
 ) PipelineError!vk.Pipeline {
-    _ = allocator; // Currently unused, but available for future extensions
-
     // Shader stage create infos
     const shader_stages = [_]vk.PipelineShaderStageCreateInfo{
         .{
@@ -168,6 +168,182 @@ pub fn createGraphicsPipeline(
         .p_stages = &shader_stages,
         .p_vertex_input_state = &vertex_input_info,
         .p_input_assembly_state = &input_assembly,
+        .p_tessellation_state = null,
+        .p_viewport_state = &viewport_state,
+        .p_rasterization_state = &rasterizer,
+        .p_multisample_state = &multisampling,
+        .p_depth_stencil_state = &depth_stencil,
+        .p_color_blend_state = &color_blending,
+        .p_dynamic_state = &dynamic_state,
+        .layout = pipeline_layout,
+        .render_pass = .null_handle, // Using dynamic rendering
+        .subpass = 0,
+        .base_pipeline_handle = .null_handle,
+        .base_pipeline_index = -1,
+        .p_next = &pipeline_rendering_create_info,
+    };
+
+    var pipeline: vk.Pipeline = undefined;
+    const result = device.createGraphicsPipelines(
+        .null_handle, // pipeline cache
+        1,
+        @ptrCast(&pipeline_info),
+        null, // allocator
+        @ptrCast(&pipeline),
+    ) catch return PipelineError.PipelineCreationFailed;
+
+    if (result != .success) {
+        return PipelineError.PipelineCreationFailed;
+    }
+
+    return pipeline;
+}
+
+pub fn createMeshShaderPipeline(
+    device: vk.DeviceProxy,
+    pipeline_layout: vk.PipelineLayout,
+    config: PipelineConfig,
+    task_module: ?vk.ShaderModule,
+    mesh_module: vk.ShaderModule,
+    fragment_module: ?vk.ShaderModule,
+) PipelineError!vk.Pipeline {
+
+    // Shader stage create infos
+    const entry: *const [4:0]u8 = "main";
+    var shader_stages_count: u32 = 0;
+    var shader_stages: [3]vk.PipelineShaderStageCreateInfo = undefined;
+
+    shader_stages[shader_stages_count] = .{
+        .flags = .{},
+        .stage = .{ .mesh_bit_ext = true },
+        .module = mesh_module,
+        .p_name = entry,
+        .p_specialization_info = null,
+    };
+    shader_stages_count += 1;
+
+    if (task_module) |module| {
+        shader_stages[shader_stages_count] = .{
+            .flags = .{},
+            .stage = .{ .task_bit_ext = true },
+            .module = module,
+            .p_name = entry,
+            .p_specialization_info = null,
+        };
+        shader_stages_count += 1;
+    }
+
+    if (fragment_module) |module| {
+        shader_stages[shader_stages_count] = .{
+            .flags = .{},
+            .stage = .{ .fragment_bit = true },
+            .module = module,
+            .p_name = entry,
+            .p_specialization_info = null,
+        };
+        shader_stages_count += 1;
+    }
+
+    // Viewport state (using dynamic state)
+    const viewport_state = vk.PipelineViewportStateCreateInfo{
+        .flags = .{},
+        .viewport_count = 1,
+        .p_viewports = null, // Dynamic
+        .scissor_count = 1,
+        .p_scissors = null, // Dynamic
+    };
+
+    // Rasterization state
+    const rasterizer = vk.PipelineRasterizationStateCreateInfo{
+        .flags = .{},
+        .depth_clamp_enable = .false,
+        .rasterizer_discard_enable = .false,
+        .polygon_mode = config.polygon_mode,
+        .line_width = 1.0,
+        .cull_mode = config.cull_mode,
+        .front_face = config.front_face,
+        .depth_bias_enable = .false,
+        .depth_bias_constant_factor = 0.0,
+        .depth_bias_clamp = 0.0,
+        .depth_bias_slope_factor = 0.0,
+    };
+
+    // Multisampling state
+    const multisampling = vk.PipelineMultisampleStateCreateInfo{
+        .flags = .{},
+        .sample_shading_enable = .false,
+        .rasterization_samples = config.sample_count,
+        .min_sample_shading = 1.0,
+        .p_sample_mask = null,
+        .alpha_to_coverage_enable = .false,
+        .alpha_to_one_enable = .false,
+    };
+
+    // Depth stencil state
+    const depth_stencil = vk.PipelineDepthStencilStateCreateInfo{
+        .flags = .{},
+        .depth_test_enable = if (config.enable_depth_test and config.depth_format != null) .true else .false,
+        .depth_write_enable = if (config.enable_depth_write and config.depth_format != null) .true else .false,
+        .depth_compare_op = config.depth_compare_op,
+        .depth_bounds_test_enable = .false,
+        .min_depth_bounds = 0.0,
+        .max_depth_bounds = 1.0,
+        .stencil_test_enable = .false,
+        .front = std.mem.zeroes(vk.StencilOpState),
+        .back = std.mem.zeroes(vk.StencilOpState),
+    };
+
+    // Color blend attachment state
+    const color_blend_attachment: [1]vk.PipelineColorBlendAttachmentState = .{.{
+        .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
+        .blend_enable = if (config.enable_blending) .true else .false,
+        .src_color_blend_factor = .src_alpha,
+        .dst_color_blend_factor = .one_minus_src_alpha,
+        .color_blend_op = .add,
+        .src_alpha_blend_factor = .one,
+        .dst_alpha_blend_factor = .zero,
+        .alpha_blend_op = .add,
+    }};
+
+    // Color blend state
+    const color_blending = vk.PipelineColorBlendStateCreateInfo{
+        .flags = .{},
+        .logic_op_enable = .false,
+        .logic_op = .copy,
+        .attachment_count = @intCast(color_blend_attachment.len),
+        .p_attachments = @ptrCast(&color_blend_attachment),
+        .blend_constants = [4]f32{ 0.0, 0.0, 0.0, 0.0 },
+    };
+
+    // Dynamic states
+    const dynamic_states = [_]vk.DynamicState{
+        .viewport,
+        .scissor,
+    };
+
+    const dynamic_state = vk.PipelineDynamicStateCreateInfo{
+        .flags = .{},
+        .dynamic_state_count = dynamic_states.len,
+        .p_dynamic_states = &dynamic_states,
+    };
+
+    // Rendering info for dynamic rendering (Vulkan 1.3 / VK_KHR_dynamic_rendering)
+    const color_attachment_format = [_]vk.Format{config.color_format};
+    const pipeline_rendering_create_info = vk.PipelineRenderingCreateInfo{
+        .view_mask = 0,
+        .color_attachment_count = 1,
+        .p_color_attachment_formats = &color_attachment_format,
+        .depth_attachment_format = config.depth_format orelse .undefined,
+        .stencil_attachment_format = .undefined,
+    };
+
+    // Graphics pipeline create info
+    const pipeline_info = vk.GraphicsPipelineCreateInfo{
+        .flags = .{},
+        .stage_count = shader_stages_count,
+        .p_stages = &shader_stages,
+        .p_vertex_input_state = null,
+        .p_input_assembly_state = null,
         .p_tessellation_state = null,
         .p_viewport_state = &viewport_state,
         .p_rasterization_state = &rasterizer,

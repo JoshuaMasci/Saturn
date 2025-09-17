@@ -3,7 +3,6 @@ const std = @import("std");
 const dxc = @import("dxc");
 
 const Shader = @import("shader.zig");
-
 pub const DirectoryMeta = Shader.DirectoryMeta;
 
 pub fn dupeBytesToU32(allocator: std.mem.Allocator, input: []const u8) ![]u32 {
@@ -27,6 +26,10 @@ pub fn getShaderStage(ext: []const u8) ?Shader.Stage {
         return .fragment;
     } else if (std.mem.eql(u8, ext, ".comp")) {
         return .compute;
+    } else if (std.mem.eql(u8, ext, ".task")) {
+        return .task;
+    } else if (std.mem.eql(u8, ext, ".mesh")) {
+        return .mesh;
     } else {
         return null;
     }

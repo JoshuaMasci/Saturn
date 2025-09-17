@@ -5,25 +5,17 @@ const zm = @import("zmath");
 
 const MeshAsset = @import("../asset/mesh.zig");
 const AssetRegistry = @import("../asset/registry.zig");
-
-const global = @import("../global.zig");
-const c = @import("../platform/sdl3.zig").c;
-const Window = @import("../platform/sdl3.zig").Window;
-const Settings = @import("../rendering/settings.zig");
-
 const Transform = @import("../transform.zig");
 const Camera = @import("camera.zig").Camera;
-const RenderScene = @import("scene.zig").RenderScene;
 const culling = @import("culling.zig");
-
+const RenderScene = @import("scene.zig").RenderScene;
+const Resources = @import("resources.zig");
 const Device = @import("vulkan/device.zig");
 const Image = @import("vulkan/image.zig");
 const Mesh = @import("vulkan/mesh.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
 const utils = @import("vulkan/utils.zig");
-
-const Resources = @import("resources.zig");
 
 pub const BuildCommandBufferData = struct {
     self: *Self,
@@ -107,7 +99,6 @@ pub fn init(
     defer device.device.proxy.destroyShaderModule(alpha_cutoff_fragment_shader, null);
 
     const opaque_mesh_pipeline = try Pipeline.createGraphicsPipeline(
-        allocator,
         device.device.proxy,
         pipeline_layout,
         .{
@@ -121,7 +112,6 @@ pub fn init(
     );
 
     const alpha_cutoff_mesh_pipeline = try Pipeline.createGraphicsPipeline(
-        allocator,
         device.device.proxy,
         pipeline_layout,
         .{

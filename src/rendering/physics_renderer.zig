@@ -101,7 +101,6 @@ pub fn init(
     };
 
     const wireframe_mesh_graphics_pipeline = try Pipeline.createGraphicsPipeline(
-        allocator,
         device.device.proxy,
         pipeline_layout,
         .{
