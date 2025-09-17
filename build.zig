@@ -48,6 +48,10 @@ fn buildAsset(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
     });
     exe_mod.addImport("dxc", zdxc.module("dxc"));
 
+    // meshoptimizer
+    // TODO: build from source
+    exe_mod.linkSystemLibrary("meshoptimizer", .{});
+
     const exe = b.addExecutable(.{
         .name = "saturn_asset",
         .root_module = exe_mod,

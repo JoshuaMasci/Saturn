@@ -18,7 +18,7 @@ pub fn realloc(maybe_ptr: ?*anyopaque, new_size: usize) callconv(.C) ?*anyopaque
     if (maybe_ptr) |data_ptr| {
         const data_ptr_int: usize = @intFromPtr(data_ptr);
         const allocation_ptr: [*]u8 = @ptrFromInt(data_ptr_int - @sizeOf(Metadata));
-        const metadata_ptr: *Metadata = @alignCast(@ptrCast(allocation_ptr));
+        const metadata_ptr: *Metadata = @ptrCast(@alignCast(allocation_ptr));
         return reallocate(maybe_ptr, metadata_ptr.size + @sizeOf(Metadata), new_size);
     }
     return null;
@@ -55,7 +55,7 @@ pub fn reallocate(maybe_ptr: ?*anyopaque, old_size: usize, new_size: usize) call
             const allocation_size: usize = metadata_ptr.size + metadata_ptr.alignment;
 
             if (old_size != metadata_ptr.size) {
-                std.log.warn("Jolt expected memory size({}) doesn't match memory's metadata({}), there may be a bug in the allocator", .{ old_size, metadata_ptr.size });
+                std.log.warn("Expected memory size({}) doesn't match memory's metadata({}), there may be a bug in the allocator", .{ old_size, metadata_ptr.size });
             }
 
             const new_allocation_size = new_size + metadata_ptr.alignment;

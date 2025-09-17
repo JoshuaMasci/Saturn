@@ -10,7 +10,9 @@ const Material = @import("material.zig");
 const Mesh = @import("mesh.zig");
 const Scene = @import("scene.zig");
 const stbi = @import("stbi.zig");
-const Texture2D = @import("texture.zig");
+const Texture = @import("texture.zig");
+
+const meshopt = @import("meshoptimizer.zig");
 
 //TODO: move to a string utils
 fn replaceExt(allocator: std.mem.Allocator, path: []const u8, new_ext: []const u8) ![]const u8 {
@@ -132,7 +134,7 @@ pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !st
     };
 }
 
-pub fn loadTexture(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, value: Texture2D } {
+pub fn loadTexture(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !struct { output_path: []const u8, value: Texture } {
     if (gltf_index >= self.gltf_file.data.images.len) {
         return error.indexOutOfRange;
     }
@@ -493,6 +495,14 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
         }
     }
 
+    if (meshopt.generateMeshlets(allocator, positions, indices, .General)) |meshlets| {
+        allocator.free(meshlets.meshlets);
+        allocator.free(meshlets.meshlet_vertices);
+        allocator.free(meshlets.meshlet_triangles);
+    } else |err| {
+        std.log.err("Failed to to generate meshlets: {}", .{err});
+    }
+
     const vertices = try allocator.alloc(Mesh.Vertex, positions.len);
     errdefer allocator.free(vertices);
 
@@ -523,7 +533,7 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
     }
 
     return .{
-        .sphere_pos_radius = undefined,
+        .sphere_pos_radius = meshopt.generateMeshBounds(positions),
         .vertices = vertices,
         .indices = indices,
     };

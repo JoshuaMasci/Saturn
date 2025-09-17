@@ -114,6 +114,11 @@ const App = struct {
     frames: f32 = 0,
     average_dt: f32 = 0.0,
 
+    window_visable_flags: struct {
+        culling: bool = true,
+        performance: bool = true,
+    } = .{},
+
     pub fn init(allocator: std.mem.Allocator) !Self {
         const asset_registry = try allocator.create(AssetRegistry);
         errdefer allocator.destroy(asset_registry);
@@ -263,31 +268,53 @@ const App = struct {
             imgui.cImGui_ImplVulkan_NewFrame();
             imgui.cImGui_ImplSDL3_NewFrame();
             imgui.ImGui_NewFrame();
-            //imgui.ImGui_ShowDemoWindow(null);
+
+            _ = imgui.ImGui_DockSpaceOverViewportEx(0, imgui.ImGui_GetMainViewport(), imgui.ImGuiDockNodeFlags_PassthruCentralNode, null);
         }
 
-        {
-            if (imgui.ImGui_Begin("Performance", null, 0)) {
-                try ImFmtText(temp_allocator, "Delta Time: {d:.3} ms", .{self.average_dt * 1000});
-                try ImFmtText(temp_allocator, "FPS: {d:.3}", .{1.0 / self.average_dt});
+        if (imgui.ImGui_BeginMainMenuBar()) {
+            if (imgui.ImGui_BeginMenu("File")) {
+                imgui.ImGui_EndMenu();
+            }
 
-                if (mem_usage_opt) |mem_usage| {
-                    const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(temp_allocator, mem_usage) catch null;
-                    if (formatted_string) |mem_usage_string| {
-                        try ImFmtText(temp_allocator, "Memory Usage: {s}", .{mem_usage_string});
-                    }
+            if (imgui.ImGui_BeginMenu("Windows")) {
+                _ = imgui.ImGui_MenuItemBoolPtr("Performance", null, &self.window_visable_flags.performance, true);
+                _ = imgui.ImGui_MenuItemBoolPtr("Culling", null, &self.window_visable_flags.culling, true);
+                imgui.ImGui_EndMenu();
+            }
+            imgui.ImGui_EndMainMenuBar();
+        }
+
+        if (imgui.ImGui_Begin("Viewport", null, 0)) {
+            const size = imgui.ImGui_GetWindowSize();
+            imgui.ImGui_Text("Window Size: %.1f x %.1f", size.x, size.y);
+            imgui.ImGui_Text("TODO: draw the scene here and not on the main swapchain");
+            imgui.ImGui_End();
+        }
+
+        if (self.window_visable_flags.performance and imgui.ImGui_Begin("Performance", &self.window_visable_flags.performance, 0)) {
+            try ImFmtText(temp_allocator, "Delta Time: {d:.3} ms", .{self.average_dt * 1000});
+            try ImFmtText(temp_allocator, "FPS: {d:.3}", .{1.0 / self.average_dt});
+
+            if (mem_usage_opt) |mem_usage| {
+                const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(temp_allocator, mem_usage) catch null;
+                if (formatted_string) |mem_usage_string| {
+                    try ImFmtText(temp_allocator, "Memory Usage: {s}", .{mem_usage_string});
                 }
             }
             imgui.ImGui_End();
         }
 
-        {
-            if (imgui.ImGui_Begin("Culling", null, 0)) {
-                _ = imgui.ImGui_Checkbox("Frustum Culling", &self.scene_renderer.enable_culling);
-                try ImFmtText(temp_allocator, "Total Primitives: {}", .{self.scene_renderer.total_primitives});
-                try ImFmtText(temp_allocator, "Rendered Primitives: {}", .{self.scene_renderer.rendered_primitives});
-                try ImFmtText(temp_allocator, "Culled Primitives: {}", .{self.scene_renderer.culled_primitives});
-            }
+        if (self.window_visable_flags.culling and imgui.ImGui_Begin("Culling", &self.window_visable_flags.culling, 0)) {
+            _ = imgui.ImGui_Checkbox("Frustum Culling", &self.scene_renderer.enable_culling);
+            try ImFmtText(temp_allocator, "Total Primitives: {}", .{self.scene_renderer.total_primitives});
+            try ImFmtText(temp_allocator, "Rendered Primitives: {}", .{self.scene_renderer.rendered_primitives});
+            try ImFmtText(temp_allocator, "Culled Primitives: {}", .{self.scene_renderer.culled_primitives});
+            //imgui.ImGui_LabelText("Primitives", "%d", self.scene_renderer.total_primitives);
+            imgui.ImGui_End();
+        }
+
+        if (imgui.ImGui_Begin("Entities", null, 0)) {
             imgui.ImGui_End();
         }
 
