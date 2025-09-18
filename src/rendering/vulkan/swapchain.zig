@@ -47,7 +47,7 @@ pub fn init(
     settings: Settings,
     old_swapchain: ?vk.SwapchainKHR,
 ) !Self {
-    const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device, surface);
+    const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device.handle, surface);
 
     const image_count = std.math.clamp(settings.image_count, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
     const extent: vk.Extent2D = .{
@@ -205,12 +205,12 @@ fn getFirstSupportedPresentMode(device: *VkDevice, surface: vk.SurfaceKHR, desir
     var supported_present_modes: [8]vk.PresentModeKHR = undefined;
     var supported_present_mode_count: u32 = 0;
 
-    _ = device.instance.getPhysicalDeviceSurfacePresentModesKHR(device.physical_device, surface, &supported_present_mode_count, null) catch |err| {
+    _ = device.instance.getPhysicalDeviceSurfacePresentModesKHR(device.physical_device.handle, surface, &supported_present_mode_count, null) catch |err| {
         std.log.err("vkGetPhysicalDeviceSurfacePresentModesKHR Failed: {}", .{err});
         return null;
     };
     supported_present_mode_count = @max(supported_present_mode_count, @as(u32, @intCast(supported_present_modes.len)));
-    _ = device.instance.getPhysicalDeviceSurfacePresentModesKHR(device.physical_device, surface, &supported_present_mode_count, &supported_present_modes) catch |err| {
+    _ = device.instance.getPhysicalDeviceSurfacePresentModesKHR(device.physical_device.handle, surface, &supported_present_mode_count, &supported_present_modes) catch |err| {
         std.log.err("vkGetPhysicalDeviceSurfacePresentModesKHR Failed: {}", .{err});
         return null;
     };

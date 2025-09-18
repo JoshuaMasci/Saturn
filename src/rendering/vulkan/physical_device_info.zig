@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const vk = @import("vulkan");
 
 // List from here: https://www.reddit.com/r/vulkan/comments/4ta9nj/is_there_a_comprehensive_list_of_the_names_and/
@@ -27,7 +28,6 @@ pub const VendorID = enum(u32) {
 pub const MemoryProperties = struct {
     device_local_bytes: u64,
     direct_buffer_upload: bool,
-    direct_texture_upload: bool,
 };
 
 pub const Queues = struct {
@@ -39,6 +39,7 @@ pub const Queues = struct {
 pub const Extensions = struct {
     mesh_shader_support: bool,
     raytracing_support: bool,
+    host_image_copy: bool,
 };
 
 const Self = @This();
@@ -103,9 +104,6 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         var device_local_bytes: u64 = 0;
         var direct_buffer_upload = false;
 
-        //TODO: use feature version when this is updated to VK1.4
-        const direct_texture_upload = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"); //or (host_image_copy_properties.host_image_copy == vk.TRUE);
-
         const props = instance.getPhysicalDeviceMemoryProperties(physical_device);
         var device_local_mappable_bytes: u64 = 0;
         heap_loop: for (props.memory_heaps[0..props.memory_heap_count], 0..) |heap, i| {
@@ -129,7 +127,6 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         break :MEM_BLK .{
             .device_local_bytes = device_local_bytes,
             .direct_buffer_upload = direct_buffer_upload,
-            .direct_texture_upload = direct_texture_upload,
         };
     };
 
@@ -149,6 +146,9 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     const extensions: Extensions = .{
         .mesh_shader_support = supportsExtension(extensions_properties, "VK_EXT_mesh_shader"),
         .raytracing_support = supportsExtension(extensions_properties, "VK_KHR_acceleration_structure") and supportsExtension(extensions_properties, "VK_KHR_ray_query"), //Will not support VK_KHR_ray_tracing_pipeline
+
+        //TODO: use feature version when this is updated to VK1.4
+        .host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"), //or (host_image_copy_properties.host_image_copy == vk.TRUE);
     };
 
     return .{

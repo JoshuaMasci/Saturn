@@ -1,9 +1,9 @@
 const std = @import("std");
 
 const vk = @import("vulkan");
+
 const imgui = @import("../imgui.zig").c;
 const sdl3 = @import("../platform/sdl3.zig");
-
 const Device = @import("vulkan/device.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
@@ -23,7 +23,7 @@ pub fn init(
 
     var init_info = imgui.ImGui_ImplVulkan_InitInfo{};
     init_info.Instance = @ptrFromInt(@intFromEnum(device.instance.instance.handle));
-    init_info.PhysicalDevice = @ptrFromInt(@intFromEnum(device.device.physical_device));
+    init_info.PhysicalDevice = @ptrFromInt(@intFromEnum(device.device.physical_device.handle));
     init_info.Device = @ptrFromInt(@intFromEnum(device.device.proxy.handle));
     init_info.QueueFamily = device.device.graphics_queue.family_index;
     init_info.Queue = @ptrFromInt(@intFromEnum(device.device.graphics_queue.handle));

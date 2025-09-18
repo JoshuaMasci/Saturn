@@ -2,10 +2,10 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
+const Binding = @import("bindless_descriptor.zig").Binding;
 const GpuAllocator = @import("gpu_allocator.zig");
 const Queue = @import("queue.zig");
 const VkDevice = @import("vulkan_device.zig");
-const Binding = @import("bindless_descriptor.zig").Binding;
 
 pub const Interface = struct {
     layout: vk.ImageLayout = .undefined,
@@ -141,6 +141,54 @@ pub fn interface(self: Self) Interface {
         .sampled_binding = if (self.sampled_binding) |binding| binding.index else null,
         .storage_binding = if (self.storage_binding) |binding| binding.index else null,
     };
+}
+
+pub fn hostImageCopy(
+    self: *Self,
+    device: *VkDevice,
+    layout: vk.ImageLayout,
+    data: []const u8,
+) !void {
+    {
+        const transition_info = vk.HostImageLayoutTransitionInfo{
+            .image = self.handle,
+            .old_layout = .undefined,
+            .new_layout = layout,
+            .subresource_range = .{
+                .aspect_mask = getFormatAspectMask(self.format),
+                .base_mip_level = 0,
+                .level_count = 1,
+                .base_array_layer = 0,
+                .layer_count = 1,
+            },
+        };
+        try device.proxy.transitionImageLayoutEXT(1, @ptrCast(&transition_info));
+    }
+
+    {
+        const region: vk.MemoryToImageCopyEXT = .{
+            .p_host_pointer = data.ptr,
+            .memory_row_length = 0,
+            .memory_image_height = 0,
+            .image_subresource = vk.ImageSubresourceLayers{
+                .aspect_mask = getFormatAspectMask(self.format),
+                .mip_level = 0,
+                .base_array_layer = 0,
+                .layer_count = 1,
+            },
+            .image_offset = .{ .x = 0, .y = 0, .z = 0 },
+            .image_extent = .{ .width = self.extent.width, .height = self.extent.height, .depth = 1 },
+        };
+
+        const copy_info: vk.CopyMemoryToImageInfo = .{
+            //.flags = .{ .memcpy_bit = true },
+            .dst_image = self.handle,
+            .dst_image_layout = layout,
+            .region_count = 1,
+            .p_regions = @ptrCast(&region),
+        };
+        try device.proxy.copyMemoryToImageEXT(&copy_info);
+    }
 }
 
 pub fn uploadImageData(

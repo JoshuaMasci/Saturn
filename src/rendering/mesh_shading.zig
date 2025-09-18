@@ -33,7 +33,7 @@ pub fn init(
     var triangle_pipeline: vk.Pipeline = .null_handle;
 
     //TODO: check device support
-    if (true) {
+    if (device.device.physical_device.info.extensions.mesh_shader_support) {
         const mesh_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/triangle.mesh.asset"));
         defer device.device.proxy.destroyShaderModule(mesh_shader, null);
 
@@ -70,6 +70,10 @@ pub fn createRenderPass(
     color_target: rg.RenderGraphTextureHandle,
     render_graph: *rg.RenderGraph,
 ) !void {
+    if (self.triangle_pipeline == .null_handle) {
+        return;
+    }
+
     var render_pass = try rg.RenderPass.init(temp_allocator, "Mesh Shading Pass");
     try render_pass.addColorAttachment(.{
         .texture = color_target,

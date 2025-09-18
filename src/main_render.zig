@@ -34,7 +34,7 @@ pub fn main() !void {
     //const scene_filepath = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
     const scene_filepath = "zig-out/game-assets/Bistro/scene.json";
 
-    if (false) {
+    {
         var scene_json: std.json.Parsed(Scene) = undefined;
         {
             var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });

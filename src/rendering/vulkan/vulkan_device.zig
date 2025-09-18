@@ -13,16 +13,15 @@ allocator: std.mem.Allocator,
 instance: vk.InstanceProxy,
 proxy: vk.DeviceProxy,
 
-physical_device: vk.PhysicalDevice,
+physical_device: PhysicalDevice,
 graphics_queue: Queue, //Pretty much every device has a graphics queue (Graphics + Compute + Transfer)
 async_compute_queue: ?Queue,
 async_transfer_queue: ?Queue,
 
 gpu_allocator: GpuAllocator,
+debug: bool = false,
 
 all_stage_flags: vk.ShaderStageFlags,
-
-debug: bool = false,
 
 pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_device: PhysicalDevice) !Self {
     if (physical_device.info.queues.graphics == null) {
@@ -75,13 +74,17 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     }
 
     //TODO: should I use the feature instead?
-    if (physical_device.info.memory.direct_texture_upload) {
+    if (physical_device.info.extensions.host_image_copy) {
         try device_extentions.append(allocator, "VK_EXT_host_image_copy");
     }
 
     var features = vk.PhysicalDeviceFeatures{
         .robust_buffer_access = .true,
         .fill_mode_non_solid = .true,
+    };
+
+    var features_host_image_copy = vk.PhysicalDeviceHostImageCopyFeaturesEXT{
+        .host_image_copy = .true,
     };
 
     var feature_mesh_shading = vk.PhysicalDeviceMeshShaderFeaturesEXT{
@@ -104,6 +107,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .shader_sampled_image_array_non_uniform_indexing = .true,
         .shader_storage_image_array_non_uniform_indexing = .true,
     };
+
     var features_13 = vk.PhysicalDeviceVulkan13Features{
         .dynamic_rendering = .true,
         .synchronization_2 = .true,
@@ -112,6 +116,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .shader_demote_to_helper_invocation = .true,
         .shader_terminate_invocation = .true,
     };
+
     var features_robustness2 = vk.PhysicalDeviceRobustness2FeaturesEXT{
         .null_descriptor = .true,
         .robust_buffer_access_2 = .true,
@@ -128,6 +133,10 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
 
     if (physical_device.info.extensions.mesh_shader_support) {
         appendNextPtrChain(&create_info, &feature_mesh_shading);
+    }
+
+    if (physical_device.info.extensions.host_image_copy) {
+        appendNextPtrChain(&create_info, &features_host_image_copy);
     }
 
     appendNextPtrChain(&create_info, &features_robustness2);
@@ -166,7 +175,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     return .{
         .allocator = allocator,
         .instance = instance,
-        .physical_device = physical_device.handle,
+        .physical_device = physical_device,
         .proxy = proxy,
         .graphics_queue = graphics_queue,
         .async_compute_queue = async_compute_queue,

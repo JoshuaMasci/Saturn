@@ -3,17 +3,15 @@ const std = @import("std");
 const vk = @import("vulkan");
 const zm = @import("zmath");
 
-const AssetRegistry = @import("../asset/registry.zig");
-const MeshAsset = @import("../asset/mesh.zig");
-const TextureAsset = @import("../asset/texture.zig");
 const MaterialAsset = @import("../asset/material.zig");
-
+const MeshAsset = @import("../asset/mesh.zig");
+const AssetRegistry = @import("../asset/registry.zig");
+const TextureAsset = @import("../asset/texture.zig");
+const RenderScene = @import("scene.zig").RenderScene;
 const Device = @import("vulkan/device.zig");
 const GpuImage = @import("vulkan/image.zig");
 const GpuMesh = @import("vulkan/mesh.zig");
 const rg = @import("vulkan/render_graph.zig");
-
-const RenderScene = @import("scene.zig").RenderScene;
 
 const Self = @This();
 
