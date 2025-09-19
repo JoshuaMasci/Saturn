@@ -7,56 +7,61 @@ const MeshAsset = @import("../../asset/mesh.zig");
 const Device = @import("device.zig");
 const Buffer = @import("buffer.zig");
 
-pub const Primitive = struct {
-    sphere_pos_radius: [4]f32,
-
-    vertex_buffer: Device.BufferHandle,
-    index_buffer: ?Device.BufferHandle,
-
-    vertex_count: u32,
-    index_count: u32,
-};
-
 const Self = @This();
 
 allocator: std.mem.Allocator,
 backend: *Device,
 sphere_pos_radius: [4]f32,
-primitives: []Primitive,
+
+vertex_buffer: Device.BufferHandle,
+index_buffer: Device.BufferHandle,
+primitives: []MeshAsset.Primitive,
+
+meshlet_buffer: Device.BufferHandle,
+meshlet_vertices_buffer: Device.BufferHandle,
+meshlet_triangles_buffer: Device.BufferHandle,
 
 pub fn init(allocator: std.mem.Allocator, backend: *Device, mesh: *const MeshAsset) !Self {
-    var primitives = try allocator.alloc(Primitive, mesh.primitives.len);
-    for (mesh.primitives, 0..) |primitive, i| {
-        const vertex_buffer = try backend.createBufferWithData(.{ .vertex_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(primitive.vertices));
+    const primitives = try allocator.dupe(MeshAsset.Primitive, mesh.primitives);
+    errdefer allocator.free(primitives);
 
-        var index_buffer: ?Device.BufferHandle = null;
-        if (mesh.primitives[0].indices.len != 0) {
-            index_buffer = try backend.createBufferWithData(.{ .index_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(primitive.indices));
-        }
+    const vertex_buffer = try backend.createBufferWithData(.{ .vertex_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.vertices));
+    errdefer backend.destroyBuffer(vertex_buffer);
 
-        primitives[i] = .{
-            .sphere_pos_radius = primitive.sphere_pos_radius,
-            .vertex_buffer = vertex_buffer,
-            .index_buffer = index_buffer,
-            .vertex_count = @intCast(primitive.vertices.len),
-            .index_count = @intCast(primitive.indices.len),
-        };
-    }
+    const index_buffer = try backend.createBufferWithData(.{ .index_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.indices));
+    errdefer backend.destroyBuffer(index_buffer);
+
+    const meshlet_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.meshlets));
+    errdefer backend.destroyBuffer(meshlet_buffer);
+
+    const meshlet_vertices_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.meshlet_vertices));
+    errdefer backend.destroyBuffer(meshlet_vertices_buffer);
+
+    const meshlet_triangles_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.meshlet_triangles));
+    errdefer backend.destroyBuffer(meshlet_triangles_buffer);
 
     return .{
         .allocator = allocator,
         .backend = backend,
         .sphere_pos_radius = mesh.sphere_pos_radius,
+
         .primitives = primitives,
+        .vertex_buffer = vertex_buffer,
+        .index_buffer = index_buffer,
+
+        .meshlet_buffer = meshlet_buffer,
+        .meshlet_vertices_buffer = meshlet_vertices_buffer,
+        .meshlet_triangles_buffer = meshlet_triangles_buffer,
     };
 }
 
 pub fn deinit(self: Self) void {
-    for (self.primitives) |primitive| {
-        self.backend.destroyBuffer(primitive.vertex_buffer);
-        if (primitive.index_buffer) |buffer| {
-            self.backend.destroyBuffer(buffer);
-        }
-    }
+    self.backend.destroyBuffer(self.meshlet_buffer);
+    self.backend.destroyBuffer(self.meshlet_vertices_buffer);
+    self.backend.destroyBuffer(self.meshlet_triangles_buffer);
+
+    self.backend.destroyBuffer(self.vertex_buffer);
+    self.backend.destroyBuffer(self.index_buffer);
+
     self.allocator.free(self.primitives);
 }

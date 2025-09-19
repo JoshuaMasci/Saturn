@@ -18,6 +18,7 @@ pub const BuildCommandBufferData = struct {
 
 const Self = @This();
 
+enabled: bool = false,
 allocator: std.mem.Allocator,
 device: *Device,
 
@@ -70,7 +71,7 @@ pub fn createRenderPass(
     color_target: rg.RenderGraphTextureHandle,
     render_graph: *rg.RenderGraph,
 ) !void {
-    if (self.triangle_pipeline == .null_handle) {
+    if (self.triangle_pipeline == .null_handle or !self.enabled) {
         return;
     }
 

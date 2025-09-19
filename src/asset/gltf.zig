@@ -11,7 +11,6 @@ const Mesh = @import("mesh.zig");
 const Scene = @import("scene.zig");
 const stbi = @import("stbi.zig");
 const Texture = @import("texture.zig");
-
 const meshopt = @import("meshoptimizer.zig");
 
 //TODO: move to a string utils
@@ -112,25 +111,22 @@ pub fn loadMesh(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !st
     }
     const gltf_mesh = self.gltf_file.data.meshes[gltf_index];
 
-    const mesh_name: []const u8 = try allocator.dupe(u8, self.asset_info.meshes[gltf_index].name);
+    const primitives = try allocator.alloc(meshopt.Primitive, gltf_mesh.primitives.len);
+    defer allocator.free(primitives);
 
-    const primitives = try allocator.alloc(Mesh.Primitive, gltf_mesh.primitives.len);
-    errdefer allocator.free(primitives);
+    var vertices: std.ArrayList(Mesh.Vertex) = .empty;
+    defer vertices.deinit(allocator);
+
+    var indices: std.ArrayList(Mesh.Index) = .empty;
+    defer indices.deinit(allocator);
 
     for (gltf_mesh.primitives, 0..) |primitive, i| {
-        primitives[i] = try loadGltfPrimitive(allocator, &self.gltf_file, &primitive);
+        primitives[i] = try loadGltfPrimitive(allocator, &self.gltf_file, &primitive, &vertices, &indices);
     }
-
-    var mesh: Mesh = .{
-        .name = mesh_name,
-        .sphere_pos_radius = undefined,
-        .primitives = primitives,
-    };
-    mesh.calcBoundingSphere();
 
     return .{
         .output_path = self.asset_info.meshes[gltf_index].path,
-        .value = mesh,
+        .value = try meshopt.buildMesh(allocator, self.asset_info.meshes[gltf_index].name, vertices.items, indices.items, primitives, .{}),
     };
 }
 
@@ -405,9 +401,15 @@ const AssetHandles = struct {
     }
 };
 
-fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf_primitive: *const zgltf.Primitive) !Mesh.Primitive {
+fn loadGltfPrimitive(
+    allocator: std.mem.Allocator,
+    gltf_file: *const zgltf,
+    gltf_primitive: *const zgltf.Primitive,
+    output_vertices: *std.ArrayList(Mesh.Vertex),
+    output_indices: *std.ArrayList(Mesh.Index),
+) !meshopt.Primitive {
     var indices: []u32 = &.{};
-    errdefer allocator.free(indices);
+    defer allocator.free(indices);
 
     if (gltf_primitive.indices) |indices_index| {
         const accessor = gltf_file.data.accessors[indices_index];
@@ -495,16 +497,8 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
         }
     }
 
-    if (meshopt.generateMeshlets(allocator, positions, indices, .General)) |meshlets| {
-        allocator.free(meshlets.meshlets);
-        allocator.free(meshlets.meshlet_vertices);
-        allocator.free(meshlets.meshlet_triangles);
-    } else |err| {
-        std.log.err("Failed to to generate meshlets: {}", .{err});
-    }
-
     const vertices = try allocator.alloc(Mesh.Vertex, positions.len);
-    errdefer allocator.free(vertices);
+    defer allocator.free(vertices);
 
     for (vertices, positions, normals, 0..) |*vertex, position, normal, i| {
         vertex.position = position;
@@ -532,10 +526,21 @@ fn loadGltfPrimitive(allocator: std.mem.Allocator, gltf_file: *const zgltf, gltf
         }
     }
 
+    const vertex_offset: u32 = @intCast(output_vertices.items.len);
+    const vertex_count: u32 = @intCast(vertices.len);
+
+    const index_offset: u32 = @intCast(output_indices.items.len);
+    const index_count: u32 = @intCast(indices.len);
+
+    try output_vertices.appendSlice(allocator, vertices);
+    try output_indices.appendSlice(allocator, indices);
+
     return .{
-        .sphere_pos_radius = meshopt.generateMeshBounds(positions),
-        .vertices = vertices,
-        .indices = indices,
+        .vertex_offset = vertex_offset,
+        .vertex_count = vertex_count,
+
+        .index_offset = index_offset,
+        .index_count = index_count,
     };
 }
 

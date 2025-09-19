@@ -91,11 +91,11 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     var bindless_descriptor = try allocator.create(BindlessDescriptor);
     errdefer allocator.destroy(bindless_descriptor);
 
-    const DESCRIPTOR_COUNT = 1024;
+    const DESCRIPTOR_COUNT = 4096;
     bindless_descriptor.* = try BindlessDescriptor.init(allocator, device, .{
         .uniform_buffers = DESCRIPTOR_COUNT,
-        .storage_buffers = DESCRIPTOR_COUNT,
-        .sampled_images = DESCRIPTOR_COUNT,
+        .storage_buffers = DESCRIPTOR_COUNT * 4,
+        .sampled_images = DESCRIPTOR_COUNT * 2,
         .storage_images = DESCRIPTOR_COUNT,
     });
     errdefer bindless_descriptor.deinit();

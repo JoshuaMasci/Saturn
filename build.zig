@@ -5,20 +5,43 @@ pub fn build(b: *std.Build) !void {
     const build_sdl3 = b.option(bool, "build-sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
     const no_assets = b.option(bool, "no-assets", "Don't compile asset pipeline") orelse false;
     const no_render = b.option(bool, "no-render", "Don't compile render sandbox") orelse false;
+    const use_llvm = b.option(bool, "use-llvm", "Compile using llvm") orelse false;
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     if (!no_assets) {
-        try buildAsset(b, target, optimize);
+        try buildAsset(
+            b,
+            target,
+            optimize,
+            .{
+                .use_llvm = use_llvm,
+            },
+        );
     }
 
     if (!no_render) {
-        try buildRender(b, target, optimize, .{ .build_sdl3 = build_sdl3 });
+        try buildRender(
+            b,
+            target,
+            optimize,
+            .{
+                .build_sdl3 = build_sdl3,
+                .use_llvm = use_llvm,
+            },
+        );
     }
 }
 
-fn buildAsset(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !void {
+fn buildAsset(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    options: struct {
+        use_llvm: bool,
+    },
+) !void {
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main_asset.zig"),
         .target = target,
@@ -55,7 +78,7 @@ fn buildAsset(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
     const exe = b.addExecutable(.{
         .name = "saturn_asset",
         .root_module = exe_mod,
-        .use_llvm = true,
+        .use_llvm = options.use_llvm,
     });
 
     b.installArtifact(exe);
@@ -89,7 +112,8 @@ fn buildRender(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     options: struct {
-        build_sdl3: bool = false,
+        build_sdl3: bool,
+        use_llvm: bool,
     },
 ) !void {
     const exe_mod = b.createModule(.{
@@ -129,8 +153,9 @@ fn buildRender(
     exe_mod.addImport("zmath", zmath.module("root"));
 
     const exe = b.addExecutable(.{
-        .name = "saturn_renderer",
+        .name = "saturn",
         .root_module = exe_mod,
+        .use_llvm = options.use_llvm,
     });
     b.installArtifact(exe);
 

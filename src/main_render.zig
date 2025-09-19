@@ -295,6 +295,12 @@ const App = struct {
                 _ = imgui.ImGui_MenuItemBoolPtr("Culling", null, &self.window_visable_flags.culling, true);
                 imgui.ImGui_EndMenu();
             }
+
+            if (imgui.ImGui_BeginMenu("Temp")) {
+                _ = imgui.ImGui_MenuItemBoolPtr("Debug Triangle", null, &self.mesh_shading.enabled, true);
+                imgui.ImGui_EndMenu();
+            }
+
             imgui.ImGui_EndMainMenuBar();
         }
 

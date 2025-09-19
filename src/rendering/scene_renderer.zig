@@ -220,11 +220,19 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
         if (data.resources.static_mesh_map.get(static_mesh.component.mesh)) |entry| {
             const model_matrix = static_mesh.transform.getModelMatrix();
 
+            const vertex_buffer = device.buffers.get(entry.mesh.vertex_buffer) orelse continue;
+            const vertex_buffers = [_]vk.Buffer{vertex_buffer.handle};
+            const vertex_offsets = [_]vk.DeviceSize{0};
+            command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
+
+            const index_buffer = device.buffers.get(entry.mesh.index_buffer) orelse return;
+            command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
+
             const materials = static_mesh.component.materials.constSlice();
-            for (entry.mesh.primitives, materials) |primtive, material| {
+            for (entry.mesh.primitives, materials) |primitive, material| {
                 self.total_primitives += 1;
                 if (self.enable_culling) {
-                    if (!frustum.intersects(culling.Sphere, .initWorld(primtive.sphere_pos_radius, &static_mesh.transform))) {
+                    if (!frustum.intersects(culling.Sphere, .initWorld(primitive.sphere_pos_radius, &static_mesh.transform))) {
                         self.culled_primitives += 1;
                         continue;
                     }
@@ -253,31 +261,10 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
                     };
                     command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
 
-                    drawPrimitive(device, command_buffer, primtive);
+                    //Draw Primitive
+                    command_buffer.drawIndexed(primitive.index_count, 1, primitive.index_offset, @intCast(primitive.vertex_offset), 0);
                 }
             }
         }
-    }
-}
-
-pub fn drawPrimitive(
-    device: *Device,
-    command_buffer: vk.CommandBufferProxy,
-    primitive: anytype, // Your primitive struct
-) void {
-    const vertex_buffer = device.buffers.get(primitive.vertex_buffer) orelse return;
-
-    const vertex_buffers = [_]vk.Buffer{vertex_buffer.handle};
-    const vertex_offsets = [_]vk.DeviceSize{0};
-
-    command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
-
-    if (primitive.index_buffer) |index_buffer_handle| {
-        const index_buffer = device.buffers.get(index_buffer_handle) orelse return;
-
-        command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
-        command_buffer.drawIndexed(primitive.index_count, 1, 0, 0, 0);
-    } else {
-        command_buffer.draw(primitive.vertex_count, 1, 0, 0);
     }
 }

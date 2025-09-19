@@ -13,25 +13,49 @@ pub const Vertex = extern struct {
     uv1: [2]f32,
 };
 
+pub const Index = u32;
+
 pub const Primitive = struct {
     sphere_pos_radius: [4]f32,
-    vertices: []Vertex,
-    indices: []u32,
+    vertex_offset: u32,
+    vertex_count: u32,
+    index_offset: u32,
+    index_count: u32,
+    meshlet_offset: u32,
+    meshlet_count: u32,
+};
+
+pub const Meshlet = extern struct {
+    sphere_pos_radius: [4]f32,
+    vertex_offset: u32,
+    vertex_count: u32,
+    triangle_offset: u32,
+    triangle_count: u32,
 };
 
 const Self = @This();
 
 name: []const u8,
 sphere_pos_radius: [4]f32,
+
+vertices: []Vertex,
+indices: []u32,
 primitives: []Primitive,
+
+meshlets: []Meshlet,
+meshlet_vertices: []u32,
+meshlet_triangles: []u8,
 
 pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.name);
-    for (self.primitives) |primitive| {
-        allocator.free(primitive.vertices);
-        allocator.free(primitive.indices);
-    }
+
+    allocator.free(self.vertices);
+    allocator.free(self.indices);
     allocator.free(self.primitives);
+
+    allocator.free(self.meshlets);
+    allocator.free(self.meshlet_vertices);
+    allocator.free(self.meshlet_triangles);
 }
 
 pub fn serialize(self: Self, writer: anytype) !void {
@@ -39,13 +63,13 @@ pub fn serialize(self: Self, writer: anytype) !void {
 
     try writer.writeAll(&std.mem.toBytes(self.sphere_pos_radius));
 
-    try writer.writeInt(usize, self.primitives.len, .little);
-    for (self.primitives) |primitive| {
-        try writer.writeAll(&std.mem.toBytes(primitive.sphere_pos_radius));
+    try serde.serialzieSlice(Vertex, writer, self.vertices);
+    try serde.serialzieSlice(u32, writer, self.indices);
+    try serde.serialzieSlice(Primitive, writer, self.primitives);
 
-        try serde.serialzieSlice(Vertex, writer, primitive.vertices);
-        try serde.serialzieSlice(u32, writer, primitive.indices);
-    }
+    try serde.serialzieSlice(Meshlet, writer, self.meshlets);
+    try serde.serialzieSlice(u32, writer, self.meshlet_vertices);
+    try serde.serialzieSlice(u8, writer, self.meshlet_triangles);
 }
 
 pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
@@ -55,19 +79,35 @@ pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     var sphere_pos_radius: [4]f32 = undefined;
     _ = try reader.readAll(std.mem.asBytes(&sphere_pos_radius));
 
-    const primitives_count = try reader.readInt(usize, .little);
-    var primitives = try allocator.alloc(Primitive, primitives_count);
-    for (0..primitives_count) |i| {
-        _ = try reader.readAll(std.mem.asBytes(&primitives[i].sphere_pos_radius));
+    const vertices = try serde.deserialzieSlice(allocator, Vertex, reader);
+    errdefer allocator.free(vertices);
 
-        primitives[i].vertices = try serde.deserialzieSlice(allocator, Vertex, reader);
-        primitives[i].indices = try serde.deserialzieSlice(allocator, u32, reader);
-    }
+    const indices = try serde.deserialzieSlice(allocator, u32, reader);
+    errdefer allocator.free(indices);
+
+    const primitives = try serde.deserialzieSlice(allocator, Primitive, reader);
+    errdefer allocator.free(primitives);
+
+    const meshlets = try serde.deserialzieSlice(allocator, Meshlet, reader);
+    errdefer allocator.free(meshlets);
+
+    const meshlet_vertices = try serde.deserialzieSlice(allocator, u32, reader);
+    errdefer allocator.free(meshlet_vertices);
+
+    const meshlet_triangles = try serde.deserialzieSlice(allocator, u8, reader);
+    errdefer allocator.free(meshlet_triangles);
 
     return .{
         .name = name,
         .sphere_pos_radius = sphere_pos_radius,
+
+        .vertices = vertices,
+        .indices = indices,
         .primitives = primitives,
+
+        .meshlets = meshlets,
+        .meshlet_vertices = meshlet_vertices,
+        .meshlet_triangles = meshlet_triangles,
     };
 }
 
