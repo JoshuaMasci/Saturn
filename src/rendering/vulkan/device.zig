@@ -495,7 +495,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         for (buffer_upload_infos, render_graph.buffer_upload_passes.items) |*info, upload| {
             const start = info.src_offset;
             const end = start + upload.size;
-            info.bytes_written = upload.write_fn(upload.write_data, upload_src_slice[start..end]);
+            info.bytes_written = upload.write_fn(upload.write_data, upload.write_data_len, upload_src_slice[start..end]);
         }
 
         //TODO: Replace this very bad barrier

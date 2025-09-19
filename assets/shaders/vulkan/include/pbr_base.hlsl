@@ -18,7 +18,7 @@ struct PixelOutput
 struct PushConstants
 {
     float4x4 view_projection_matrix;
-    float4x4 model_matrix;
+    uint model_matrix_buffer_index;
     uint material_binding;
     uint material_index;
 };

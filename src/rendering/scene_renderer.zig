@@ -21,6 +21,7 @@ pub const BuildCommandBufferData = struct {
     self: *Self,
     resources: *const Resources,
     material_buffer_handle: rg.RenderGraphBufferHandle,
+    model_matrix_buffer_handle: rg.RenderGraphBufferHandle,
     scene: *const RenderScene,
     camera: Camera,
     camera_transform: Transform,
@@ -150,6 +151,12 @@ pub fn createRenderPass(
 ) !void {
     const material_buffer_handle = try resources.createMaterialBuffer(temp_allocator, render_graph);
 
+    const model_matrix_slice = try temp_allocator.alloc(zm.Mat, scene.static_meshes.items.len);
+    for (model_matrix_slice, scene.static_meshes.items) |*model_matirx, static_mesh| {
+        model_matirx.* = static_mesh.transform.getModelMatrix();
+    }
+    const model_matrix_buffer = try uploadSliceToBuffer(zm.Mat, model_matrix_slice, render_graph);
+
     var render_pass = try rg.RenderPass.init(temp_allocator, "Scene Pass");
     try render_pass.addColorAttachment(.{
         .texture = color_target,
@@ -167,6 +174,7 @@ pub fn createRenderPass(
         .self = self,
         .resources = resources,
         .material_buffer_handle = material_buffer_handle,
+        .model_matrix_buffer_handle = model_matrix_buffer,
         .scene = scene,
         .camera = camera,
         .camera_transform = camera_transform,
@@ -177,6 +185,101 @@ pub fn createRenderPass(
 }
 
 pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+    const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
+    const self = data.self;
+
+    //Clear stats
+    self.total_primitives = 0;
+    self.rendered_primitives = 0;
+    self.culled_primitives = 0;
+
+    const material_buffer = resources.buffers[data.material_buffer_handle.index];
+    const model_matrix_buffer = resources.buffers[data.model_matrix_buffer_handle.index];
+
+    const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
+    const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
+    const aspect_ratio: f32 = width_float / height_float;
+    const view_matrix = data.camera_transform.getViewMatrix();
+    var projection_matrix = data.camera.getProjectionMatrix(aspect_ratio);
+    projection_matrix[1][1] *= -1.0;
+    const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
+
+    const viewport = vk.Viewport{
+        .x = 0.0,
+        .y = 0.0,
+        .width = @floatFromInt(raster_pass_extent.?.width),
+        .height = @floatFromInt(raster_pass_extent.?.height),
+        .min_depth = 0.0,
+        .max_depth = 1.0,
+    };
+    command_buffer.setViewport(0, 1, (&viewport)[0..1]);
+    const scissor = vk.Rect2D{
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = raster_pass_extent.?,
+    };
+    command_buffer.setScissor(0, 1, (&scissor)[0..1]);
+
+    const frustum: culling.Frustum = data.camera.getFrustum(aspect_ratio, data.camera_transform);
+
+    for (data.scene.static_meshes.items, 0..) |static_mesh, instance_id| {
+        if (static_mesh.component.visable == false) {
+            continue;
+        }
+
+        if (data.resources.static_mesh_map.get(static_mesh.component.mesh)) |entry| {
+            const model_matrix = static_mesh.transform.getModelMatrix();
+            _ = model_matrix; // autofix
+
+            const vertex_buffer = device.buffers.get(entry.mesh.vertex_buffer) orelse continue;
+            const vertex_buffers = [_]vk.Buffer{vertex_buffer.handle};
+            const vertex_offsets = [_]vk.DeviceSize{0};
+            command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
+
+            const index_buffer = device.buffers.get(entry.mesh.index_buffer) orelse return;
+            command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
+
+            const materials = static_mesh.component.materials.constSlice();
+            for (entry.mesh.primitives, materials) |primitive, material| {
+                self.total_primitives += 1;
+                if (self.enable_culling) {
+                    if (!frustum.intersects(culling.Sphere, .initWorld(primitive.sphere_pos_radius, &static_mesh.transform))) {
+                        self.culled_primitives += 1;
+                        continue;
+                    }
+                }
+                self.rendered_primitives += 1;
+
+                const PushData = extern struct {
+                    view_projection_matrix: zm.Mat,
+                    model_matrix_binding: u32,
+                    material_binding: u32,
+                    material_index: u32,
+                };
+
+                if (data.resources.material_map.get(material)) |mat_entry| {
+                    command_buffer.bindPipeline(.graphics, switch (mat_entry.material.alpha_mode) {
+                        .alpha_opaque => self.opaque_mesh_pipeline,
+                        .alpha_mask => self.alpha_cutoff_mesh_pipeline,
+                        .alpha_blend => continue, //TODO: this
+                    });
+
+                    const push_data = PushData{
+                        .view_projection_matrix = view_projection_matrix,
+                        .model_matrix_binding = model_matrix_buffer.storage_binding.?,
+                        .material_binding = material_buffer.storage_binding.?,
+                        .material_index = mat_entry.buffer_index,
+                    };
+                    command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
+
+                    //Draw Primitive
+                    command_buffer.drawIndexed(primitive.index_count, 1, primitive.index_offset, @intCast(primitive.vertex_offset), @intCast(instance_id));
+                }
+            }
+        }
+    }
+}
+
+pub fn buildCommandBufferMeshShading(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
     const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
     const self = data.self;
 
@@ -267,4 +370,27 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
             }
         }
     }
+}
+
+pub fn uploadSliceToBuffer(comptime T: type, slice: []const T, render_graph: *rg.RenderGraph) !rg.RenderGraphBufferHandle {
+    const temp_buffer_size: usize = @sizeOf(T) * slice.len;
+    const temp_buffer = try render_graph.createTransientBuffer(.{
+        .location = .gpu_only,
+        .size = temp_buffer_size,
+        .usage = .{
+            .storage_buffer_bit = true,
+            .transfer_dst_bit = true,
+        },
+    });
+
+    try render_graph.buffer_upload_passes.append(render_graph.allocator, .{
+        .target = temp_buffer,
+        .offset = 0,
+        .size = temp_buffer_size,
+        .write_data = @ptrCast(slice.ptr),
+        .write_data_len = slice.len,
+        .write_fn = rg.SliceUploadFn(T).uploadFn,
+    });
+
+    return temp_buffer;
 }

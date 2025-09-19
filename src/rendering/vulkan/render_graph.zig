@@ -16,18 +16,18 @@ pub const QueueType = enum {
 
 pub fn SliceUploadFn(comptime T: type) type {
     return struct {
-        pub fn uploadFn(data: ?*anyopaque, dst: []u8) usize {
-            const temp_slice_ptr: *const []const T = @ptrCast(@alignCast(data.?));
-            const temp_slice_size: usize = @sizeOf(T) * temp_slice_ptr.len;
-            const temp_slice_byte: []const u8 = std.mem.sliceAsBytes(temp_slice_ptr.*);
-            @memcpy(dst[0..temp_slice_size], temp_slice_byte);
-            return temp_slice_size;
+        pub fn uploadFn(data: ?*const anyopaque, data_len: ?usize, dst: []u8) usize {
+            const temp_slice_ptr: [*]const T = @ptrCast(@alignCast(data.?));
+            const temp_slice = temp_slice_ptr[0..data_len.?];
+            const temp_slice_byte: []const u8 = std.mem.sliceAsBytes(temp_slice);
+            @memcpy(dst[0..temp_slice_byte.len], temp_slice_byte);
+            return temp_slice_byte.len;
         }
     };
 }
 
 /// Function should returns amount of data actually written
-pub const UploadFn = *const fn (data: ?*anyopaque, dst: []u8) usize;
+pub const UploadFn = *const fn (data: ?*const anyopaque, data_len: ?usize, dst: []u8) usize;
 
 pub const DownloadFn = *const fn (data: ?*anyopaque, src: []u8) void;
 
@@ -79,7 +79,8 @@ pub const BufferUploadPass = struct {
     offset: usize,
     size: usize,
     write_fn: UploadFn,
-    write_data: ?*anyopaque,
+    write_data: ?*const anyopaque,
+    write_data_len: ?usize,
 };
 
 pub const ColorAttachment = struct {

@@ -68,10 +68,8 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn createMaterialBuffer(self: Self, temp_allocator: std.mem.Allocator, render_graph: *rg.RenderGraph) !rg.RenderGraphBufferHandle {
-    const temp_slice_ptr: *[]MaterialAsset.Gpu = try temp_allocator.create([]MaterialAsset.Gpu);
-
-    temp_slice_ptr.* = try temp_allocator.dupe(MaterialAsset.Gpu, self.material_buffer.getSlice());
-    const temp_slice_size: usize = @sizeOf(MaterialAsset.Gpu) * temp_slice_ptr.len;
+    const temp_slice = try temp_allocator.dupe(MaterialAsset.Gpu, self.material_buffer.getSlice());
+    const temp_slice_size: usize = @sizeOf(MaterialAsset.Gpu) * temp_slice.len;
 
     const temp_buffer = try render_graph.createTransientBuffer(.{
         .location = .gpu_only,
@@ -86,7 +84,8 @@ pub fn createMaterialBuffer(self: Self, temp_allocator: std.mem.Allocator, rende
         .target = temp_buffer,
         .offset = 0,
         .size = temp_slice_size,
-        .write_data = @ptrCast(temp_slice_ptr),
+        .write_data = temp_slice.ptr,
+        .write_data_len = temp_slice.len,
         .write_fn = rg.SliceUploadFn(MaterialAsset.Gpu).uploadFn,
     });
 

@@ -1,3 +1,5 @@
+#include "bindless.hlsl"
+
 struct VertexInput
 {
     float3 position : POSITION;
@@ -15,19 +17,25 @@ struct PixelInput
 struct PushConstants
 {
     float4x4 view_projection_matrix;
-    float4x4 model_matrix;
+    uint model_matrix_buffer_index;
+    uint material_binding;
+    uint material_index;
 };
 
 [[vk::push_constant]]
 PushConstants push_constants;
 
-PixelInput main(VertexInput input)
+ReadOnlyStorageBufferArray(float4x4, model_matrices);
+
+PixelInput main(VertexInput input, uint instanceID : SV_InstanceID)
 {
     PixelInput output;
 
-    float3x3 normal_matrix = (float3x3)push_constants.model_matrix;
+    float4x4 model_matrix = model_matrices[push_constants.model_matrix_buffer_index][instanceID];
 
-    float4 world_position = mul(push_constants.model_matrix, float4(input.position, 1.0f));
+    float3x3 normal_matrix = (float3x3)model_matrix;
+
+    float4 world_position = mul(model_matrix, float4(input.position, 1.0f));
     float3 world_normal = normalize(mul(normal_matrix, input.normal));
     float3 world_tangent = normalize(mul(normal_matrix, input.tangent.xyz));
 
