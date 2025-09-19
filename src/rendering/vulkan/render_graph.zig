@@ -226,4 +226,27 @@ pub const RenderGraph = struct {
         try self.textures.append(self.allocator, .{ .swapchain = swapchain_index });
         return .{ .index = texture_index };
     }
+
+    pub fn uploadSliceToBuffer(render_graph: *Self, comptime T: type, slice: []const T) !RenderGraphBufferHandle {
+        const temp_buffer_size: usize = @sizeOf(T) * slice.len;
+        const temp_buffer = try render_graph.createTransientBuffer(.{
+            .location = .gpu_only,
+            .size = temp_buffer_size,
+            .usage = .{
+                .storage_buffer_bit = true,
+                .transfer_dst_bit = true,
+            },
+        });
+
+        try render_graph.buffer_upload_passes.append(render_graph.allocator, .{
+            .target = temp_buffer,
+            .offset = 0,
+            .size = temp_buffer_size,
+            .write_data = @ptrCast(slice.ptr),
+            .write_data_len = slice.len,
+            .write_fn = SliceUploadFn(T).uploadFn,
+        });
+
+        return temp_buffer;
+    }
 };

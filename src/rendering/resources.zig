@@ -69,27 +69,7 @@ pub fn deinit(self: *Self) void {
 
 pub fn createMaterialBuffer(self: Self, temp_allocator: std.mem.Allocator, render_graph: *rg.RenderGraph) !rg.RenderGraphBufferHandle {
     const temp_slice = try temp_allocator.dupe(MaterialAsset.Gpu, self.material_buffer.getSlice());
-    const temp_slice_size: usize = @sizeOf(MaterialAsset.Gpu) * temp_slice.len;
-
-    const temp_buffer = try render_graph.createTransientBuffer(.{
-        .location = .gpu_only,
-        .size = temp_slice_size,
-        .usage = .{
-            .storage_buffer_bit = true,
-            .transfer_dst_bit = true,
-        },
-    });
-
-    try render_graph.buffer_upload_passes.append(render_graph.allocator, .{
-        .target = temp_buffer,
-        .offset = 0,
-        .size = temp_slice_size,
-        .write_data = temp_slice.ptr,
-        .write_data_len = temp_slice.len,
-        .write_fn = rg.SliceUploadFn(MaterialAsset.Gpu).uploadFn,
-    });
-
-    return temp_buffer;
+    return try render_graph.uploadSliceToBuffer(MaterialAsset.Gpu, temp_slice);
 }
 
 pub fn loadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) void {

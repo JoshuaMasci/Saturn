@@ -155,7 +155,7 @@ pub fn createRenderPass(
     for (model_matrix_slice, scene.static_meshes.items) |*model_matirx, static_mesh| {
         model_matirx.* = static_mesh.transform.getModelMatrix();
     }
-    const model_matrix_buffer = try uploadSliceToBuffer(zm.Mat, model_matrix_slice, render_graph);
+    const model_matrix_buffer = try render_graph.uploadSliceToBuffer(zm.Mat, model_matrix_slice);
 
     var render_pass = try rg.RenderPass.init(temp_allocator, "Scene Pass");
     try render_pass.addColorAttachment(.{
@@ -370,27 +370,4 @@ pub fn buildCommandBufferMeshShading(build_data: ?*anyopaque, device: *Device, r
             }
         }
     }
-}
-
-pub fn uploadSliceToBuffer(comptime T: type, slice: []const T, render_graph: *rg.RenderGraph) !rg.RenderGraphBufferHandle {
-    const temp_buffer_size: usize = @sizeOf(T) * slice.len;
-    const temp_buffer = try render_graph.createTransientBuffer(.{
-        .location = .gpu_only,
-        .size = temp_buffer_size,
-        .usage = .{
-            .storage_buffer_bit = true,
-            .transfer_dst_bit = true,
-        },
-    });
-
-    try render_graph.buffer_upload_passes.append(render_graph.allocator, .{
-        .target = temp_buffer,
-        .offset = 0,
-        .size = temp_buffer_size,
-        .write_data = @ptrCast(slice.ptr),
-        .write_data_len = slice.len,
-        .write_fn = rg.SliceUploadFn(T).uploadFn,
-    });
-
-    return temp_buffer;
 }
