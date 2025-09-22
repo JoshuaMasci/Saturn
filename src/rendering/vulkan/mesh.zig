@@ -7,15 +7,29 @@ const MeshAsset = @import("../../asset/mesh.zig");
 const Device = @import("device.zig");
 const Buffer = @import("buffer.zig");
 
+pub const GpuInfo = extern struct {
+    sphere_pos_radius: [4]f32,
+    vertex_index_primitive_bindings_pad1: [4]u32,
+    meshlet_vertex_triangle_bindings_pad1: [4]u32,
+
+    //sphere_pos_radius: [4]f32,
+    // vertex_binding: u32,
+    // index_binding: u32,
+    // meshlet_binding: u32,
+    // meshlet_vertices_binding: u32,
+    // meshlet_triangles_binding: u32,
+};
+
 const Self = @This();
 
 allocator: std.mem.Allocator,
 backend: *Device,
 sphere_pos_radius: [4]f32,
+primitives: []MeshAsset.Primitive,
 
 vertex_buffer: Device.BufferHandle,
 index_buffer: Device.BufferHandle,
-primitives: []MeshAsset.Primitive,
+primitive_buffer: Device.BufferHandle,
 
 meshlet_buffer: Device.BufferHandle,
 meshlet_vertices_buffer: Device.BufferHandle,
@@ -25,11 +39,14 @@ pub fn init(allocator: std.mem.Allocator, backend: *Device, mesh: *const MeshAss
     const primitives = try allocator.dupe(MeshAsset.Primitive, mesh.primitives);
     errdefer allocator.free(primitives);
 
-    const vertex_buffer = try backend.createBufferWithData(.{ .vertex_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.vertices));
+    const vertex_buffer = try backend.createBufferWithData(.{ .vertex_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.vertices));
     errdefer backend.destroyBuffer(vertex_buffer);
 
-    const index_buffer = try backend.createBufferWithData(.{ .index_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.indices));
+    const index_buffer = try backend.createBufferWithData(.{ .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.indices));
     errdefer backend.destroyBuffer(index_buffer);
+
+    const primitive_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.primitives));
+    errdefer backend.destroyBuffer(primitive_buffer);
 
     const meshlet_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.meshlets));
     errdefer backend.destroyBuffer(meshlet_buffer);
@@ -44,10 +61,11 @@ pub fn init(allocator: std.mem.Allocator, backend: *Device, mesh: *const MeshAss
         .allocator = allocator,
         .backend = backend,
         .sphere_pos_radius = mesh.sphere_pos_radius,
-
         .primitives = primitives,
+
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
+        .primitive_buffer = primitive_buffer,
 
         .meshlet_buffer = meshlet_buffer,
         .meshlet_vertices_buffer = meshlet_vertices_buffer,
@@ -62,6 +80,25 @@ pub fn deinit(self: Self) void {
 
     self.backend.destroyBuffer(self.vertex_buffer);
     self.backend.destroyBuffer(self.index_buffer);
+    self.backend.destroyBuffer(self.primitive_buffer);
 
     self.allocator.free(self.primitives);
+}
+
+pub fn getGpuInfo(self: Self) GpuInfo {
+    return .{
+        .sphere_pos_radius = self.sphere_pos_radius,
+        .vertex_index_primitive_bindings_pad1 = .{
+            self.backend.buffers.get(self.vertex_buffer).?.storage_binding.?.index,
+            self.backend.buffers.get(self.index_buffer).?.storage_binding.?.index,
+            self.backend.buffers.get(self.primitive_buffer).?.storage_binding.?.index,
+            0,
+        },
+        .meshlet_vertex_triangle_bindings_pad1 = .{
+            self.backend.buffers.get(self.meshlet_buffer).?.storage_binding.?.index,
+            self.backend.buffers.get(self.meshlet_vertices_buffer).?.storage_binding.?.index,
+            self.backend.buffers.get(self.meshlet_triangles_buffer).?.storage_binding.?.index,
+            0,
+        },
+    };
 }

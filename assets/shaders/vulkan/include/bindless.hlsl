@@ -13,6 +13,9 @@
 #define ReadWriteStorageBufferArray(Type, Name) \
     [[vk::binding(1, BINDLESS_SET_INDEX)]] RWStructuredBuffer<Type> Name[];
 
+[[vk::binding(1, BINDLESS_SET_INDEX)]]
+ByteAddressBuffer storage_buffers[];
+
 // Binding 2: Sampled Images
 [[vk::binding(2, BINDLESS_SET_INDEX)]]
 SamplerState BindlessSamplers[] : register(s2, space0);

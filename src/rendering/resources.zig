@@ -21,6 +21,8 @@ device: *Device,
 
 static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, struct {
     mesh: GpuMesh,
+    gpu: GpuMesh.GpuInfo,
+    buffer_index: ?u32 = null,
 }),
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
     image_handle: Device.ImageHandle,
@@ -28,10 +30,12 @@ texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
 }),
 material_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
     material: MaterialAsset,
-    buffer_index: u32,
+    gpu: MaterialAsset.Gpu,
+    buffer_index: ?u32 = null,
 }),
 
-material_buffer: MaterialBuffer,
+static_mesh_buffer: ?Device.BufferHandle = null,
+material_buffer: ?Device.BufferHandle = null,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -46,11 +50,18 @@ pub fn init(
         .static_mesh_map = .init(allocator),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
-        .material_buffer = .{},
     };
 }
 
 pub fn deinit(self: *Self) void {
+    if (self.static_mesh_buffer) |buffer| {
+        self.device.destroyBuffer(buffer);
+    }
+
+    if (self.material_buffer) |buffer| {
+        self.device.destroyBuffer(buffer);
+    }
+
     for (self.static_mesh_map.values()) |entry| {
         entry.mesh.deinit();
     }
@@ -67,9 +78,36 @@ pub fn deinit(self: *Self) void {
     self.material_map.deinit();
 }
 
-pub fn createMaterialBuffer(self: Self, temp_allocator: std.mem.Allocator, render_graph: *rg.RenderGraph) !rg.RenderGraphBufferHandle {
-    const temp_slice = try temp_allocator.dupe(MaterialAsset.Gpu, self.material_buffer.getSlice());
-    return try render_graph.uploadSliceToBuffer(MaterialAsset.Gpu, temp_slice);
+pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
+    //Meshes
+    {
+        if (self.static_mesh_buffer) |buffer| {
+            self.device.destroyBuffer(buffer);
+            self.static_mesh_buffer = null;
+        }
+        const static_mesh_slice = try temp_allocator.alloc(GpuMesh.GpuInfo, self.static_mesh_map.values().len);
+        defer temp_allocator.free(static_mesh_slice);
+        for (static_mesh_slice, self.static_mesh_map.values(), 0..) |*gpu, *entry, i| {
+            gpu.* = entry.gpu;
+            entry.buffer_index = @intCast(i);
+        }
+        self.static_mesh_buffer = try self.device.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(static_mesh_slice));
+    }
+
+    //Material
+    {
+        if (self.material_buffer) |buffer| {
+            self.device.destroyBuffer(buffer);
+            self.material_buffer = null;
+        }
+        const material_slice = try temp_allocator.alloc(MaterialAsset.Gpu, self.material_map.values().len);
+        defer temp_allocator.free(material_slice);
+        for (material_slice, self.material_map.values(), 0..) |*gpu, *entry, i| {
+            gpu.* = entry.gpu;
+            entry.buffer_index = @intCast(i);
+        }
+        self.material_buffer = try self.device.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(material_slice));
+    }
 }
 
 pub fn loadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) void {
@@ -80,6 +118,8 @@ pub fn loadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *c
             self.tryLoadMaterial(temp_allocator, material);
         }
     }
+
+    self.updateBuffers(temp_allocator) catch |err| std.log.err("Failed to update resource buffers: {}", .{err});
 }
 
 pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
@@ -87,9 +127,11 @@ pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: Asset
         if (self.registry.loadAsset(MeshAsset, temp_allocator, handle)) |mesh| {
             defer mesh.deinit(temp_allocator);
             const gpu_mesh = GpuMesh.init(self.allocator, self.device, &mesh) catch return;
+            const gpu_info = gpu_mesh.getGpuInfo();
 
             self.static_mesh_map.put(handle, .{
                 .mesh = gpu_mesh,
+                .gpu = gpu_info,
             }) catch |err| {
                 gpu_mesh.deinit();
                 std.log.err("Failed to append static mesh to list {}", .{err});
@@ -167,11 +209,9 @@ pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: A
                 gpu_pack.normal_texture = self.tryGetTextureSampledBinding(texture_handle);
             }
 
-            const buffer_index = self.material_buffer.add(gpu_pack);
-
             self.material_map.put(handle, .{
                 .material = material,
-                .buffer_index = buffer_index,
+                .gpu = gpu_pack,
             }) catch |err| {
                 std.log.err("Failed to append material to list {}", .{err});
             };
@@ -180,21 +220,3 @@ pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: A
         }
     }
 }
-
-const MaterialBuffer = struct {
-    next_index: u32 = 0,
-    cpu_buffer: [2048]MaterialAsset.Gpu = std.mem.zeroes([2048]MaterialAsset.Gpu),
-
-    fn add(self: *@This(), mat: MaterialAsset.Gpu) u32 {
-        const i = self.next_index;
-        defer self.next_index += 1;
-
-        self.cpu_buffer[i] = mat;
-
-        return i;
-    }
-
-    fn getSlice(self: *const @This()) []const MaterialAsset.Gpu {
-        return self.cpu_buffer[0..self.next_index];
-    }
-};

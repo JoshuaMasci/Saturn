@@ -20,7 +20,8 @@ const utils = @import("vulkan/utils.zig");
 pub const BuildCommandBufferData = struct {
     self: *Self,
     resources: *const Resources,
-    material_buffer_handle: rg.RenderGraphBufferHandle,
+    static_mesh_buffer: Device.BufferHandle,
+    material_buffer: Device.BufferHandle,
     model_matrix_buffer_handle: rg.RenderGraphBufferHandle,
     scene: *const RenderScene,
     camera: Camera,
@@ -35,11 +36,15 @@ device: *Device,
 opaque_mesh_pipeline: vk.Pipeline,
 alpha_cutoff_mesh_pipeline: vk.Pipeline,
 
+opaque_mesh_pipeline_new: vk.Pipeline,
+
 //Debug Values
 enable_culling: bool = true,
 total_primitives: usize = 0,
 rendered_primitives: usize = 0,
 culled_primitives: usize = 0,
+
+storage_loads: bool = false,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -93,6 +98,9 @@ pub fn init(
     const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh.vert.asset"));
     defer device.device.proxy.destroyShaderModule(vertex_shader, null);
 
+    const vertex_shader_new = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh_new.vert.asset"));
+    defer device.device.proxy.destroyShaderModule(vertex_shader_new, null);
+
     const opaque_fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/opaque.frag.asset"));
     defer device.device.proxy.destroyShaderModule(opaque_fragment_shader, null);
 
@@ -109,6 +117,19 @@ pub fn init(
         },
         .{ .bindings = &bindings, .attributes = &attributes },
         vertex_shader,
+        opaque_fragment_shader,
+    );
+
+    const opaque_mesh_pipeline_new = try Pipeline.createGraphicsPipeline(
+        device.device.proxy,
+        pipeline_layout,
+        .{
+            .color_format = color_format,
+            .depth_format = depth_format,
+            .cull_mode = .{ .back_bit = true },
+        },
+        .{},
+        vertex_shader_new,
         opaque_fragment_shader,
     );
 
@@ -130,12 +151,15 @@ pub fn init(
         .device = device,
         .opaque_mesh_pipeline = opaque_mesh_pipeline,
         .alpha_cutoff_mesh_pipeline = alpha_cutoff_mesh_pipeline,
+        .opaque_mesh_pipeline_new = opaque_mesh_pipeline_new,
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.device.device.proxy.destroyPipeline(self.opaque_mesh_pipeline, null);
     self.device.device.proxy.destroyPipeline(self.alpha_cutoff_mesh_pipeline, null);
+
+    self.device.device.proxy.destroyPipeline(self.opaque_mesh_pipeline_new, null);
 }
 
 pub fn createRenderPass(
@@ -149,8 +173,6 @@ pub fn createRenderPass(
     camera_transform: Transform,
     render_graph: *rg.RenderGraph,
 ) !void {
-    const material_buffer_handle = try resources.createMaterialBuffer(temp_allocator, render_graph);
-
     const model_matrix_slice = try temp_allocator.alloc(zm.Mat, scene.static_meshes.items.len);
     for (model_matrix_slice, scene.static_meshes.items) |*model_matirx, static_mesh| {
         model_matirx.* = static_mesh.transform.getModelMatrix();
@@ -173,7 +195,8 @@ pub fn createRenderPass(
     scene_build_data.* = .{
         .self = self,
         .resources = resources,
-        .material_buffer_handle = material_buffer_handle,
+        .static_mesh_buffer = resources.static_mesh_buffer.?,
+        .material_buffer = resources.material_buffer.?,
         .model_matrix_buffer_handle = model_matrix_buffer,
         .scene = scene,
         .camera = camera,
@@ -193,7 +216,8 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     self.rendered_primitives = 0;
     self.culled_primitives = 0;
 
-    const material_buffer = resources.buffers[data.material_buffer_handle.index];
+    const static_mesh_buffer = device.buffers.get(data.static_mesh_buffer).?;
+    const material_buffer = device.buffers.get(data.material_buffer).?;
     const model_matrix_buffer = resources.buffers[data.model_matrix_buffer_handle.index];
 
     const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
@@ -204,21 +228,6 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
     projection_matrix[1][1] *= -1.0;
     const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
-    const viewport = vk.Viewport{
-        .x = 0.0,
-        .y = 0.0,
-        .width = @floatFromInt(raster_pass_extent.?.width),
-        .height = @floatFromInt(raster_pass_extent.?.height),
-        .min_depth = 0.0,
-        .max_depth = 1.0,
-    };
-    command_buffer.setViewport(0, 1, (&viewport)[0..1]);
-    const scissor = vk.Rect2D{
-        .offset = .{ .x = 0, .y = 0 },
-        .extent = raster_pass_extent.?,
-    };
-    command_buffer.setScissor(0, 1, (&scissor)[0..1]);
-
     const frustum: culling.Frustum = data.camera.getFrustum(aspect_ratio, data.camera_transform);
 
     for (data.scene.static_meshes.items, 0..) |static_mesh, instance_id| {
@@ -227,19 +236,8 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
         }
 
         if (data.resources.static_mesh_map.get(static_mesh.component.mesh)) |entry| {
-            const model_matrix = static_mesh.transform.getModelMatrix();
-            _ = model_matrix; // autofix
-
-            const vertex_buffer = device.buffers.get(entry.mesh.vertex_buffer) orelse continue;
-            const vertex_buffers = [_]vk.Buffer{vertex_buffer.handle};
-            const vertex_offsets = [_]vk.DeviceSize{0};
-            command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
-
-            const index_buffer = device.buffers.get(entry.mesh.index_buffer) orelse return;
-            command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
-
             const materials = static_mesh.component.materials.constSlice();
-            for (entry.mesh.primitives, materials) |primitive, material| {
+            for (entry.mesh.primitives, materials, 0..) |primitive, material, primitive_index| {
                 self.total_primitives += 1;
                 if (self.enable_culling) {
                     if (!frustum.intersects(culling.Sphere, .initWorld(primitive.sphere_pos_radius, &static_mesh.transform))) {
@@ -252,27 +250,46 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: r
                 const PushData = extern struct {
                     view_projection_matrix: zm.Mat,
                     model_matrix_binding: u32,
+                    static_mesh_binding: u32,
                     material_binding: u32,
+                    mesh_index: u32,
+                    primitive_index: u32,
                     material_index: u32,
                 };
 
                 if (data.resources.material_map.get(material)) |mat_entry| {
                     command_buffer.bindPipeline(.graphics, switch (mat_entry.material.alpha_mode) {
-                        .alpha_opaque => self.opaque_mesh_pipeline,
-                        .alpha_mask => self.alpha_cutoff_mesh_pipeline,
+                        .alpha_opaque => if (!self.storage_loads) self.opaque_mesh_pipeline else self.opaque_mesh_pipeline_new,
+                        .alpha_mask => continue,
                         .alpha_blend => continue, //TODO: this
                     });
 
                     const push_data = PushData{
                         .view_projection_matrix = view_projection_matrix,
                         .model_matrix_binding = model_matrix_buffer.storage_binding.?,
-                        .material_binding = material_buffer.storage_binding.?,
-                        .material_index = mat_entry.buffer_index,
+                        .static_mesh_binding = static_mesh_buffer.storage_binding.?.index,
+                        .material_binding = material_buffer.storage_binding.?.index,
+                        .mesh_index = entry.buffer_index.?,
+                        .primitive_index = @intCast(primitive_index),
+                        .material_index = mat_entry.buffer_index.?,
                     };
                     command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
 
                     //Draw Primitive
-                    command_buffer.drawIndexed(primitive.index_count, 1, primitive.index_offset, @intCast(primitive.vertex_offset), @intCast(instance_id));
+
+                    if (self.storage_loads) {
+                        command_buffer.draw(primitive.index_count, 1, 0, @intCast(instance_id));
+                    } else {
+                        const vertex_buffer = device.buffers.get(entry.mesh.vertex_buffer) orelse continue;
+                        const vertex_buffers = [_]vk.Buffer{vertex_buffer.handle};
+                        const vertex_offsets = [_]vk.DeviceSize{0};
+                        command_buffer.bindVertexBuffers(0, 1, &vertex_buffers, &vertex_offsets);
+
+                        const index_buffer = device.buffers.get(entry.mesh.index_buffer) orelse return;
+                        command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
+
+                        command_buffer.drawIndexed(primitive.index_count, 1, primitive.index_offset, @intCast(primitive.vertex_offset), @intCast(instance_id));
+                    }
                 }
             }
         }

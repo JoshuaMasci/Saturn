@@ -2,6 +2,7 @@
 
 #include "bindless.hlsl"
 #include "material.hlsl"
+#include "push.hlsl"
 
 ReadOnlyStorageBufferArray(Material, materialBuffer);
 
@@ -13,14 +14,6 @@ struct PixelInput
 struct PixelOutput
 {
     float4 out_frag_color : SV_Target;
-};
-
-struct PushConstants
-{
-    float4x4 view_projection_matrix;
-    uint model_matrix_buffer_index;
-    uint material_binding;
-    uint material_index;
 };
 
 [[vk::push_constant]]

@@ -106,6 +106,8 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .shader_storage_buffer_array_non_uniform_indexing = .true,
         .shader_sampled_image_array_non_uniform_indexing = .true,
         .shader_storage_image_array_non_uniform_indexing = .true,
+
+        //.scalar_block_layout = .true,
     };
 
     var features_13 = vk.PhysicalDeviceVulkan13Features{

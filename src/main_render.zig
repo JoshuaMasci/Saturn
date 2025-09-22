@@ -330,6 +330,7 @@ const App = struct {
             try ImFmtText(temp_allocator, "Rendered Primitives: {}", .{self.scene_renderer.rendered_primitives});
             try ImFmtText(temp_allocator, "Culled Primitives: {}", .{self.scene_renderer.culled_primitives});
             //imgui.ImGui_LabelText("Primitives", "%d", self.scene_renderer.total_primitives);
+            _ = imgui.ImGui_Checkbox("Mesh Storage Load", &self.scene_renderer.storage_loads);
             imgui.ImGui_End();
         }
 

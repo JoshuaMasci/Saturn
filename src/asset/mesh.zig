@@ -23,6 +23,8 @@ pub const Primitive = struct {
     index_count: u32,
     meshlet_offset: u32,
     meshlet_count: u32,
+    pad0: u32 = 0,
+    pad1: u32 = 0,
 };
 
 pub const Meshlet = extern struct {
