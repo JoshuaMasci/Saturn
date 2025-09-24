@@ -44,7 +44,7 @@ total_primitives: usize = 0,
 rendered_primitives: usize = 0,
 culled_primitives: usize = 0,
 
-storage_loads: bool = false,
+storage_loads: bool = true,
 
 pub fn init(
     allocator: std.mem.Allocator,

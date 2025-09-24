@@ -321,6 +321,17 @@ const App = struct {
                     try ImFmtText(temp_allocator, "Memory Usage: {s}", .{mem_usage_string});
                 }
             }
+
+            {
+                const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(
+                    temp_allocator,
+                    self.vulkan_device.device.gpu_allocator.total_requested_bytes,
+                ) catch null;
+                if (formatted_string) |mem_usage_string| {
+                    try ImFmtText(temp_allocator, "Gpu Memory Usage: {s}", .{mem_usage_string});
+                }
+            }
+
             imgui.ImGui_End();
         }
 
