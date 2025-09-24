@@ -461,6 +461,8 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         .textures = images,
     };
 
+    try self.bindless_descriptor.write_updates(temp_allocator);
+
     const command_buffer_handle = try frame_data.graphics_command_pool.get();
     const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.proxy.wrapper);
 

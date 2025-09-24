@@ -28,8 +28,6 @@ storage_buffer_array: BufferDescriptor,
 sampled_image_array: ImageDescriptor,
 storage_image_array: ImageDescriptor,
 
-next_sampled_texture_id: u16 = 1,
-
 pub fn init(allocator: std.mem.Allocator, device: *VkDevice, descriptor_counts: DescriptorCounts) !Self {
     const All_STAGE_FLAGS = device.all_stage_flags;
 
@@ -123,6 +121,13 @@ pub fn deinit(self: *Self) void {
     self.storage_image_array.deinit();
 }
 
+pub fn write_updates(self: *Self, temp_allocator: std.mem.Allocator) !void {
+    try self.uniform_buffer_array.write_updates(temp_allocator);
+    try self.storage_buffer_array.write_updates(temp_allocator);
+    try self.sampled_image_array.write_updates(temp_allocator);
+    try self.storage_image_array.write_updates(temp_allocator);
+}
+
 pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy, layout: vk.PipelineLayout) void {
     const bind_points = [_]vk.PipelineBindPoint{ .graphics, .compute };
     for (bind_points) |bind_point| {
@@ -144,6 +149,7 @@ const BufferDescriptor = struct {
 
     allocator: std.mem.Allocator,
     index_list: IndexList,
+    update_list: std.AutoArrayHashMap(u32, vk.DescriptorBufferInfo),
 
     fn init(
         allocator: std.mem.Allocator,
@@ -160,55 +166,54 @@ const BufferDescriptor = struct {
             .descriptor_index = descriptor_index,
             .descriptor_type = descriptor_type,
             .index_list = .init(1, array_count),
+            .update_list = .init(allocator),
         };
     }
 
     fn deinit(self: *BufferDescriptor) void {
         self.index_list.deinit(self.allocator);
+        self.update_list.deinit();
     }
 
     pub fn bind(self: *BufferDescriptor, buffer: Buffer) Binding {
         const index = self.index_list.get().?;
-
-        const buffer_info = vk.DescriptorBufferInfo{
+        self.update_list.put(index, .{
             .buffer = buffer.handle,
             .offset = 0,
             .range = vk.WHOLE_SIZE,
-        };
-        const descriptor_update = vk.WriteDescriptorSet{
-            .descriptor_count = 1,
-            .descriptor_type = self.descriptor_type,
-            .dst_set = self.set,
-            .dst_binding = self.descriptor_index,
-            .dst_array_element = @intCast(index),
-            .p_buffer_info = @ptrCast(&buffer_info),
-            .p_image_info = &.{},
-            .p_texel_buffer_view = &.{},
-        };
-        self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
-
+        }) catch |err| std.log.info("Failed to update descriptor binding {}:{} {}", .{ self.descriptor_index, index, err });
         return .{ .binding = self.descriptor_index, .index = index };
     }
 
     pub fn clear(self: *BufferDescriptor, binding: Binding) void {
         self.index_list.free(self.allocator, binding.index);
-
-        const buffer_info = vk.DescriptorBufferInfo{
+        self.update_list.put(binding.index, .{
             .buffer = .null_handle,
             .offset = 0,
             .range = vk.WHOLE_SIZE,
-        };
-        const descriptor_update = vk.WriteDescriptorSet{
-            .descriptor_count = 1,
-            .descriptor_type = self.descriptor_type,
-            .dst_set = self.set,
-            .dst_binding = self.descriptor_index,
-            .dst_array_element = @intCast(binding.index),
-            .p_buffer_info = @ptrCast(&buffer_info),
-            .p_image_info = &.{},
-            .p_texel_buffer_view = &.{},
-        };
-        self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
+        }) catch |err| std.log.info("Failed to free descriptor binding {}:{} {}", .{ self.descriptor_index, binding.index, err });
+    }
+
+    pub fn write_updates(self: *BufferDescriptor, temp_allocator: std.mem.Allocator) !void {
+        const buffer_infos = self.update_list.values();
+        const indexes = self.update_list.keys();
+        const descriptor_writes = try temp_allocator.alloc(vk.WriteDescriptorSet, self.update_list.count());
+
+        for (indexes, buffer_infos, descriptor_writes) |index, *info, *descriptor_write| {
+            descriptor_write.* = .{
+                .descriptor_count = 1,
+                .descriptor_type = self.descriptor_type,
+                .dst_set = self.set,
+                .dst_binding = self.descriptor_index,
+                .dst_array_element = index,
+                .p_buffer_info = @ptrCast(info),
+                .p_image_info = &.{},
+                .p_texel_buffer_view = &.{},
+            };
+        }
+
+        self.device.proxy.updateDescriptorSets(@intCast(descriptor_writes.len), @ptrCast(descriptor_writes.ptr), 0, null);
+        self.update_list.clearRetainingCapacity();
     }
 };
 
@@ -222,6 +227,7 @@ const ImageDescriptor = struct {
 
     allocator: std.mem.Allocator,
     index_list: IndexList,
+    update_list: std.AutoArrayHashMap(u32, vk.DescriptorImageInfo),
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -240,55 +246,54 @@ const ImageDescriptor = struct {
             .descriptor_type = descriptor_type,
             .image_layout = image_layout,
             .index_list = .init(1, array_count),
+            .update_list = .init(allocator),
         };
     }
 
     pub fn deinit(self: *ImageDescriptor) void {
         self.index_list.deinit(self.allocator);
+        self.update_list.deinit();
     }
 
     pub fn bind(self: *ImageDescriptor, image: Image, sampler: ?Sampler) Binding {
         const index = self.index_list.get().?;
-
-        const image_info = vk.DescriptorImageInfo{
+        self.update_list.put(index, .{
             .sampler = if (sampler) |some| some.handle else .null_handle,
             .image_view = image.view_handle,
             .image_layout = self.image_layout,
-        };
-        const descriptor_update = vk.WriteDescriptorSet{
-            .descriptor_count = 1,
-            .descriptor_type = self.descriptor_type,
-            .dst_set = self.set,
-            .dst_binding = self.descriptor_index,
-            .dst_array_element = @intCast(index),
-            .p_image_info = @ptrCast(&image_info),
-            .p_buffer_info = &.{},
-            .p_texel_buffer_view = &.{},
-        };
-        self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
-
+        }) catch |err| std.log.info("Failed to update descriptor binding {}:{} {}", .{ self.descriptor_index, index, err });
         return .{ .binding = self.descriptor_index, .index = index };
     }
 
     pub fn clear(self: *ImageDescriptor, binding: Binding) void {
         self.index_list.free(self.allocator, binding.index);
-
-        const image_info = vk.DescriptorImageInfo{
+        self.update_list.put(binding.index, .{
             .sampler = .null_handle,
             .image_view = .null_handle,
             .image_layout = .undefined,
-        };
-        const descriptor_update = vk.WriteDescriptorSet{
-            .descriptor_count = 1,
-            .descriptor_type = self.descriptor_type,
-            .dst_set = self.set,
-            .dst_binding = self.descriptor_index,
-            .dst_array_element = @intCast(binding.index),
-            .p_image_info = @ptrCast(&image_info),
-            .p_buffer_info = &.{},
-            .p_texel_buffer_view = &.{},
-        };
-        self.device.proxy.updateDescriptorSets(1, @ptrCast(&descriptor_update), 0, null);
+        }) catch |err| std.log.info("Failed to free descriptor binding {}:{} {}", .{ self.descriptor_index, binding.index, err });
+    }
+
+    pub fn write_updates(self: *ImageDescriptor, temp_allocator: std.mem.Allocator) !void {
+        const buffer_infos = self.update_list.values();
+        const indexes = self.update_list.keys();
+        const descriptor_writes = try temp_allocator.alloc(vk.WriteDescriptorSet, self.update_list.count());
+
+        for (indexes, buffer_infos, descriptor_writes) |index, *info, *descriptor_write| {
+            descriptor_write.* = .{
+                .descriptor_count = 1,
+                .descriptor_type = self.descriptor_type,
+                .dst_set = self.set,
+                .dst_binding = self.descriptor_index,
+                .dst_array_element = index,
+                .p_buffer_info = &.{},
+                .p_image_info = @ptrCast(info),
+                .p_texel_buffer_view = &.{},
+            };
+        }
+
+        self.device.proxy.updateDescriptorSets(@intCast(descriptor_writes.len), @ptrCast(descriptor_writes.ptr), 0, null);
+        self.update_list.clearRetainingCapacity();
     }
 };
 

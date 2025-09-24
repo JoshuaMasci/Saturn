@@ -148,7 +148,8 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .raytracing_support = supportsExtension(extensions_properties, "VK_KHR_acceleration_structure") and supportsExtension(extensions_properties, "VK_KHR_ray_query"), //Will not support VK_KHR_ray_tracing_pipeline
 
         //TODO: use feature version when this is updated to VK1.4
-        .host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"), //or (host_image_copy_properties.host_image_copy == vk.TRUE);
+        //.host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"),
+        .host_image_copy = false, //My implementation doesn't work
     };
 
     return .{

@@ -107,6 +107,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .shader_sampled_image_array_non_uniform_indexing = .true,
         .shader_storage_image_array_non_uniform_indexing = .true,
 
+        .draw_indirect_count = .true,
         //.scalar_block_layout = .true,
     };
 
