@@ -117,7 +117,7 @@ const App = struct {
     average_dt: f32 = 0.0,
 
     window_visable_flags: struct {
-        culling: bool = true,
+        debug: bool = true,
         performance: bool = true,
     } = .{},
 
@@ -292,7 +292,7 @@ const App = struct {
 
             if (imgui.ImGui_BeginMenu("Windows")) {
                 _ = imgui.ImGui_MenuItemBoolPtr("Performance", null, &self.window_visable_flags.performance, true);
-                _ = imgui.ImGui_MenuItemBoolPtr("Culling", null, &self.window_visable_flags.culling, true);
+                _ = imgui.ImGui_MenuItemBoolPtr("Debug", null, &self.window_visable_flags.debug, true);
                 imgui.ImGui_EndMenu();
             }
 
@@ -335,9 +335,7 @@ const App = struct {
             imgui.ImGui_End();
         }
 
-        if (self.window_visable_flags.culling and imgui.ImGui_Begin("Debug", &self.window_visable_flags.culling, 0)) {
-            _ = imgui.ImGui_Checkbox("Enable Rendering", &self.scene_renderer.enable_rendering);
-            _ = imgui.ImGui_Checkbox("Indirect Draw", &self.scene_renderer.enable_indirect);
+        if (self.window_visable_flags.debug and imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
             imgui.ImGui_End();
         }
 

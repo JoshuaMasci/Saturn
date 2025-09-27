@@ -25,7 +25,6 @@ pub const BuildCommandBufferData = struct {
 
     draw_infos_buffer_handle: rg.RenderGraphBufferHandle,
     indirect_info_buffer: rg.RenderGraphBufferHandle,
-    indirect_info: []const vk.DrawIndirectCommand,
     indirect_count: u32,
 
     camera: Camera,
@@ -40,8 +39,6 @@ device: *Backend,
 opaque_mesh_pipeline_new: vk.Pipeline,
 
 //Debug Values
-enable_rendering: bool = false,
-enable_indirect: bool = false,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -150,7 +147,6 @@ pub fn createRenderPass(
         .material_buffer = resources.material_buffer.?,
         .draw_infos_buffer_handle = draw_infos_buffer,
         .indirect_info_buffer = indirect_info_buffer,
-        .indirect_info = indirect_info.items,
         .indirect_count = @intCast(indirect_info.items.len),
         .camera = camera,
         .camera_transform = camera_transform,
@@ -189,15 +185,7 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: 
             .draw_info_binding = draw_infos_buffer.storage_binding.?,
         };
         command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
-        if (self.enable_rendering) {
-            if (self.enable_indirect) {
-                command_buffer.drawIndirect(indirect_info_buffer.handle, 0, data.indirect_count, @sizeOf(vk.DrawIndirectCommand));
-            } else {
-                for (data.indirect_info) |info| {
-                    command_buffer.draw(info.vertex_count, info.instance_count, info.first_vertex, info.first_instance);
-                }
-            }
-        }
+        command_buffer.drawIndirect(indirect_info_buffer.handle, 0, data.indirect_count, @sizeOf(vk.DrawIndirectCommand));
     }
 }
 
