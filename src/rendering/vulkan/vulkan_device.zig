@@ -81,6 +81,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     var features = vk.PhysicalDeviceFeatures{
         .robust_buffer_access = .true,
         .fill_mode_non_solid = .true,
+        .multi_draw_indirect = .true,
     };
 
     var features_host_image_copy = vk.PhysicalDeviceHostImageCopyFeaturesEXT{

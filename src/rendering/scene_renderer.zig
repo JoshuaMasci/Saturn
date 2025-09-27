@@ -93,8 +93,6 @@ pub fn createRenderPass(
     render_graph: *rg.RenderGraph,
 ) !void {
     var draw_infos = try std.ArrayList(DrawInfo).initCapacity(temp_allocator, scene.static_meshes.items.len);
-    defer draw_infos.deinit(temp_allocator);
-
     var indirect_info = try std.ArrayList(vk.DrawIndirectCommand).initCapacity(temp_allocator, scene.static_meshes.items.len);
 
     for (scene.static_meshes.items) |static_mesh| {

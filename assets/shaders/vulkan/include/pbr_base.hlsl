@@ -25,22 +25,21 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
- //    Material material = materialBuffer[push_constants.material_binding][input.material_index];
+    Material material = materialBuffer[push_constants.material_binding][input.material_index];
 
- //    float4 base_color = material.base_color_factor;
+    float4 base_color = material.base_color_factor;
 
-	// if (material.base_color_texture != 0) {
-	// 	base_color *= sampleTexture(material.base_color_texture, input.frag_uv0);
-	// }
+	if (material.base_color_texture != 0) {
+		base_color *= sampleTexture(material.base_color_texture, input.frag_uv0);
+	}
 
-	// #ifdef ALPHA_CUTOFF
- //    if (base_color.w < material.alpha_cutoff) {
- //        discard;
- //    }
- //    #endif
+	#ifdef ALPHA_CUTOFF
+    if (base_color.w < material.alpha_cutoff) {
+        discard;
+    }
+    #endif
 
- //    output.out_frag_color = base_color;
- output.out_frag_color = float4(0.33, 0.72, 0.12, 1.0);
+    output.out_frag_color = base_color;
 
     return output;
 }
