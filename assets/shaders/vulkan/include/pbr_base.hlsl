@@ -9,6 +9,8 @@ ReadOnlyStorageBufferArray(Material, materialBuffer);
 struct PixelInput
 {
     float2 frag_uv0 : TEXCOORD0;
+    float2 frag_uv1 : TEXCOORD1;
+    uint material_index: MAT;
 };
 
 struct PixelOutput
@@ -23,7 +25,7 @@ PixelOutput main(PixelInput input)
 {
     PixelOutput output;
 
-    Material material = materialBuffer[push_constants.material_binding][push_constants.material_index];
+    Material material = materialBuffer[push_constants.material_binding][input.material_index];
 
     float4 base_color = material.base_color_factor;
 

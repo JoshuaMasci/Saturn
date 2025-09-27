@@ -27,3 +27,21 @@ Vertex LoadVertex(ByteAddressBuffer buffer, uint vertexID)
     v.uv1      = asfloat(buffer.Load2(offset + 48));
     return v;
 }
+
+struct MeshInfo {
+    float4 sphere_pos_radius;
+    uint4 vertex_index_primitive_bindings_pad1;
+    uint4 meshlet_vertex_triangle_bindings_pad1;
+};
+
+struct PrimitiveInfo {
+    float4 sphere_pos_radius;
+    uint vertex_offset;
+    uint vertex_count;
+    uint index_offset;
+    uint index_count;
+    uint meshlet_offset;
+    uint meshlet_count;
+    uint pad0;
+    uint pad1;
+};

@@ -16,7 +16,7 @@ const MeshShading = @import("rendering/mesh_shading.zig");
 const Resources = @import("rendering/resources.zig");
 const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");
-const Device = @import("rendering/vulkan/device.zig");
+const Backend = @import("rendering/vulkan/backend.zig");
 const Transform = @import("transform.zig");
 
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
@@ -99,7 +99,7 @@ const App = struct {
     window: sdl3.Window,
     asset_registry: *AssetRegistry,
 
-    vulkan_device: *Device,
+    vulkan_device: *Backend,
     resources: Resources,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
@@ -117,7 +117,7 @@ const App = struct {
     average_dt: f32 = 0.0,
 
     window_visable_flags: struct {
-        culling: bool = true,
+        debug: bool = true,
         performance: bool = true,
     } = .{},
 
@@ -138,7 +138,7 @@ const App = struct {
         var window: sdl3.Window = .init("Saturn Render Sandbox", .{ .windowed = .{ 1920, 1080 } });
         errdefer window.deinit();
 
-        const vulkan_device = try allocator.create(Device);
+        const vulkan_device = try allocator.create(Backend);
         errdefer allocator.destroy(vulkan_device);
 
         const FRAME_IN_FLIGHT_COUNT = 3;
@@ -292,7 +292,7 @@ const App = struct {
 
             if (imgui.ImGui_BeginMenu("Windows")) {
                 _ = imgui.ImGui_MenuItemBoolPtr("Performance", null, &self.window_visable_flags.performance, true);
-                _ = imgui.ImGui_MenuItemBoolPtr("Culling", null, &self.window_visable_flags.culling, true);
+                _ = imgui.ImGui_MenuItemBoolPtr("Debug", null, &self.window_visable_flags.debug, true);
                 imgui.ImGui_EndMenu();
             }
 
@@ -335,13 +335,7 @@ const App = struct {
             imgui.ImGui_End();
         }
 
-        if (self.window_visable_flags.culling and imgui.ImGui_Begin("Culling", &self.window_visable_flags.culling, 0)) {
-            _ = imgui.ImGui_Checkbox("Frustum Culling", &self.scene_renderer.enable_culling);
-            try ImFmtText(temp_allocator, "Total Primitives: {}", .{self.scene_renderer.total_primitives});
-            try ImFmtText(temp_allocator, "Rendered Primitives: {}", .{self.scene_renderer.rendered_primitives});
-            try ImFmtText(temp_allocator, "Culled Primitives: {}", .{self.scene_renderer.culled_primitives});
-            //imgui.ImGui_LabelText("Primitives", "%d", self.scene_renderer.total_primitives);
-            _ = imgui.ImGui_Checkbox("Mesh Storage Load", &self.scene_renderer.storage_loads);
+        if (self.window_visable_flags.debug and imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
             imgui.ImGui_End();
         }
 
@@ -358,7 +352,7 @@ const App = struct {
             }
         }
 
-        var render_graph = Device.RenderGraph.init(temp_allocator);
+        var render_graph = Backend.RenderGraph.init(temp_allocator);
         defer render_graph.deinit();
 
         {
@@ -382,7 +376,7 @@ const App = struct {
                     &render_graph,
                 );
             } else {
-                var render_pass = try Device.RenderPass.init(temp_allocator, "Screen Pass");
+                var render_pass = try Backend.RenderPass.init(temp_allocator, "Screen Pass");
                 try render_pass.addColorAttachment(.{
                     .texture = swapchain_texture,
                     .clear = .{ .float_32 = @splat(0.25) },
