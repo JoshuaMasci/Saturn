@@ -8,7 +8,7 @@ const MeshAsset = @import("../asset/mesh.zig");
 const AssetRegistry = @import("../asset/registry.zig");
 const TextureAsset = @import("../asset/texture.zig");
 const RenderScene = @import("scene.zig").RenderScene;
-const Device = @import("vulkan/device.zig");
+const Backend = @import("vulkan/backend.zig");
 const GpuImage = @import("vulkan/image.zig");
 const GpuMesh = @import("vulkan/mesh.zig");
 const rg = @import("vulkan/render_graph.zig");
@@ -17,7 +17,7 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 registry: *const AssetRegistry,
-device: *Device,
+device: *Backend,
 
 static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, struct {
     mesh: GpuMesh,
@@ -25,7 +25,7 @@ static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, struct {
     buffer_index: ?u32 = null,
 }),
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
-    image_handle: Device.ImageHandle,
+    image_handle: Backend.ImageHandle,
     //TODO: bindings?
 }),
 material_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
@@ -34,13 +34,13 @@ material_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
     buffer_index: ?u32 = null,
 }),
 
-static_mesh_buffer: ?Device.BufferHandle = null,
-material_buffer: ?Device.BufferHandle = null,
+static_mesh_buffer: ?Backend.BufferHandle = null,
+material_buffer: ?Backend.BufferHandle = null,
 
 pub fn init(
     allocator: std.mem.Allocator,
     registry: *const AssetRegistry,
-    device: *Device,
+    device: *Backend,
 ) Self {
     return .{
         .allocator = allocator,
@@ -100,6 +100,7 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
             self.device.destroyBuffer(buffer);
             self.material_buffer = null;
         }
+
         const material_slice = try temp_allocator.alloc(MaterialAsset.Gpu, self.material_map.values().len);
         defer temp_allocator.free(material_slice);
         for (material_slice, self.material_map.values(), 0..) |*gpu, *entry, i| {

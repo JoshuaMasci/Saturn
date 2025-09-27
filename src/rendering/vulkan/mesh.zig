@@ -4,7 +4,7 @@ const vk = @import("vulkan");
 
 const MeshAsset = @import("../../asset/mesh.zig");
 
-const Device = @import("device.zig");
+const Backend = @import("backend.zig");
 const Buffer = @import("buffer.zig");
 
 pub const GpuInfo = extern struct {
@@ -23,19 +23,19 @@ pub const GpuInfo = extern struct {
 const Self = @This();
 
 allocator: std.mem.Allocator,
-backend: *Device,
+backend: *Backend,
 sphere_pos_radius: [4]f32,
 primitives: []MeshAsset.Primitive,
 
-vertex_buffer: Device.BufferHandle,
-index_buffer: Device.BufferHandle,
-primitive_buffer: Device.BufferHandle,
+vertex_buffer: Backend.BufferHandle,
+index_buffer: Backend.BufferHandle,
+primitive_buffer: Backend.BufferHandle,
 
-meshlet_buffer: Device.BufferHandle,
-meshlet_vertices_buffer: Device.BufferHandle,
-meshlet_triangles_buffer: Device.BufferHandle,
+meshlet_buffer: Backend.BufferHandle,
+meshlet_vertices_buffer: Backend.BufferHandle,
+meshlet_triangles_buffer: Backend.BufferHandle,
 
-pub fn init(allocator: std.mem.Allocator, backend: *Device, mesh: *const MeshAsset) !Self {
+pub fn init(allocator: std.mem.Allocator, backend: *Backend, mesh: *const MeshAsset) !Self {
     const primitives = try allocator.dupe(MeshAsset.Primitive, mesh.primitives);
     errdefer allocator.free(primitives);
 

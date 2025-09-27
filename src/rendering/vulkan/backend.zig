@@ -80,6 +80,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     }
 
     const device_index = 0; //TODO: select device rather than just assume 0 is good
+
     std.log.info("Picking Device {}: {s}", .{ device_index, instance.physical_devices[device_index].info.name });
 
     var device = try allocator.create(VkDevice);

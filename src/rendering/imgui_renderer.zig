@@ -4,7 +4,7 @@ const vk = @import("vulkan");
 
 const imgui = @import("../imgui.zig").c;
 const sdl3 = @import("../platform/sdl3.zig");
-const Device = @import("vulkan/device.zig");
+const Backend = @import("vulkan/backend.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
 const utils = @import("vulkan/utils.zig");
@@ -12,11 +12,11 @@ const utils = @import("vulkan/utils.zig");
 const Self = @This();
 
 allocator: std.mem.Allocator,
-device: *Device,
+device: *Backend,
 
 pub fn init(
     allocator: std.mem.Allocator,
-    device: *Device,
+    device: *Backend,
     color_format: vk.Format,
 ) !Self {
     if (!imgui.cImGui_ImplVulkan_LoadFunctionsEx(@bitCast(vk.API_VERSION_1_3), loader, @ptrFromInt(@intFromEnum(device.instance.instance.handle)))) return error.ImGuiVulkanLoadFailure;
@@ -66,7 +66,7 @@ pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: 
     try render_graph.render_passes.append(render_graph.allocator, render_pass);
 }
 
-fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
     _ = build_data; // autofix
     _ = resources; // autofix
     _ = device; // autofix

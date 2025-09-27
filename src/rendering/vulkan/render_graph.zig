@@ -3,9 +3,9 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const Window = @import("../../platform/sdl3.zig").Window;
-const Device = @import("device.zig");
-const BufferHandle = Device.BufferHandle;
-const ImageHandle = Device.ImageHandle;
+const Backend = @import("backend.zig");
+const BufferHandle = Backend.BufferHandle;
+const ImageHandle = Backend.ImageHandle;
 const GpuAllocator = @import("gpu_allocator.zig");
 
 pub const QueueType = enum {
@@ -38,7 +38,7 @@ pub const Resources = struct {
 
 pub const CommandBufferBuildFn = *const fn (
     data: ?*anyopaque,
-    device: *Device,
+    device: *Backend,
     resources: Resources,
     command_buffer: vk.CommandBufferProxy,
     raster_pass_extent: ?vk.Extent2D,
@@ -227,15 +227,14 @@ pub const RenderGraph = struct {
         return .{ .index = texture_index };
     }
 
-    pub fn uploadSliceToBuffer(render_graph: *Self, comptime T: type, slice: []const T) !RenderGraphBufferHandle {
+    pub fn uploadSliceToBuffer(render_graph: *Self, comptime T: type, usage: vk.BufferUsageFlags, slice: []const T) !RenderGraphBufferHandle {
+        var temp_usage = usage;
+        temp_usage.transfer_dst_bit = true;
         const temp_buffer_size: usize = @sizeOf(T) * slice.len;
         const temp_buffer = try render_graph.createTransientBuffer(.{
             .location = .gpu_only,
             .size = temp_buffer_size,
-            .usage = .{
-                .storage_buffer_bit = true,
-                .transfer_dst_bit = true,
-            },
+            .usage = temp_usage,
         });
 
         try render_graph.buffer_upload_passes.append(render_graph.allocator, .{

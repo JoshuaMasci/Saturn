@@ -1,12 +1,7 @@
 #include "bindless.hlsl"
 #include "mesh.hlsl"
 #include "push.hlsl"
-
-struct MeshInfo {
-    float4 sphere_pos_radius;
-    uint4 vertex_index_bindings_pad2;
-    uint4 meshlet_vertex_triangle_bindings_pad1;
-};
+#include "indirect.hlsl"
 
 struct PixelInput
 {
@@ -15,19 +10,20 @@ struct PixelInput
     float4 position : SV_Position;
 };
 
-[[vk::push_constant]]
-PushConstants push_constants;
-
-ReadOnlyStorageBufferArray(float4x4, model_matrices);
 ReadOnlyStorageBufferArray(uint, index_buffers);
 ReadOnlyStorageBufferArray(MeshInfo, mesh_infos);
+ReadOnlyStorageBufferArray(DrawInfo, draw_infos);
 
+[[vk::push_constant]]
+PushConstants push_constants;
 
 PixelInput main(Vertex input, uint instanceID : SV_InstanceID)
 {
     PixelInput output;
 
-    float4x4 model_matrix = model_matrices[push_constants.model_matrix_buffer_index][instanceID];
+    DrawInfo info = draw_infos[push_constants.draw_info_binding][instanceID];
+
+    float4x4 model_matrix = info.model_matrix;
     float3x3 normal_matrix = (float3x3)model_matrix;
 
     float4 world_position = mul(model_matrix, float4(input.position, 1.0f));

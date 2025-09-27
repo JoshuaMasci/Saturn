@@ -5,7 +5,7 @@ const zm = @import("zmath");
 
 const MeshAsset = @import("../asset/mesh.zig");
 const AssetRegistry = @import("../asset/registry.zig");
-const Device = @import("vulkan/device.zig");
+const Backend = @import("vulkan/backend.zig");
 const Image = @import("vulkan/image.zig");
 const Mesh = @import("vulkan/mesh.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
@@ -20,14 +20,14 @@ const Self = @This();
 
 enabled: bool = false,
 allocator: std.mem.Allocator,
-device: *Device,
+device: *Backend,
 
 triangle_pipeline: vk.Pipeline,
 
 pub fn init(
     allocator: std.mem.Allocator,
     registry: *const AssetRegistry,
-    device: *Device,
+    device: *Backend,
     color_format: vk.Format,
     pipeline_layout: vk.PipelineLayout,
 ) !Self {
@@ -91,7 +91,7 @@ pub fn createRenderPass(
     try render_graph.render_passes.append(render_graph.allocator, render_pass);
 }
 
-pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Device, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
     _ = device; // autofix
     _ = resources; // autofix
     _ = raster_pass_extent; // autofix
