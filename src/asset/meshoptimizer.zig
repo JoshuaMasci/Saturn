@@ -137,15 +137,21 @@ pub fn buildPrimitive(
     const index_offset: u32 = @intCast(output_indices.items.len);
     const index_count: u32 = @intCast(new_indices.len);
 
-    //Append to output lists
+    // Append to output lists
     try output_vertices.appendSlice(allocator, new_vertices);
     try output_indices.appendSlice(allocator, new_indices);
 
-    //Genrate Meshlets
+    // Genrate Meshlets
     const result = try generateMeshlets(Mesh.Vertex, allocator, new_vertices, new_indices, settings.meshlet_limits);
     defer allocator.free(result.meshlets);
     defer allocator.free(result.meshlet_vertices);
     defer allocator.free(result.meshlet_triangles);
+
+    // Adjust meshlet offsets
+    for (result.meshlets) |*meshlet| {
+        meshlet.vertex_offset += @intCast(output_meshlet_vertices.items.len);
+        meshlet.triangle_offset += @intCast(output_meshlet_triangles.items.len);
+    }
 
     const meshlet_offset: u32 = @intCast(output_meshlets.items.len);
     const meshlet_count: u32 = @intCast(result.meshlets.len);
@@ -154,7 +160,6 @@ pub fn buildPrimitive(
     try output_meshlet_vertices.appendSlice(allocator, result.meshlet_vertices);
     try output_meshlet_triangles.appendSlice(allocator, result.meshlet_triangles);
 
-    //Return the info about this primitive
     return .{
         .sphere_pos_radius = generateMeshBounds(Mesh.Vertex, new_vertices),
 
@@ -181,7 +186,7 @@ pub fn generateMeshBounds(
 pub fn generateMeshlets(
     comptime VertexType: type,
     allocator: std.mem.Allocator,
-    vertices: []VertexType,
+    vertices: []const VertexType,
     indices: []const u32,
     limits: MeshletLimits,
 ) !struct {
@@ -241,7 +246,7 @@ pub fn generateMeshlets(
         };
     }
 
-    //Shrink buffers, doesn't matter much if it fails
+    // Shrink buffers
     const last = meshlets[meshlets.len - 1];
     meshlet_vertices = try allocator.realloc(meshlet_vertices, last.vertex_offset + last.vertex_count);
     meshlet_triangles = try allocator.realloc(meshlet_triangles, last.triangle_offset + last.triangle_count * 3);

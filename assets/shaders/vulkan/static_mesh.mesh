@@ -1,21 +1,85 @@
+#include "bindless.hlsl"
+#include "mesh.hlsl"
+#include "meshlet.hlsl"
+#include "mesh_shading.hlsl"
+
+uint LoadByte(ByteAddressBuffer buffer, uint index)
+{
+    // Load returns a 32-bit value, so we need to extract the correct byte from it.
+    uint byteOffset = index & ~3;            // Align to 4-byte boundary
+    uint byteShift  = (index & 3) * 8;       // Shift to correct byte position
+    uint word       = buffer.Load(byteOffset);
+    return (word >> byteShift) & 0xFF;
+}
+
 struct VertexData
 {
-    float3 color : COLOR;
+    float2 frag_uv0 : TEXCOORD0;
+    float2 frag_uv1 : TEXCOORD1;
+    uint material_index: MAT;
     float4 position : SV_Position;
 };
 
+ReadOnlyStorageBufferArray(MeshInfo, mesh_infos);
+ReadOnlyStorageBufferArray(PrimitiveInfo, primitve_infos);
+ReadOnlyStorageBufferArray(MeshletInfo, meshlet_infos);
+ReadOnlyStorageBufferArray(uint, mesh_vertex_indices)
+
+struct PushConstants
+{
+    float4x4 view_projection_matrix;
+    uint static_mesh_binding;
+    uint material_binding;
+
+    float4x4 model_matrix;
+    uint mesh_index;
+    uint primitive_index;
+    uint material_index;
+};
+
+[[vk::push_constant]]
+PushConstants push_constants;
+
 [outputtopology("triangle")]
-[numthreads(1, 1, 1)]
-void main(out indices uint3 triangles[1], out vertices VertexData vertices[3]) {
-    SetMeshOutputCounts(3, 1);
-    triangles[0] = uint3(0, 1, 2);
+[numthreads(MAX_TRIANGLES_PER_MESHLET, 1, 1)]
+void main(
+    uint group_id: SV_GroupID,
+    uint group_thread_id: SV_GroupThreadID,
+    out indices uint3 triangles[MAX_TRIANGLES_PER_MESHLET],
+    out vertices VertexData vertices[MAX_VERTICES_PER_MESHLET]
+ ) {
+    const float4x4 model_matrix = push_constants.model_matrix;
+    const float3x3 normal_matrix = (float3x3)model_matrix;
 
-    vertices[0].position = float4(-0.5, 0.5, 0.0, 1.0);
-    vertices[0].color = float3(1.0, 0.0, 0.0);
+    const MeshInfo mesh_info = mesh_infos[push_constants.static_mesh_binding][push_constants.mesh_index];
+    const PrimitiveInfo prim_info = primitve_infos[mesh_info.vertex_index_primitive_bindings_pad1.z][push_constants.primitive_index];
+    const MeshletInfo meshlet_info = meshlet_infos[mesh_info.meshlet_vertex_triangle_bindings_pad1.x][prim_info.meshlet_offset + group_id];
 
-    vertices[1].position = float4(0.5, 0.5, 0.0, 1.0);
-    vertices[1].color = float3(0.0, 1.0, 0.0);
+    SetMeshOutputCounts(meshlet_info.vertex_count, meshlet_info.triangle_count);
 
-    vertices[2].position = float4(0.0, -0.5, 0.0, 1.0);
-    vertices[2].color = float3(0.0, 0.0, 1.0);
+    if (group_thread_id < meshlet_info.vertex_count) {
+        const uint index = mesh_vertex_indices[mesh_info.meshlet_vertex_triangle_bindings_pad1.y][meshlet_info.vertex_offset + group_thread_id] + prim_info.vertex_offset;
+        Vertex input = LoadVertex(storage_buffers[mesh_info.vertex_index_primitive_bindings_pad1.x], index);
+
+        float4 world_position = mul(model_matrix, float4(input.position, 1.0f));
+        float3 world_normal = normalize(mul(normal_matrix, input.normal));
+        float3 world_tangent = normalize(mul(normal_matrix, input.tangent.xyz));
+
+        VertexData output;
+        output.position = mul(push_constants.view_projection_matrix, world_position);
+        output.frag_uv0 = input.uv0;
+        output.frag_uv1 = input.uv1;
+
+        output.material_index = push_constants.material_index;
+
+        vertices[group_thread_id] = output;
+    }
+
+    if (group_thread_id < meshlet_info.triangle_count) {
+       const uint index_offset = meshlet_info.triangle_offset + (group_thread_id) * 3;
+       uint idx0 = LoadByte(storage_buffers[mesh_info.meshlet_vertex_triangle_bindings_pad1.z], index_offset + 0);
+       uint idx1 = LoadByte(storage_buffers[mesh_info.meshlet_vertex_triangle_bindings_pad1.z], index_offset + 1);
+       uint idx2 = LoadByte(storage_buffers[mesh_info.meshlet_vertex_triangle_bindings_pad1.z], index_offset + 2);
+       triangles[group_thread_id] = uint3(idx0, idx1, idx2);
+    }
 }

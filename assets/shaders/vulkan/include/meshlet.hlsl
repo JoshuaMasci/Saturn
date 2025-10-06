@@ -1,4 +1,4 @@
-struct Meshlet {
+struct MeshletInfo {
     float4 sphere_pos_radius;
     uint vertex_offset;
     uint vertex_count;

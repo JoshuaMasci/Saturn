@@ -101,19 +101,12 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     });
     errdefer bindless_descriptor.deinit();
 
-    //TODO: add flags when RTX-Shaders or Mesh-Shading are enabled
-    const All_STAGE_FLAGS = vk.ShaderStageFlags{
-        .vertex_bit = true,
-        .fragment_bit = true,
-        .compute_bit = true,
-    };
-
     const bindless_layout = try device.proxy.createPipelineLayout(&.{
         .set_layout_count = 1,
         .p_set_layouts = (&bindless_descriptor.layout)[0..1],
         .push_constant_range_count = 1,
         .p_push_constant_ranges = (&vk.PushConstantRange{
-            .stage_flags = All_STAGE_FLAGS,
+            .stage_flags = device.all_stage_flags,
             .offset = 0,
             .size = 256,
         })[0..1],

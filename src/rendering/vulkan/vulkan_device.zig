@@ -67,10 +67,11 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         try device_extentions.append(allocator, "VK_KHR_deferred_host_operations");
         try device_extentions.append(allocator, "VK_KHR_acceleration_structure");
         try device_extentions.append(allocator, "VK_KHR_ray_query");
-        all_stage_flags.raygen_bit_khr = true;
-        all_stage_flags.miss_bit_khr = true;
-        all_stage_flags.closest_hit_bit_khr = true;
-        all_stage_flags.callable_bit_khr = true;
+        // Not needed since VK_KHR_ray_tracing_pipeline, isn't being used
+        // all_stage_flags.raygen_bit_khr = true;
+        // all_stage_flags.miss_bit_khr = true;
+        // all_stage_flags.closest_hit_bit_khr = true;
+        // all_stage_flags.callable_bit_khr = true;
     }
 
     //TODO: should I use the feature instead?

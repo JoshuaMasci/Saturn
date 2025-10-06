@@ -29,6 +29,7 @@ pub const BuildCommandBufferData = struct {
 
     camera: Camera,
     camera_transform: Transform,
+    scene: *const RenderScene,
 };
 
 const Self = @This();
@@ -37,8 +38,10 @@ allocator: std.mem.Allocator,
 device: *Backend,
 
 opaque_mesh_pipeline_new: vk.Pipeline,
+opaque_mesh_shader_pipeline: vk.Pipeline,
 
 //Debug Values
+mesh_shading: bool = true,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -48,22 +51,36 @@ pub fn init(
     depth_format: vk.Format,
     pipeline_layout: vk.PipelineLayout,
 ) !Self {
-    const vertex_shader_new = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh_new.vert.asset"));
-    defer device.device.proxy.destroyShaderModule(vertex_shader_new, null);
+    const vertex_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh.vert.asset"));
+    defer device.device.proxy.destroyShaderModule(vertex_shader, null);
+
+    const mesh_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/static_mesh.mesh.asset"));
+    defer device.device.proxy.destroyShaderModule(mesh_shader, null);
 
     const opaque_fragment_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/opaque.frag.asset"));
     defer device.device.proxy.destroyShaderModule(opaque_fragment_shader, null);
 
+    const pipeline_config: Pipeline.PipelineConfig = .{
+        .color_format = color_format,
+        .depth_format = depth_format,
+        .cull_mode = .{ .back_bit = true },
+    };
+
     const opaque_mesh_pipeline_new = try Pipeline.createGraphicsPipeline(
         device.device.proxy,
         pipeline_layout,
-        .{
-            .color_format = color_format,
-            .depth_format = depth_format,
-            .cull_mode = .{ .back_bit = true },
-        },
+        pipeline_config,
         .{},
-        vertex_shader_new,
+        vertex_shader,
+        opaque_fragment_shader,
+    );
+
+    const opaque_mesh_shader_pipeline = try Pipeline.createMeshShaderPipeline(
+        device.device.proxy,
+        pipeline_layout,
+        pipeline_config,
+        null,
+        mesh_shader,
         opaque_fragment_shader,
     );
 
@@ -71,11 +88,13 @@ pub fn init(
         .allocator = allocator,
         .device = device,
         .opaque_mesh_pipeline_new = opaque_mesh_pipeline_new,
+        .opaque_mesh_shader_pipeline = opaque_mesh_shader_pipeline,
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.device.device.proxy.destroyPipeline(self.opaque_mesh_pipeline_new, null);
+    self.device.device.proxy.destroyPipeline(self.opaque_mesh_shader_pipeline, null);
 }
 
 pub fn createRenderPass(
@@ -89,6 +108,17 @@ pub fn createRenderPass(
     camera_transform: Transform,
     render_graph: *rg.RenderGraph,
 ) !void {
+    if (scene.static_meshes.items.len == 0) {
+        var render_pass = try rg.RenderPass.init(temp_allocator, "Empty Scene Pass");
+        try render_pass.addColorAttachment(.{
+            .texture = color_target,
+            .clear = .{ .float_32 = @splat(0.0) },
+            .store = true,
+        });
+        try render_graph.render_passes.append(render_graph.allocator, render_pass);
+        return;
+    }
+
     var draw_infos = try std.ArrayList(DrawInfo).initCapacity(temp_allocator, scene.static_meshes.items.len);
     var indirect_info = try std.ArrayList(vk.DrawIndirectCommand).initCapacity(temp_allocator, scene.static_meshes.items.len);
 
@@ -150,8 +180,9 @@ pub fn createRenderPass(
         .indirect_count = @intCast(indirect_info.items.len),
         .camera = camera,
         .camera_transform = camera_transform,
+        .scene = scene,
     };
-    render_pass.addBuildFn(buildCommandBuffer, scene_build_data);
+    render_pass.addBuildFn(if (self.mesh_shading) buildCommandBufferMeshShading else buildCommandBuffer, scene_build_data);
 
     try render_graph.render_passes.append(render_graph.allocator, render_pass);
 }
@@ -184,7 +215,7 @@ pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: 
             .material_binding = material_buffer.storage_binding.?.index,
             .draw_info_binding = draw_infos_buffer.storage_binding.?,
         };
-        command_buffer.pushConstants(device.bindless_layout, .{ .vertex_bit = true, .fragment_bit = true, .compute_bit = true }, 0, @sizeOf(PushData), &push_data);
+        command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(PushData), &push_data);
         command_buffer.drawIndirect(indirect_info_buffer.handle, 0, data.indirect_count, @sizeOf(vk.DrawIndirectCommand));
     }
 }
@@ -196,6 +227,17 @@ const PushData = extern struct {
     draw_info_binding: u32,
 };
 
+const PushData2 = extern struct {
+    view_projection_matrix: zm.Mat,
+    static_mesh_binding: u32,
+    material_binding: u32,
+
+    model_matrix: zm.Mat,
+    mesh_index: u32,
+    primitive_index: u32,
+    material_index: u32,
+};
+
 const DrawInfo = extern struct {
     model_matrix: zm.Mat,
     mesh_index: u32,
@@ -203,3 +245,53 @@ const DrawInfo = extern struct {
     material_index: u32,
     pad: u32 = 0,
 };
+
+pub fn buildCommandBufferMeshShading(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+    _ = resources; // autofix
+    const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
+    const self = data.self;
+
+    const static_mesh_buffer = device.buffers.get(data.static_mesh_buffer).?;
+    const material_buffer = device.buffers.get(data.material_buffer).?;
+
+    const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
+    const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
+    const aspect_ratio: f32 = width_float / height_float;
+    const view_matrix = data.camera_transform.getViewMatrix();
+    var projection_matrix = data.camera.getProjectionMatrix(aspect_ratio);
+    projection_matrix[1][1] *= -1.0;
+    const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
+
+    command_buffer.bindPipeline(.graphics, self.opaque_mesh_shader_pipeline);
+
+    for (data.scene.static_meshes.items) |static_mesh| {
+        if (static_mesh.component.visable == false) {
+            continue;
+        }
+
+        if (data.resources.static_mesh_map.get(static_mesh.component.mesh)) |entry| {
+            const model_matrix = static_mesh.transform.getModelMatrix();
+            const materials = static_mesh.component.materials.constSlice();
+            for (entry.mesh.primitives, materials, 0..) |primitive, material, primitive_index| {
+                if (data.resources.material_map.get(material)) |mat_entry| {
+                    if (mat_entry.material.alpha_mode != .alpha_opaque) {
+                        continue;
+                    }
+
+                    const push_data = PushData2{
+                        .view_projection_matrix = view_projection_matrix,
+                        .static_mesh_binding = static_mesh_buffer.storage_binding.?.index,
+                        .material_binding = material_buffer.storage_binding.?.index,
+
+                        .model_matrix = model_matrix,
+                        .mesh_index = entry.buffer_index.?,
+                        .primitive_index = @intCast(primitive_index),
+                        .material_index = mat_entry.buffer_index.?,
+                    };
+                    command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(PushData2), &push_data);
+                    command_buffer.drawMeshTasksEXT(primitive.meshlet_count, 1, 1);
+                }
+            }
+        }
+    }
+}

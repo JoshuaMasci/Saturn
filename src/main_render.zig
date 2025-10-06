@@ -31,10 +31,13 @@ pub fn main() !void {
     var app: App = try .init(allocator);
     defer app.deinit();
 
-    //const scene_filepath = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
-    const scene_filepath = "zig-out/game-assets/Bistro/scene.json";
+    var scene_filepath_opt: ?[]const u8 = undefined;
 
-    {
+    scene_filepath_opt = null;
+    //scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
+    scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
+
+    if (scene_filepath_opt) |scene_filepath| {
         var scene_json: std.json.Parsed(Scene) = undefined;
         {
             var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
@@ -76,6 +79,34 @@ pub fn main() !void {
         app.scene_info = .{
             .scene = render_scene,
             .camera = debug_camera,
+        };
+    } else {
+        var render_scene: RenderScene = .init(allocator);
+        try render_scene.static_meshes.append(render_scene.allocator, .{
+            .transform = .{
+                .position = .{ -54.0, 47.0, 0.0, 5.0 },
+                .scale = @splat(0.016),
+            },
+            .component = .{
+                .mesh = .fromRepoPath("game", "Bistro/meshes/Bistro_Research_Exterior__lod0_Italian_Cypress5_3931.asset"),
+                .materials = .fromSlice(&.{
+                    .fromRepoPath("game", "Bistro/materials/Foliage_Leaves.DoubleSided.asset"),
+                    .fromRepoPath("game", "Bistro/materials/Foliage_Trunk.asset"),
+                }),
+            },
+        });
+
+        {
+            const now = std.time.nanoTimestamp();
+            app.resources.loadSceneAssets(allocator, &render_scene);
+            const duration_ns = std.time.nanoTimestamp() - now;
+            const duration_ns_f: f32 = @floatFromInt(duration_ns);
+            std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
+        }
+
+        app.scene_info = .{
+            .scene = render_scene,
+            .camera = .{},
         };
     }
 
@@ -336,6 +367,7 @@ const App = struct {
         }
 
         if (self.window_visable_flags.debug and imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
+            _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
             imgui.ImGui_End();
         }
 
