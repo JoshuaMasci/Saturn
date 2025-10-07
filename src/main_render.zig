@@ -150,6 +150,9 @@ const App = struct {
     window_visable_flags: struct {
         debug: bool = true,
         performance: bool = true,
+        viewport: bool = true,
+        scene: bool = true,
+        properties: bool = true,
     } = .{},
 
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -324,6 +327,9 @@ const App = struct {
             if (imgui.ImGui_BeginMenu("Windows")) {
                 _ = imgui.ImGui_MenuItemBoolPtr("Performance", null, &self.window_visable_flags.performance, true);
                 _ = imgui.ImGui_MenuItemBoolPtr("Debug", null, &self.window_visable_flags.debug, true);
+                _ = imgui.ImGui_MenuItemBoolPtr("Viewport", null, &self.window_visable_flags.viewport, true);
+                _ = imgui.ImGui_MenuItemBoolPtr("Scene", null, &self.window_visable_flags.scene, true);
+                _ = imgui.ImGui_MenuItemBoolPtr("Properties", null, &self.window_visable_flags.properties, true);
                 imgui.ImGui_EndMenu();
             }
 
@@ -333,13 +339,6 @@ const App = struct {
             }
 
             imgui.ImGui_EndMainMenuBar();
-        }
-
-        if (imgui.ImGui_Begin("Viewport", null, 0)) {
-            const size = imgui.ImGui_GetWindowSize();
-            imgui.ImGui_Text("Window Size: %.1f x %.1f", size.x, size.y);
-            imgui.ImGui_Text("TODO: draw the scene here and not on the main swapchain");
-            imgui.ImGui_End();
         }
 
         if (self.window_visable_flags.performance and imgui.ImGui_Begin("Performance", &self.window_visable_flags.performance, 0)) {
@@ -371,7 +370,18 @@ const App = struct {
             imgui.ImGui_End();
         }
 
-        if (imgui.ImGui_Begin("Entities", null, 0)) {
+        if (self.window_visable_flags.viewport and imgui.ImGui_Begin("Viewport", &self.window_visable_flags.viewport, 0)) {
+            const size = imgui.ImGui_GetWindowSize();
+            imgui.ImGui_Text("Window Size: %.1f x %.1f", size.x, size.y);
+            imgui.ImGui_Text("TODO: draw the scene here and not on the main swapchain");
+            imgui.ImGui_End();
+        }
+
+        if (self.window_visable_flags.scene and imgui.ImGui_Begin("Scene", &self.window_visable_flags.scene, 0)) {
+            imgui.ImGui_End();
+        }
+
+        if (self.window_visable_flags.properties and imgui.ImGui_Begin("Properties", &self.window_visable_flags.properties, 0)) {
             imgui.ImGui_End();
         }
 
