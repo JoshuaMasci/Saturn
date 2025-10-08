@@ -91,7 +91,7 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
             gpu.* = entry.gpu;
             entry.buffer_index = @intCast(i);
         }
-        self.static_mesh_buffer = try self.device.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(static_mesh_slice));
+        self.static_mesh_buffer = try self.device.createBufferWithData("mesh_info_buffer", .{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(static_mesh_slice));
     }
 
     //Material
@@ -107,7 +107,7 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
             gpu.* = entry.gpu;
             entry.buffer_index = @intCast(i);
         }
-        self.material_buffer = try self.device.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(material_slice));
+        self.material_buffer = try self.device.createBufferWithData("material_info_buffer", .{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(material_slice));
     }
 }
 

@@ -36,25 +36,51 @@ meshlet_vertices_buffer: Backend.BufferHandle,
 meshlet_triangles_buffer: Backend.BufferHandle,
 
 pub fn init(allocator: std.mem.Allocator, backend: *Backend, mesh: *const MeshAsset) !Self {
+    var name_buffer: [256]u8 = undefined;
+
     const primitives = try allocator.dupe(MeshAsset.Primitive, mesh.primitives);
     errdefer allocator.free(primitives);
 
-    const vertex_buffer = try backend.createBufferWithData(.{ .vertex_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.vertices));
+    const vertex_buffer = try backend.createBufferWithData(
+        std.fmt.bufPrint(&name_buffer, "{s}_vertex_buffer", .{mesh.name}) catch "",
+        .{ .vertex_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
+        std.mem.sliceAsBytes(mesh.vertices),
+    );
     errdefer backend.destroyBuffer(vertex_buffer);
 
-    const index_buffer = try backend.createBufferWithData(.{ .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.indices));
+    const index_buffer = try backend.createBufferWithData(
+        std.fmt.bufPrint(&name_buffer, "{s}_index_buffer", .{mesh.name}) catch "",
+        .{ .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
+        std.mem.sliceAsBytes(mesh.indices),
+    );
     errdefer backend.destroyBuffer(index_buffer);
 
-    const primitive_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.primitives));
+    const primitive_buffer = try backend.createBufferWithData(
+        std.fmt.bufPrint(&name_buffer, "{s}_primitive_buffer", .{mesh.name}) catch "",
+        .{ .storage_buffer_bit = true, .transfer_dst_bit = true },
+        std.mem.sliceAsBytes(mesh.primitives),
+    );
     errdefer backend.destroyBuffer(primitive_buffer);
 
-    const meshlet_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.meshlets));
+    const meshlet_buffer = try backend.createBufferWithData(
+        std.fmt.bufPrint(&name_buffer, "{s}_meshlet_buffer", .{mesh.name}) catch "",
+        .{ .storage_buffer_bit = true, .transfer_dst_bit = true },
+        std.mem.sliceAsBytes(mesh.meshlets),
+    );
     errdefer backend.destroyBuffer(meshlet_buffer);
 
-    const meshlet_vertices_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.meshlet_vertices));
+    const meshlet_vertices_buffer = try backend.createBufferWithData(
+        std.fmt.bufPrint(&name_buffer, "{s}_meshlet_vertices_buffer", .{mesh.name}) catch "",
+        .{ .storage_buffer_bit = true, .transfer_dst_bit = true },
+        std.mem.sliceAsBytes(mesh.meshlet_vertices),
+    );
     errdefer backend.destroyBuffer(meshlet_vertices_buffer);
 
-    const meshlet_triangles_buffer = try backend.createBufferWithData(.{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(mesh.meshlet_triangles));
+    const meshlet_triangles_buffer = try backend.createBufferWithData(
+        std.fmt.bufPrint(&name_buffer, "{s}_meshlet_triangles_buffer", .{mesh.name}) catch "",
+        .{ .storage_buffer_bit = true, .transfer_dst_bit = true },
+        std.mem.sliceAsBytes(mesh.meshlet_triangles),
+    );
     errdefer backend.destroyBuffer(meshlet_triangles_buffer);
 
     return .{

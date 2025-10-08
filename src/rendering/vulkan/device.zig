@@ -207,15 +207,23 @@ pub fn deinit(self: Self) void {
     self.allocator.destroy(self.proxy.wrapper);
 }
 
-pub fn setDebugName(self: Self, object_type: vk.ObjectType, handle: u64, name: [:0]const u8) void {
-    if (!self.debug) {
+pub fn setDebugName(self: Self, object_type: vk.ObjectType, handle: anytype, name: []const u8) void {
+    if (!self.debug or name.len == 0) {
         return;
     }
 
+    const c_name = self.allocator.dupeZ(u8, name) catch |err| {
+        std.log.err("Failed to alloc c string for setDebugUtilsObjectNameEXT {}", .{err});
+        return;
+    };
+    defer self.allocator.free(c_name);
+
+    const object_handle: u64 = @intFromEnum(handle);
+
     self.proxy.setDebugUtilsObjectNameEXT(&.{
         .object_type = object_type,
-        .object_handle = handle,
-        .p_object_name = name,
+        .object_handle = object_handle,
+        .p_object_name = c_name,
     }) catch |err| {
         std.log.err("Failed to set object name \"{s}\" for  {}: {}", .{ name, handle, err });
     };

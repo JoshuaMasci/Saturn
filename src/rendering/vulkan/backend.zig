@@ -234,9 +234,12 @@ pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !Buffe
 
     return self.buffers.insert(buffer);
 }
-pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []const u8) !BufferPool.Handle {
+
+pub fn createBufferWithData(self: *Self, name: []const u8, usage: vk.BufferUsageFlags, data: []const u8) !BufferPool.Handle {
     var buffer: Buffer = try .init(self.device, data.len, usage, if (self.device.physical_device.info.memory.direct_buffer_upload) .gpu_mappable else .gpu_only);
     errdefer buffer.deinit();
+
+    self.device.setDebugName(.buffer, buffer.handle, name);
 
     if (usage.contains(.{ .uniform_buffer_bit = true })) {
         buffer.uniform_binding = self.bindless_descriptor.uniform_buffer_array.bind(buffer);
@@ -256,6 +259,7 @@ pub fn createBufferWithData(self: *Self, usage: vk.BufferUsageFlags, data: []con
 
     return self.buffers.insert(buffer);
 }
+
 pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
     if (self.buffers.remove(handle)) |buffer| {
         if (buffer.uniform_binding) |binding| {
