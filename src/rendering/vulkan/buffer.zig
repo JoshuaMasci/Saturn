@@ -4,7 +4,7 @@ const vk = @import("vulkan");
 
 const GpuAllocator = @import("gpu_allocator.zig");
 const Queue = @import("queue.zig");
-const VkDevice = @import("vulkan_device.zig");
+const Device = @import("device.zig");
 const Binding = @import("bindless_descriptor.zig").Binding;
 
 pub const Interface = struct {
@@ -17,7 +17,7 @@ pub const Interface = struct {
 
 const Self = @This();
 
-device: *VkDevice,
+device: *Device,
 
 size: usize,
 usage: vk.BufferUsageFlags,
@@ -28,7 +28,7 @@ allocation: GpuAllocator.Allocation,
 uniform_binding: ?Binding = null,
 storage_binding: ?Binding = null,
 
-pub fn init(device: *VkDevice, size: usize, usage: vk.BufferUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
+pub fn init(device: *Device, size: usize, usage: vk.BufferUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
     const handle = try device.proxy.createBuffer(&.{ .size = size, .usage = usage, .sharing_mode = .exclusive }, null);
     errdefer device.proxy.destroyBuffer(handle, null);
 
@@ -62,7 +62,7 @@ pub fn interface(self: Self) Interface {
 
 pub fn uploadBufferData(
     self: *Self,
-    device: *VkDevice,
+    device: *Device,
     queue: Queue,
     data: []const u8,
 ) !void {

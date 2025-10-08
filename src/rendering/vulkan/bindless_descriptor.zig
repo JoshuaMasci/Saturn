@@ -5,7 +5,7 @@ const vk = @import("vulkan");
 const Buffer = @import("buffer.zig");
 const Image = @import("image.zig");
 const Sampler = @import("sampler.zig");
-const VkDevice = @import("vulkan_device.zig");
+const Device = @import("device.zig");
 
 pub const DescriptorCounts = struct {
     uniform_buffers: u32,
@@ -17,7 +17,7 @@ pub const DescriptorCounts = struct {
 
 const Self = @This();
 
-device: *VkDevice,
+device: *Device,
 layout: vk.DescriptorSetLayout,
 
 pool: vk.DescriptorPool,
@@ -28,7 +28,7 @@ storage_buffer_array: BufferDescriptor,
 sampled_image_array: ImageDescriptor,
 storage_image_array: ImageDescriptor,
 
-pub fn init(allocator: std.mem.Allocator, device: *VkDevice, descriptor_counts: DescriptorCounts) !Self {
+pub fn init(allocator: std.mem.Allocator, device: *Device, descriptor_counts: DescriptorCounts) !Self {
     const All_STAGE_FLAGS = device.all_stage_flags;
 
     const BINDING_COUNT = 5;
@@ -141,7 +141,7 @@ pub const Binding = struct {
 };
 
 const BufferDescriptor = struct {
-    device: *VkDevice,
+    device: *Device,
     set: vk.DescriptorSet,
 
     descriptor_index: u32,
@@ -153,7 +153,7 @@ const BufferDescriptor = struct {
 
     fn init(
         allocator: std.mem.Allocator,
-        device: *VkDevice,
+        device: *Device,
         set: vk.DescriptorSet,
         descriptor_index: u32,
         descriptor_type: vk.DescriptorType,
@@ -218,7 +218,7 @@ const BufferDescriptor = struct {
 };
 
 const ImageDescriptor = struct {
-    device: *VkDevice,
+    device: *Device,
     set: vk.DescriptorSet,
 
     descriptor_index: u32,
@@ -231,7 +231,7 @@ const ImageDescriptor = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        device: *VkDevice,
+        device: *Device,
         set: vk.DescriptorSet,
         descriptor_index: u32,
         descriptor_type: vk.DescriptorType,

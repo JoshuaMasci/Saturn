@@ -130,7 +130,7 @@ const App = struct {
     window: sdl3.Window,
     asset_registry: *AssetRegistry,
 
-    vulkan_device: *Backend,
+    vulkan_backend: *Backend,
     resources: Resources,
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
@@ -172,17 +172,17 @@ const App = struct {
         var window: sdl3.Window = .init("Saturn Render Sandbox", .{ .windowed = .{ 1920, 1080 } });
         errdefer window.deinit();
 
-        const vulkan_device = try allocator.create(Backend);
-        errdefer allocator.destroy(vulkan_device);
+        const vulkan_backend = try allocator.create(Backend);
+        errdefer allocator.destroy(vulkan_backend);
 
         const FRAME_IN_FLIGHT_COUNT = 3;
         const swapchain_format = .b8g8r8a8_unorm;
 
-        vulkan_device.* = try .init(allocator, FRAME_IN_FLIGHT_COUNT);
-        errdefer vulkan_device.deinit();
+        vulkan_backend.* = try .init(allocator, FRAME_IN_FLIGHT_COUNT);
+        errdefer vulkan_backend.deinit();
 
         //For best Perf testing, the renderer should not be limited to monitor refresh
-        try vulkan_device.claimWindow(
+        try vulkan_backend.claimWindow(
             window,
             .{
                 .image_count = FRAME_IN_FLIGHT_COUNT,
@@ -190,18 +190,18 @@ const App = struct {
                 .vsync = false,
             },
         );
-        errdefer vulkan_device.releaseWindow(window);
+        errdefer vulkan_backend.releaseWindow(window);
 
-        var resources: Resources = .init(allocator, asset_registry, vulkan_device);
+        var resources: Resources = .init(allocator, asset_registry, vulkan_backend);
         errdefer resources.deinit();
 
         var scene_renderer: SceneRenderer = try .init(
             allocator,
             asset_registry,
-            vulkan_device,
+            vulkan_backend,
             swapchain_format,
             DEPTH_FORMAT,
-            vulkan_device.bindless_layout,
+            vulkan_backend.bindless_layout,
         );
         errdefer scene_renderer.deinit();
 
@@ -220,7 +220,7 @@ const App = struct {
 
         var imgui_renderer: ImguiRenderer = try .init(
             allocator,
-            vulkan_device,
+            vulkan_backend,
             swapchain_format,
         );
         errdefer imgui_renderer.deinit();
@@ -228,9 +228,9 @@ const App = struct {
         var mesh_shading: MeshShading = try .init(
             allocator,
             asset_registry,
-            vulkan_device,
+            vulkan_backend,
             swapchain_format,
-            vulkan_device.bindless_layout,
+            vulkan_backend.bindless_layout,
         );
         errdefer mesh_shading.deinit();
 
@@ -239,7 +239,7 @@ const App = struct {
             .asset_registry = asset_registry,
             .platform_input = platform_input,
             .window = window,
-            .vulkan_device = vulkan_device,
+            .vulkan_backend = vulkan_backend,
             .resources = resources,
             .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
@@ -255,15 +255,15 @@ const App = struct {
 
         self.temp_allocator.deinit();
 
-        self.vulkan_device.waitIdle();
+        self.vulkan_backend.waitIdle();
 
         self.mesh_shading.deinit();
         self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
         self.resources.deinit();
-        self.vulkan_device.releaseWindow(self.window);
-        self.vulkan_device.deinit();
-        self.allocator.destroy(self.vulkan_device);
+        self.vulkan_backend.releaseWindow(self.window);
+        self.vulkan_backend.deinit();
+        self.allocator.destroy(self.vulkan_backend);
 
         imgui.cImGui_ImplSDL3_Shutdown();
         imgui.ImGui_DestroyContext(null);
@@ -355,7 +355,7 @@ const App = struct {
             {
                 const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(
                     temp_allocator,
-                    self.vulkan_device.device.gpu_allocator.total_requested_bytes,
+                    self.vulkan_backend.device.gpu_allocator.total_requested_bytes,
                 ) catch null;
                 if (formatted_string) |mem_usage_string| {
                     try ImFmtText(temp_allocator, "Gpu Memory Usage: {s}", .{mem_usage_string});
@@ -432,7 +432,7 @@ const App = struct {
             try self.imgui_renderer.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
         }
 
-        try self.vulkan_device.render(temp_allocator, render_graph);
+        try self.vulkan_backend.render(temp_allocator, render_graph);
     }
 };
 
@@ -446,7 +446,7 @@ fn window_resize(data: ?*anyopaque, window: sdl3.Window, size: [2]u32) void {
     const app: *App = @ptrCast(@alignCast(data.?));
 
     //IDK if I should do this here, it probably could cause a race condition
-    if (app.vulkan_device.swapchains.get(window)) |swapchain| {
+    if (app.vulkan_backend.swapchains.get(window)) |swapchain| {
         swapchain.swapchain.out_of_date = true;
     }
 }

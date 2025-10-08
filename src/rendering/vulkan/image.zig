@@ -5,7 +5,7 @@ const vk = @import("vulkan");
 const Binding = @import("bindless_descriptor.zig").Binding;
 const GpuAllocator = @import("gpu_allocator.zig");
 const Queue = @import("queue.zig");
-const VkDevice = @import("vulkan_device.zig");
+const Device = @import("device.zig");
 
 pub const Interface = struct {
     layout: vk.ImageLayout = .undefined,
@@ -49,7 +49,7 @@ pub const Interface = struct {
 
 const Self = @This();
 
-device: *VkDevice,
+device: *Device,
 
 layout: vk.ImageLayout = .undefined,
 extent: vk.Extent2D,
@@ -63,7 +63,7 @@ allocation: GpuAllocator.Allocation,
 sampled_binding: ?Binding = null,
 storage_binding: ?Binding = null,
 
-pub fn init2D(device: *VkDevice, extent: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
+pub fn init2D(device: *Device, extent: vk.Extent2D, format: vk.Format, usage: vk.ImageUsageFlags, memory_location: GpuAllocator.MemoryLocation) !Self {
     const handle = try device.proxy.createImage(&.{
         .image_type = .@"2d",
         .format = format,
@@ -145,7 +145,7 @@ pub fn interface(self: Self) Interface {
 
 pub fn hostImageCopy(
     self: *Self,
-    device: *VkDevice,
+    device: *Device,
     layout: vk.ImageLayout,
     data: []const u8,
 ) !void {
@@ -193,7 +193,7 @@ pub fn hostImageCopy(
 
 pub fn uploadImageData(
     self: *Self,
-    device: *VkDevice,
+    device: *Device,
     queue: Queue,
     final_layout: vk.ImageLayout,
     data: []const u8,

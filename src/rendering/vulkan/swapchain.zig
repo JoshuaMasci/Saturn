@@ -3,7 +3,7 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const ImageInterface = @import("image.zig").Interface;
-const VkDevice = @import("vulkan_device.zig");
+const Device = @import("device.zig");
 
 const MAX_IMAGE_COUNT: u32 = 8;
 
@@ -23,7 +23,7 @@ pub const SwapchainImage = struct {
 const Self = @This();
 
 out_of_date: bool = false,
-device: *VkDevice,
+device: *Device,
 surface: vk.SurfaceKHR,
 handle: vk.SwapchainKHR,
 
@@ -41,7 +41,7 @@ present_mode: vk.PresentModeKHR,
 settings: Settings,
 
 pub fn init(
-    device: *VkDevice,
+    device: *Device,
     surface: vk.SurfaceKHR,
     window_extent: vk.Extent2D,
     settings: Settings,
@@ -201,7 +201,7 @@ pub fn queuePresent(
     }
 }
 
-fn getFirstSupportedPresentMode(device: *VkDevice, surface: vk.SurfaceKHR, desired_present_modes: []const vk.PresentModeKHR) ?vk.PresentModeKHR {
+fn getFirstSupportedPresentMode(device: *Device, surface: vk.SurfaceKHR, desired_present_modes: []const vk.PresentModeKHR) ?vk.PresentModeKHR {
     var supported_present_modes: [8]vk.PresentModeKHR = undefined;
     var supported_present_mode_count: u32 = 0;
 

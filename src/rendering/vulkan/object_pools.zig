@@ -1,6 +1,6 @@
 const std = @import("std");
 const vk = @import("vulkan");
-const VkDevice = @import("vulkan_device.zig");
+const Device = @import("device.zig");
 const Queue = @import("queue.zig");
 
 // Command Buffer Pool
@@ -9,11 +9,11 @@ pub const CommandBufferPool = struct {
 
     objects: std.ArrayList(vk.CommandBuffer),
     next_free: usize,
-    device: *VkDevice,
+    device: *Device,
     command_pool: vk.CommandPool,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, device: *VkDevice, queue: Queue) !Self {
+    pub fn init(allocator: std.mem.Allocator, device: *Device, queue: Queue) !Self {
         return Self{
             .objects = .empty,
             .next_free = 0,
@@ -89,11 +89,11 @@ pub const FencePool = struct {
 
     objects: std.ArrayList(vk.Fence),
     next_free: usize,
-    device: *VkDevice,
+    device: *Device,
     create_flags: vk.FenceCreateFlags,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, device: *VkDevice, create_flags: vk.FenceCreateFlags) Self {
+    pub fn init(allocator: std.mem.Allocator, device: *Device, create_flags: vk.FenceCreateFlags) Self {
         return Self{
             .objects = .empty,
             .next_free = 0,
@@ -157,12 +157,12 @@ pub const SemaphorePool = struct {
 
     objects: std.ArrayList(vk.Semaphore),
     next_free: usize,
-    device: *VkDevice,
+    device: *Device,
     semaphore_type: vk.SemaphoreType,
     initial_value: u64,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, device: *VkDevice, semaphore_type: vk.SemaphoreType, initial_value: u64) Self {
+    pub fn init(allocator: std.mem.Allocator, device: *Device, semaphore_type: vk.SemaphoreType, initial_value: u64) Self {
         return Self{
             .objects = .empty,
             .next_free = 0,

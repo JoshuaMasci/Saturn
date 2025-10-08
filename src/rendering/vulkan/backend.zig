@@ -16,7 +16,7 @@ pub const RenderGraph = rg.RenderGraph;
 pub const RenderPass = rg.RenderPass;
 const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
-const VkDevice = @import("vulkan_device.zig");
+const Device = @import("device.zig");
 
 const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
@@ -53,7 +53,7 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 instance: Instance,
-device: *VkDevice,
+device: *Device,
 bindless_descriptor: *BindlessDescriptor,
 bindless_layout: vk.PipelineLayout,
 
@@ -71,7 +71,13 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
         return error.InvalidFramesInFlightCount;
     }
 
-    const instance = try Instance.init(allocator, Vulkan.getProcInstanceFunction().?, Vulkan.getInstanceExtensions(), .{ .name = "Saturn Engine", .version = Instance.makeVersion(0, 0, 0, 1) });
+    const instance = try Instance.init(
+        allocator,
+        Vulkan.getProcInstanceFunction().?,
+        Vulkan.getInstanceExtensions(),
+        .{ .name = "Saturn Engine", .version = Instance.makeVersion(0, 0, 0, 1) },
+        @import("builtin").mode == .Debug,
+    );
     errdefer instance.deinit();
 
     std.log.info("Available Physical Devices:", .{});
@@ -83,7 +89,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
 
     std.log.info("Picking Device {}: {s}", .{ device_index, instance.physical_devices[device_index].info.name });
 
-    var device = try allocator.create(VkDevice);
+    var device = try allocator.create(Device);
     errdefer allocator.destroy(device);
 
     device.* = try instance.createDevice(device_index);

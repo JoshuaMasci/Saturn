@@ -4,7 +4,7 @@ const vk = @import("vulkan");
 pub const makeVersion = vk.makeApiVersion;
 
 const Info = @import("physical_device_info.zig");
-const VkDevice = @import("vulkan_device.zig");
+const Device = @import("device.zig");
 
 pub const AppInfo = struct {
     name: [:0]const u8,
@@ -26,11 +26,14 @@ instance: vk.InstanceProxy,
 
 physical_devices: []PhysicalDevice,
 
+debug_messager: ?DebugMessenger,
+
 pub fn init(
     allocator: std.mem.Allocator,
     loader: vk.PfnGetInstanceProcAddr,
     platform_extensions: []const [*c]const u8,
     info: AppInfo,
+    debug: bool,
 ) !Self {
     const base = vk.BaseWrapper.load(loader);
 
@@ -45,14 +48,14 @@ pub fn init(
     var instance_layers: std.ArrayList([*c]const u8) = .empty;
     defer instance_layers.deinit(allocator);
 
-    const builtin = @import("builtin");
-    if (builtin.mode == .Debug) {
-        try instance_layers.append(allocator, "VK_LAYER_KHRONOS_validation");
-    }
-
     var instance_extentions: std.ArrayList([*c]const u8) = .empty;
     defer instance_extentions.deinit(allocator);
     try instance_extentions.appendSlice(allocator, platform_extensions);
+
+    if (debug) {
+        try instance_layers.append(allocator, "VK_LAYER_KHRONOS_validation");
+        try instance_extentions.append(allocator, "VK_EXT_debug_utils");
+    }
 
     const instance_handle = try base.createInstance(&.{
         .p_application_info = &app_info,
@@ -79,15 +82,30 @@ pub fn init(
         };
     }
 
+    const debug_messager: ?DebugMessenger =
+        if (debug)
+            DebugMessenger.init(
+                instance,
+                .{ .verbose_bit_ext = false, .info_bit_ext = false, .warning_bit_ext = true, .error_bit_ext = true },
+                .{ .general_bit_ext = true, .validation_bit_ext = true, .performance_bit_ext = true },
+            )
+        else
+            null;
+
     return .{
         .allocator = allocator,
         .base = base,
         .instance = instance,
         .physical_devices = physical_devices,
+        .debug_messager = debug_messager,
     };
 }
 
 pub fn deinit(self: Self) void {
+    if (self.debug_messager) |debug_messager| {
+        debug_messager.deinit(self.instance);
+    }
+
     self.allocator.free(self.physical_devices);
 
     self.instance.destroyInstance(null);
@@ -100,10 +118,56 @@ pub fn pickDevice(self: *const Self, surface_opt: ?vk.SurfaceKHR) ?usize {
     return null;
 }
 
-pub fn createDevice(self: Self, device_index: usize) !VkDevice {
+pub fn createDevice(self: Self, device_index: usize) !Device {
     return .init(
         self.allocator,
         self.instance,
         self.physical_devices[device_index],
+        self.debug_messager != null,
     );
 }
+
+const DebugMessenger = struct {
+    handle: vk.DebugUtilsMessengerEXT,
+
+    fn init(instance: vk.InstanceProxy, message_severity: vk.DebugUtilsMessageSeverityFlagsEXT, message_types: vk.DebugUtilsMessageTypeFlagsEXT) DebugMessenger {
+        return .{
+            .handle = instance.createDebugUtilsMessengerEXT(&.{
+                .message_severity = message_severity,
+                .message_type = message_types,
+                .pfn_user_callback = DebugMessenger.callback,
+            }, null) catch |err| blk: {
+                std.log.err("Failed to create vk.DebugUtilsMessengerEXT: {}", .{err});
+                break :blk .null_handle;
+            },
+        };
+    }
+
+    fn deinit(self: @This(), instance: vk.InstanceProxy) void {
+        instance.destroyDebugUtilsMessengerEXT(self.handle, null);
+    }
+
+    fn callback(
+        message_severity: vk.DebugUtilsMessageSeverityFlagsEXT,
+        message_types: vk.DebugUtilsMessageTypeFlagsEXT,
+        p_callback_data: ?*const vk.DebugUtilsMessengerCallbackDataEXT,
+        p_user_data: ?*anyopaque,
+    ) callconv(vk.vulkan_call_conv) vk.Bool32 {
+        _ = message_types; // autofix
+        _ = p_user_data; // autofix
+
+        if (p_callback_data) |callback_data| {
+            if (callback_data.p_message) |message| {
+                if (message_severity.info_bit_ext or message_severity.verbose_bit_ext) {
+                    std.log.info("vulkan: {s}", .{message});
+                } else if (message_severity.warning_bit_ext) {
+                    std.log.warn("vulkan: {s}", .{message});
+                } else if (message_severity.error_bit_ext) {
+                    std.log.err("vulkan: {s}", .{message});
+                }
+            }
+        }
+
+        return .false;
+    }
+};

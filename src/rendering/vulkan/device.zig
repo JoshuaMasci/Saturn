@@ -23,7 +23,12 @@ debug: bool = false,
 
 all_stage_flags: vk.ShaderStageFlags,
 
-pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_device: PhysicalDevice) !Self {
+pub fn init(
+    allocator: std.mem.Allocator,
+    instance: vk.InstanceProxy,
+    physical_device: PhysicalDevice,
+    debug: bool,
+) !Self {
     if (physical_device.info.queues.graphics == null) {
         return error.NoGraphicsQueue;
     }
@@ -187,6 +192,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         .async_transfer_queue = async_transfer_queue,
         .all_stage_flags = all_stage_flags,
         .gpu_allocator = GpuAllocator.init(physical_device.handle, instance, proxy),
+        .debug = debug,
     };
 }
 

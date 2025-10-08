@@ -2,15 +2,15 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const VkDevice = @import("vulkan_device.zig");
+const Device = @import("device.zig");
 const GpuAllocator = @import("gpu_allocator.zig");
 
 const Self = @This();
 
-device: *VkDevice,
+device: *Device,
 handle: vk.Sampler,
 
-pub fn init(device: *VkDevice, filter_mode: vk.Filter, address_mode: vk.SamplerAddressMode) !Self {
+pub fn init(device: *Device, filter_mode: vk.Filter, address_mode: vk.SamplerAddressMode) !Self {
     const handle = try device.proxy.createSampler(&.{
         .min_filter = filter_mode,
         .mag_filter = filter_mode,
