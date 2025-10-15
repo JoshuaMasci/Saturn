@@ -88,7 +88,7 @@ fn createRenderSceneNode(nodes: []const Node, node_index: usize, parent_transfor
     const transform = parent_transform.applyTransform(&node.local_transform);
 
     if (node.mesh) |mesh| {
-        try render_scene.static_meshes.append(render_scene.allocator, .{
+        try render_scene.meshes.append(render_scene.allocator, .{
             .transform = transform,
             .component = .{ .mesh = mesh.mesh, .materials = .fromSlice(mesh.materials) },
         });

@@ -14,6 +14,17 @@ pub const AppInfo = struct {
 pub const PhysicalDevice = struct {
     handle: vk.PhysicalDevice,
     info: Info,
+
+    pub fn supportsSurface(self: PhysicalDevice, instance: vk.InstanceProxy, surface: vk.SurfaceKHR) bool {
+        var supports_present: vk.Bool32 = .false;
+
+        //Only supports present on graphics_queue
+        if (self.info.queues.graphics) |graphics_queue| {
+            supports_present = instance.getPhysicalDeviceSurfaceSupportKHR(self.handle, graphics_queue, surface);
+        }
+
+        return supports_present == .true;
+    }
 };
 
 pub const ScoreFn = *const fn (instance: *vk.InstanceProxy, physics_device: vk.PhysicalDevice) ?usize;
@@ -110,12 +121,6 @@ pub fn deinit(self: Self) void {
 
     self.instance.destroyInstance(null);
     self.allocator.destroy(self.instance.wrapper);
-}
-
-pub fn pickDevice(self: *const Self, surface_opt: ?vk.SurfaceKHR) ?usize {
-    _ = surface_opt; // autofix
-    _ = self; // autofix
-    return null;
 }
 
 pub fn createDevice(self: Self, device_index: usize) !Device {

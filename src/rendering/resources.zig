@@ -85,13 +85,18 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
             self.device.destroyBuffer(buffer);
             self.static_mesh_buffer = null;
         }
-        const static_mesh_slice = try temp_allocator.alloc(GpuMesh.GpuInfo, self.static_mesh_map.values().len);
-        defer temp_allocator.free(static_mesh_slice);
-        for (static_mesh_slice, self.static_mesh_map.values(), 0..) |*gpu, *entry, i| {
-            gpu.* = entry.gpu;
-            entry.buffer_index = @intCast(i);
+
+        if (self.static_mesh_map.values().len == 0) {
+            self.static_mesh_buffer = try self.device.createBuffer(16, .{ .storage_buffer_bit = true, .transfer_dst_bit = true });
+        } else {
+            const static_mesh_slice = try temp_allocator.alloc(GpuMesh.GpuInfo, self.static_mesh_map.values().len);
+            defer temp_allocator.free(static_mesh_slice);
+            for (static_mesh_slice, self.static_mesh_map.values(), 0..) |*gpu, *entry, i| {
+                gpu.* = entry.gpu;
+                entry.buffer_index = @intCast(i);
+            }
+            self.static_mesh_buffer = try self.device.createBufferWithData("mesh_info_buffer", .{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(static_mesh_slice));
         }
-        self.static_mesh_buffer = try self.device.createBufferWithData("mesh_info_buffer", .{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(static_mesh_slice));
     }
 
     //Material
@@ -112,8 +117,8 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
 }
 
 pub fn loadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) void {
-    for (scene.static_meshes.items) |static_mesh| {
-        self.tryLoadMesh(temp_allocator, static_mesh.component.mesh);
+    for (scene.meshes.items) |static_mesh| {
+        //self.tryLoadMesh(temp_allocator, static_mesh.component.mesh);
 
         for (static_mesh.component.materials.constSlice()) |material| {
             self.tryLoadMaterial(temp_allocator, material);

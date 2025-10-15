@@ -108,7 +108,7 @@ pub fn createRenderPass(
     camera_transform: Transform,
     render_graph: *rg.RenderGraph,
 ) !void {
-    if (scene.static_meshes.items.len == 0) {
+    if (scene.meshes.items.len == 0) {
         var render_pass = try rg.RenderPass.init(temp_allocator, "Empty Scene Pass");
         try render_pass.addColorAttachment(.{
             .texture = color_target,
@@ -119,10 +119,10 @@ pub fn createRenderPass(
         return;
     }
 
-    var draw_infos = try std.ArrayList(DrawInfo).initCapacity(temp_allocator, scene.static_meshes.items.len);
-    var indirect_info = try std.ArrayList(vk.DrawIndirectCommand).initCapacity(temp_allocator, scene.static_meshes.items.len);
+    var draw_infos = try std.ArrayList(DrawInfo).initCapacity(temp_allocator, scene.meshes.items.len);
+    var indirect_info = try std.ArrayList(vk.DrawIndirectCommand).initCapacity(temp_allocator, scene.meshes.items.len);
 
-    for (scene.static_meshes.items) |static_mesh| {
+    for (scene.meshes.items) |static_mesh| {
         const model_matirx = static_mesh.transform.getModelMatrix();
 
         if (resources.static_mesh_map.get(static_mesh.component.mesh)) |entry| {
@@ -187,7 +187,7 @@ pub fn createRenderPass(
     try render_graph.render_passes.append(render_graph.allocator, render_pass);
 }
 
-pub fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
     const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
     const self = data.self;
 
@@ -246,7 +246,7 @@ const DrawInfo = extern struct {
     pad: u32 = 0,
 };
 
-pub fn buildCommandBufferMeshShading(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
+fn buildCommandBufferMeshShading(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
     _ = resources; // autofix
     const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
     const self = data.self;
@@ -264,7 +264,7 @@ pub fn buildCommandBufferMeshShading(build_data: ?*anyopaque, device: *Backend, 
 
     command_buffer.bindPipeline(.graphics, self.opaque_mesh_shader_pipeline);
 
-    for (data.scene.static_meshes.items) |static_mesh| {
+    for (data.scene.meshes.items) |static_mesh| {
         if (static_mesh.component.visable == false) {
             continue;
         }

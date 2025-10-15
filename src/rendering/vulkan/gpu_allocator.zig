@@ -15,7 +15,7 @@ pub const Allocation = struct {
     location: MemoryLocation,
     mapped_ptr: ?*anyopaque,
 
-    pub fn getMappedByteSlice(self: *@This()) ?[]u8 {
+    pub fn getMappedByteSlice(self: *const @This()) ?[]u8 {
         if (self.mapped_ptr) |buffer_ptr| {
             const buffer_slice_ptr: [*]u8 = @ptrCast(@alignCast(buffer_ptr));
             const buffer_slice: []u8 = buffer_slice_ptr[0..self.size];

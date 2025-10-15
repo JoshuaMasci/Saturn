@@ -18,6 +18,7 @@ const RenderScene = @import("rendering/scene.zig").RenderScene;
 const SceneRenderer = @import("rendering/scene_renderer.zig");
 const Backend = @import("rendering/vulkan/backend.zig");
 const Transform = @import("transform.zig");
+const SceneGeometry = @import("rendering/scene_geometry.zig");
 
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
@@ -49,7 +50,8 @@ pub fn main() !void {
         }
         defer scene_json.deinit();
 
-        const render_scene = try scene_json.value.createRenderScene(allocator, .{});
+        var render_scene = try scene_json.value.createRenderScene(allocator, .{});
+        errdefer render_scene.deinit();
 
         var camera: Camera = .Default;
         var transform: Transform = .{};
@@ -70,11 +72,20 @@ pub fn main() !void {
 
         {
             const now = std.time.nanoTimestamp();
+            defer {
+                const duration_ns = std.time.nanoTimestamp() - now;
+                const duration_ns_f: f32 = @floatFromInt(duration_ns);
+                std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
+            }
+
             app.resources.loadSceneAssets(allocator, &render_scene);
-            const duration_ns = std.time.nanoTimestamp() - now;
-            const duration_ns_f: f32 = @floatFromInt(duration_ns);
-            std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
+
+            for (render_scene.meshes.items) |mesh| {
+                app.scene_geometry.addMesh(mesh.component.mesh);
+            }
         }
+
+        render_scene.meshes.clearRetainingCapacity();
 
         app.scene_info = .{
             .scene = render_scene,
@@ -82,7 +93,7 @@ pub fn main() !void {
         };
     } else {
         var render_scene: RenderScene = .init(allocator);
-        try render_scene.static_meshes.append(render_scene.allocator, .{
+        try render_scene.meshes.append(render_scene.allocator, .{
             .transform = .{
                 .position = .{ -54.0, 47.0, 0.0, 5.0 },
                 .scale = @splat(0.016),
@@ -135,6 +146,8 @@ const App = struct {
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
     mesh_shading: MeshShading,
+
+    scene_geometry: @import("rendering/scene_geometry.zig"),
 
     scene_info: ?struct {
         scene: RenderScene,
@@ -234,6 +247,16 @@ const App = struct {
         );
         errdefer mesh_shading.deinit();
 
+        const bytes_per_gibibyte: usize = 1024 * 1024 * 1024;
+
+        var scene_geometry: SceneGeometry = try .init(
+            allocator,
+            asset_registry,
+            vulkan_backend,
+            bytes_per_gibibyte,
+        );
+        errdefer scene_geometry.deinit();
+
         return .{
             .allocator = allocator,
             .asset_registry = asset_registry,
@@ -244,6 +267,7 @@ const App = struct {
             .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
             .mesh_shading = mesh_shading,
+            .scene_geometry = scene_geometry,
             .temp_allocator = .init(allocator),
         };
     }
@@ -261,6 +285,7 @@ const App = struct {
         self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
         self.resources.deinit();
+        self.scene_geometry.deinit();
         self.vulkan_backend.releaseWindow(self.window);
         self.vulkan_backend.deinit();
         self.allocator.destroy(self.vulkan_backend);

@@ -38,7 +38,7 @@ pub const StaticMeshComponent = struct {
     materials: MaterialArray,
 };
 
-pub const SceneStaticMesh = struct {
+pub const SceneMesh = struct {
     transform: Transform,
     component: StaticMeshComponent,
 };
@@ -48,25 +48,25 @@ pub const RenderScene = struct {
 
     allocator: std.mem.Allocator,
     skybox: ?CubeTextureAssetHandle = null,
-    static_meshes: std.ArrayList(SceneStaticMesh) = .empty,
+    meshes: std.ArrayList(SceneMesh) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{ .allocator = allocator };
     }
 
     pub fn deinit(self: *Self) void {
-        self.static_meshes.deinit(self.allocator);
+        self.meshes.deinit(self.allocator);
     }
 
     pub fn clear(self: *Self) void {
         self.skybox = null;
-        self.static_meshes.clearRetainingCapacity();
+        self.meshes.clearRetainingCapacity();
     }
 
     pub fn dupe(self: Self, allocator: std.mem.Allocator) !Self {
         var new_self = self;
-        new_self.static_meshes = try std.ArrayList(SceneStaticMesh).initCapacity(allocator, self.static_meshes.items.len);
-        new_self.static_meshes.appendSliceAssumeCapacity(self.static_meshes.items);
+        new_self.meshes = try std.ArrayList(SceneMesh).initCapacity(allocator, self.meshes.items.len);
+        new_self.meshes.appendSliceAssumeCapacity(self.meshes.items);
         return new_self;
     }
 };

@@ -40,6 +40,7 @@ pub const Extensions = struct {
     mesh_shader_support: bool,
     raytracing_support: bool,
     host_image_copy: bool,
+    amdx_shader_enqueue: bool,
 };
 
 const Self = @This();
@@ -150,6 +151,8 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
         //TODO: use feature version when this is updated to VK1.4
         //.host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"),
         .host_image_copy = false, //My implementation doesn't work
+
+        .amdx_shader_enqueue = supportsExtension(extensions_properties, "VK_AMDX_shader_enqueue"),
     };
 
     return .{

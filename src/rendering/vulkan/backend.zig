@@ -17,6 +17,7 @@ pub const RenderPass = rg.RenderPass;
 const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
 const Device = @import("device.zig");
+const TransferQueue = @import("transfer_queue.zig");
 
 const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
@@ -38,6 +39,8 @@ const PerFrameData = struct {
     transient_images: std.ArrayList(ImageHandle),
 
     upload_src_buffer: ?Buffer = null,
+
+    transfer_queue: TransferQueue,
 
     pub fn reset(self: *@This()) void {
         self.frame_wait_fences.clearRetainingCapacity();
@@ -130,6 +133,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
             .fence_pool = .init(allocator, device, .{}),
             .transient_buffers = .empty,
             .transient_images = .empty,
+            .transfer_queue = try .init(allocator, device, 256 * 1024 * 1024), //256Mb of staging space
         };
     }
 
@@ -158,6 +162,7 @@ pub fn deinit(self: *Self) void {
         data.fence_pool.deinit();
         data.transient_buffers.deinit(self.allocator);
         data.transient_images.deinit(self.allocator);
+        data.transfer_queue.deinit();
 
         if (data.upload_src_buffer) |buffer| {
             buffer.deinit();
@@ -249,15 +254,16 @@ pub fn createBufferWithData(self: *Self, name: []const u8, usage: vk.BufferUsage
         buffer.storage_binding = self.bindless_descriptor.storage_buffer_array.bind(buffer);
     }
 
+    const buffer_handle = try self.buffers.insert(buffer);
+
     if (buffer.allocation.getMappedByteSlice()) |buffer_slice| {
         std.debug.assert(buffer_slice.len >= data.len);
         @memcpy(buffer_slice[0..data.len], data);
     } else {
-        //TODO: use transfer queue
-        try buffer.uploadBufferData(self.device, self.device.graphics_queue, data);
+        try self.frame_data[self.frame_index].transfer_queue.writeBuffer(buffer_handle, 0, data);
     }
 
-    return self.buffers.insert(buffer);
+    return buffer_handle;
 }
 
 pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
@@ -472,6 +478,28 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
 
     try command_buffer.beginCommandBuffer(&.{});
     self.bindless_descriptor.bind(command_buffer, self.bindless_layout);
+
+    if (try frame_data.transfer_queue.createRenderPass(temp_allocator)) |render_pass| {
+        //TODO: Replace this very bad barrier
+        {
+            const memory_barriers: []const vk.MemoryBarrier2 = &.{
+                .{
+                    .src_stage_mask = .{ .all_commands_bit = true },
+                    .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+                    .dst_stage_mask = .{ .all_commands_bit = true },
+                    .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+                },
+            };
+            command_buffer.pipelineBarrier2(&.{
+                .memory_barrier_count = @intCast(memory_barriers.len),
+                .p_memory_barriers = memory_barriers.ptr,
+            });
+        }
+
+        if (render_pass.build_fn) |build_fn| {
+            build_fn(render_pass.build_data, self, resources, command_buffer, null);
+        }
+    }
 
     //Data upload
     if (render_graph.buffer_upload_passes.items.len != 0) {
@@ -739,4 +767,23 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
             }
         };
     }
+}
+
+pub fn calcDeviceScore(instance: *const Instance, p_device: Instance.PhysicalDevice) ?usize {
+    _ = instance; // autofix
+    var score: usize = 0;
+
+    if (p_device.info.type == .cpu) {
+        return null;
+    }
+
+    if (p_device.info.type == .discrete_gpu) {
+        score += 100;
+    }
+
+    if (p_device.info.extensions.mesh_shader_support) {
+        score += 50;
+    }
+
+    return score;
 }
