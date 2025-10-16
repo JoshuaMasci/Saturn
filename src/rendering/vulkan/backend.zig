@@ -8,6 +8,7 @@ const Vulkan = sdl3.Vulkan;
 const Window = sdl3.Window;
 const BindlessDescriptor = @import("bindless_descriptor.zig");
 const Buffer = @import("buffer.zig");
+const Device = @import("device.zig");
 const Image = @import("image.zig");
 const Instance = @import("instance.zig");
 const object_pools = @import("object_pools.zig");
@@ -16,7 +17,6 @@ pub const RenderGraph = rg.RenderGraph;
 pub const RenderPass = rg.RenderPass;
 const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
-const Device = @import("device.zig");
 const TransferQueue = @import("transfer_queue.zig");
 
 const BufferPool = HandlePool(Buffer);
@@ -83,12 +83,17 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     );
     errdefer instance.deinit();
 
+    var device_index_opt: ?usize = null;
     std.log.info("Available Physical Devices:", .{});
     for (instance.physical_devices, 0..) |physical_device, i| {
         std.log.info("{}: {f}", .{ i, physical_device.info });
+
+        if (device_index_opt == null and physical_device.info.type == .discrete_gpu) {
+            device_index_opt = i;
+        }
     }
 
-    const device_index = 0; //TODO: select device rather than just assume 0 is good
+    const device_index = device_index_opt orelse 0;
 
     std.log.info("Picking Device {}: {s}", .{ device_index, instance.physical_devices[device_index].info.name });
 
