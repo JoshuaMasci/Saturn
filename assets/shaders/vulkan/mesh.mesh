@@ -1,0 +1,55 @@
+#include "bindless.hlsl"
+#include "mesh.hlsl"
+#include "vertex_data.hlsl"
+#include "push.hlsl"
+#include "mesh_shading.hlsl"
+
+[[vk::push_constant]]
+PushConstants push_constants;
+
+ReadOnlyStorageBufferArray(MeshInfo, mesh_infos);
+
+[outputtopology("triangle")]
+[numthreads(MAX_TRIANGLES_PER_MESHLET, 1, 1)]
+void main(
+    uint group_id: SV_GroupID,
+    uint group_thread_id: SV_GroupThreadID,
+    out indices uint3 triangles[MAX_TRIANGLES_PER_MESHLET],
+    out vertices VertexData vertices[MAX_VERTICES_PER_MESHLET]
+ ) {
+    const float4x4 model_matrix = push_constants.model_matrix;
+    const float3x3 normal_matrix = (float3x3)model_matrix;
+
+    MeshInfo mesh_info = mesh_infos[push_constants.mesh_info_binding][push_constants.mesh_index];
+    ByteAddressBuffer geo_buffer = storage_buffers[mesh_info.buffer_binding];
+    PrimitiveInfo prim_info = LoadPrimitiveInfo(geo_buffer, mesh_info.primitives_offset, push_constants.primitive_index);
+    MeshletInfo meshlet_info = LoadMeshletInfo(geo_buffer, mesh_info.meshlets_offset, prim_info.meshlet_offset + group_id);
+
+    SetMeshOutputCounts(meshlet_info.vertex_count, meshlet_info.triangle_count);
+
+    if (group_thread_id < meshlet_info.vertex_count) {
+        uint index = LoadIndex(geo_buffer, mesh_info.meshlet_vertices_offset, meshlet_info.vertex_offset + group_thread_id) + prim_info.vertex_offset;
+        Vertex input = LoadVertex(geo_buffer, mesh_info.vertices_offset, index);
+
+        float4 world_position = mul(model_matrix, float4(input.position, 1.0f));
+        float3 world_normal = normalize(mul(normal_matrix, input.normal));
+        float3 world_tangent = normalize(mul(normal_matrix, input.tangent.xyz));
+
+        VertexData output;
+        output.position = mul(push_constants.view_projection_matrix, world_position);
+        output.frag_uv0 = input.uv0;
+        output.frag_uv1 = input.uv1;
+
+        output.material_index = push_constants.material_index;
+
+        vertices[group_thread_id] = output;
+    }
+
+    if (group_thread_id < meshlet_info.triangle_count) {
+       const uint index_offset = meshlet_info.triangle_offset + (group_thread_id) * 3;
+       uint idx0 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 0);
+       uint idx1 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 1);
+       uint idx2 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 2);
+       triangles[group_thread_id] = uint3(idx0, idx1, idx2);
+    }
+}

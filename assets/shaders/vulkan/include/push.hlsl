@@ -1,7 +1,11 @@
 struct PushConstants
 {
     float4x4 view_projection_matrix;
-    uint static_mesh_binding;
+    uint mesh_info_binding;
     uint material_binding;
-    uint draw_info_binding;
+
+    float4x4 model_matrix;
+    uint mesh_index;
+    uint primitive_index;
+    uint material_index;
 };

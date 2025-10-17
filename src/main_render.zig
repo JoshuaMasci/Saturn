@@ -85,8 +85,6 @@ pub fn main() !void {
             }
         }
 
-        render_scene.meshes.clearRetainingCapacity();
-
         app.scene_info = .{
             .scene = render_scene,
             .camera = debug_camera,
@@ -391,6 +389,7 @@ const App = struct {
         }
 
         if (self.window_visable_flags.debug and imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
+            _ = imgui.ImGui_Checkbox("Enable Vertex Storage Load", &self.scene_renderer.vertex_storage_load);
             _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
             imgui.ImGui_End();
         }
@@ -437,6 +436,7 @@ const App = struct {
                     swapchain_texture,
                     depth_texture,
                     &self.resources,
+                    &self.scene_geometry,
                     &info.scene,
                     info.camera.camera,
                     info.camera.transform,

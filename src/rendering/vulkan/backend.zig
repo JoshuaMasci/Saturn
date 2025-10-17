@@ -109,8 +109,8 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     const DESCRIPTOR_COUNT = 4096;
     bindless_descriptor.* = try BindlessDescriptor.init(allocator, device, .{
         .uniform_buffers = DESCRIPTOR_COUNT,
-        .storage_buffers = DESCRIPTOR_COUNT * 4,
-        .sampled_images = DESCRIPTOR_COUNT * 2,
+        .storage_buffers = DESCRIPTOR_COUNT,
+        .sampled_images = DESCRIPTOR_COUNT,
         .storage_images = DESCRIPTOR_COUNT,
     });
     errdefer bindless_descriptor.deinit();
@@ -285,6 +285,10 @@ pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
     } else {
         std.log.err("Invalid Buffer Handle: {}", .{handle});
     }
+}
+
+pub fn writeBuffer(self: *Self, handle: BufferPool.Handle, offset: usize, data: []const u8) !void {
+    try self.frame_data[self.frame_index].transfer_queue.writeBuffer(handle, offset, data);
 }
 
 pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags) !ImagePool.Handle {

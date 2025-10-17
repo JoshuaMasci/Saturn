@@ -10,7 +10,6 @@ const TextureAsset = @import("../asset/texture.zig");
 const RenderScene = @import("scene.zig").RenderScene;
 const Backend = @import("vulkan/backend.zig");
 const GpuImage = @import("vulkan/image.zig");
-const GpuMesh = @import("vulkan/mesh.zig");
 const rg = @import("vulkan/render_graph.zig");
 
 const Self = @This();
@@ -19,11 +18,6 @@ allocator: std.mem.Allocator,
 registry: *const AssetRegistry,
 device: *Backend,
 
-static_mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, struct {
-    mesh: GpuMesh,
-    gpu: GpuMesh.GpuInfo,
-    buffer_index: ?u32 = null,
-}),
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
     image_handle: Backend.ImageHandle,
     //TODO: bindings?
@@ -34,7 +28,6 @@ material_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
     buffer_index: ?u32 = null,
 }),
 
-static_mesh_buffer: ?Backend.BufferHandle = null,
 material_buffer: ?Backend.BufferHandle = null,
 
 pub fn init(
@@ -47,25 +40,15 @@ pub fn init(
         .registry = registry,
         .device = device,
 
-        .static_mesh_map = .init(allocator),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
     };
 }
 
 pub fn deinit(self: *Self) void {
-    if (self.static_mesh_buffer) |buffer| {
-        self.device.destroyBuffer(buffer);
-    }
-
     if (self.material_buffer) |buffer| {
         self.device.destroyBuffer(buffer);
     }
-
-    for (self.static_mesh_map.values()) |entry| {
-        entry.mesh.deinit();
-    }
-    self.static_mesh_map.deinit();
 
     for (self.texture_map.values()) |entry| {
         self.device.destroyImage(entry.image_handle);
@@ -79,26 +62,6 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
-    //Meshes
-    {
-        if (self.static_mesh_buffer) |buffer| {
-            self.device.destroyBuffer(buffer);
-            self.static_mesh_buffer = null;
-        }
-
-        if (self.static_mesh_map.values().len == 0) {
-            self.static_mesh_buffer = try self.device.createBuffer(16, .{ .storage_buffer_bit = true, .transfer_dst_bit = true });
-        } else {
-            const static_mesh_slice = try temp_allocator.alloc(GpuMesh.GpuInfo, self.static_mesh_map.values().len);
-            defer temp_allocator.free(static_mesh_slice);
-            for (static_mesh_slice, self.static_mesh_map.values(), 0..) |*gpu, *entry, i| {
-                gpu.* = entry.gpu;
-                entry.buffer_index = @intCast(i);
-            }
-            self.static_mesh_buffer = try self.device.createBufferWithData("mesh_info_buffer", .{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(static_mesh_slice));
-        }
-    }
-
     //Material
     {
         if (self.material_buffer) |buffer| {
@@ -118,34 +81,12 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
 
 pub fn loadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) void {
     for (scene.meshes.items) |static_mesh| {
-        //self.tryLoadMesh(temp_allocator, static_mesh.component.mesh);
-
         for (static_mesh.component.materials.constSlice()) |material| {
             self.tryLoadMaterial(temp_allocator, material);
         }
     }
 
     self.updateBuffers(temp_allocator) catch |err| std.log.err("Failed to update resource buffers: {}", .{err});
-}
-
-pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
-    if (!self.static_mesh_map.contains(handle)) {
-        if (self.registry.loadAsset(MeshAsset, temp_allocator, handle)) |mesh| {
-            defer mesh.deinit(temp_allocator);
-            const gpu_mesh = GpuMesh.init(self.allocator, self.device, &mesh) catch return;
-            const gpu_info = gpu_mesh.getGpuInfo();
-
-            self.static_mesh_map.put(handle, .{
-                .mesh = gpu_mesh,
-                .gpu = gpu_info,
-            }) catch |err| {
-                gpu_mesh.deinit();
-                std.log.err("Failed to append static mesh to list {}", .{err});
-            };
-        } else |err| {
-            std.log.err("Failed to load static mesh {}", .{err});
-        }
-    }
 }
 
 pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
