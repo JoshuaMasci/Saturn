@@ -379,12 +379,14 @@ const UploadInfo = struct {
 };
 
 pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.RenderGraph) !void {
+    const TIMEOUT_NS: u64 = std.time.ns_per_s * 5;
+
     self.frame_index = @mod(self.frame_index + 1, self.frame_data.len);
     const frame_data = &self.frame_data[self.frame_index];
 
     //Wait for previous frame to finish
     if (frame_data.frame_wait_fences.items.len > 0) {
-        _ = try self.device.proxy.waitForFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr, .true, std.math.maxInt(u64));
+        _ = try self.device.proxy.waitForFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr, .true, TIMEOUT_NS);
         frame_data.frame_wait_fences.clearRetainingCapacity();
     }
 
