@@ -42,7 +42,7 @@ pub fn deinit(self: *Self) void {
     self.transfer_list.deinit(self.allocator);
 }
 
-const WriteBufferError = error{
+pub const WriteBufferError = error{
     OutOfMemory,
     StagingBufferFull,
     WriteOutOfBounds,

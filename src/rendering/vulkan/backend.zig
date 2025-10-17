@@ -138,7 +138,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
             .fence_pool = .init(allocator, device, .{}),
             .transient_buffers = .empty,
             .transient_images = .empty,
-            .transfer_queue = try .init(allocator, device, 256 * 1024 * 1024), //256Mb of staging space
+            .transfer_queue = try .init(allocator, device, 64 * 1024 * 1024), //256Mb of staging space
         };
     }
 
@@ -287,8 +287,25 @@ pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
     }
 }
 
-pub fn writeBuffer(self: *Self, handle: BufferPool.Handle, offset: usize, data: []const u8) !void {
-    try self.frame_data[self.frame_index].transfer_queue.writeBuffer(handle, offset, data);
+pub fn writeBuffer(self: *Self, handle: BufferPool.Handle, offset: usize, data: []const u8) TransferQueue.WriteBufferError!void {
+    self.frame_data[self.frame_index].transfer_queue.writeBuffer(handle, offset, data) catch |err| {
+        if (err == error.StagingBufferFull) {
+            std.log.info("StagingBufferFull Flushing", .{});
+            // Flush transfers and try again
+            // It is easist to just run an empty render for now
+            {
+                var arena_allocator = std.heap.ArenaAllocator.init(self.allocator);
+                defer arena_allocator.deinit();
+                const temp_allocator = arena_allocator.allocator();
+                var empty_graph = rg.RenderGraph.init(temp_allocator);
+                defer empty_graph.deinit();
+                self.render(temp_allocator, empty_graph) catch {};
+            }
+            try self.frame_data[self.frame_index].transfer_queue.writeBuffer(handle, offset, data);
+        } else {
+            return err;
+        }
+    };
 }
 
 pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags) !ImagePool.Handle {

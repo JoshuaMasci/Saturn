@@ -190,6 +190,6 @@ fn write(self: *Self, allocation: SubAllocation, data: []const u8) !void {
     if (self.geometry_slice) |buffer_slice| {
         @memcpy(buffer_slice[allocation.offset..(allocation.offset + data.len)], data);
     } else {
-        try self.backend.frame_data[self.backend.frame_index].transfer_queue.writeBuffer(self.geometry_buffer, allocation.offset, data);
+        try self.backend.writeBuffer(self.geometry_buffer, allocation.offset, data);
     }
 }
