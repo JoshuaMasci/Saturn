@@ -8,7 +8,7 @@ const AssetRegistry = @import("../asset/registry.zig");
 const Transform = @import("../transform.zig");
 const Camera = @import("camera.zig").Camera;
 const culling = @import("culling.zig");
-const RenderScene = @import("scene.zig").RenderScene;
+const RenderScene = @import("scene.zig");
 const Resources = @import("resources.zig");
 const Backend = @import("vulkan/backend.zig");
 const Image = @import("vulkan/image.zig");
@@ -154,7 +154,7 @@ pub fn createRenderPass(
     camera_transform: Transform,
     render_graph: *rg.RenderGraph,
 ) !void {
-    if (scene.meshes.items.len == 0) {
+    if (scene.instances.items.len == 0) {
         var render_pass = try rg.RenderPass.init(temp_allocator, "Empty Scene Pass");
         try render_pass.addColorAttachment(.{
             .texture = color_target,
@@ -222,7 +222,7 @@ fn buildCommandBufferDirect(build_data: ?*anyopaque, device: *Backend, resources
     const data: *BuildCommandBufferData = @ptrCast(@alignCast(build_data.?));
     const self = data.self;
 
-    const scene_geometry_buffer = device.buffers.get(data.scene_geometry.geometry_buffer).?;
+    const scene_geometry_buffer = device.buffers.get(data.resources.meshes.geometry_buffer).?;
     const mesh_info_buffer = device.buffers.get(data.mesh_info_buffer).?;
     const material_buffer = device.buffers.get(data.material_buffer).?;
 
@@ -234,7 +234,7 @@ fn buildCommandBufferDirect(build_data: ?*anyopaque, device: *Backend, resources
     projection_matrix[1][1] *= -1.0;
     const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
-    for (data.scene.meshes.items) |static_mesh| {
+    for (data.scene.instances.items) |static_mesh| {
         if (static_mesh.component.visable == false) {
             continue;
         }

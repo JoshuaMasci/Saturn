@@ -55,9 +55,6 @@ pub fn main() !void {
 
         try scene_json.value.loadScene(&scene, .{});
 
-        //Faster loading for testing
-        scene.instances.shrinkRetainingCapacity(256);
-
         var camera: Camera = .Default;
         var transform: Transform = .{};
 
@@ -397,33 +394,32 @@ const App = struct {
         {
             const swapchain_texture = try render_graph.acquireSwapchainTexture(self.window);
 
-            // if (self.scene_info) |info| {
-            //     const depth_texture = try render_graph.createTransientTexture(.{
-            //         .extent = .{ .relative = swapchain_texture },
-            //         .format = DEPTH_FORMAT,
-            //         .usage = .{ .depth_stencil_attachment_bit = true },
-            //     });
+            if (self.scene_info) |info| {
+                const depth_texture = try render_graph.createTransientTexture(.{
+                    .extent = .{ .relative = swapchain_texture },
+                    .format = DEPTH_FORMAT,
+                    .usage = .{ .depth_stencil_attachment_bit = true },
+                });
 
-            //     try self.scene_renderer.createRenderPass(
-            //         temp_allocator,
-            //         swapchain_texture,
-            //         depth_texture,
-            //         &self.resources,
-            //         &self.scene_geometry,
-            //         &info.scene,
-            //         info.camera.camera,
-            //         info.camera.transform,
-            //         &render_graph,
-            //     );
-            // } else {
-            var render_pass = try Backend.RenderPass.init(temp_allocator, "Screen Clear Pass");
-            try render_pass.addColorAttachment(.{
-                .texture = swapchain_texture,
-                .clear = .{ .float_32 = @splat(0.25) },
-                .store = true,
-            });
-            try render_graph.render_passes.append(render_graph.allocator, render_pass);
-            //}
+                try self.scene_renderer.createRenderPass(
+                    temp_allocator,
+                    swapchain_texture,
+                    depth_texture,
+                    &self.resources,
+                    &info.scene,
+                    info.camera.camera,
+                    info.camera.transform,
+                    &render_graph,
+                );
+            } else {
+                var render_pass = try Backend.RenderPass.init(temp_allocator, "Screen Clear Pass");
+                try render_pass.addColorAttachment(.{
+                    .texture = swapchain_texture,
+                    .clear = .{ .float_32 = @splat(0.25) },
+                    .store = true,
+                });
+                try render_graph.render_passes.append(render_graph.allocator, render_pass);
+            }
 
             try self.mesh_shading.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
 
