@@ -77,7 +77,7 @@ geometry_slice: ?[]u8,
 buffer_size: usize,
 buffer_offset: usize = 0,
 
-mesh_map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, MeshEntry),
+map: std.AutoArrayHashMap(AssetRegistry.AssetHandle, MeshEntry),
 
 next_mesh_index: u32 = 0,
 mesh_info_buffer: Backend.BufferHandle,
@@ -105,7 +105,7 @@ pub fn init(
         .geometry_buffer_binding = geometry_buffer_binding,
         .buffer_size = buffer_size,
 
-        .mesh_map = .init(allocator),
+        .map = .init(allocator),
 
         .mesh_info_buffer = mesh_info_buffer,
     };
@@ -114,12 +114,12 @@ pub fn init(
 pub fn deinit(self: *Self) void {
     self.backend.destroyBuffer(self.mesh_info_buffer);
     self.backend.destroyBuffer(self.geometry_buffer);
-    self.mesh_map.deinit();
+    self.map.deinit();
     self.arena.deinit();
 }
 
 pub fn addMesh(self: *Self, handle: AssetRegistry.AssetHandle) void {
-    if (!self.mesh_map.contains(handle)) {
+    if (!self.map.contains(handle)) {
         if (self.registry.loadAsset(MeshAsset, self.allocator, handle)) |mesh| {
             defer mesh.deinit(self.allocator);
 
@@ -140,7 +140,7 @@ pub fn addMesh(self: *Self, handle: AssetRegistry.AssetHandle) void {
                 },
             };
 
-            self.mesh_map.put(handle, entry) catch |err| {
+            self.map.put(handle, entry) catch |err| {
                 std.log.err("Failed to append mesh to list {}", .{err});
             };
 
@@ -164,8 +164,8 @@ fn createBuffer(self: *Self, data: []const u8) !SubAllocation {
 }
 
 fn alloc(self: *Self, size: usize) error{OutOfMemory}!SubAllocation {
-    const alignment: usize = 16;
-    const aligned_offset = std.mem.alignForward(usize, self.buffer_offset, alignment);
+    const BASE_ALIGNMENT: usize = 16;
+    const aligned_offset = std.mem.alignForward(usize, self.buffer_offset, BASE_ALIGNMENT);
 
     if ((aligned_offset + size) > self.buffer_size) {
         return error.OutOfMemory;

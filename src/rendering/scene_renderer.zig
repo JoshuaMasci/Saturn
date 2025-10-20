@@ -16,7 +16,7 @@ const Mesh = @import("vulkan/mesh.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
 const utils = @import("vulkan/utils.zig");
-const SceneGeometry = @import("scene_geometry.zig");
+const UnifiedGeometryBuffer = @import("unified_geometry_buffer.zig");
 
 const Self = @This();
 
@@ -149,7 +149,6 @@ pub fn createRenderPass(
     color_target: rg.RenderGraphTextureHandle,
     depth_target: rg.RenderGraphTextureHandle,
     resources: *const Resources,
-    scene_geometry: *const SceneGeometry,
     scene: *const RenderScene,
     camera: Camera,
     camera_transform: Transform,
@@ -182,9 +181,8 @@ pub fn createRenderPass(
     scene_build_data.* = .{
         .self = self,
         .resources = resources,
-        .scene_geometry = scene_geometry,
 
-        .mesh_info_buffer = scene_geometry.mesh_info_buffer,
+        .mesh_info_buffer = resources.meshes.mesh_info_buffer,
         .material_buffer = resources.material_buffer.?,
 
         .camera = camera,
@@ -199,7 +197,6 @@ pub fn createRenderPass(
 pub const BuildCommandBufferData = struct {
     self: *Self,
     resources: *const Resources,
-    scene_geometry: *const SceneGeometry,
 
     mesh_info_buffer: Backend.BufferHandle,
     material_buffer: Backend.BufferHandle,
@@ -242,7 +239,7 @@ fn buildCommandBufferDirect(build_data: ?*anyopaque, device: *Backend, resources
             continue;
         }
 
-        if (data.scene_geometry.mesh_map.get(static_mesh.component.mesh)) |mesh| {
+        if (data.resources.meshes.map.get(static_mesh.component.mesh)) |mesh| {
             if (self.mesh_shading) {
                 command_buffer.bindPipeline(.graphics, self.opaque_mesh_shader_pipeline);
             } else if (!self.vertex_storage_load) {

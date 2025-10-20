@@ -4,23 +4,23 @@ const zm = @import("zmath");
 
 const AssetRegistry = @import("../asset/registry.zig");
 const Transform = @import("../transform.zig");
-
-const CubeTextureAssetHandle = u32;
+const Resources = @import("resources.zig");
+const UnifiedGeometryBuffer = @import("unified_geometry_buffer.zig");
+const Backend = @import("vulkan/backend.zig");
 
 pub const MaterialArray = struct {
-    const Self = @This();
-    const BufferSize = 32;
+    const BufferSize = 8;
 
     buffer: [BufferSize]AssetRegistry.Handle,
     len: usize,
 
-    pub fn init() Self {
+    pub fn init() MaterialArray {
         return .{ .buffer = undefined, .len = 0 };
     }
 
-    pub fn fromSlice(src: []const AssetRegistry.Handle) Self {
+    pub fn fromSlice(src: []const AssetRegistry.Handle) MaterialArray {
         std.debug.assert(src.len <= BufferSize);
-        var buffer: [BufferSize]AssetRegistry.Handle = .{AssetRegistry.Handle{ .repo_hash = 0, .asset_hash = 42 }} ** BufferSize;
+        var buffer: [BufferSize]AssetRegistry.Handle = .{AssetRegistry.Handle{ .repo_hash = 0, .asset_hash = 0 }} ** BufferSize;
         std.mem.copyForwards(AssetRegistry.Handle, &buffer, src);
 
         return .{
@@ -29,7 +29,7 @@ pub const MaterialArray = struct {
         };
     }
 
-    pub fn constSlice(self: *const Self) []const AssetRegistry.Handle {
+    pub fn constSlice(self: *const MaterialArray) []const AssetRegistry.Handle {
         return self.buffer[0..self.len];
     }
 };
@@ -45,45 +45,90 @@ pub const SceneMesh = struct {
     component: StaticMeshComponent,
 };
 
-pub const RenderScene = struct {
-    const Self = @This();
-
-    allocator: std.mem.Allocator,
-    skybox: ?CubeTextureAssetHandle = null,
-    meshes: std.ArrayList(SceneMesh) = .empty,
-
-    pub fn init(allocator: std.mem.Allocator) Self {
-        return .{ .allocator = allocator };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.meshes.deinit(self.allocator);
-    }
-
-    pub fn clear(self: *Self) void {
-        self.skybox = null;
-        self.meshes.clearRetainingCapacity();
-    }
-
-    pub fn dupe(self: Self, allocator: std.mem.Allocator) !Self {
-        var new_self = self;
-        new_self.meshes = try std.ArrayList(SceneMesh).initCapacity(allocator, self.meshes.items.len);
-        new_self.meshes.appendSliceAssumeCapacity(self.meshes.items);
-        return new_self;
-    }
-};
-
 pub const GpuInstace = struct {
     model_matrix: zm.Mat,
     mesh_index: u32,
     primitive_offset: u32,
     primitive_count: u32,
-    pad0: u32,
-    material_indexs: [8]u8,
+    pad0: u32 = 0,
+    material_indexes: [8]u32,
 };
 
-pub const Scene = struct {
-    const Self = @This();
-
-    allocator: std.mem.Allocator,
+pub const RenderData = struct {
+    instance_count: u32,
+    instance_buffer: Backend.BufferHandle,
 };
+
+const Self = @This();
+
+allocator: std.mem.Allocator,
+instances: std.ArrayList(SceneMesh) = .empty,
+instance_buffer: ?Backend.BufferHandle = null,
+
+pub fn init(allocator: std.mem.Allocator) Self {
+    return .{
+        .allocator = allocator,
+    };
+}
+
+pub fn deinit(self: *Self, backend: *Backend) void {
+    self.instances.deinit(self.allocator);
+    if (self.instance_buffer) |buffer| {
+        backend.destroyBuffer(buffer);
+    }
+}
+
+pub fn addInstance(self: *Self, mesh: SceneMesh) void {
+    self.instances.append(self.allocator, mesh) catch @panic("Failed to appened to instances");
+}
+
+pub fn getRenderData(self: Self) ?RenderData {
+    if (self.instances.items.len != 0) {
+        if (self.instance_buffer) |buffer| {
+            return .{
+                .instance_count = @intCast(self.instances.items.len),
+                .instance_buffer = buffer,
+            };
+        }
+    }
+    return null;
+}
+
+pub fn update(
+    self: *Self,
+    temp_allocator: std.mem.Allocator,
+    backend: *Backend,
+    resources: *const Resources,
+) !void {
+    if (self.instance_buffer) |buffer| {
+        backend.destroyBuffer(buffer);
+    }
+
+    if (self.instances.items.len != 0) {
+        var gpu_index: u32 = 0;
+        var gpu_instances = try temp_allocator.alloc(GpuInstace, self.instances.items.len);
+        defer temp_allocator.free(gpu_instances);
+
+        for (self.instances.items) |instance| {
+            const mesh = resources.meshes.map.get(instance.component.mesh) orelse continue;
+            var material_indexes: [8]u32 = undefined;
+            for (instance.component.materials.constSlice(), 0..) |material, i| {
+                material_indexes[i] = if (resources.material_map.get(material)) |mat| mat.buffer_index orelse 0 else 0;
+            }
+
+            gpu_instances[gpu_index] = .{
+                .model_matrix = instance.transform.getModelMatrix(),
+                .mesh_index = mesh.index,
+                .primitive_offset = 0,
+                .primitive_count = @intCast(mesh.primitives.len),
+                .material_indexes = material_indexes,
+            };
+            gpu_index += 1;
+        }
+        self.instance_buffer = backend.createBufferWithData(
+            "Scene Instance Buffer",
+            .{ .storage_buffer_bit = true },
+            std.mem.sliceAsBytes(gpu_instances),
+        ) catch null;
+    }
+}

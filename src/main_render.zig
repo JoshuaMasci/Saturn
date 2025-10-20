@@ -14,11 +14,11 @@ const Camera = @import("rendering/camera.zig").Camera;
 const ImguiRenderer = @import("rendering/imgui_renderer.zig");
 const MeshShading = @import("rendering/mesh_shading.zig");
 const Resources = @import("rendering/resources.zig");
-const RenderScene = @import("rendering/scene.zig").RenderScene;
+const RenderScene = @import("rendering/scene.zig");
 const SceneRenderer = @import("rendering/scene_renderer.zig");
 const Backend = @import("rendering/vulkan/backend.zig");
 const Transform = @import("transform.zig");
-const SceneGeometry = @import("rendering/scene_geometry.zig");
+const UnifiedGeometryBuffer = @import("rendering/unified_geometry_buffer.zig");
 
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
@@ -50,8 +50,13 @@ pub fn main() !void {
         }
         defer scene_json.deinit();
 
-        var render_scene = try scene_json.value.createRenderScene(allocator, .{});
-        errdefer render_scene.deinit();
+        var scene: RenderScene = .init(allocator);
+        errdefer scene.deinit(app.vulkan_backend);
+
+        try scene_json.value.loadScene(&scene, .{});
+
+        //Faster loading for testing
+        scene.instances.shrinkRetainingCapacity(256);
 
         var camera: Camera = .Default;
         var transform: Transform = .{};
@@ -78,44 +83,14 @@ pub fn main() !void {
                 std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
             }
 
-            app.resources.loadSceneAssets(allocator, &render_scene);
-
-            for (render_scene.meshes.items) |mesh| {
-                app.scene_geometry.addMesh(mesh.component.mesh);
-            }
+            app.resources.loadSceneAssets(allocator, &scene);
         }
 
+        try scene.update(allocator, app.vulkan_backend, &app.resources);
+
         app.scene_info = .{
-            .scene = render_scene,
+            .scene = scene,
             .camera = debug_camera,
-        };
-    } else {
-        var render_scene: RenderScene = .init(allocator);
-        try render_scene.meshes.append(render_scene.allocator, .{
-            .transform = .{
-                .position = .{ -54.0, 47.0, 0.0, 5.0 },
-                .scale = @splat(0.016),
-            },
-            .component = .{
-                .mesh = .fromRepoPath("game", "Bistro/meshes/Bistro_Research_Exterior__lod0_Italian_Cypress5_3931.asset"),
-                .materials = .fromSlice(&.{
-                    .fromRepoPath("game", "Bistro/materials/Foliage_Leaves.DoubleSided.asset"),
-                    .fromRepoPath("game", "Bistro/materials/Foliage_Trunk.asset"),
-                }),
-            },
-        });
-
-        {
-            const now = std.time.nanoTimestamp();
-            app.resources.loadSceneAssets(allocator, &render_scene);
-            const duration_ns = std.time.nanoTimestamp() - now;
-            const duration_ns_f: f32 = @floatFromInt(duration_ns);
-            std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
-        }
-
-        app.scene_info = .{
-            .scene = render_scene,
-            .camera = .{},
         };
     }
 
@@ -140,12 +115,12 @@ const App = struct {
     asset_registry: *AssetRegistry,
 
     vulkan_backend: *Backend,
+
     resources: Resources,
+
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
     mesh_shading: MeshShading,
-
-    scene_geometry: @import("rendering/scene_geometry.zig"),
 
     scene_info: ?struct {
         scene: RenderScene,
@@ -203,7 +178,7 @@ const App = struct {
         );
         errdefer vulkan_backend.releaseWindow(window);
 
-        var resources: Resources = .init(allocator, asset_registry, vulkan_backend);
+        var resources: Resources = try .init(allocator, asset_registry, vulkan_backend);
         errdefer resources.deinit();
 
         var scene_renderer: SceneRenderer = try .init(
@@ -245,16 +220,6 @@ const App = struct {
         );
         errdefer mesh_shading.deinit();
 
-        const bytes_per_gibibyte: usize = 1024 * 1024 * 1024;
-
-        var scene_geometry: SceneGeometry = try .init(
-            allocator,
-            asset_registry,
-            vulkan_backend,
-            bytes_per_gibibyte,
-        );
-        errdefer scene_geometry.deinit();
-
         return .{
             .allocator = allocator,
             .asset_registry = asset_registry,
@@ -265,14 +230,13 @@ const App = struct {
             .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
             .mesh_shading = mesh_shading,
-            .scene_geometry = scene_geometry,
             .temp_allocator = .init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
         if (self.scene_info) |*info| {
-            info.scene.deinit();
+            info.scene.deinit(self.vulkan_backend);
         }
 
         self.temp_allocator.deinit();
@@ -283,7 +247,6 @@ const App = struct {
         self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
         self.resources.deinit();
-        self.scene_geometry.deinit();
         self.vulkan_backend.releaseWindow(self.window);
         self.vulkan_backend.deinit();
         self.allocator.destroy(self.vulkan_backend);
@@ -364,49 +327,59 @@ const App = struct {
             imgui.ImGui_EndMainMenuBar();
         }
 
-        if (self.window_visable_flags.performance and imgui.ImGui_Begin("Performance", &self.window_visable_flags.performance, 0)) {
-            try ImFmtText(temp_allocator, "Delta Time: {d:.3} ms", .{self.average_dt * 1000});
-            try ImFmtText(temp_allocator, "FPS: {d:.3}", .{1.0 / self.average_dt});
+        if (self.window_visable_flags.performance) {
+            if (imgui.ImGui_Begin("Performance", &self.window_visable_flags.performance, 0)) {
+                try ImFmtText(temp_allocator, "Delta Time: {d:.3} ms", .{self.average_dt * 1000});
+                try ImFmtText(temp_allocator, "FPS: {d:.3}", .{1.0 / self.average_dt});
 
-            if (mem_usage_opt) |mem_usage| {
-                const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(temp_allocator, mem_usage) catch null;
-                if (formatted_string) |mem_usage_string| {
-                    try ImFmtText(temp_allocator, "Memory Usage: {s}", .{mem_usage_string});
+                if (mem_usage_opt) |mem_usage| {
+                    const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(temp_allocator, mem_usage) catch null;
+                    if (formatted_string) |mem_usage_string| {
+                        try ImFmtText(temp_allocator, "Memory Usage: {s}", .{mem_usage_string});
+                    }
                 }
-            }
 
-            {
-                const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(
-                    temp_allocator,
-                    self.vulkan_backend.device.gpu_allocator.total_requested_bytes,
-                ) catch null;
-                if (formatted_string) |mem_usage_string| {
-                    try ImFmtText(temp_allocator, "Gpu Memory Usage: {s}", .{mem_usage_string});
+                {
+                    const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(
+                        temp_allocator,
+                        self.vulkan_backend.device.gpu_allocator.total_requested_bytes,
+                    ) catch null;
+                    if (formatted_string) |mem_usage_string| {
+                        try ImFmtText(temp_allocator, "Gpu Memory Usage: {s}", .{mem_usage_string});
+                    }
                 }
+
+                imgui.ImGui_End();
             }
-
-            imgui.ImGui_End();
         }
 
-        if (self.window_visable_flags.debug and imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
-            _ = imgui.ImGui_Checkbox("Enable Vertex Storage Load", &self.scene_renderer.vertex_storage_load);
-            _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
-            imgui.ImGui_End();
+        if (self.window_visable_flags.debug) {
+            if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
+                _ = imgui.ImGui_Checkbox("Enable Vertex Storage Load", &self.scene_renderer.vertex_storage_load);
+                _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
+                imgui.ImGui_End();
+            }
         }
 
-        if (self.window_visable_flags.viewport and imgui.ImGui_Begin("Viewport", &self.window_visable_flags.viewport, 0)) {
-            const size = imgui.ImGui_GetWindowSize();
-            imgui.ImGui_Text("Window Size: %.1f x %.1f", size.x, size.y);
-            imgui.ImGui_Text("TODO: draw the scene here and not on the main swapchain");
-            imgui.ImGui_End();
+        if (self.window_visable_flags.viewport) {
+            if (imgui.ImGui_Begin("Viewport", &self.window_visable_flags.viewport, 0)) {
+                const size = imgui.ImGui_GetWindowSize();
+                imgui.ImGui_Text("Window Size: %.1f x %.1f", size.x, size.y);
+                imgui.ImGui_Text("TODO: draw the scene here and not on the main swapchain");
+                imgui.ImGui_End();
+            }
         }
 
-        if (self.window_visable_flags.scene and imgui.ImGui_Begin("Scene", &self.window_visable_flags.scene, 0)) {
-            imgui.ImGui_End();
+        if (self.window_visable_flags.scene) {
+            if (imgui.ImGui_Begin("Scene", &self.window_visable_flags.scene, 0)) {
+                imgui.ImGui_End();
+            }
         }
 
-        if (self.window_visable_flags.properties and imgui.ImGui_Begin("Properties", &self.window_visable_flags.properties, 0)) {
-            imgui.ImGui_End();
+        if (self.window_visable_flags.properties) {
+            if (imgui.ImGui_Begin("Properties", &self.window_visable_flags.properties, 0)) {
+                imgui.ImGui_End();
+            }
         }
 
         {
@@ -424,33 +397,33 @@ const App = struct {
         {
             const swapchain_texture = try render_graph.acquireSwapchainTexture(self.window);
 
-            if (self.scene_info) |info| {
-                const depth_texture = try render_graph.createTransientTexture(.{
-                    .extent = .{ .relative = swapchain_texture },
-                    .format = DEPTH_FORMAT,
-                    .usage = .{ .depth_stencil_attachment_bit = true },
-                });
+            // if (self.scene_info) |info| {
+            //     const depth_texture = try render_graph.createTransientTexture(.{
+            //         .extent = .{ .relative = swapchain_texture },
+            //         .format = DEPTH_FORMAT,
+            //         .usage = .{ .depth_stencil_attachment_bit = true },
+            //     });
 
-                try self.scene_renderer.createRenderPass(
-                    temp_allocator,
-                    swapchain_texture,
-                    depth_texture,
-                    &self.resources,
-                    &self.scene_geometry,
-                    &info.scene,
-                    info.camera.camera,
-                    info.camera.transform,
-                    &render_graph,
-                );
-            } else {
-                var render_pass = try Backend.RenderPass.init(temp_allocator, "Screen Pass");
-                try render_pass.addColorAttachment(.{
-                    .texture = swapchain_texture,
-                    .clear = .{ .float_32 = @splat(0.25) },
-                    .store = true,
-                });
-                try render_graph.render_passes.append(render_graph.allocator, render_pass);
-            }
+            //     try self.scene_renderer.createRenderPass(
+            //         temp_allocator,
+            //         swapchain_texture,
+            //         depth_texture,
+            //         &self.resources,
+            //         &self.scene_geometry,
+            //         &info.scene,
+            //         info.camera.camera,
+            //         info.camera.transform,
+            //         &render_graph,
+            //     );
+            // } else {
+            var render_pass = try Backend.RenderPass.init(temp_allocator, "Screen Clear Pass");
+            try render_pass.addColorAttachment(.{
+                .texture = swapchain_texture,
+                .clear = .{ .float_32 = @splat(0.25) },
+                .store = true,
+            });
+            try render_graph.render_passes.append(render_graph.allocator, render_pass);
+            //}
 
             try self.mesh_shading.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
 

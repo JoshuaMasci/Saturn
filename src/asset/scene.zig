@@ -2,7 +2,7 @@ const std = @import("std");
 
 const AssetHandle = @import("../asset/registry.zig").Handle;
 const Camera = @import("../rendering/camera.zig").Camera;
-const RenderScene = @import("../rendering/scene.zig").RenderScene;
+const RenderScene = @import("../rendering/scene.zig");
 const Transform = @import("../transform.zig");
 
 const Self = @This();
@@ -72,14 +72,10 @@ pub fn calcNodeGlobalTransform(self: Self, index: usize) Transform {
     return transform;
 }
 
-pub fn createRenderScene(self: Self, allocator: std.mem.Allocator, root_transform: Transform) !RenderScene {
-    var render_scene: RenderScene = .init(allocator);
-
+pub fn loadScene(self: Self, render_scene: *RenderScene, root_transform: Transform) !void {
     for (self.root_nodes) |index| {
-        try createRenderSceneNode(self.nodes, index, &root_transform, &render_scene);
+        try createRenderSceneNode(self.nodes, index, &root_transform, render_scene);
     }
-
-    return render_scene;
 }
 
 fn createRenderSceneNode(nodes: []const Node, node_index: usize, parent_transform: *const Transform, render_scene: *RenderScene) !void {
@@ -88,7 +84,7 @@ fn createRenderSceneNode(nodes: []const Node, node_index: usize, parent_transfor
     const transform = parent_transform.applyTransform(&node.local_transform);
 
     if (node.mesh) |mesh| {
-        try render_scene.meshes.append(render_scene.allocator, .{
+        render_scene.addInstance(.{
             .transform = transform,
             .component = .{ .mesh = mesh.mesh, .materials = .fromSlice(mesh.materials) },
         });

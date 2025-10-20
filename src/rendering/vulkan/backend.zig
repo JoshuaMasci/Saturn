@@ -246,7 +246,13 @@ pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !Buffe
 }
 
 pub fn createBufferWithData(self: *Self, name: []const u8, usage: vk.BufferUsageFlags, data: []const u8) !BufferPool.Handle {
-    var buffer: Buffer = try .init(self.device, data.len, usage, if (self.device.physical_device.info.memory.direct_buffer_upload) .gpu_mappable else .gpu_only);
+    var temp_usage = usage;
+    if (!self.device.physical_device.info.memory.direct_buffer_upload) {
+        temp_usage.transfer_src_bit = true;
+        temp_usage.transfer_dst_bit = true;
+    }
+
+    var buffer: Buffer = try .init(self.device, data.len, temp_usage, if (self.device.physical_device.info.memory.direct_buffer_upload) .gpu_mappable else .gpu_only);
     errdefer buffer.deinit();
 
     self.device.setDebugName(.buffer, buffer.handle, name);
@@ -288,24 +294,8 @@ pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
 }
 
 pub fn writeBuffer(self: *Self, handle: BufferPool.Handle, offset: usize, data: []const u8) TransferQueue.WriteBufferError!void {
-    self.frame_data[self.frame_index].transfer_queue.writeBuffer(handle, offset, data) catch |err| {
-        if (err == error.StagingBufferFull) {
-            std.log.info("StagingBufferFull Flushing", .{});
-            // Flush transfers and try again
-            // It is easist to just run an empty render for now
-            {
-                var arena_allocator = std.heap.ArenaAllocator.init(self.allocator);
-                defer arena_allocator.deinit();
-                const temp_allocator = arena_allocator.allocator();
-                var empty_graph = rg.RenderGraph.init(temp_allocator);
-                defer empty_graph.deinit();
-                self.render(temp_allocator, empty_graph) catch {};
-            }
-            try self.frame_data[self.frame_index].transfer_queue.writeBuffer(handle, offset, data);
-        } else {
-            return err;
-        }
-    };
+    //try self.frame_data[self.frame_index].transfer_queue.writeBuffer(handle, offset, data);
+    self.buffers.getPtr(handle).?.uploadBufferData(self.device, self.device.graphics_queue, offset, data) catch {};
 }
 
 pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags) !ImagePool.Handle {

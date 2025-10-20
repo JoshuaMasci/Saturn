@@ -64,6 +64,7 @@ pub fn uploadBufferData(
     self: *Self,
     device: *Device,
     queue: Queue,
+    offset: usize,
     data: []const u8,
 ) !void {
     var command_buffers: [1]vk.CommandBuffer = undefined;
@@ -91,7 +92,7 @@ pub fn uploadBufferData(
 
     const buffer_copy = vk.BufferCopy{
         .src_offset = 0,
-        .dst_offset = 0,
+        .dst_offset = offset,
         .size = data.len,
     };
 

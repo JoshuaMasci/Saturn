@@ -7,16 +7,19 @@ const MaterialAsset = @import("../asset/material.zig");
 const MeshAsset = @import("../asset/mesh.zig");
 const AssetRegistry = @import("../asset/registry.zig");
 const TextureAsset = @import("../asset/texture.zig");
-const RenderScene = @import("scene.zig").RenderScene;
+const RenderScene = @import("scene.zig");
 const Backend = @import("vulkan/backend.zig");
 const GpuImage = @import("vulkan/image.zig");
 const rg = @import("vulkan/render_graph.zig");
+const UnifiedGeometryBuffer = @import("unified_geometry_buffer.zig");
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 registry: *const AssetRegistry,
-device: *Backend,
+backend: *Backend,
+
+meshes: UnifiedGeometryBuffer,
 
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
     image_handle: Backend.ImageHandle,
@@ -33,25 +36,28 @@ material_buffer: ?Backend.BufferHandle = null,
 pub fn init(
     allocator: std.mem.Allocator,
     registry: *const AssetRegistry,
-    device: *Backend,
-) Self {
+    backend: *Backend,
+) !Self {
+    const BytesPerGibibyte: usize = 1024 * 1024 * 1024;
     return .{
         .allocator = allocator,
         .registry = registry,
-        .device = device,
-
+        .backend = backend,
+        .meshes = try .init(allocator, registry, backend, BytesPerGibibyte * 1),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
     };
 }
 
 pub fn deinit(self: *Self) void {
+    self.meshes.deinit();
+
     if (self.material_buffer) |buffer| {
-        self.device.destroyBuffer(buffer);
+        self.backend.destroyBuffer(buffer);
     }
 
     for (self.texture_map.values()) |entry| {
-        self.device.destroyImage(entry.image_handle);
+        self.backend.destroyImage(entry.image_handle);
     }
     self.texture_map.deinit();
 
@@ -65,7 +71,7 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
     //Material
     {
         if (self.material_buffer) |buffer| {
-            self.device.destroyBuffer(buffer);
+            self.backend.destroyBuffer(buffer);
             self.material_buffer = null;
         }
 
@@ -75,15 +81,16 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
             gpu.* = entry.gpu;
             entry.buffer_index = @intCast(i);
         }
-        self.material_buffer = try self.device.createBufferWithData("material_info_buffer", .{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(material_slice));
+        self.material_buffer = try self.backend.createBufferWithData("material_info_buffer", .{ .storage_buffer_bit = true, .transfer_dst_bit = true }, std.mem.sliceAsBytes(material_slice));
     }
 }
 
 pub fn loadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) void {
-    for (scene.meshes.items) |static_mesh| {
-        for (static_mesh.component.materials.constSlice()) |material| {
+    for (scene.instances.items) |instance| {
+        for (instance.component.materials.constSlice()) |material| {
             self.tryLoadMaterial(temp_allocator, material);
         }
+        self.meshes.addMesh(instance.component.mesh);
     }
 
     self.updateBuffers(temp_allocator) catch |err| std.log.err("Failed to update resource buffers: {}", .{err});
@@ -100,12 +107,12 @@ pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: As
                 .rgba8 => .r8g8b8a8_unorm,
             };
 
-            const image_handle = self.device.createImageWithData(.{ texture.width, texture.height }, format, .{ .transfer_dst_bit = true, .sampled_bit = true }, texture.data) catch return;
+            const image_handle = self.backend.createImageWithData(.{ texture.width, texture.height }, format, .{ .transfer_dst_bit = true, .sampled_bit = true }, texture.data) catch return;
 
             self.texture_map.put(handle, .{
                 .image_handle = image_handle,
             }) catch |err| {
-                self.device.destroyImage(image_handle);
+                self.backend.destroyImage(image_handle);
                 std.log.err("Failed to append texture to list {}", .{err});
             };
         } else |err| {
@@ -116,7 +123,7 @@ pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: As
 
 fn tryGetTextureSampledBinding(self: *const Self, handle: AssetRegistry.Handle) u32 {
     if (self.texture_map.get(handle)) |entry| {
-        if (self.device.images.get(entry.image_handle)) |image| {
+        if (self.backend.images.get(entry.image_handle)) |image| {
             if (image.sampled_binding) |binding| {
                 return binding.index;
             }
