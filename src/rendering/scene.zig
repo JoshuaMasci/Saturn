@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const zm = @import("zmath");
+
 const AssetRegistry = @import("../asset/registry.zig");
 const Transform = @import("../transform.zig");
 
@@ -69,4 +71,19 @@ pub const RenderScene = struct {
         new_self.meshes.appendSliceAssumeCapacity(self.meshes.items);
         return new_self;
     }
+};
+
+pub const GpuInstace = struct {
+    model_matrix: zm.Mat,
+    mesh_index: u32,
+    primitive_offset: u32,
+    primitive_count: u32,
+    pad0: u32,
+    material_indexs: [8]u8,
+};
+
+pub const Scene = struct {
+    const Self = @This();
+
+    allocator: std.mem.Allocator,
 };
