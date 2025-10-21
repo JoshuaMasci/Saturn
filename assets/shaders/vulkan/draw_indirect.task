@@ -20,27 +20,33 @@ struct PushConstants
 [[vk::push_constant]]
 PushConstants push_constants;
 
-//groupshared TaskPayload payload;
+groupshared TaskPayload payload;
 
 [numthreads(1, 1, 1)]
 void main(uint3 id : SV_DispatchThreadID)
 {
-    // const uint instance_index = id.x;
+    const uint instance_index = id.x;
+    VkDrawIndirectCommand indirect_cmd = indirect_command_buffers[push_constants.indirect_command_binding][instance_index];
 
-    // VkDrawIndirectCommand indirect_cmd = indirect_command_buffers[push_constants.indirect_command_binding][instance_index];
-    // if (indirect_cmd.instanceCount == 0) {
-    //     return;
-    // }
-    // const IndirectDrawInfo indirect_info = indirect_info_buffers[push_constants.indirect_info_binding][instance_index];
+    uint meshlet_count = 0;
 
-    // MeshInfo mesh_info = mesh_info_buffers[push_constants.mesh_info_binding][indirect_info.mesh_index];
-    // ByteAddressBuffer geo_buffer = storage_buffers[mesh_info.buffer_binding];
-    // PrimitiveInfo prim_info = LoadPrimitiveInfo(geo_buffer, mesh_info.primitives_offset, indirect_info.primitive_index);
+    if (indirect_cmd.instanceCount != 0) {
+        const IndirectDrawInfo indirect_info = indirect_info_buffers[push_constants.indirect_info_binding][instance_index];
 
-    //TODO: cull meshlets here
+        MeshInfo mesh_info = mesh_info_buffers[push_constants.mesh_info_binding][indirect_info.mesh_index];
+        ByteAddressBuffer geo_buffer = storage_buffers[mesh_info.buffer_binding];
+        PrimitiveInfo prim_info = LoadPrimitiveInfo(geo_buffer, mesh_info.primitives_offset, indirect_info.primitive_index);
 
-    // payload.mesh_index = indirect_info.mesh_index;
-    // payload.primitive_index = indirect_info.primitive_index;
-    // payload.material_index = indirect_info.material_index;
-    // DispatchMesh(prim_info.meshlet_count, 1, 1, payload);
+        //TODO: cull meshlets here
+
+        payload.model_matrix = indirect_info.model_matrix;
+        payload.mesh_index = indirect_info.mesh_index;
+        payload.primitive_index = indirect_info.primitive_index;
+        payload.material_index = indirect_info.material_index;
+
+        meshlet_count = prim_info.meshlet_count;
+    }
+
+
+    DispatchMesh(meshlet_count, 1, 1, payload);
 }
