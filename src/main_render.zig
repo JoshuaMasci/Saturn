@@ -12,7 +12,6 @@ const imgui = @import("imgui.zig").c;
 const sdl3 = @import("platform/sdl3.zig");
 const Camera = @import("rendering/camera.zig").Camera;
 const ImguiRenderer = @import("rendering/imgui_renderer.zig");
-const MeshShading = @import("rendering/mesh_shading.zig");
 const Resources = @import("rendering/resources.zig");
 const RenderScene = @import("rendering/scene.zig");
 const SceneRenderer = @import("rendering/scene_renderer.zig");
@@ -117,7 +116,6 @@ const App = struct {
 
     scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
-    mesh_shading: MeshShading,
 
     scene_info: ?struct {
         scene: RenderScene,
@@ -208,15 +206,6 @@ const App = struct {
         );
         errdefer imgui_renderer.deinit();
 
-        var mesh_shading: MeshShading = try .init(
-            allocator,
-            asset_registry,
-            vulkan_backend,
-            swapchain_format,
-            vulkan_backend.bindless_layout,
-        );
-        errdefer mesh_shading.deinit();
-
         return .{
             .allocator = allocator,
             .asset_registry = asset_registry,
@@ -226,7 +215,6 @@ const App = struct {
             .resources = resources,
             .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
-            .mesh_shading = mesh_shading,
             .temp_allocator = .init(allocator),
         };
     }
@@ -240,7 +228,6 @@ const App = struct {
 
         self.vulkan_backend.waitIdle();
 
-        self.mesh_shading.deinit();
         self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
         self.resources.deinit();
@@ -313,11 +300,6 @@ const App = struct {
                 _ = imgui.ImGui_MenuItemBoolPtr("Viewport", null, &self.window_visable_flags.viewport, true);
                 _ = imgui.ImGui_MenuItemBoolPtr("Scene", null, &self.window_visable_flags.scene, true);
                 _ = imgui.ImGui_MenuItemBoolPtr("Properties", null, &self.window_visable_flags.properties, true);
-                imgui.ImGui_EndMenu();
-            }
-
-            if (imgui.ImGui_BeginMenu("Temp")) {
-                _ = imgui.ImGui_MenuItemBoolPtr("Debug Triangle", null, &self.mesh_shading.enabled, true);
                 imgui.ImGui_EndMenu();
             }
 
@@ -419,8 +401,6 @@ const App = struct {
                 });
                 try render_graph.render_passes.append(render_graph.allocator, render_pass);
             }
-
-            try self.mesh_shading.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
 
             try self.imgui_renderer.createRenderPass(temp_allocator, swapchain_texture, &render_graph);
         }
