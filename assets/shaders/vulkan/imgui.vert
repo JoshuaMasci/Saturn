@@ -2,7 +2,7 @@ struct PushConstants
 {
     float2 u_scale;
     float2 u_translate;
-    uint texture_index;
+    uint32_t texture_index;
 };
 
 [[vk::push_constant]]

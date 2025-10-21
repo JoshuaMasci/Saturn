@@ -45,13 +45,14 @@ pub const SceneMesh = struct {
     component: StaticMeshComponent,
 };
 
+pub const MaxPrimitives = 8;
 pub const GpuInstace = struct {
     model_matrix: zm.Mat,
     mesh_index: u32,
     primitive_offset: u32,
     primitive_count: u32,
     pad0: u32 = 0,
-    material_indexes: [8]u32,
+    material_indexes: [MaxPrimitives]u32,
 };
 
 pub const RenderData = struct {
@@ -82,16 +83,8 @@ pub fn addInstance(self: *Self, mesh: SceneMesh) void {
     self.instances.append(self.allocator, mesh) catch @panic("Failed to appened to instances");
 }
 
-pub fn getRenderData(self: Self) ?RenderData {
-    if (self.instances.items.len != 0) {
-        if (self.instance_buffer) |buffer| {
-            return .{
-                .instance_count = @intCast(self.instances.items.len),
-                .instance_buffer = buffer,
-            };
-        }
-    }
-    return null;
+pub fn getIndirectDrawCount(self: Self) usize {
+    return self.instances.items.len * MaxPrimitives;
 }
 
 pub fn update(
@@ -120,13 +113,13 @@ pub fn update(
                 .model_matrix = instance.transform.getModelMatrix(),
                 .mesh_index = mesh.index,
                 .primitive_offset = 0,
-                .primitive_count = @intCast(mesh.primitives.len),
+                .primitive_count = @intCast(mesh.cpu_primitives.len),
                 .material_indexes = material_indexes,
             };
             gpu_index += 1;
         }
         self.instance_buffer = backend.createBufferWithData(
-            "Scene Instance Buffer",
+            "scene_instance_buffer",
             .{ .storage_buffer_bit = true },
             std.mem.sliceAsBytes(gpu_instances),
         ) catch null;

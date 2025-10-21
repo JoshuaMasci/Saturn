@@ -9,30 +9,30 @@ struct Vertex
 
 struct MeshInfo {
     float4 sphere_pos_radius;
-    uint buffer_binding;
-    uint vertices_offset;
-    uint indices_offset;
-    uint primitives_offset;
+    uint32_t buffer_binding;
+    uint32_t vertices_offset;
+    uint32_t indices_offset;
+    uint32_t primitives_offset;
 
-    uint meshlets_loaded; //May not use this, but I needed a u32 of padding anyways
-    uint meshlets_offset;
-    uint meshlet_vertices_offset;
-    uint meshlet_triangles_offset;
+    uint32_t meshlets_loaded; //May not use this, but I needed a u32 of padding anyways
+    uint32_t meshlets_offset;
+    uint32_t meshlet_vertices_offset;
+    uint32_t meshlet_triangles_offset;
 };
 
 struct PrimitiveInfo {
     float4 sphere_pos_radius;
-    uint vertex_offset;
-    uint vertex_count;
-    uint index_offset;
-    uint index_count;
-    uint meshlet_offset;
-    uint meshlet_count;
-    uint pad0;
-    uint pad1;
+    uint32_t vertex_offset;
+    uint32_t vertex_count;
+    uint32_t index_offset;
+    uint32_t index_count;
+    uint32_t meshlet_offset;
+    uint32_t meshlet_count;
+    uint32_t pad0;
+    uint32_t pad1;
 };
 
-Vertex LoadVertex(ByteAddressBuffer buffer, uint buffer_offset, uint index)
+Vertex LoadVertex(ByteAddressBuffer buffer, uint32_t buffer_offset, uint32_t index)
 {
     // Vertex: 56 bytes size
     // position: 0 bytes offset
@@ -41,8 +41,8 @@ Vertex LoadVertex(ByteAddressBuffer buffer, uint buffer_offset, uint index)
     // uv0: 40 bytes offset
     // uv1: 48 bytes offset
 
-    const uint VERTEX_SIZE = 56;
-    const uint offset = buffer_offset + (index * VERTEX_SIZE);
+    const uint32_t VERTEX_SIZE = 56;
+    const uint32_t offset = buffer_offset + (index * VERTEX_SIZE);
 
     Vertex v;
     v.position = asfloat(buffer.Load3(offset + 0));
@@ -53,14 +53,14 @@ Vertex LoadVertex(ByteAddressBuffer buffer, uint buffer_offset, uint index)
     return v;
 }
 
-PrimitiveInfo LoadPrimitiveInfo(ByteAddressBuffer buffer, uint buffer_offset, uint index)
+PrimitiveInfo LoadPrimitiveInfo(ByteAddressBuffer buffer, uint32_t buffer_offset, uint32_t index)
 {
-    const uint PRIMITIVE_SIZE = 48;
-    const uint offset = buffer_offset + (index * PRIMITIVE_SIZE);
+    const uint32_t PRIMITIVE_SIZE = 48;
+    const uint32_t offset = buffer_offset + (index * PRIMITIVE_SIZE);
 
     PrimitiveInfo info;
     info.sphere_pos_radius = asfloat(buffer.Load4(offset));
-    uint4 rest = buffer.Load4(offset + 16);
+    uint32_t4 rest = buffer.Load4(offset + 16);
     info.vertex_offset     = rest.x;
     info.vertex_count      = rest.y;
     info.index_offset      = rest.z;
@@ -75,9 +75,9 @@ PrimitiveInfo LoadPrimitiveInfo(ByteAddressBuffer buffer, uint buffer_offset, ui
     return info;
 }
 
-uint LoadIndex(ByteAddressBuffer buffer, uint buffer_offset, uint index)
+uint32_t LoadIndex(ByteAddressBuffer buffer, uint32_t buffer_offset, uint32_t index)
 {
-    const uint INDEX_SIZE = 4;
-    const uint offset = buffer_offset + (index * INDEX_SIZE);
+    const uint32_t INDEX_SIZE = 4;
+    const uint32_t offset = buffer_offset + (index * INDEX_SIZE);
     return buffer.Load(offset);
 }

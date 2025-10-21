@@ -89,10 +89,13 @@ pub fn init(
     buffer_size: usize,
 ) !Self {
     const geometry_buffer = try backend.createBuffer(buffer_size, .{ .vertex_buffer_bit = true, .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true, .shader_device_address_bit = true });
+    backend.device.setDebugName(.buffer, backend.buffers.get(geometry_buffer).?.handle, "unified_geometry_buffer");
+
     const geometry_slice: ?[]u8 = backend.buffers.get(geometry_buffer).?.allocation.getMappedByteSlice();
     const geometry_buffer_binding: u32 = backend.buffers.get(geometry_buffer).?.storage_binding.?.index;
 
     const mesh_info_buffer = try backend.createBuffer(@sizeOf(GpuMeshEntry) * MaxMeshCount, .{ .storage_buffer_bit = true, .transfer_dst_bit = true });
+    backend.device.setDebugName(.buffer, backend.buffers.get(mesh_info_buffer).?.handle, "mesh_info_buffer");
 
     return .{
         .allocator = allocator,

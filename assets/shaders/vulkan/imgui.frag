@@ -5,7 +5,7 @@ SamplerState BindlessSamplers[] : register(s2, space0);
 [[vk::binding(2, 0)]]
 Texture2D BindlessTextures[] : register(t2, space0);
 
-float4 sampleTexture(uint index, float2 uv)
+float4 sampleTexture(uint32_t index, float2 uv)
 {
     return BindlessTextures[index].Sample(BindlessSamplers[index], uv);
 }
@@ -14,7 +14,7 @@ struct PushConstants
 {
     float2 u_scale;
     float2 u_translate;
-    uint texture_index;
+    uint32_t texture_index;
 };
 
 [[vk::push_constant]]

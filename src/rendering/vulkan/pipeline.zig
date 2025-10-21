@@ -2,6 +2,39 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
+pub const PipelineError = error{
+    ShaderModuleCreationFailed,
+    PipelineCreationFailed,
+    OutOfMemory,
+};
+
+pub fn createComputePipeline(
+    device: vk.DeviceProxy,
+    pipeline_layout: vk.PipelineLayout,
+    module: vk.ShaderModule,
+) PipelineError!vk.Pipeline {
+    const create_info: vk.ComputePipelineCreateInfo = .{
+        .base_pipeline_index = 0,
+        .layout = pipeline_layout,
+        .stage = .{
+            .flags = .{},
+            .stage = .{ .compute_bit = true },
+            .module = module,
+            .p_name = "main",
+            .p_specialization_info = null,
+        },
+    };
+
+    var pipeline: vk.Pipeline = undefined;
+    const result = device.createComputePipelines(.null_handle, 1, @ptrCast(&create_info), null, @ptrCast(&pipeline)) catch return PipelineError.PipelineCreationFailed;
+
+    if (result != .success) {
+        return PipelineError.PipelineCreationFailed;
+    }
+
+    return pipeline;
+}
+
 //TODO: reduce duplicate code in create functions
 
 pub const PipelineConfig = struct {
@@ -20,12 +53,6 @@ pub const PipelineConfig = struct {
 pub const VertexInput = struct {
     bindings: []const vk.VertexInputBindingDescription = &.{},
     attributes: []const vk.VertexInputAttributeDescription = &.{},
-};
-
-pub const PipelineError = error{
-    ShaderModuleCreationFailed,
-    PipelineCreationFailed,
-    OutOfMemory,
 };
 
 pub fn createGraphicsPipeline(

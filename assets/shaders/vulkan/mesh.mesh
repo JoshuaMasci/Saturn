@@ -12,9 +12,9 @@ ReadOnlyStorageBufferArray(MeshInfo, mesh_infos);
 [outputtopology("triangle")]
 [numthreads(MAX_TRIANGLES_PER_MESHLET, 1, 1)]
 void main(
-    uint group_id: SV_GroupID,
-    uint group_thread_id: SV_GroupThreadID,
-    out indices uint3 triangles[MAX_TRIANGLES_PER_MESHLET],
+    uint32_t group_id: SV_GroupID,
+    uint32_t group_thread_id: SV_GroupThreadID,
+    out indices uint32_t3 triangles[MAX_TRIANGLES_PER_MESHLET],
     out vertices VertexData vertices[MAX_VERTICES_PER_MESHLET]
  ) {
     const float4x4 model_matrix = push_constants.model_matrix;
@@ -28,7 +28,7 @@ void main(
     SetMeshOutputCounts(meshlet_info.vertex_count, meshlet_info.triangle_count);
 
     if (group_thread_id < meshlet_info.vertex_count) {
-        uint index = LoadIndex(geo_buffer, mesh_info.meshlet_vertices_offset, meshlet_info.vertex_offset + group_thread_id) + prim_info.vertex_offset;
+        uint32_t index = LoadIndex(geo_buffer, mesh_info.meshlet_vertices_offset, meshlet_info.vertex_offset + group_thread_id) + prim_info.vertex_offset;
         Vertex input = LoadVertex(geo_buffer, mesh_info.vertices_offset, index);
 
         float4 world_position = mul(model_matrix, float4(input.position, 1.0f));
@@ -46,10 +46,10 @@ void main(
     }
 
     if (group_thread_id < meshlet_info.triangle_count) {
-       const uint index_offset = meshlet_info.triangle_offset + (group_thread_id) * 3;
-       uint idx0 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 0);
-       uint idx1 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 1);
-       uint idx2 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 2);
-       triangles[group_thread_id] = uint3(idx0, idx1, idx2);
+       const uint32_t index_offset = meshlet_info.triangle_offset + (group_thread_id) * 3;
+       uint32_t idx0 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 0);
+       uint32_t idx1 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 1);
+       uint32_t idx2 = LoadByte(geo_buffer, mesh_info.meshlet_triangles_offset, index_offset + 2);
+       triangles[group_thread_id] = uint32_t3(idx0, idx1, idx2);
     }
 }

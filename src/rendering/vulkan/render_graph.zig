@@ -8,6 +8,9 @@ const BufferHandle = Backend.BufferHandle;
 const ImageHandle = Backend.ImageHandle;
 const GpuAllocator = @import("gpu_allocator.zig");
 
+const BufferInterface = @import("buffer.zig").Interface;
+const ImageInterface = @import("image.zig").Interface;
+
 pub const QueueType = enum {
     graphics,
     prefer_async_compute,
@@ -32,8 +35,8 @@ pub const UploadFn = *const fn (data: ?*const anyopaque, data_len: ?usize, dst: 
 pub const DownloadFn = *const fn (data: ?*anyopaque, src: []u8) void;
 
 pub const Resources = struct {
-    buffers: []const @import("buffer.zig").Interface,
-    textures: []const @import("image.zig").Interface,
+    buffers: []const BufferInterface,
+    textures: []const ImageInterface,
 };
 
 pub const CommandBufferBuildFn = *const fn (
@@ -188,9 +191,9 @@ pub const RenderGraph = struct {
         self.render_passes.deinit(self.allocator);
     }
 
-    pub fn importBuffer(self: *Self, handle: BufferHandle) !RenderGraphBuffer {
+    pub fn importBuffer(self: *Self, handle: BufferHandle) !RenderGraphBufferHandle {
         const buffer_index = self.buffers.items.len;
-        try self.buffer.append(self.allocator, .{ .persistent = handle });
+        try self.buffers.append(self.allocator, .{ .persistent = handle });
         return .{ .index = buffer_index };
     }
 

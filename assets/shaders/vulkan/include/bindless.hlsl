@@ -23,7 +23,7 @@ SamplerState BindlessSamplers[] : register(s2, space0);
 [[vk::binding(2, BINDLESS_SET_INDEX)]]
 Texture2D BindlessTextures[] : register(t2, space0);
 
-float4 sampleTexture(uint index, float2 uv)
+float4 sampleTexture(uint32_t index, float2 uv)
 {
     return BindlessTextures[index].Sample(BindlessSamplers[index], uv);
 }
