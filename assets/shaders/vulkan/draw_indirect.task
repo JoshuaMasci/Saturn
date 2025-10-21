@@ -1,0 +1,46 @@
+#include "bindless.hlsl"
+#include "mesh.hlsl"
+#include "vertex_data.hlsl"
+#include "indirect.hlsl"
+#include "task_payload.hlsl"
+
+ReadOnlyStorageBufferArray(MeshInfo, mesh_info_buffers);
+ReadOnlyStorageBufferArray(VkDrawIndirectCommand, indirect_command_buffers);
+ReadOnlyStorageBufferArray(IndirectDrawInfo, indirect_info_buffers);
+
+struct PushConstants
+{
+    float4x4 view_projection_matrix;
+    uint32_t mesh_info_binding;
+    uint32_t material_binding;
+    uint32_t indirect_command_binding;
+    uint32_t indirect_info_binding;
+};
+
+[[vk::push_constant]]
+PushConstants push_constants;
+
+//groupshared TaskPayload payload;
+
+[numthreads(1, 1, 1)]
+void main(uint3 id : SV_DispatchThreadID)
+{
+    // const uint instance_index = id.x;
+
+    // VkDrawIndirectCommand indirect_cmd = indirect_command_buffers[push_constants.indirect_command_binding][instance_index];
+    // if (indirect_cmd.instanceCount == 0) {
+    //     return;
+    // }
+    // const IndirectDrawInfo indirect_info = indirect_info_buffers[push_constants.indirect_info_binding][instance_index];
+
+    // MeshInfo mesh_info = mesh_info_buffers[push_constants.mesh_info_binding][indirect_info.mesh_index];
+    // ByteAddressBuffer geo_buffer = storage_buffers[mesh_info.buffer_binding];
+    // PrimitiveInfo prim_info = LoadPrimitiveInfo(geo_buffer, mesh_info.primitives_offset, indirect_info.primitive_index);
+
+    //TODO: cull meshlets here
+
+    // payload.mesh_index = indirect_info.mesh_index;
+    // payload.primitive_index = indirect_info.primitive_index;
+    // payload.material_index = indirect_info.material_index;
+    // DispatchMesh(prim_info.meshlet_count, 1, 1, payload);
+}

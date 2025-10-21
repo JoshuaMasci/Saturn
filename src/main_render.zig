@@ -352,8 +352,6 @@ const App = struct {
 
         if (self.window_visable_flags.debug) {
             if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
-                _ = imgui.ImGui_Checkbox("Enable Indirect Draw", &self.scene_renderer.indirect_draw);
-                _ = imgui.ImGui_Checkbox("Enable Vertex Storage Load", &self.scene_renderer.vertex_storage_load);
                 _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
                 imgui.ImGui_End();
             }

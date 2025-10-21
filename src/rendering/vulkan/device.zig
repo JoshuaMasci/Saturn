@@ -96,6 +96,7 @@ pub fn init(
 
     var feature_mesh_shading = vk.PhysicalDeviceMeshShaderFeaturesEXT{
         .mesh_shader = .true,
+        .task_shader = .true,
     };
 
     var features_12 = vk.PhysicalDeviceVulkan12Features{

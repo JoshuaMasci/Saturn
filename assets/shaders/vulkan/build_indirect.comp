@@ -4,7 +4,7 @@
 #include "indirect.hlsl"
 
 ReadOnlyStorageBufferArray(Instance, instance_buffers);
-ReadOnlyStorageBufferArray(MeshInfo, mesh_buffers);
+ReadOnlyStorageBufferArray(MeshInfo, mesh_info_buffers);
 
 ReadWriteStorageBufferArray(VkDrawIndirectCommand, indirect_command_buffers);
 ReadWriteStorageBufferArray(IndirectDrawInfo, indirect_info_buffers);
@@ -45,7 +45,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     info.material_index = 0;
 
     if (sub_instance_id < instance.primitive_count) {
-        MeshInfo mesh_info = mesh_buffers[push_constants.mesh_info_binding][instance.mesh_index];
+        MeshInfo mesh_info = mesh_info_buffers[push_constants.mesh_info_binding][instance.mesh_index];
         ByteAddressBuffer geo_buffer = storage_buffers[mesh_info.buffer_binding];
         PrimitiveInfo prim_info = LoadPrimitiveInfo(geo_buffer, mesh_info.primitives_offset, primitive_index);
         cmd.vertexCount = prim_info.index_count;
