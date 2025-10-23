@@ -6,6 +6,7 @@
 ReadOnlyStorageBufferArray(Instance, instance_buffers);
 ReadOnlyStorageBufferArray(MeshInfo, mesh_info_buffers);
 
+ReadWriteStorageBufferArray(uint32_t, indirect_draw_count);
 ReadWriteStorageBufferArray(VkDrawIndirectCommand, indirect_command_buffers);
 ReadWriteStorageBufferArray(IndirectDrawInfo, indirect_info_buffers);
 
@@ -14,6 +15,7 @@ struct PushConstants
     uint32_t scene_instance_binding;
     uint32_t mesh_info_binding;
 
+    uint32_t indirect_draw_count_binding;
     uint32_t indrect_command_binding;
     uint32_t indirect_info_binding;
 };
@@ -30,33 +32,33 @@ void main(uint3 id : SV_DispatchThreadID) {
     const uint32_t indirect_index = id.x;
 
     const Instance instance = instance_buffers[push_constants.scene_instance_binding][instance_id];
+
     const uint32_t primitive_index = instance.primitive_offset + sub_instance_id;
 
-    VkDrawIndirectCommand cmd;
-    cmd.vertexCount = 0;
-    cmd.instanceCount = 0;
-    cmd.firstVertex = 0;
-    cmd.firstInstance = 0;
+    if (instance.visable) {
+        if (sub_instance_id < instance.primitive_count) {
+            uint32_t draw_index;
+            InterlockedAdd(indirect_draw_count[push_constants.indirect_draw_count_binding][0], 1, draw_index);
 
-    IndirectDrawInfo info;
-    info.model_matrix = 0.0;
-    info.mesh_index = 0;
-    info.primitive_index = 0;
-    info.material_index = 0;
+            MeshInfo mesh_info = mesh_info_buffers[push_constants.mesh_info_binding][instance.mesh_index];
+            ByteAddressBuffer geo_buffer = storage_buffers[mesh_info.buffer_binding];
+            PrimitiveInfo prim_info = LoadPrimitiveInfo(geo_buffer, mesh_info.primitives_offset, primitive_index);
 
-    if (sub_instance_id < instance.primitive_count) {
-        MeshInfo mesh_info = mesh_info_buffers[push_constants.mesh_info_binding][instance.mesh_index];
-        ByteAddressBuffer geo_buffer = storage_buffers[mesh_info.buffer_binding];
-        PrimitiveInfo prim_info = LoadPrimitiveInfo(geo_buffer, mesh_info.primitives_offset, primitive_index);
-        cmd.vertexCount = prim_info.index_count;
-        cmd.firstInstance = indirect_index;
-        cmd.instanceCount = 1;
+            VkDrawIndirectCommand cmd;
+            IndirectDrawInfo info;
 
-        info.model_matrix = instance.model_matrix;
-        info.mesh_index = instance.mesh_index;
-        info.primitive_index = primitive_index;
-        info.material_index = instance.material_indexes[sub_instance_id];
+            cmd.firstVertex = 0;
+            cmd.vertexCount = prim_info.index_count;
+            cmd.firstInstance = draw_index;
+            cmd.instanceCount = 1;
+
+            info.model_matrix = instance.model_matrix;
+            info.mesh_index = instance.mesh_index;
+            info.primitive_index = primitive_index;
+            info.material_index = instance.material_indexes[sub_instance_id];
+
+            indirect_info_buffers[push_constants.indirect_info_binding][draw_index] = info;
+            indirect_command_buffers[push_constants.indrect_command_binding][draw_index] = cmd;
+        }
     }
-    indirect_info_buffers[push_constants.indirect_info_binding][indirect_index] = info;
-    indirect_command_buffers[push_constants.indrect_command_binding][indirect_index] = cmd;
 }

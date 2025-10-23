@@ -120,6 +120,7 @@ pub fn createRenderPass(
 
     {
         const max_draw_count = scene.getIndirectDrawCount();
+        const indirect_draw_count_buffer = try render_graph.createTransientBuffer(.{ .size = 16, .usage = .{ .storage_buffer_bit = true, .indirect_buffer_bit = true } });
         const indirect_command_buffer = try render_graph.createTransientBuffer(.{ .size = max_draw_count * @sizeOf(vk.DrawIndirectCommand), .usage = .{ .storage_buffer_bit = true, .indirect_buffer_bit = true } });
         const indirect_info_buffer = try render_graph.createTransientBuffer(.{ .size = max_draw_count * @sizeOf(BuildIndirect.DrawInfo), .usage = .{ .storage_buffer_bit = true } });
 
@@ -132,6 +133,7 @@ pub fn createRenderPass(
                 .pipeline = self.build_indirect_comp_pipeline,
                 .scene_instance_buffer = scene_instance_buffer,
                 .mesh_info_buffer = mesh_info_buffer,
+                .indirect_draw_count_buffer = indirect_draw_count_buffer,
                 .indirect_command_buffer = indirect_command_buffer,
                 .indirect_info_buffer = indirect_info_buffer,
             };
@@ -162,6 +164,7 @@ pub fn createRenderPass(
                 .opaque_draw_pipeline = self.opaque_draw_indirect_pipeline,
                 .mesh_info_buffer = mesh_info_buffer,
                 .material_info_buffer = material_info_buffer,
+                .indirect_draw_count_buffer = indirect_draw_count_buffer,
                 .indirect_command_buffer = indirect_command_buffer,
                 .indirect_info_buffer = indirect_info_buffer,
             };
@@ -216,6 +219,7 @@ pub const BuildIndirect = struct {
         pipeline: vk.Pipeline,
         scene_instance_buffer: rg.RenderGraphBufferHandle,
         mesh_info_buffer: rg.RenderGraphBufferHandle,
+        indirect_draw_count_buffer: rg.RenderGraphBufferHandle,
         indirect_command_buffer: rg.RenderGraphBufferHandle,
         indirect_info_buffer: rg.RenderGraphBufferHandle,
     };
@@ -224,6 +228,7 @@ pub const BuildIndirect = struct {
         scene_instance_binding: u32,
         mesh_info_binding: u32,
 
+        indirect_draw_count_binding: u32,
         indrect_command_binding: u32,
         indirect_info_binding: u32,
     };
@@ -235,6 +240,7 @@ pub const BuildIndirect = struct {
 
         const scene_instance_buffer = resources.buffers[data.scene_instance_buffer.index];
         const mesh_info_buffer = resources.buffers[data.mesh_info_buffer.index];
+        const indirect_draw_count_buffer = resources.buffers[data.indirect_draw_count_buffer.index];
         const indrect_command_buffer = resources.buffers[data.indirect_command_buffer.index];
         const indirect_info_buffer = resources.buffers[data.indirect_info_buffer.index];
 
@@ -243,6 +249,7 @@ pub const BuildIndirect = struct {
         const push_data: PushConstants = .{
             .scene_instance_binding = scene_instance_buffer.storage_binding.?,
             .mesh_info_binding = mesh_info_buffer.storage_binding.?,
+            .indirect_draw_count_binding = indirect_draw_count_buffer.storage_binding.?,
             .indrect_command_binding = indrect_command_buffer.storage_binding.?,
             .indirect_info_binding = indirect_info_buffer.storage_binding.?,
         };
@@ -262,6 +269,7 @@ pub const DrawIndirect = struct {
         opaque_draw_pipeline: vk.Pipeline,
         mesh_info_buffer: rg.RenderGraphBufferHandle,
         material_info_buffer: rg.RenderGraphBufferHandle,
+        indirect_draw_count_buffer: rg.RenderGraphBufferHandle,
         indirect_command_buffer: rg.RenderGraphBufferHandle,
         indirect_info_buffer: rg.RenderGraphBufferHandle,
     };
@@ -286,6 +294,7 @@ pub const DrawIndirect = struct {
 
         const mesh_info_buffer = resources.buffers[data.mesh_info_buffer.index];
         const material_info_buffer = resources.buffers[data.material_info_buffer.index];
+        const indirect_draw_count_buffer = resources.buffers[data.indirect_draw_count_buffer.index];
         const indirect_command_buffer = resources.buffers[data.indirect_command_buffer.index];
         const indirect_info_buffer = resources.buffers[data.indirect_info_buffer.index];
 
@@ -298,7 +307,8 @@ pub const DrawIndirect = struct {
             .indirect_info_binding = indirect_info_buffer.storage_binding.?,
         };
         command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(PushConstants), &push_data);
-        command_buffer.drawIndirect(indirect_command_buffer.handle, 0, data.max_draw_count, @sizeOf(vk.DrawIndirectCommand));
+        //command_buffer.drawIndirect(indirect_command_buffer.handle, 0, data.max_draw_count, @sizeOf(vk.DrawIndirectCommand));
+        command_buffer.drawIndirectCount(indirect_command_buffer.handle, 0, indirect_draw_count_buffer.handle, 0, data.max_draw_count, @sizeOf(vk.DrawIndirectCommand));
     }
 };
 

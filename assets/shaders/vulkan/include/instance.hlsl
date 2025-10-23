@@ -6,6 +6,6 @@ struct Instance
     uint32_t mesh_index;
     uint32_t primitive_offset;
     uint32_t primitive_count;
-    uint32_t pad0;
+    uint32_t visable;
     uint32_t material_indexes[MAX_PRIMITIVE_COUNT];
 };

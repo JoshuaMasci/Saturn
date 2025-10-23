@@ -51,7 +51,7 @@ pub const GpuInstace = struct {
     mesh_index: u32,
     primitive_offset: u32,
     primitive_count: u32,
-    pad0: u32 = 0,
+    visable: u32,
     material_indexes: [MaxPrimitives]u32,
 };
 
@@ -114,6 +114,7 @@ pub fn update(
                 .mesh_index = mesh.index,
                 .primitive_offset = 0,
                 .primitive_count = @intCast(mesh.cpu_primitives.len),
+                .visable = @intFromBool(instance.component.visable),
                 .material_indexes = material_indexes,
             };
             gpu_index += 1;
