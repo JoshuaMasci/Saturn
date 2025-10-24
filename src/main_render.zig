@@ -334,7 +334,11 @@ const App = struct {
 
         if (self.window_visable_flags.debug) {
             if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
-                _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
+                _ = imgui.ImGui_Checkbox("Enable Gpu Culling", &self.scene_renderer.gpu_culling);
+
+                if (self.vulkan_backend.device.exetensions.mesh_shader)
+                    _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
+
                 imgui.ImGui_End();
             }
         }

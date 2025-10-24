@@ -134,6 +134,7 @@ pub fn loadAsset(
     comptime T: type,
     allocator: std.mem.Allocator,
     handle: AssetHandle,
+    settings: T.LoadSettings,
 ) !T {
     if (self.repositories.get(handle.repo_hash)) |repository| {
         if (repository.assets.get(handle.asset_hash)) |asset_info| {
@@ -142,7 +143,7 @@ pub fn loadAsset(
 
             var buffer_stream = std.io.fixedBufferStream(asset_buffer);
             const buffer_stream_reader = buffer_stream.reader();
-            return try T.deserialzie(allocator, &buffer_stream_reader);
+            return try T.deserialzie(allocator, &buffer_stream_reader, settings);
         } else {
             return error.InvalidAssetHash;
         }

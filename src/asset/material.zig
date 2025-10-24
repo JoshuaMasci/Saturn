@@ -3,6 +3,8 @@ const std = @import("std");
 const serde = @import("../serde.zig");
 const AssetHandle = @import("registry.zig").Handle;
 
+pub const LoadSettings = struct {};
+
 pub const AlphaMode = enum(u32) {
     alpha_opaque,
     alpha_blend,
@@ -78,7 +80,8 @@ pub fn serialize(self: Self, writer: anytype) !void {
     try writer.writeStructEndian(Packed.pack(self), .little);
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype, settings: LoadSettings) !Self {
+    _ = settings; // autofix
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     var value = (try reader.readStructEndian(Packed, .little)).unpack();
     value.name = name;

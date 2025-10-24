@@ -31,8 +31,6 @@ const MeshEntry = struct {
     } = null,
 
     fn getGpuEntry(self: MeshEntry, buffer_binding: u32) GpuMeshEntry {
-        //const meshlet = self.meshlet orelse .{};
-
         return .{
             .sphere_pos_radius = self.sphere_pos_radius,
             .buffer_binding = buffer_binding,
@@ -122,26 +120,34 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn addMesh(self: *Self, handle: AssetRegistry.AssetHandle) void {
+    const load_meshlets = self.backend.device.exetensions.mesh_shader;
+
     if (!self.map.contains(handle)) {
-        if (self.registry.loadAsset(MeshAsset, self.allocator, handle)) |mesh| {
+        if (self.registry.loadAsset(MeshAsset, self.allocator, handle, .{
+            .load_meshlets = load_meshlets,
+        })) |mesh| {
             defer mesh.deinit(self.allocator);
 
             const index = self.next_mesh_index;
             self.next_mesh_index += 1;
 
-            const entry: MeshEntry = .{
+            var entry: MeshEntry = .{
                 .cpu_primitives = self.arena.allocator().dupe(MeshAsset.Primitive, mesh.primitives) catch return,
                 .index = index,
                 .sphere_pos_radius = mesh.sphere_pos_radius,
                 .vertices = self.createBuffer(std.mem.sliceAsBytes(mesh.vertices)) catch return,
                 .indices = self.createBuffer(std.mem.sliceAsBytes(mesh.indices)) catch return,
                 .primitives = self.createBuffer(std.mem.sliceAsBytes(mesh.primitives)) catch return,
-                .meshlet = .{
+                .meshlet = null,
+            };
+
+            if (load_meshlets) {
+                entry.meshlet = .{
                     .meshlets = self.createBuffer(std.mem.sliceAsBytes(mesh.meshlets)) catch return,
                     .meshlet_vertices = self.createBuffer(std.mem.sliceAsBytes(mesh.meshlet_vertices)) catch return,
                     .meshlet_triangles = self.createBuffer(std.mem.sliceAsBytes(mesh.meshlet_triangles)) catch return,
-                },
-            };
+                };
+            }
 
             self.map.put(handle, entry) catch |err| {
                 std.log.err("Failed to append mesh to list {}", .{err});

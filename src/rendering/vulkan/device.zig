@@ -6,6 +6,12 @@ const GpuAllocator = @import("gpu_allocator.zig");
 const PhysicalDevice = @import("instance.zig").PhysicalDevice;
 const Queue = @import("queue.zig");
 
+const Exetensions = struct {
+    mesh_shader: bool = false,
+    raytracing: bool = false,
+    host_image_copy: bool = false,
+};
+
 const Self = @This();
 
 allocator: std.mem.Allocator,
@@ -18,6 +24,8 @@ graphics_queue: Queue, //Pretty much every device has a graphics queue (Graphics
 async_compute_queue: ?Queue,
 async_transfer_queue: ?Queue,
 
+exetensions: Exetensions,
+
 gpu_allocator: GpuAllocator,
 debug: bool = false,
 
@@ -27,6 +35,7 @@ pub fn init(
     allocator: std.mem.Allocator,
     instance: vk.InstanceProxy,
     physical_device: PhysicalDevice,
+    extentions: Exetensions,
     debug: bool,
 ) !Self {
     if (physical_device.info.queues.graphics == null) {
@@ -62,13 +71,15 @@ pub fn init(
     defer device_extentions.deinit(allocator);
     try device_extentions.append(allocator, "VK_KHR_swapchain");
 
-    if (physical_device.info.extensions.mesh_shader_support) {
+    if (extentions.mesh_shader) {
+        std.debug.assert(physical_device.info.extensions.mesh_shader);
         try device_extentions.append(allocator, "VK_EXT_mesh_shader");
         all_stage_flags.task_bit_ext = true;
         all_stage_flags.mesh_bit_ext = true;
     }
 
-    if (physical_device.info.extensions.raytracing_support) {
+    if (extentions.raytracing) {
+        std.debug.assert(physical_device.info.extensions.raytracing);
         try device_extentions.append(allocator, "VK_KHR_deferred_host_operations");
         try device_extentions.append(allocator, "VK_KHR_acceleration_structure");
         try device_extentions.append(allocator, "VK_KHR_ray_query");
@@ -80,7 +91,8 @@ pub fn init(
     }
 
     //TODO: should I use the feature instead?
-    if (physical_device.info.extensions.host_image_copy) {
+    if (extentions.raytracing) {
+        std.debug.assert(physical_device.info.extensions.host_image_copy);
         try device_extentions.append(allocator, "VK_EXT_host_image_copy");
     }
 
@@ -142,7 +154,7 @@ pub fn init(
         .p_enabled_features = &features,
     };
 
-    if (physical_device.info.extensions.mesh_shader_support) {
+    if (physical_device.info.extensions.mesh_shader) {
         appendNextPtrChain(&create_info, &feature_mesh_shading);
     }
 
@@ -191,6 +203,7 @@ pub fn init(
         .graphics_queue = graphics_queue,
         .async_compute_queue = async_compute_queue,
         .async_transfer_queue = async_transfer_queue,
+        .exetensions = extentions,
         .all_stage_flags = all_stage_flags,
         .gpu_allocator = GpuAllocator.init(physical_device.handle, instance, proxy),
         .debug = debug,

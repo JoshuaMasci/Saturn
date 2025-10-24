@@ -4,6 +4,10 @@ const zmath = @import("zmath");
 
 const serde = @import("../serde.zig");
 
+pub const LoadSettings = struct {
+    load_meshlets: bool = true,
+};
+
 //TODO: can compress this down by storing types in ints
 pub const Vertex = extern struct {
     position: [3]f32,
@@ -74,7 +78,7 @@ pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.meshlet_triangles);
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype, settings: LoadSettings) !Self {
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     errdefer allocator.free(name);
 
@@ -90,14 +94,20 @@ pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
     const primitives = try serde.deserialzieSlice(allocator, Primitive, reader);
     errdefer allocator.free(primitives);
 
-    const meshlets = try serde.deserialzieSlice(allocator, Meshlet, reader);
+    var meshlets: []Meshlet = &.{};
     errdefer allocator.free(meshlets);
 
-    const meshlet_vertices = try serde.deserialzieSlice(allocator, u32, reader);
+    var meshlet_vertices: []u32 = &.{};
     errdefer allocator.free(meshlet_vertices);
 
-    const meshlet_triangles = try serde.deserialzieSlice(allocator, u8, reader);
+    var meshlet_triangles: []u8 = &.{};
     errdefer allocator.free(meshlet_triangles);
+
+    if (settings.load_meshlets) {
+        meshlets = try serde.deserialzieSlice(allocator, Meshlet, reader);
+        meshlet_vertices = try serde.deserialzieSlice(allocator, u32, reader);
+        meshlet_triangles = try serde.deserialzieSlice(allocator, u8, reader);
+    }
 
     return .{
         .name = name,

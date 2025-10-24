@@ -98,7 +98,7 @@ pub fn loadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *c
 
 pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
     if (!self.texture_map.contains(handle)) {
-        if (self.registry.loadAsset(TextureAsset, temp_allocator, handle)) |texture| {
+        if (self.registry.loadAsset(TextureAsset, temp_allocator, handle, .{})) |texture| {
             defer texture.deinit(temp_allocator);
 
             const format: vk.Format = switch (texture.format) {
@@ -135,7 +135,7 @@ fn tryGetTextureSampledBinding(self: *const Self, handle: AssetRegistry.Handle) 
 pub fn tryLoadMaterial(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) void {
     if (!self.material_map.contains(handle)) {
         //Need to load the asset using the non temp allocator, otherwise the name will be invalid
-        if (self.registry.loadAsset(MaterialAsset, self.allocator, handle)) |material| {
+        if (self.registry.loadAsset(MaterialAsset, self.allocator, handle, .{})) |material| {
             var gpu_pack = MaterialAsset.Gpu.pack(material);
 
             if (material.base_color_texture) |texture_handle| {

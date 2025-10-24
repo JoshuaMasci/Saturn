@@ -25,9 +25,10 @@ device: *Backend,
 
 build_indirect_comp_pipeline: vk.Pipeline,
 opaque_draw_indirect_pipeline: vk.Pipeline,
-opaque_draw_task_mesh_pipeline: vk.Pipeline,
+opaque_draw_task_mesh_pipeline: ?vk.Pipeline,
 
 //Debug Values
+gpu_culling: bool = false,
 mesh_shading: bool = false,
 
 pub fn init(
@@ -62,20 +63,23 @@ pub fn init(
         opaque_fragment_shader,
     );
 
-    const draw_indirect_task_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/draw_indirect.task.asset"));
-    defer device.device.proxy.destroyShaderModule(draw_indirect_task_shader, null);
+    var opaque_draw_task_mesh_pipeline: ?vk.Pipeline = null;
+    if (device.device.exetensions.mesh_shader) {
+        const draw_indirect_task_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/draw_indirect.task.asset"));
+        defer device.device.proxy.destroyShaderModule(draw_indirect_task_shader, null);
 
-    const draw_indirect_mesh_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/draw_indirect.mesh.asset"));
-    defer device.device.proxy.destroyShaderModule(draw_indirect_mesh_shader, null);
+        const draw_indirect_mesh_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/draw_indirect.mesh.asset"));
+        defer device.device.proxy.destroyShaderModule(draw_indirect_mesh_shader, null);
 
-    const opaque_draw_task_mesh_pipeline = try Pipeline.createMeshShaderPipeline(
-        device.device.proxy,
-        pipeline_layout,
-        pipeline_config,
-        draw_indirect_task_shader,
-        draw_indirect_mesh_shader,
-        opaque_fragment_shader,
-    );
+        opaque_draw_task_mesh_pipeline = try Pipeline.createMeshShaderPipeline(
+            device.device.proxy,
+            pipeline_layout,
+            pipeline_config,
+            draw_indirect_task_shader,
+            draw_indirect_mesh_shader,
+            opaque_fragment_shader,
+        );
+    }
 
     return .{
         .allocator = allocator,
@@ -89,7 +93,7 @@ pub fn init(
 pub fn deinit(self: *Self) void {
     self.device.device.proxy.destroyPipeline(self.build_indirect_comp_pipeline, null);
     self.device.device.proxy.destroyPipeline(self.opaque_draw_indirect_pipeline, null);
-    self.device.device.proxy.destroyPipeline(self.opaque_draw_task_mesh_pipeline, null);
+    self.device.device.proxy.destroyPipeline(self.opaque_draw_task_mesh_pipeline orelse .null_handle, null);
 }
 
 pub fn createRenderPass(
@@ -137,6 +141,7 @@ pub fn createRenderPass(
                 .indirect_command_buffer = indirect_command_buffer,
                 .indirect_info_buffer = indirect_info_buffer,
 
+                .culling_enabled = self.gpu_culling,
                 .camera = camera,
                 .camera_transform = camera_transform,
                 .target_texture = color_target,
@@ -146,7 +151,35 @@ pub fn createRenderPass(
             try render_graph.render_passes.append(render_graph.allocator, render_pass);
         }
 
-        if (!self.mesh_shading) {
+        if (self.mesh_shading and self.opaque_draw_task_mesh_pipeline != null) {
+            var render_pass = try rg.RenderPass.init(temp_allocator, "Mesh Shading Draw Pass");
+            try render_pass.addColorAttachment(.{
+                .texture = color_target,
+                .clear = .{ .float_32 = .{ 0.25, 0.0, 0.25, 1.0 } },
+                .store = true,
+            });
+            render_pass.addDepthAttachment(.{
+                .texture = depth_target,
+                .clear = 1.0,
+                .store = true,
+            });
+
+            const build_data = try temp_allocator.create(DrawMeshTask.Data);
+            build_data.* = .{
+                .camera = camera,
+                .camera_transform = camera_transform,
+
+                .max_draw_count = @intCast(max_draw_count),
+                .opaque_draw_pipeline = self.opaque_draw_task_mesh_pipeline.?,
+                .mesh_info_buffer = mesh_info_buffer,
+                .material_info_buffer = material_info_buffer,
+                .indrect_command_buffer = indirect_command_buffer,
+                .indirect_info_buffer = indirect_info_buffer,
+            };
+            render_pass.addBuildFn(DrawMeshTask.buildCommandBuffer, build_data);
+
+            try render_graph.render_passes.append(render_graph.allocator, render_pass);
+        } else {
             var render_pass = try rg.RenderPass.init(temp_allocator, "Indirect Draw Pass");
             try render_pass.addColorAttachment(.{
                 .texture = color_target,
@@ -175,34 +208,6 @@ pub fn createRenderPass(
             render_pass.addBuildFn(DrawIndirect.buildCommandBuffer, build_data);
 
             try render_graph.render_passes.append(render_graph.allocator, render_pass);
-        } else {
-            var render_pass = try rg.RenderPass.init(temp_allocator, "Indirect Draw Pass");
-            try render_pass.addColorAttachment(.{
-                .texture = color_target,
-                .clear = .{ .float_32 = .{ 0.0, 0.25, 0.25, 1.0 } },
-                .store = true,
-            });
-            render_pass.addDepthAttachment(.{
-                .texture = depth_target,
-                .clear = 1.0,
-                .store = true,
-            });
-
-            const build_data = try temp_allocator.create(DrawMeshTask.Data);
-            build_data.* = .{
-                .camera = camera,
-                .camera_transform = camera_transform,
-
-                .max_draw_count = @intCast(max_draw_count),
-                .opaque_draw_pipeline = self.opaque_draw_task_mesh_pipeline,
-                .mesh_info_buffer = mesh_info_buffer,
-                .material_info_buffer = material_info_buffer,
-                .indrect_command_buffer = indirect_command_buffer,
-                .indirect_info_buffer = indirect_info_buffer,
-            };
-            render_pass.addBuildFn(DrawMeshTask.buildCommandBuffer, build_data);
-
-            try render_graph.render_passes.append(render_graph.allocator, render_pass);
         }
     }
 }
@@ -227,6 +232,7 @@ pub const BuildIndirect = struct {
         indirect_command_buffer: rg.RenderGraphBufferHandle,
         indirect_info_buffer: rg.RenderGraphBufferHandle,
 
+        culling_enabled: bool,
         camera: Camera,
         camera_transform: Transform,
         target_texture: rg.RenderGraphTextureHandle,
@@ -285,7 +291,7 @@ pub const BuildIndirect = struct {
             .indirect_draw_count_binding = indirect_draw_count_buffer.storage_binding.?,
             .indrect_command_binding = indrect_command_buffer.storage_binding.?,
             .indirect_info_binding = indirect_info_buffer.storage_binding.?,
-            .culling = 1,
+            .culling = @intFromBool(data.culling_enabled),
             .frustum = gpu_frustum,
         };
         command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(PushConstants), &push_data);

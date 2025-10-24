@@ -2,6 +2,8 @@ const std = @import("std");
 
 const serde = @import("../serde.zig");
 
+pub const LoadSettings = struct {};
+
 pub const TextureType = enum(u32) {
     @"2d",
     cube,
@@ -45,7 +47,8 @@ pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.data);
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype, settings: LoadSettings) !Self {
+    _ = settings; // autofix
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     const tex_type: TextureType = @enumFromInt(try reader.readInt(u32, .little));
     const format: Format = @enumFromInt(try reader.readInt(u32, .little));

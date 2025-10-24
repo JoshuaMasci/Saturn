@@ -37,8 +37,8 @@ pub const Queues = struct {
 };
 
 pub const Extensions = struct {
-    mesh_shader_support: bool,
-    raytracing_support: bool,
+    mesh_shader: bool,
+    raytracing: bool,
     host_image_copy: bool,
     amdx_shader_enqueue: bool,
 };
@@ -145,8 +145,8 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     };
 
     const extensions: Extensions = .{
-        .mesh_shader_support = supportsExtension(extensions_properties, "VK_EXT_mesh_shader"),
-        .raytracing_support = supportsExtension(extensions_properties, "VK_KHR_acceleration_structure") and supportsExtension(extensions_properties, "VK_KHR_ray_query"), //Will not support VK_KHR_ray_tracing_pipeline
+        .mesh_shader = supportsExtension(extensions_properties, "VK_EXT_mesh_shader"),
+        .raytracing = supportsExtension(extensions_properties, "VK_KHR_acceleration_structure") and supportsExtension(extensions_properties, "VK_KHR_ray_query"), //Will not support VK_KHR_ray_tracing_pipeline
 
         //TODO: use feature version when this is updated to VK1.4
         //.host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"),

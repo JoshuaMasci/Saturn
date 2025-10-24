@@ -100,7 +100,13 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     var device = try allocator.create(Device);
     errdefer allocator.destroy(device);
 
-    device.* = try instance.createDevice(device_index);
+    device.* = try .init(
+        allocator,
+        instance.instance,
+        instance.physical_devices[device_index],
+        .{},
+        instance.debug_messager != null,
+    );
     errdefer device.deinit();
 
     var bindless_descriptor = try allocator.create(BindlessDescriptor);

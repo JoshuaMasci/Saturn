@@ -2,6 +2,8 @@ const std = @import("std");
 
 const serde = @import("../serde.zig");
 
+pub const LoadSettings = struct {};
+
 pub const DirectoryMeta = struct {
     target: Target = .vulkan,
     target_profile: []const u8,
@@ -69,7 +71,8 @@ pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u32, writer, self.spirv_code);
 }
 
-pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype) !Self {
+pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype, settings: LoadSettings) !Self {
+    _ = settings; // autofix
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     errdefer allocator.free(name);
 
