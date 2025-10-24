@@ -2,13 +2,17 @@
 #include "instance.hlsl"
 #include "mesh.hlsl"
 #include "indirect.hlsl"
+#include "culling.hlsl"
 
 ReadOnlyStorageBufferArray(Instance, instance_buffers);
 ReadOnlyStorageBufferArray(MeshInfo, mesh_info_buffers);
 
-ReadWriteStorageBufferArray(uint32_t, indirect_draw_count);
+ReadWriteStorageBufferArray(uint, indirect_draw_count);
 ReadWriteStorageBufferArray(VkDrawIndirectCommand, indirect_command_buffers);
 ReadWriteStorageBufferArray(IndirectDrawInfo, indirect_info_buffers);
+
+ReadWriteStorageBufferArray(Frustum, frustum_buffers);
+
 
 struct PushConstants
 {
@@ -18,6 +22,10 @@ struct PushConstants
     uint32_t indirect_draw_count_binding;
     uint32_t indrect_command_binding;
     uint32_t indirect_info_binding;
+    uint pad0;
+    uint pad1;
+    uint culling;
+    Frustum frustum;
 };
 
 [[vk::push_constant]]
@@ -37,12 +45,20 @@ void main(uint3 id : SV_DispatchThreadID) {
 
     if (instance.visable) {
         if (sub_instance_id < instance.primitive_count) {
-            uint32_t draw_index;
-            InterlockedAdd(indirect_draw_count[push_constants.indirect_draw_count_binding][0], 1, draw_index);
-
             MeshInfo mesh_info = mesh_info_buffers[push_constants.mesh_info_binding][instance.mesh_index];
             ByteAddressBuffer geo_buffer = storage_buffers[mesh_info.buffer_binding];
             PrimitiveInfo prim_info = LoadPrimitiveInfo(geo_buffer, mesh_info.primitives_offset, primitive_index);
+
+            if (push_constants.culling != 0) {
+                const float4 sphere_pos_radius = transformSphere(instance.model_matrix, prim_info.sphere_pos_radius);
+                if (!calcVisable(push_constants.frustum, sphere_pos_radius)) {
+                    return;
+                }
+            }
+
+
+            uint32_t draw_index;
+            InterlockedAdd(indirect_draw_count[push_constants.indirect_draw_count_binding][0], 1, draw_index);
 
             VkDrawIndirectCommand cmd;
             IndirectDrawInfo info;

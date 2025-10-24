@@ -136,6 +136,10 @@ pub fn createRenderPass(
                 .indirect_draw_count_buffer = indirect_draw_count_buffer,
                 .indirect_command_buffer = indirect_command_buffer,
                 .indirect_info_buffer = indirect_info_buffer,
+
+                .camera = camera,
+                .camera_transform = camera_transform,
+                .target_texture = color_target,
             };
             render_pass.addBuildFn(BuildIndirect.buildCommandBuffer, build_data);
 
@@ -222,15 +226,27 @@ pub const BuildIndirect = struct {
         indirect_draw_count_buffer: rg.RenderGraphBufferHandle,
         indirect_command_buffer: rg.RenderGraphBufferHandle,
         indirect_info_buffer: rg.RenderGraphBufferHandle,
+
+        camera: Camera,
+        camera_transform: Transform,
+        target_texture: rg.RenderGraphTextureHandle,
+    };
+
+    const GpuFrustum = extern struct {
+        planes: [6]zm.Vec,
+        plane_count: u32,
     };
 
     const PushConstants = extern struct {
         scene_instance_binding: u32,
         mesh_info_binding: u32,
-
         indirect_draw_count_binding: u32,
         indrect_command_binding: u32,
         indirect_info_binding: u32,
+        pad0: u32 = 0,
+        pad1: u32 = 0,
+        culling: u32,
+        frustum: GpuFrustum,
     };
 
     fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
@@ -244,6 +260,23 @@ pub const BuildIndirect = struct {
         const indrect_command_buffer = resources.buffers[data.indirect_command_buffer.index];
         const indirect_info_buffer = resources.buffers[data.indirect_info_buffer.index];
 
+        const target_texture = resources.textures[data.target_texture.index];
+        const target_width: f32 = @floatFromInt(target_texture.extent.width);
+        const target_height: f32 = @floatFromInt(target_texture.extent.height);
+        const aspect_ratio: f32 = target_width / target_height;
+        const frustum: culling.Frustum = data.camera.getFrustum(aspect_ratio, data.camera_transform);
+        const gpu_frustum: GpuFrustum = .{
+            .planes = .{
+                frustum.planes[0].normal_distance,
+                frustum.planes[1].normal_distance,
+                frustum.planes[2].normal_distance,
+                frustum.planes[3].normal_distance,
+                frustum.planes[4].normal_distance,
+                frustum.planes[5].normal_distance,
+            },
+            .plane_count = @intCast(frustum.plane_count),
+        };
+
         command_buffer.bindPipeline(.compute, data.pipeline);
 
         const push_data: PushConstants = .{
@@ -252,6 +285,8 @@ pub const BuildIndirect = struct {
             .indirect_draw_count_binding = indirect_draw_count_buffer.storage_binding.?,
             .indrect_command_binding = indrect_command_buffer.storage_binding.?,
             .indirect_info_binding = indirect_info_buffer.storage_binding.?,
+            .culling = 1,
+            .frustum = gpu_frustum,
         };
         command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(PushConstants), &push_data);
 
