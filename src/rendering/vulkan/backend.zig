@@ -299,9 +299,12 @@ pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
     }
 }
 
+pub fn getBufferMappedSlice(self: *Self, handle: BufferPool.Handle) ?[]u8 {
+    return self.buffers.getPtr(handle).?.allocation.getMappedByteSlice();
+}
+
 pub fn writeBuffer(self: *Self, handle: BufferPool.Handle, offset: usize, data: []const u8) TransferQueue.WriteBufferError!void {
-    //try self.frame_data[self.frame_index].transfer_queue.writeBuffer(handle, offset, data);
-    self.buffers.getPtr(handle).?.uploadBufferData(self.device, self.device.graphics_queue, offset, data) catch {};
+    try self.getTransferQueue().writeBuffer(handle, offset, data);
 }
 
 pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags) !ImagePool.Handle {
@@ -318,14 +321,18 @@ pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.Image
 
     return self.images.insert(image);
 }
-pub fn createImageWithData(self: *Self, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags, data: []const u8) !ImagePool.Handle {
+pub fn createImageWithData(self: *Self, name: []const u8, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags, data: []const u8) !ImagePool.Handle {
     var usage_flags = usage;
-    if (self.device.physical_device.info.extensions.host_image_copy) {
+    if (self.device.extensions.host_image_copy) {
         usage_flags.host_transfer_bit = true;
+    } else {
+        usage_flags.transfer_dst_bit = true;
     }
 
     var image: Image = try .init2D(self.device, .{ .width = size[0], .height = size[1] }, format, usage_flags, .gpu_only);
     errdefer image.deinit();
+
+    self.device.setDebugName(.image, image.handle, name);
 
     if (usage.contains(.{ .sampled_bit = true })) {
         image.sampled_binding = self.bindless_descriptor.sampled_image_array.bind(image, self.linear_sampler);
@@ -335,14 +342,15 @@ pub fn createImageWithData(self: *Self, size: [2]u32, format: vk.Format, usage: 
         image.storage_binding = self.bindless_descriptor.storage_image_array.bind(image, null);
     }
 
-    if (self.device.physical_device.info.extensions.host_image_copy) {
+    const image_handle = try self.images.insert(image);
+
+    if (self.device.extensions.host_image_copy) {
         try image.hostImageCopy(self.device, .shader_read_only_optimal, data);
     } else {
-        //TODO: use transfer queue
-        try image.uploadImageData(self.device, self.device.graphics_queue, .shader_read_only_optimal, data);
+        try self.getTransferQueue().writeTexture(image_handle, .shader_read_only_optimal, data);
     }
 
-    return self.images.insert(image);
+    return image_handle;
 }
 pub fn destroyImage(self: *Self, handle: ImagePool.Handle) void {
     if (self.images.remove(handle)) |image| {
@@ -358,6 +366,10 @@ pub fn destroyImage(self: *Self, handle: ImagePool.Handle) void {
     } else {
         std.log.err("Invalid Image Handle: {}", .{handle});
     }
+}
+
+pub fn getTransferQueue(self: *Self) *TransferQueue {
+    return &self.frame_data[self.frame_index].transfer_queue;
 }
 
 const SwapchainImageInfo = struct {

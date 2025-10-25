@@ -147,10 +147,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     const extensions: Extensions = .{
         .mesh_shader = supportsExtension(extensions_properties, "VK_EXT_mesh_shader"),
         .raytracing = supportsExtension(extensions_properties, "VK_KHR_acceleration_structure") and supportsExtension(extensions_properties, "VK_KHR_ray_query"), //Will not support VK_KHR_ray_tracing_pipeline
-
-        //TODO: use feature version when this is updated to VK1.4
-        //.host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"),
-        .host_image_copy = false, //My implementation doesn't work
+        .host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"),
 
         .amdx_shader_enqueue = supportsExtension(extensions_properties, "VK_AMDX_shader_enqueue"),
     };

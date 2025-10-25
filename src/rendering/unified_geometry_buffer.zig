@@ -86,7 +86,13 @@ pub fn init(
     backend: *Backend,
     buffer_size: usize,
 ) !Self {
-    const geometry_buffer = try backend.createBuffer(buffer_size, .{ .vertex_buffer_bit = true, .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true, .shader_device_address_bit = true });
+    var geometry_buffer_usage: vk.BufferUsageFlags = .{ .vertex_buffer_bit = true, .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true };
+
+    if (backend.device.extensions.raytracing) {
+        geometry_buffer_usage.acceleration_structure_storage_bit_khr = true;
+    }
+
+    const geometry_buffer = try backend.createBuffer(buffer_size, geometry_buffer_usage);
     backend.device.setDebugName(.buffer, backend.buffers.get(geometry_buffer).?.handle, "unified_geometry_buffer");
 
     const geometry_slice: ?[]u8 = backend.buffers.get(geometry_buffer).?.allocation.getMappedByteSlice();
@@ -119,48 +125,58 @@ pub fn deinit(self: *Self) void {
     self.arena.deinit();
 }
 
-pub fn addMesh(self: *Self, handle: AssetRegistry.AssetHandle) void {
-    const load_meshlets = self.backend.device.exetensions.mesh_shader;
+pub fn addMesh(self: *Self, handle: AssetRegistry.AssetHandle, mesh: *const MeshAsset) !void {
+    const index = self.next_mesh_index;
+    self.next_mesh_index += 1;
 
-    if (!self.map.contains(handle)) {
-        if (self.registry.loadAsset(MeshAsset, self.allocator, handle, .{
-            .load_meshlets = load_meshlets,
-        })) |mesh| {
-            defer mesh.deinit(self.allocator);
+    var entry: MeshEntry = .{
+        .cpu_primitives = try self.arena.allocator().dupe(MeshAsset.Primitive, mesh.primitives),
+        .index = index,
+        .sphere_pos_radius = mesh.sphere_pos_radius,
+        .vertices = try self.createBuffer(std.mem.sliceAsBytes(mesh.vertices)),
+        .indices = try self.createBuffer(std.mem.sliceAsBytes(mesh.indices)),
+        .primitives = try self.createBuffer(std.mem.sliceAsBytes(mesh.primitives)),
+        .meshlet = null,
+    };
 
-            const index = self.next_mesh_index;
-            self.next_mesh_index += 1;
-
-            var entry: MeshEntry = .{
-                .cpu_primitives = self.arena.allocator().dupe(MeshAsset.Primitive, mesh.primitives) catch return,
-                .index = index,
-                .sphere_pos_radius = mesh.sphere_pos_radius,
-                .vertices = self.createBuffer(std.mem.sliceAsBytes(mesh.vertices)) catch return,
-                .indices = self.createBuffer(std.mem.sliceAsBytes(mesh.indices)) catch return,
-                .primitives = self.createBuffer(std.mem.sliceAsBytes(mesh.primitives)) catch return,
-                .meshlet = null,
-            };
-
-            if (load_meshlets) {
-                entry.meshlet = .{
-                    .meshlets = self.createBuffer(std.mem.sliceAsBytes(mesh.meshlets)) catch return,
-                    .meshlet_vertices = self.createBuffer(std.mem.sliceAsBytes(mesh.meshlet_vertices)) catch return,
-                    .meshlet_triangles = self.createBuffer(std.mem.sliceAsBytes(mesh.meshlet_triangles)) catch return,
-                };
-            }
-
-            self.map.put(handle, entry) catch |err| {
-                std.log.err("Failed to append mesh to list {}", .{err});
-            };
-
-            const offset: usize = index * @sizeOf(GpuMeshEntry);
-            self.backend.writeBuffer(self.mesh_info_buffer, offset, std.mem.asBytes(&entry.getGpuEntry(self.geometry_buffer_binding))) catch |err| {
-                std.log.err("Failed to upload mesh info to buffer {}", .{err});
-            };
-        } else |err| {
-            std.log.err("Failed to load mesh {}", .{err});
-        }
+    if (mesh.meshlets.len != 0) {
+        entry.meshlet = .{
+            .meshlets = try self.createBuffer(std.mem.sliceAsBytes(mesh.meshlets)),
+            .meshlet_vertices = try self.createBuffer(std.mem.sliceAsBytes(mesh.meshlet_vertices)),
+            .meshlet_triangles = try self.createBuffer(std.mem.sliceAsBytes(mesh.meshlet_triangles)),
+        };
     }
+
+    try self.map.put(handle, entry);
+
+    const entry_offset: usize = index * @sizeOf(GpuMeshEntry);
+    const entry_bytes: []const u8 = std.mem.asBytes(&entry.getGpuEntry(self.geometry_buffer_binding));
+
+    if (self.backend.getBufferMappedSlice(self.mesh_info_buffer)) |mapped_slice| {
+        @memcpy(mapped_slice[entry_offset..(entry_offset + entry_bytes.len)], entry_bytes);
+    } else {
+        try self.backend.getTransferQueue().writeBuffer(self.mesh_info_buffer, entry_offset, entry_bytes);
+    }
+}
+
+pub fn canUploadMesh(self: *Self, mesh: *const MeshAsset) bool {
+    //Can always upload if memory is mapped
+    if (self.geometry_slice != null) {
+        return true;
+    }
+
+    var gpu_mesh_size: usize = 0;
+    gpu_mesh_size += std.mem.sliceAsBytes(mesh.vertices).len;
+    gpu_mesh_size += std.mem.sliceAsBytes(mesh.indices).len;
+    gpu_mesh_size += std.mem.sliceAsBytes(mesh.primitives).len;
+
+    gpu_mesh_size += std.mem.sliceAsBytes(mesh.meshlets).len;
+    gpu_mesh_size += std.mem.sliceAsBytes(mesh.meshlet_vertices).len;
+    gpu_mesh_size += std.mem.sliceAsBytes(mesh.meshlet_triangles).len;
+    gpu_mesh_size += @sizeOf(GpuMeshEntry);
+
+    const transfer_queue = self.backend.getTransferQueue();
+    return transfer_queue.hasSpace(gpu_mesh_size);
 }
 
 fn createBuffer(self: *Self, data: []const u8) !SubAllocation {
@@ -170,6 +186,12 @@ fn createBuffer(self: *Self, data: []const u8) !SubAllocation {
     try self.write(allocation, data);
 
     return allocation;
+}
+
+fn canAlloc(self: *Self, size: usize) bool {
+    const BASE_ALIGNMENT: usize = 16;
+    const aligned_offset = std.mem.alignForward(usize, self.buffer_offset, BASE_ALIGNMENT);
+    return (aligned_offset + size) < self.buffer_size;
 }
 
 fn alloc(self: *Self, size: usize) error{OutOfMemory}!SubAllocation {
@@ -199,6 +221,6 @@ fn write(self: *Self, allocation: SubAllocation, data: []const u8) !void {
     if (self.geometry_slice) |buffer_slice| {
         @memcpy(buffer_slice[allocation.offset..(allocation.offset + data.len)], data);
     } else {
-        try self.backend.writeBuffer(self.geometry_buffer, allocation.offset, data);
+        try self.backend.getTransferQueue().writeBuffer(self.geometry_buffer, allocation.offset, data);
     }
 }

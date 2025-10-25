@@ -31,46 +31,43 @@ pub fn main() !void {
     var app: App = try .init(allocator);
     defer app.deinit();
 
-    var scene_filepath_opt: ?[]const u8 = undefined;
+    {
+        var scene_filepath_opt: ?[]const u8 = undefined;
 
-    scene_filepath_opt = null;
-    //scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
-    scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
-
-    if (scene_filepath_opt) |scene_filepath| {
-        var scene_json: std.json.Parsed(Scene) = undefined;
-        {
-            var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
-            defer file.close();
-
-            var read_buffer: [1024]u8 = undefined;
-            var reader = file.reader(&read_buffer);
-            scene_json = try Scene.deserialzie(allocator, &reader.interface);
-        }
-        defer scene_json.deinit();
+        scene_filepath_opt = null;
+        //scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
+        scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
 
         var scene: RenderScene = .init(allocator);
         errdefer scene.deinit(app.vulkan_backend);
 
-        try scene_json.value.loadScene(&scene, .{});
+        var camera: DebugCamera = .{};
 
-        var camera: Camera = .Default;
-        var transform: Transform = .{};
+        if (scene_filepath_opt) |scene_filepath| {
+            var scene_json: std.json.Parsed(Scene) = undefined;
+            {
+                var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
+                defer file.close();
 
-        if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
-            if (scene_json.value.nodes[camera_node].camera) |node_camera| {
-                camera = node_camera;
+                var read_buffer: [1024]u8 = undefined;
+                var reader = file.reader(&read_buffer);
+                scene_json = try Scene.deserialzie(allocator, &reader.interface);
             }
+            defer scene_json.deinit();
 
-            transform = scene_json.value.calcNodeGlobalTransform(camera_node);
-            transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), transform.rotation);
+            try scene_json.value.loadScene(&scene, .{});
+
+            if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
+                if (scene_json.value.nodes[camera_node].camera) |node_camera| {
+                    camera.camera = node_camera;
+                }
+
+                camera.transform = scene_json.value.calcNodeGlobalTransform(camera_node);
+                camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), camera.transform.rotation);
+            }
         }
 
-        const debug_camera: DebugCamera = .{
-            .camera = camera,
-            .transform = transform,
-        };
-
+        //Load scene
         {
             const now = std.time.nanoTimestamp();
             defer {
@@ -78,20 +75,11 @@ pub fn main() !void {
                 const duration_ns_f: f32 = @floatFromInt(duration_ns);
                 std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
             }
-
-            app.resources.loadSceneAssets(allocator, &scene);
+            try app.loadScene(scene, camera);
         }
-
-        try scene.update(allocator, app.vulkan_backend, &app.resources);
-
-        app.scene_info = .{
-            .scene = scene,
-            .camera = debug_camera,
-        };
     }
 
     var last_frame_time_ns = std.time.nanoTimestamp();
-
     while (app.is_running()) {
         const current_time_ns = std.time.nanoTimestamp();
         const delta_time_ns = current_time_ns - last_frame_time_ns;
@@ -336,7 +324,7 @@ const App = struct {
             if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
                 _ = imgui.ImGui_Checkbox("Enable Gpu Culling", &self.scene_renderer.gpu_culling);
 
-                if (self.vulkan_backend.device.exetensions.mesh_shader)
+                if (self.vulkan_backend.device.extensions.mesh_shader)
                     _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
 
                 imgui.ImGui_End();
@@ -410,6 +398,57 @@ const App = struct {
         }
 
         try self.vulkan_backend.render(temp_allocator, render_graph);
+    }
+
+    pub fn renderBlankScreen(self: *Self, temp_allocator: std.mem.Allocator, color: zm.Vec) !void {
+        try self.platform_input.proccessEvents(
+            .{
+                .on_event = on_event,
+            },
+            .{
+                .data = @ptrCast(self),
+                .resize = window_resize,
+            },
+        );
+
+        var render_graph = Backend.RenderGraph.init(temp_allocator);
+        defer render_graph.deinit();
+        const swapchain_texture = try render_graph.acquireSwapchainTexture(self.window);
+
+        {
+            var render_pass = try Backend.RenderPass.init(temp_allocator, "Screen Clear Pass");
+            try render_pass.addColorAttachment(.{
+                .texture = swapchain_texture,
+                .clear = .{ .float_32 = color },
+                .store = true,
+            });
+            try render_graph.render_passes.append(render_graph.allocator, render_pass);
+        }
+
+        try self.vulkan_backend.render(temp_allocator, render_graph);
+    }
+
+    pub fn loadScene(self: *Self, scene: RenderScene, camera: DebugCamera) !void {
+        if (self.scene_info) |*old| {
+            old.scene.deinit(self.vulkan_backend);
+        }
+
+        var new_scene = scene;
+
+        _ = self.temp_allocator.reset(.retain_capacity);
+        const temp_allocator = self.temp_allocator.allocator();
+        try self.renderBlankScreen(temp_allocator, @splat(0.0));
+
+        while (!self.resources.tryLoadSceneAssets(temp_allocator, &new_scene) and !self.platform_input.should_quit) {
+            _ = self.temp_allocator.reset(.retain_capacity);
+            try self.renderBlankScreen(temp_allocator, @splat(0.0));
+        }
+
+        try new_scene.update(self.allocator, self.vulkan_backend, &self.resources);
+        self.scene_info = .{
+            .scene = new_scene,
+            .camera = camera,
+        };
     }
 };
 

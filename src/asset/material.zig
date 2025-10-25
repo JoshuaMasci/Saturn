@@ -75,6 +75,12 @@ pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
     allocator.free(self.name);
 }
 
+pub fn dupe(self: *const Self, allocator: std.mem.Allocator) !Self {
+    var new: Self = self.*;
+    new.name = try allocator.dupe(u8, self.name);
+    return new;
+}
+
 pub fn serialize(self: Self, writer: anytype) !void {
     try serde.serialzieSlice(u8, writer, self.name);
     try writer.writeStructEndian(Packed.pack(self), .little);

@@ -24,7 +24,7 @@ graphics_queue: Queue, //Pretty much every device has a graphics queue (Graphics
 async_compute_queue: ?Queue,
 async_transfer_queue: ?Queue,
 
-exetensions: Exetensions,
+extensions: Exetensions,
 
 gpu_allocator: GpuAllocator,
 debug: bool = false,
@@ -90,8 +90,7 @@ pub fn init(
         // all_stage_flags.callable_bit_khr = true;
     }
 
-    //TODO: should I use the feature instead?
-    if (extentions.raytracing) {
+    if (extentions.host_image_copy) {
         std.debug.assert(physical_device.info.extensions.host_image_copy);
         try device_extentions.append(allocator, "VK_EXT_host_image_copy");
     }
@@ -158,7 +157,7 @@ pub fn init(
         appendNextPtrChain(&create_info, &feature_mesh_shading);
     }
 
-    if (physical_device.info.extensions.host_image_copy) {
+    if (extentions.host_image_copy) {
         appendNextPtrChain(&create_info, &features_host_image_copy);
     }
 
@@ -203,7 +202,7 @@ pub fn init(
         .graphics_queue = graphics_queue,
         .async_compute_queue = async_compute_queue,
         .async_transfer_queue = async_transfer_queue,
-        .exetensions = extentions,
+        .extensions = extentions,
         .all_stage_flags = all_stage_flags,
         .gpu_allocator = GpuAllocator.init(physical_device.handle, instance, proxy),
         .debug = debug,

@@ -3,7 +3,7 @@ const std = @import("std");
 const vk = @import("vulkan");
 pub const makeVersion = vk.makeApiVersion;
 
-const Info = @import("physical_device_info.zig");
+const PhysicalDeviceInfo = @import("physical_device.zig");
 const Device = @import("device.zig");
 
 pub const AppInfo = struct {
@@ -13,7 +13,7 @@ pub const AppInfo = struct {
 
 pub const PhysicalDevice = struct {
     handle: vk.PhysicalDevice,
-    info: Info,
+    info: PhysicalDeviceInfo,
 
     pub fn supportsSurface(self: PhysicalDevice, instance: vk.InstanceProxy, surface: vk.SurfaceKHR) bool {
         var supports_present: vk.Bool32 = .false;
