@@ -146,14 +146,14 @@ pub fn interface(self: Self) Interface {
 pub fn hostImageCopy(
     self: *Self,
     device: *Device,
-    layout: vk.ImageLayout,
+    final_layout: vk.ImageLayout,
     data: []const u8,
 ) !void {
     {
         const transition_info = vk.HostImageLayoutTransitionInfo{
             .image = self.handle,
             .old_layout = .undefined,
-            .new_layout = layout,
+            .new_layout = final_layout,
             .subresource_range = .{
                 .aspect_mask = getFormatAspectMask(self.format),
                 .base_mip_level = 0,
@@ -183,7 +183,7 @@ pub fn hostImageCopy(
         const copy_info: vk.CopyMemoryToImageInfo = .{
             //.flags = .{ .memcpy_bit = true },
             .dst_image = self.handle,
-            .dst_image_layout = layout,
+            .dst_image_layout = final_layout,
             .region_count = 1,
             .p_regions = @ptrCast(&region),
         };

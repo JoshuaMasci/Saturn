@@ -37,7 +37,7 @@ pub const Queues = struct {
 };
 
 pub const Extensions = struct {
-    mesh_shader: bool,
+    mesh_shading: bool,
     raytracing: bool,
     host_image_copy: bool,
     amdx_shader_enqueue: bool,
@@ -145,7 +145,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
     };
 
     const extensions: Extensions = .{
-        .mesh_shader = supportsExtension(extensions_properties, "VK_EXT_mesh_shader"),
+        .mesh_shading = supportsExtension(extensions_properties, "VK_EXT_mesh_shader"),
         .raytracing = supportsExtension(extensions_properties, "VK_KHR_acceleration_structure") and supportsExtension(extensions_properties, "VK_KHR_ray_query"), //Will not support VK_KHR_ray_tracing_pipeline
         .host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"),
 

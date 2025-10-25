@@ -7,7 +7,7 @@ const PhysicalDevice = @import("instance.zig").PhysicalDevice;
 const Queue = @import("queue.zig");
 
 const Exetensions = struct {
-    mesh_shader: bool = false,
+    mesh_shading: bool = false,
     raytracing: bool = false,
     host_image_copy: bool = false,
 };
@@ -71,8 +71,8 @@ pub fn init(
     defer device_extentions.deinit(allocator);
     try device_extentions.append(allocator, "VK_KHR_swapchain");
 
-    if (extentions.mesh_shader) {
-        std.debug.assert(physical_device.info.extensions.mesh_shader);
+    if (extentions.mesh_shading) {
+        std.debug.assert(physical_device.info.extensions.mesh_shading);
         try device_extentions.append(allocator, "VK_EXT_mesh_shader");
         all_stage_flags.task_bit_ext = true;
         all_stage_flags.mesh_bit_ext = true;
@@ -153,7 +153,7 @@ pub fn init(
         .p_enabled_features = &features,
     };
 
-    if (physical_device.info.extensions.mesh_shader) {
+    if (physical_device.info.extensions.mesh_shading) {
         appendNextPtrChain(&create_info, &feature_mesh_shading);
     }
 

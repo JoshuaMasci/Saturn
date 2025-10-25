@@ -201,7 +201,9 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn waitIdle(self: *const Self) void {
-    _ = self.device.proxy.deviceWaitIdle() catch {};
+    self.device.proxy.deviceWaitIdle() catch |err| {
+        std.log.err("Failed to wait for device idle: {}", .{err});
+    };
 }
 
 pub fn claimWindow(self: *Self, window: Window, settings: Swapchain.Settings) !void {

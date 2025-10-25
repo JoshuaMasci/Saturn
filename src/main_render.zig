@@ -207,13 +207,13 @@ const App = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.vulkan_backend.waitIdle();
+
         if (self.scene_info) |*info| {
             info.scene.deinit(self.vulkan_backend);
         }
 
         self.temp_allocator.deinit();
-
-        self.vulkan_backend.waitIdle();
 
         self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
@@ -323,7 +323,7 @@ const App = struct {
             if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
                 _ = imgui.ImGui_Checkbox("Enable Gpu Culling", &self.scene_renderer.gpu_culling);
 
-                if (self.vulkan_backend.device.extensions.mesh_shader)
+                if (self.vulkan_backend.device.extensions.mesh_shading)
                     _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
 
                 imgui.ImGui_End();
@@ -438,9 +438,19 @@ const App = struct {
         const temp_allocator = self.temp_allocator.allocator();
         try self.renderBlankScreen(temp_allocator, @splat(0.0));
 
-        while (!self.resources.tryLoadSceneAssets(temp_allocator, &new_scene) and !self.platform_input.should_quit) {
+        while (self.resources.tryLoadSceneAssets(temp_allocator, &new_scene)) |progress| {
+            if (self.platform_input.should_quit) {
+                new_scene.deinit(self.vulkan_backend);
+                return;
+            }
+
+            //TODO: simple progress bar
+            const start_color: zm.Vec = .{ 0.75, 0.0, 0.0, 1.0 };
+            const end_color: zm.Vec = .{ 0.0, 0.0, 0.75, 1.0 };
+            const progress_color = zm.lerp(start_color, end_color, progress);
+
             _ = self.temp_allocator.reset(.retain_capacity);
-            try self.renderBlankScreen(temp_allocator, @splat(0.0));
+            try self.renderBlankScreen(temp_allocator, progress_color);
         }
 
         try new_scene.update(self.allocator, self.vulkan_backend, &self.resources);

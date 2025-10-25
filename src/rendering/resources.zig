@@ -86,32 +86,34 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
 }
 
 /// Loads the scene till the transfer queue is full
-/// Returns false if the transfer queue is full
-/// Returns true when all loading is done
-/// TODO: progress info
-pub fn tryLoadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) bool {
+/// Returns null if it completes loading, otherwise return a rough percentage loaded
+pub fn tryLoadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) ?f32 {
     // Used a warmed arean allocator, but resets it between loads
     // Yes this is inception but with arena allocators
     var arena_allocator = std.heap.ArenaAllocator.init(temp_allocator);
     defer arena_allocator.deinit();
 
-    for (scene.instances.items) |instance| {
-        if (!self.tryLoadMesh(arena_allocator.allocator(), instance.component.mesh)) return false;
+    const instance_count: f32 = @floatFromInt(scene.instances.items.len);
+
+    for (scene.instances.items, 0..) |instance, i| {
+        const progress: f32 = @as(f32, @floatFromInt(i)) / instance_count;
+
+        if (!self.tryLoadMesh(arena_allocator.allocator(), instance.component.mesh)) return progress;
         _ = arena_allocator.reset(.retain_capacity);
 
         for (instance.component.materials.constSlice()) |material| {
-            if (!self.tryLoadMaterial(arena_allocator.allocator(), material)) return false;
+            if (!self.tryLoadMaterial(arena_allocator.allocator(), material)) return progress;
             _ = arena_allocator.reset(.retain_capacity);
         }
     }
 
     self.updateBuffers(arena_allocator.allocator()) catch |err| std.log.err("Failed to update resource buffers: {}", .{err});
-    return true;
+    return null;
 }
 
 /// Returns true when loaded
 pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) bool {
-    const load_meshlets = self.backend.device.extensions.mesh_shader;
+    const load_meshlets = self.backend.device.extensions.mesh_shading;
 
     if (!self.meshes.map.contains(handle)) {
         if (self.registry.loadAsset(
