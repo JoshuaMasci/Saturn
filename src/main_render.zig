@@ -32,16 +32,15 @@ pub fn main() !void {
     defer app.deinit();
 
     {
-        var scene_filepath_opt: ?[]const u8 = undefined;
-
-        scene_filepath_opt = null;
-        //scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
-        scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
-
         var scene: RenderScene = .init(allocator);
         errdefer scene.deinit(app.vulkan_backend);
 
         var camera: DebugCamera = .{};
+
+        var scene_filepath_opt: ?[]const u8 = undefined;
+        scene_filepath_opt = null;
+        //scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
+        scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
 
         if (scene_filepath_opt) |scene_filepath| {
             var scene_json: std.json.Parsed(Scene) = undefined;
@@ -449,6 +448,9 @@ const App = struct {
             .scene = new_scene,
             .camera = camera,
         };
+
+        // Don't need to keep the memory costs of loads around after this
+        _ = self.temp_allocator.reset(.free_all);
     }
 };
 

@@ -131,6 +131,8 @@ pub fn createRenderPass(
         .src_buffer = self.staging_buffer,
         .buffer_transfer_list = buffer_transfer_list,
         .texture_transfer_list = texture_transfer_list,
+        .pre_transfer_barriers = try temp_allocator.alloc(vk.ImageMemoryBarrier2, self.texture_transfer_list.items.len),
+        .post_transfer_barriers = try temp_allocator.alloc(vk.ImageMemoryBarrier2, self.texture_transfer_list.items.len),
     };
 
     var render_pass = try rg.RenderPass.init(temp_allocator, "Transfer Pass");
@@ -143,6 +145,10 @@ const BuildData = struct {
     src_buffer: Buffer,
     buffer_transfer_list: []const BufferTransfer,
     texture_transfer_list: []const TextureTransfer,
+
+    //Pre allocate needed size
+    pre_transfer_barriers: []vk.ImageMemoryBarrier2,
+    post_transfer_barriers: []vk.ImageMemoryBarrier2,
 };
 
 fn buildCommandBuffer(build_data: ?*anyopaque, backend: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
@@ -170,15 +176,20 @@ fn buildCommandBuffer(build_data: ?*anyopaque, backend: *Backend, resources: rg.
         }
     }
 
+    for (data.texture_transfer_list, data.pre_transfer_barriers, data.post_transfer_barriers) |transfer, *pre, *post| {
+        var interface = backend.images.getPtr(transfer.dst).?.interface();
+        pre.* = interface.transitionLazy(.transfer_dst_optimal).?;
+        post.* = interface.transitionLazy(transfer.final_layout).?;
+    }
+
+    command_buffer.pipelineBarrier2(&.{
+        .image_memory_barrier_count = @intCast(data.pre_transfer_barriers.len),
+        .p_image_memory_barriers = @ptrCast(data.pre_transfer_barriers.ptr),
+    });
+
     for (data.texture_transfer_list) |transfer| {
         if (backend.images.get(transfer.dst)) |dst_texture| {
-            var interface = dst_texture.interface();
-
-            const pre_copy_barrier = interface.transitionLazy(.transfer_dst_optimal).?;
-            command_buffer.pipelineBarrier2(&.{
-                .image_memory_barrier_count = 1,
-                .p_image_memory_barriers = @ptrCast(&pre_copy_barrier),
-            });
+            const interface = dst_texture.interface();
 
             const region: vk.BufferImageCopy2 = .{
                 .buffer_offset = transfer.src_offset,
@@ -201,12 +212,11 @@ fn buildCommandBuffer(build_data: ?*anyopaque, backend: *Backend, resources: rg.
                 .region_count = 1,
                 .p_regions = @ptrCast(&region),
             });
-
-            const post_copy_barrier = interface.transitionLazy(transfer.final_layout).?;
-            command_buffer.pipelineBarrier2(&.{
-                .image_memory_barrier_count = 1,
-                .p_image_memory_barriers = @ptrCast(&post_copy_barrier),
-            });
         }
     }
+
+    command_buffer.pipelineBarrier2(&.{
+        .image_memory_barrier_count = @intCast(data.post_transfer_barriers.len),
+        .p_image_memory_barriers = @ptrCast(data.pre_transfer_barriers.ptr),
+    });
 }

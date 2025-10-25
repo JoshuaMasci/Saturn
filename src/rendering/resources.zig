@@ -90,15 +90,22 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
 /// Returns true when all loading is done
 /// TODO: progress info
 pub fn tryLoadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) bool {
+    // Used a warmed arean allocator, but resets it between loads
+    // Yes this is inception but with arena allocators
+    var arena_allocator = std.heap.ArenaAllocator.init(temp_allocator);
+    defer arena_allocator.deinit();
+
     for (scene.instances.items) |instance| {
-        if (!self.tryLoadMesh(temp_allocator, instance.component.mesh)) return false;
+        if (!self.tryLoadMesh(arena_allocator.allocator(), instance.component.mesh)) return false;
+        _ = arena_allocator.reset(.retain_capacity);
 
         for (instance.component.materials.constSlice()) |material| {
-            if (!self.tryLoadMaterial(temp_allocator, material)) return false;
+            if (!self.tryLoadMaterial(arena_allocator.allocator(), material)) return false;
+            _ = arena_allocator.reset(.retain_capacity);
         }
     }
 
-    self.updateBuffers(temp_allocator) catch |err| std.log.err("Failed to update resource buffers: {}", .{err});
+    self.updateBuffers(arena_allocator.allocator()) catch |err| std.log.err("Failed to update resource buffers: {}", .{err});
     return true;
 }
 
