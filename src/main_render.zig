@@ -323,8 +323,21 @@ const App = struct {
             if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
                 _ = imgui.ImGui_Checkbox("Enable Gpu Culling", &self.scene_renderer.gpu_culling);
 
-                if (self.vulkan_backend.device.extensions.mesh_shading)
+                var is_locked: bool = self.scene_renderer.locked_culling_info != null;
+                if (imgui.ImGui_Checkbox("Lock Culling Camera", &is_locked)) {
+                    if (self.scene_info) |info| {
+                        self.scene_renderer.locked_culling_info = if (is_locked) .{
+                            .settings = info.camera.camera,
+                            .transform = info.camera.transform,
+                        } else null;
+                    } else {
+                        self.scene_renderer.locked_culling_info = null;
+                    }
+                }
+
+                if (self.vulkan_backend.device.extensions.mesh_shading) {
                     _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
+                }
 
                 imgui.ImGui_End();
             }
@@ -379,8 +392,10 @@ const App = struct {
                     depth_texture,
                     &self.resources,
                     &info.scene,
-                    info.camera.camera,
-                    info.camera.transform,
+                    .{
+                        .settings = info.camera.camera,
+                        .transform = info.camera.transform,
+                    },
                     &render_graph,
                 );
             } else {
@@ -433,6 +448,7 @@ const App = struct {
         }
 
         var new_scene = scene;
+        //new_scene.instances.shrinkRetainingCapacity(16);
 
         _ = self.temp_allocator.reset(.retain_capacity);
         const temp_allocator = self.temp_allocator.allocator();
@@ -444,7 +460,7 @@ const App = struct {
                 return;
             }
 
-            //TODO: simple progress bar
+            //TODO: simple "progress bar"
             const start_color: zm.Vec = .{ 0.75, 0.0, 0.0, 1.0 };
             const end_color: zm.Vec = .{ 0.0, 0.0, 0.75, 1.0 };
             const progress_color = zm.lerp(start_color, end_color, progress);

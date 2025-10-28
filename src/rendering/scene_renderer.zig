@@ -6,8 +6,8 @@ const zm = @import("zmath");
 const MeshAsset = @import("../asset/mesh.zig");
 const AssetRegistry = @import("../asset/registry.zig");
 const Transform = @import("../transform.zig");
-const Camera = @import("camera.zig").Camera;
-const culling = @import("culling.zig");
+const SceneCamera = @import("camera.zig").SceneCamera;
+const CullData = @import("culling.zig").CullData;
 const RenderScene = @import("scene.zig");
 const Resources = @import("resources.zig");
 const Backend = @import("vulkan/backend.zig");
@@ -28,7 +28,9 @@ opaque_draw_indirect_pipeline: vk.Pipeline,
 opaque_draw_task_mesh_pipeline: ?vk.Pipeline,
 
 //Debug Values
-gpu_culling: bool = false,
+gpu_culling: bool = true,
+locked_culling_info: ?SceneCamera = null,
+
 mesh_shading: bool = false,
 
 pub fn init(
@@ -103,8 +105,7 @@ pub fn createRenderPass(
     depth_target: rg.RenderGraphTextureHandle,
     resources: *const Resources,
     scene: *const RenderScene,
-    camera: Camera,
-    camera_transform: Transform,
+    camera: SceneCamera,
     render_graph: *rg.RenderGraph,
 ) !void {
     if (scene.instances.items.len == 0) {
@@ -142,8 +143,7 @@ pub fn createRenderPass(
                 .indirect_info_buffer = indirect_info_buffer,
 
                 .culling_enabled = self.gpu_culling,
-                .camera = camera,
-                .camera_transform = camera_transform,
+                .camera = self.locked_culling_info orelse camera,
                 .target_texture = color_target,
             };
             render_pass.addBuildFn(BuildIndirect.buildCommandBuffer, build_data);
@@ -167,7 +167,6 @@ pub fn createRenderPass(
             const build_data = try temp_allocator.create(DrawMeshTask.Data);
             build_data.* = .{
                 .camera = camera,
-                .camera_transform = camera_transform,
 
                 .max_draw_count = @intCast(max_draw_count),
                 .opaque_draw_pipeline = self.opaque_draw_task_mesh_pipeline.?,
@@ -195,7 +194,6 @@ pub fn createRenderPass(
             const build_data = try temp_allocator.create(DrawIndirect.Data);
             build_data.* = .{
                 .camera = camera,
-                .camera_transform = camera_transform,
 
                 .max_draw_count = @intCast(max_draw_count),
                 .opaque_draw_pipeline = self.opaque_draw_indirect_pipeline,
@@ -233,14 +231,8 @@ pub const BuildIndirect = struct {
         indirect_info_buffer: rg.RenderGraphBufferHandle,
 
         culling_enabled: bool,
-        camera: Camera,
-        camera_transform: Transform,
+        camera: SceneCamera,
         target_texture: rg.RenderGraphTextureHandle,
-    };
-
-    const GpuFrustum = extern struct {
-        planes: [6]zm.Vec,
-        plane_count: u32,
     };
 
     const PushConstants = extern struct {
@@ -252,7 +244,7 @@ pub const BuildIndirect = struct {
         pad0: u32 = 0,
         pad1: u32 = 0,
         culling: u32,
-        frustum: GpuFrustum,
+        cull_data: CullData,
     };
 
     fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
@@ -270,18 +262,6 @@ pub const BuildIndirect = struct {
         const target_width: f32 = @floatFromInt(target_texture.extent.width);
         const target_height: f32 = @floatFromInt(target_texture.extent.height);
         const aspect_ratio: f32 = target_width / target_height;
-        const frustum: culling.Frustum = data.camera.getFrustum(aspect_ratio, data.camera_transform);
-        const gpu_frustum: GpuFrustum = .{
-            .planes = .{
-                frustum.planes[0].normal_distance,
-                frustum.planes[1].normal_distance,
-                frustum.planes[2].normal_distance,
-                frustum.planes[3].normal_distance,
-                frustum.planes[4].normal_distance,
-                frustum.planes[5].normal_distance,
-            },
-            .plane_count = @intCast(frustum.plane_count),
-        };
 
         command_buffer.bindPipeline(.compute, data.pipeline);
 
@@ -292,7 +272,7 @@ pub const BuildIndirect = struct {
             .indrect_command_binding = indrect_command_buffer.storage_binding.?,
             .indirect_info_binding = indirect_info_buffer.storage_binding.?,
             .culling = @intFromBool(data.culling_enabled),
-            .frustum = gpu_frustum,
+            .cull_data = .init(data.camera, aspect_ratio),
         };
         command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(PushConstants), &push_data);
 
@@ -303,8 +283,7 @@ pub const BuildIndirect = struct {
 /// Draws opaque geometry using vkCmdDrawIndirect
 pub const DrawIndirect = struct {
     pub const Data = struct {
-        camera: Camera,
-        camera_transform: Transform,
+        camera: SceneCamera,
 
         max_draw_count: u32,
         opaque_draw_pipeline: vk.Pipeline,
@@ -328,8 +307,8 @@ pub const DrawIndirect = struct {
         const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
         const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
         const aspect_ratio: f32 = width_float / height_float;
-        const view_matrix = data.camera_transform.getViewMatrix();
-        var projection_matrix = data.camera.getProjectionMatrix(aspect_ratio);
+        const view_matrix = data.camera.transform.getViewMatrix();
+        var projection_matrix = data.camera.settings.getProjectionMatrix(aspect_ratio);
         projection_matrix[1][1] *= -1.0;
         const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
@@ -356,8 +335,7 @@ pub const DrawIndirect = struct {
 /// Draws opaque geometry using drawMeshTasksEXT
 pub const DrawMeshTask = struct {
     pub const Data = struct {
-        camera: Camera,
-        camera_transform: Transform,
+        camera: SceneCamera,
 
         max_draw_count: u32,
         opaque_draw_pipeline: vk.Pipeline,
@@ -381,8 +359,8 @@ pub const DrawMeshTask = struct {
         const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
         const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
         const aspect_ratio: f32 = width_float / height_float;
-        const view_matrix = data.camera_transform.getViewMatrix();
-        var projection_matrix = data.camera.getProjectionMatrix(aspect_ratio);
+        const view_matrix = data.camera.transform.getViewMatrix();
+        var projection_matrix = data.camera.settings.getProjectionMatrix(aspect_ratio);
         projection_matrix[1][1] *= -1.0;
         const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 

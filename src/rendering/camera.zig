@@ -2,7 +2,6 @@ const std = @import("std");
 
 const zm = @import("zmath");
 
-const culling = @import("culling.zig");
 const Transform = @import("../transform.zig");
 
 pub const Fov = union(enum) {
@@ -33,56 +32,6 @@ pub const PerspectiveCamera = struct {
     pub fn getPerspectiveMatrix(self: PerspectiveCamera, aspect_ratio: f32) zm.Mat {
         //TODO: create infinte perspective matrix
         return zm.perspectiveFovRh(self.fov.get_fov_y_rad(aspect_ratio), aspect_ratio, self.near, self.far orelse 1000.0);
-    }
-
-    pub fn getFrustum(self: PerspectiveCamera, aspect_ratio: f32, transform: Transform) culling.Frustum {
-        const fov_y = self.fov.get_fov_y_rad(aspect_ratio);
-        const forward = transform.getForward();
-        const right = transform.getRight();
-        const up = transform.getUp();
-        const position = transform.position;
-
-        const tan_half_fov_y = @tan(fov_y / 2.0);
-        const tan_half_fov_x = tan_half_fov_y * aspect_ratio;
-
-        var plane_count: usize = 5;
-        var planes: [6]culling.Plane = undefined;
-
-        // Left Plane
-        {
-            const left_dir = zm.normalize3(forward * zm.f32x4s(1.0) - right * zm.f32x4s(tan_half_fov_x));
-            planes[0] = .initPosNormal(position, zm.cross3(up, left_dir));
-        }
-
-        // Right Plane
-        {
-            const right_dir = zm.normalize3(forward * zm.f32x4s(1.0) + right * zm.f32x4s(tan_half_fov_x));
-            planes[1] = .initPosNormal(position, zm.cross3(right_dir, up));
-        }
-
-        // Top Plane
-        {
-            const top_dir = zm.normalize3(forward * zm.f32x4s(1.0) + up * zm.f32x4s(tan_half_fov_y));
-            planes[2] = .initPosNormal(position, zm.cross3(right, top_dir));
-        }
-
-        // Bottom Plane
-        {
-            const bottom_dir = zm.normalize3(forward * zm.f32x4s(1.0) - up * zm.f32x4s(tan_half_fov_y));
-            planes[3] = .initPosNormal(position, zm.cross3(bottom_dir, right));
-        }
-
-        planes[4] = .initPosNormal(position + (forward * zm.f32x4s(self.near)), forward);
-
-        if (self.far) |zfar| {
-            planes[plane_count] = .initPosNormal(position + (forward * zm.f32x4s(zfar)), -forward);
-            plane_count += 1;
-        }
-
-        return .{
-            .plane_count = plane_count,
-            .planes = planes,
-        };
     }
 };
 
@@ -125,11 +74,9 @@ pub const Camera = union(enum) {
             .orthographic => |orthographic| orthographic.getPerspectiveMatrix(aspect_ratio),
         };
     }
+};
 
-    pub fn getFrustum(self: Self, aspect_ratio: f32, transform: Transform) culling.Frustum {
-        return switch (self) {
-            .perspective => |perspective| perspective.getFrustum(aspect_ratio, transform),
-            .orthographic => unreachable,
-        };
-    }
+pub const SceneCamera = struct {
+    settings: Camera = .Default,
+    transform: Transform = .Identity,
 };

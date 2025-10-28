@@ -11,9 +11,6 @@ ReadWriteStorageBufferArray(uint, indirect_draw_count);
 ReadWriteStorageBufferArray(VkDrawIndirectCommand, indirect_command_buffers);
 ReadWriteStorageBufferArray(IndirectDrawInfo, indirect_info_buffers);
 
-ReadWriteStorageBufferArray(Frustum, frustum_buffers);
-
-
 struct PushConstants
 {
     uint32_t scene_instance_binding;
@@ -25,7 +22,7 @@ struct PushConstants
     uint pad0;
     uint pad1;
     uint culling;
-    Frustum frustum;
+    CullData cull_data;
 };
 
 [[vk::push_constant]]
@@ -51,11 +48,10 @@ void main(uint3 id : SV_DispatchThreadID) {
 
             if (push_constants.culling != 0) {
                 const float4 sphere_pos_radius = transformSphere(instance.model_matrix, prim_info.sphere_pos_radius);
-                if (!calcVisable(push_constants.frustum, sphere_pos_radius)) {
+                if (!isSphereVisable(push_constants.cull_data, sphere_pos_radius)) {
                     return;
                 }
             }
-
 
             uint32_t draw_index;
             InterlockedAdd(indirect_draw_count[push_constants.indirect_draw_count_binding][0], 1, draw_index);

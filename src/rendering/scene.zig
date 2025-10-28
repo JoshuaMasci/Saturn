@@ -104,7 +104,7 @@ pub fn update(
 
         for (self.instances.items) |instance| {
             const mesh = resources.meshes.map.get(instance.component.mesh) orelse continue;
-            var material_indexes: [8]u32 = undefined;
+            var material_indexes: [8]u32 = std.mem.zeroes([8]u32);
             for (instance.component.materials.constSlice(), 0..) |material, i| {
                 material_indexes[i] = if (resources.material_map.get(material)) |mat| mat.buffer_index orelse 0 else 0;
             }
