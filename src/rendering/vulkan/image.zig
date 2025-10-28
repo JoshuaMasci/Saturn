@@ -181,7 +181,6 @@ pub fn hostImageCopy(
         };
 
         const copy_info: vk.CopyMemoryToImageInfo = .{
-            //.flags = .{ .memcpy_bit = true },
             .dst_image = self.handle,
             .dst_image_layout = final_layout,
             .region_count = 1,

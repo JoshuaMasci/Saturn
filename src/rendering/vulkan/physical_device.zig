@@ -137,7 +137,7 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
 
         break :QUE_BLK .{
             // Graphics queue must be support compute and transfer
-            // This should hold for all desktop devices, I vaugly recall mobile devices that this didn't hold for, if so some rendering code will need to be changed to support this
+            // This should hold for all desktop devices, I vaguely recall mobile devices that this didn't hold for, if so some rendering code will need to be changed to support this
             .graphics = findQueueFamliyIndex(queue_properties, .{ .graphics_bit = true, .compute_bit = true, .transfer_bit = true }, .{}),
             .async_compute = findQueueFamliyIndex(queue_properties, .{ .compute_bit = true, .transfer_bit = true }, .{ .graphics_bit = true }),
             .async_transfer = findQueueFamliyIndex(queue_properties, .{ .transfer_bit = true }, .{ .graphics_bit = true, .compute_bit = true }),
@@ -146,8 +146,12 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
 
     const extensions: Extensions = .{
         .mesh_shading = supportsExtension(extensions_properties, "VK_EXT_mesh_shader"),
-        .raytracing = supportsExtension(extensions_properties, "VK_KHR_acceleration_structure") and supportsExtension(extensions_properties, "VK_KHR_ray_query"), //Will not support VK_KHR_ray_tracing_pipeline
-        .host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy"),
+
+        // Will not support VK_KHR_ray_tracing_pipeline
+        .raytracing = supportsExtension(extensions_properties, "VK_KHR_acceleration_structure") and supportsExtension(extensions_properties, "VK_KHR_ray_query"),
+
+        // Only enable all device local memory is host visable
+        .host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy") and memory.direct_buffer_upload,
 
         .amdx_shader_enqueue = supportsExtension(extensions_properties, "VK_AMDX_shader_enqueue"),
     };
