@@ -108,7 +108,7 @@ pub fn createRenderPass(
     camera: SceneCamera,
     render_graph: *rg.RenderGraph,
 ) !void {
-    if (scene.instances.items.len == 0) {
+    if (scene.instance_count == 0) {
         var render_pass = try rg.RenderPass.init(temp_allocator, "Empty Scene Pass");
         try render_pass.addColorAttachment(.{
             .texture = color_target,
@@ -134,7 +134,7 @@ pub fn createRenderPass(
 
             const build_data = try temp_allocator.create(BuildIndirect.Data);
             build_data.* = .{
-                .instance_count = @intCast(scene.instances.items.len),
+                .instance_count = @intCast(scene.instance_count),
                 .pipeline = self.build_indirect_comp_pipeline,
                 .scene_instance_buffer = scene_instance_buffer,
                 .mesh_info_buffer = mesh_info_buffer,
@@ -327,7 +327,6 @@ pub const DrawIndirect = struct {
             .indirect_info_binding = indirect_info_buffer.storage_binding.?,
         };
         command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(PushConstants), &push_data);
-        //command_buffer.drawIndirect(indirect_command_buffer.handle, 0, data.max_draw_count, @sizeOf(vk.DrawIndirectCommand));
         command_buffer.drawIndirectCount(indirect_command_buffer.handle, 0, indirect_draw_count_buffer.handle, 0, data.max_draw_count, @sizeOf(vk.DrawIndirectCommand));
     }
 };

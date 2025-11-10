@@ -1,5 +1,3 @@
-// Main File for Rendering Sandbox
-
 const std = @import("std");
 
 const vk = @import("vulkan");
@@ -39,8 +37,8 @@ pub fn main() !void {
 
         var scene_filepath_opt: ?[]const u8 = undefined;
         scene_filepath_opt = null;
-        //scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
-        scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
+        scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
+        //scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
 
         if (scene_filepath_opt) |scene_filepath| {
             var scene_json: std.json.Parsed(Scene) = undefined;
@@ -455,6 +453,8 @@ const App = struct {
         try self.renderBlankScreen(temp_allocator, @splat(0.0));
 
         while (self.resources.tryLoadSceneAssets(temp_allocator, &new_scene)) |progress| {
+            std.log.info("Progress: {}", .{progress});
+
             if (self.platform_input.should_quit) {
                 new_scene.deinit(self.vulkan_backend);
                 return;

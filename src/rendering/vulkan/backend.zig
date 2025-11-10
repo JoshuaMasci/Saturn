@@ -94,8 +94,9 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     }
 
     const device_index = device_index_opt orelse 0;
+    const p_device = instance.physical_devices[device_index];
 
-    std.log.info("Picking Device {}: {s}", .{ device_index, instance.physical_devices[device_index].info.name });
+    std.log.info("Picking Device {}: {s}", .{ device_index, p_device.info.name });
 
     var device = try allocator.create(Device);
     errdefer allocator.destroy(device);
@@ -103,7 +104,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     device.* = try .init(
         allocator,
         instance.instance,
-        instance.physical_devices[device_index],
+        p_device,
         .{},
         instance.debug_messager != null,
     );
@@ -144,7 +145,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
             .fence_pool = .init(allocator, device, .{}),
             .transient_buffers = .empty,
             .transient_images = .empty,
-            .transfer_queue = try .init(allocator, device, 64 * 1024 * 1024), //256Mb of staging space
+            .transfer_queue = try .init(allocator, device, 256 * 1024 * 1024), //256Mb of staging space
         };
     }
 

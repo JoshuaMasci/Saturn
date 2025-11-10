@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 pub fn build(b: *std.Build) !void {
     const build_sdl3 = b.option(bool, "build-sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
     const no_assets = b.option(bool, "no-assets", "Don't compile asset pipeline") orelse false;
-    const no_render = b.option(bool, "no-render", "Don't compile render sandbox") orelse false;
+    const no_main = b.option(bool, "no-render", "Don't compile main sandbox") orelse false;
     const use_llvm = b.option(bool, "use-llvm", "Compile using llvm") orelse false;
 
     const target = b.standardTargetOptions(.{});
@@ -21,8 +21,8 @@ pub fn build(b: *std.Build) !void {
         );
     }
 
-    if (!no_render) {
-        try buildRender(
+    if (!no_main) {
+        try buildMain(
             b,
             target,
             optimize,
@@ -107,7 +107,7 @@ fn buildAsset(
     run_assets_step.dependOn(&build_game_assets.step);
 }
 
-fn buildRender(
+fn buildMain(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
@@ -117,7 +117,7 @@ fn buildRender(
     },
 ) !void {
     const exe_mod = b.createModule(.{
-        .root_source_file = b.path("src/main_render.zig"),
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });

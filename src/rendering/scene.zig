@@ -9,7 +9,7 @@ const UnifiedGeometryBuffer = @import("unified_geometry_buffer.zig");
 const Backend = @import("vulkan/backend.zig");
 
 pub const MaterialArray = struct {
-    const BufferSize = 8;
+    const BufferSize = 32;
 
     buffer: [BufferSize]AssetRegistry.Handle,
     len: usize,
@@ -64,6 +64,8 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 instances: std.ArrayList(SceneMesh) = .empty,
+
+instance_count: usize = 0,
 instance_buffer: ?Backend.BufferHandle = null,
 
 pub fn init(allocator: std.mem.Allocator) Self {
@@ -84,7 +86,7 @@ pub fn addInstance(self: *Self, mesh: SceneMesh) void {
 }
 
 pub fn getIndirectDrawCount(self: Self) usize {
-    return self.instances.items.len * MaxPrimitives;
+    return self.instance_count * MaxPrimitives;
 }
 
 pub fn update(
@@ -98,31 +100,41 @@ pub fn update(
     }
 
     if (self.instances.items.len != 0) {
-        var gpu_index: u32 = 0;
-        var gpu_instances = try temp_allocator.alloc(GpuInstace, self.instances.items.len);
-        defer temp_allocator.free(gpu_instances);
+        var gpu_instances: std.ArrayList(GpuInstace) = try .initCapacity(temp_allocator, self.instances.items.len);
+        defer gpu_instances.deinit(temp_allocator);
 
         for (self.instances.items) |instance| {
+            const model_matrix = instance.transform.getModelMatrix();
             const mesh = resources.meshes.map.get(instance.component.mesh) orelse continue;
-            var material_indexes: [8]u32 = std.mem.zeroes([8]u32);
-            for (instance.component.materials.constSlice(), 0..) |material, i| {
-                material_indexes[i] = if (resources.material_map.get(material)) |mat| mat.buffer_index orelse 0 else 0;
-            }
+            const material_slice = instance.component.materials.constSlice();
 
-            gpu_instances[gpu_index] = .{
-                .model_matrix = instance.transform.getModelMatrix(),
-                .mesh_index = mesh.index,
-                .primitive_offset = 0,
-                .primitive_count = @intCast(mesh.cpu_primitives.len),
-                .visable = @intFromBool(instance.component.visable),
-                .material_indexes = material_indexes,
-            };
-            gpu_index += 1;
+            var primitive_offset: usize = 0;
+
+            while (primitive_offset < material_slice.len) {
+                var material_indexes: [MaxPrimitives]u32 = std.mem.zeroes([MaxPrimitives]u32);
+                const primitive_count: usize = @min(material_slice.len - primitive_offset, MaxPrimitives);
+
+                for (material_slice[primitive_offset..(primitive_offset + primitive_count)], 0..) |material, i| {
+                    material_indexes[i] = if (resources.material_map.get(material)) |mat| mat.buffer_index orelse 0 else 0;
+                }
+
+                try gpu_instances.append(temp_allocator, .{
+                    .model_matrix = model_matrix,
+                    .mesh_index = mesh.index,
+                    .primitive_offset = @intCast(primitive_offset),
+                    .primitive_count = @intCast(primitive_count),
+                    .visable = @intFromBool(instance.component.visable),
+                    .material_indexes = material_indexes,
+                });
+                primitive_offset += primitive_count;
+            }
         }
+
+        self.instance_count = gpu_instances.items.len;
         self.instance_buffer = backend.createBufferWithData(
             "scene_instance_buffer",
             .{ .storage_buffer_bit = true },
-            std.mem.sliceAsBytes(gpu_instances),
+            std.mem.sliceAsBytes(gpu_instances.items),
         ) catch null;
     }
 }

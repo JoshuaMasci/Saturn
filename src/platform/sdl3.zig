@@ -15,10 +15,6 @@ pub const c = @cImport({
 
 pub fn init(allocator: std.mem.Allocator) !void {
     _ = allocator; // autofix
-    if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
-        return error.sdlInitFailed;
-    }
-
     const compile_version = c.SDL_VERSION;
     std.log.info("compiled against sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(compile_version), c.SDL_VERSIONNUM_MINOR(compile_version), c.SDL_VERSIONNUM_MICRO(compile_version) });
 
@@ -27,6 +23,10 @@ pub fn init(allocator: std.mem.Allocator) !void {
 
     if (c.SDL_GetCurrentVideoDriver()) |driver| {
         std.log.info("SDL3 using {s} backend", .{driver});
+    }
+
+    if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
+        return error.sdlInitFailed;
     }
 }
 
