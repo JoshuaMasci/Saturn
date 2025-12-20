@@ -33,7 +33,7 @@ buffer_transfer_list: std.ArrayList(BufferTransfer) = .empty,
 texture_transfer_list: std.ArrayList(TextureTransfer) = .empty,
 
 pub fn init(allocator: std.mem.Allocator, device: *Device, staging_buffer_size: usize) !Self {
-    const staging_buffer: Buffer = try .init(device, staging_buffer_size, .{ .transfer_src_bit = true }, .gpu_mappable);
+    const staging_buffer: Buffer = try .init(device, staging_buffer_size, .{ .transfer_src_bit = true }, .cpu_only);
     const staging_slice = staging_buffer.allocation.getMappedByteSlice().?;
 
     device.setDebugName(.buffer, staging_buffer.handle, "Transfer Buffer");

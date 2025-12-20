@@ -453,7 +453,7 @@ const App = struct {
         try self.renderBlankScreen(temp_allocator, @splat(0.0));
 
         while (self.resources.tryLoadSceneAssets(temp_allocator, &new_scene)) |progress| {
-            std.log.info("Progress: {}", .{progress});
+            std.log.info("Progress: {d:0.3}%", .{progress * 100.0});
 
             if (self.platform_input.should_quit) {
                 new_scene.deinit(self.vulkan_backend);
