@@ -64,12 +64,16 @@ fn buildAsset(
     const zobj = b.dependency("obj", .{ .target = target, .optimize = optimize });
     exe_mod.addImport("zobj", zobj.module("obj"));
 
-    // zdxc
+    // Hlsl compiler
     const zdxc = b.dependency("zdxc", .{
         .target = target,
         .optimize = optimize,
     });
     exe_mod.addImport("dxc", zdxc.module("dxc"));
+
+    // Glsl compiler
+    exe_mod.linkSystemLibrary("glslang", .{});
+    exe_mod.linkSystemLibrary("glslang-default-resource-limits", .{});
 
     // meshoptimizer
     // TODO: build from source

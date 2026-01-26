@@ -66,7 +66,7 @@ pub fn init(
     );
 
     var opaque_draw_task_mesh_pipeline: ?vk.Pipeline = null;
-    if (device.device.extensions.mesh_shading) {
+    if (device.device.extensions.mesh_shading and false) {
         const draw_indirect_task_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/vulkan/draw_indirect.task.asset"));
         defer device.device.proxy.destroyShaderModule(draw_indirect_task_shader, null);
 

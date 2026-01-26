@@ -19,10 +19,21 @@ const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
 const TransferQueue = @import("transfer_queue.zig");
 
+const Desc = struct {
+    frames_in_flight_count: u8,
+    buffer_count: u16,
+    sampler_count: u16,
+    texture_count: u16,
+    accleration_structure_count: u16 = 0,
+};
+
 const BufferPool = HandlePool(Buffer);
 const ImagePool = HandlePool(Image);
+const SamplerPool = HandlePool(Sampler);
+
 pub const BufferHandle = BufferPool.Handle;
 pub const ImageHandle = ImagePool.Handle;
+pub const SamplerHandle = SamplerPool.Handle;
 
 const SurfaceSwapchain = struct {
     surface: vk.SurfaceKHR,
@@ -69,8 +80,8 @@ linear_sampler: Sampler,
 frame_index: usize = 0,
 frame_data: []PerFrameData,
 
-pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
-    if (frames_in_flight_count == 0) {
+pub fn init(allocator: std.mem.Allocator, desc: Desc) !Self {
+    if (desc.frames_in_flight_count == 0) {
         return error.InvalidFramesInFlightCount;
     }
 
@@ -105,7 +116,11 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
         allocator,
         instance.instance,
         p_device,
-        .{},
+        .{
+            .mesh_shading = p_device.info.extensions.mesh_shading,
+            .raytracing = p_device.info.extensions.raytracing,
+            .host_image_copy = p_device.info.extensions.host_image_copy and p_device.info.memory.direct_buffer_upload,
+        },
         instance.debug_messager != null,
     );
     errdefer device.deinit();
@@ -134,7 +149,7 @@ pub fn init(allocator: std.mem.Allocator, frames_in_flight_count: u8) !Self {
     }, null);
     errdefer device.proxy.destroyPipelineLayout(bindless_layout, null);
 
-    const frame_data = try allocator.alloc(PerFrameData, @intCast(frames_in_flight_count));
+    const frame_data = try allocator.alloc(PerFrameData, @intCast(desc.frames_in_flight_count));
     errdefer allocator.free(frame_data);
 
     for (frame_data) |*data| {
@@ -239,9 +254,11 @@ pub fn releaseWindow(self: *Self, window: Window) void {
     }
 }
 
-pub fn createBuffer(self: *Self, size: usize, usage: vk.BufferUsageFlags) !BufferPool.Handle {
+pub fn createBuffer(self: *Self, name: []const u8, size: usize, usage: vk.BufferUsageFlags) !BufferPool.Handle {
     var buffer: Buffer = try .init(self.device, size, usage, if (self.device.physical_device.info.memory.direct_buffer_upload) .gpu_mappable else .gpu_only);
     errdefer buffer.deinit();
+
+    self.device.setDebugName(.buffer, buffer.handle, name);
 
     if (usage.contains(.{ .uniform_buffer_bit = true })) {
         buffer.uniform_binding = self.bindless_descriptor.uniform_buffer_array.bind(buffer);
@@ -475,7 +492,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
             .persistent => |handle| self.buffers.get(handle).?.interface(),
             .transient => |transient_index| buf: {
                 const transient_desc = render_graph.transient_buffers.items[transient_index];
-                frame_data.transient_buffers.items[transient_index] = try self.createBuffer(transient_desc.size, transient_desc.usage);
+                frame_data.transient_buffers.items[transient_index] = try self.createBuffer("transient_buffer", transient_desc.size, transient_desc.usage);
                 break :buf self.buffers.get(frame_data.transient_buffers.items[transient_index]).?.interface();
             },
         };

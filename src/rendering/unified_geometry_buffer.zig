@@ -86,20 +86,24 @@ pub fn init(
     backend: *Backend,
     buffer_size: usize,
 ) !Self {
-    var geometry_buffer_usage: vk.BufferUsageFlags = .{ .vertex_buffer_bit = true, .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true };
+    var geometry_buffer_usage: vk.BufferUsageFlags = .{
+        .vertex_buffer_bit = true,
+        .index_buffer_bit = true,
+        .storage_buffer_bit = true,
+        .transfer_dst_bit = true,
+        .shader_device_address_bit = true,
+    };
 
     if (backend.device.extensions.raytracing) {
         geometry_buffer_usage.acceleration_structure_storage_bit_khr = true;
     }
 
-    const geometry_buffer = try backend.createBuffer(buffer_size, geometry_buffer_usage);
-    backend.device.setDebugName(.buffer, backend.buffers.get(geometry_buffer).?.handle, "unified_geometry_buffer");
+    const geometry_buffer = try backend.createBuffer("geometry_buffer", buffer_size, geometry_buffer_usage);
 
     const geometry_slice: ?[]u8 = backend.buffers.get(geometry_buffer).?.allocation.getMappedByteSlice();
     const geometry_buffer_binding: u32 = backend.buffers.get(geometry_buffer).?.storage_binding.?.index;
 
-    const mesh_info_buffer = try backend.createBuffer(@sizeOf(GpuMeshEntry) * MaxMeshCount, .{ .storage_buffer_bit = true, .transfer_dst_bit = true });
-    backend.device.setDebugName(.buffer, backend.buffers.get(mesh_info_buffer).?.handle, "mesh_info_buffer");
+    const mesh_info_buffer = try backend.createBuffer("mesh_info_buffer", @sizeOf(GpuMeshEntry) * MaxMeshCount, .{ .storage_buffer_bit = true, .transfer_dst_bit = true });
 
     return .{
         .allocator = allocator,

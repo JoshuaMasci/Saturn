@@ -12,6 +12,7 @@ const Backend = @import("vulkan/backend.zig");
 const GpuImage = @import("vulkan/image.zig");
 const rg = @import("vulkan/render_graph.zig");
 const UnifiedGeometryBuffer = @import("unified_geometry_buffer.zig");
+const MeshPool = @import("mesh_pool.zig");
 
 const Self = @This();
 
@@ -20,6 +21,7 @@ registry: *const AssetRegistry,
 backend: *Backend,
 
 meshes: UnifiedGeometryBuffer,
+meshes2: MeshPool,
 
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
     image_handle: Backend.ImageHandle,
@@ -39,11 +41,13 @@ pub fn init(
     backend: *Backend,
 ) !Self {
     const BytesPerGibibyte: usize = 1024 * 1024 * 1024;
+    const GeometryAllocationSize = BytesPerGibibyte * 1;
     return .{
         .allocator = allocator,
         .registry = registry,
         .backend = backend,
-        .meshes = try .init(allocator, registry, backend, BytesPerGibibyte * 1),
+        .meshes = try .init(allocator, registry, backend, GeometryAllocationSize),
+        .meshes2 = try .init(allocator, registry, backend, .fromTotalBytes(GeometryAllocationSize)),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
     };
@@ -51,6 +55,7 @@ pub fn init(
 
 pub fn deinit(self: *Self) void {
     self.meshes.deinit();
+    self.meshes2.deinit();
 
     if (self.material_buffer) |buffer| {
         self.backend.destroyBuffer(buffer);
@@ -131,6 +136,10 @@ pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: Asset
             self.meshes.addMesh(handle, &mesh) catch |err| {
                 std.log.err("Failed to upload mesh {}", .{err});
                 return false;
+            };
+
+            self.meshes2.addMesh(handle, &mesh) catch |err| {
+                std.log.err("Failed to upload mesh2 {}", .{err});
             };
         } else |err| {
             std.log.err("Failed to load mesh {}", .{err});

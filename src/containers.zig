@@ -156,7 +156,7 @@ pub fn HandlePool(comptime T: type) type {
                     return null;
                 }
 
-                const result = .{
+                const result: Entry = .{
                     .handle = .{ .index = it.index, .revision = list_entry.revision },
                     .value_ptr = &list_entry.value.?,
                 };

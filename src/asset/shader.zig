@@ -5,6 +5,7 @@ const serde = @import("../serde.zig");
 pub const LoadSettings = struct {};
 
 pub const DirectoryMeta = struct {
+    language: Language = .glsl,
     target: Target = .vulkan,
     target_profile: []const u8,
     include_directories: []const []const u8,
@@ -13,6 +14,11 @@ pub const DirectoryMeta = struct {
 pub const Meta = struct {
     target: Target = .vulkan,
     entry: ?[]const u8 = null,
+};
+
+pub const Language = enum(u32) {
+    hlsl,
+    glsl,
 };
 
 pub const Target = enum(u32) {

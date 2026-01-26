@@ -12,7 +12,9 @@ const Camera = @import("rendering/camera.zig").Camera;
 const ImguiRenderer = @import("rendering/imgui_renderer.zig");
 const Resources = @import("rendering/resources.zig");
 const RenderScene = @import("rendering/scene.zig");
+const RenderScene2 = @import("rendering/scene2.zig");
 const SceneRenderer = @import("rendering/scene_renderer.zig");
+const SceneRenderer2 = @import("rendering/scene_renderer2.zig");
 const Backend = @import("rendering/vulkan/backend.zig");
 const Transform = @import("transform.zig");
 const UnifiedGeometryBuffer = @import("rendering/unified_geometry_buffer.zig");
@@ -37,8 +39,8 @@ pub fn main() !void {
 
         var scene_filepath_opt: ?[]const u8 = undefined;
         scene_filepath_opt = null;
-        scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
-        //scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
+        //scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
+        scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
 
         if (scene_filepath_opt) |scene_filepath| {
             var scene_json: std.json.Parsed(Scene) = undefined;
@@ -73,6 +75,15 @@ pub fn main() !void {
                 std.log.info("Loading scene assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
             }
             try app.loadScene(scene, camera);
+
+            for (scene.instances.items) |instance| {
+                _ = app.scene2.addInstance(.{
+                    .transform = instance.transform,
+                    .visable = instance.component.visable,
+                    .mesh = instance.component.mesh,
+                    .materials = .fromSlice(instance.component.materials.constSlice()),
+                });
+            }
         }
     }
 
@@ -99,9 +110,12 @@ const App = struct {
 
     resources: Resources,
 
+    new_renderer: bool = false,
     scene_renderer: SceneRenderer,
+    scene_renderer2: SceneRenderer2,
     imgui_renderer: ImguiRenderer,
 
+    scene2: RenderScene2,
     scene_info: ?struct {
         scene: RenderScene,
         camera: DebugCamera,
@@ -142,9 +156,14 @@ const App = struct {
         errdefer allocator.destroy(vulkan_backend);
 
         const FRAME_IN_FLIGHT_COUNT = 3;
-        const swapchain_format = .b8g8r8a8_unorm;
+        const swapchain_format: vk.Format = .b8g8r8a8_unorm;
 
-        vulkan_backend.* = try .init(allocator, FRAME_IN_FLIGHT_COUNT);
+        vulkan_backend.* = try .init(allocator, .{
+            .frames_in_flight_count = FRAME_IN_FLIGHT_COUNT,
+            .buffer_count = 1024,
+            .sampler_count = 32,
+            .texture_count = 1024,
+        });
         errdefer vulkan_backend.deinit();
 
         //For best Perf testing, the renderer should not be limited to monitor refresh
@@ -161,6 +180,9 @@ const App = struct {
         var resources: Resources = try .init(allocator, asset_registry, vulkan_backend);
         errdefer resources.deinit();
 
+        var scene2: RenderScene2 = .init(allocator, vulkan_backend);
+        errdefer scene2.deinit();
+
         var scene_renderer: SceneRenderer = try .init(
             allocator,
             asset_registry,
@@ -170,6 +192,16 @@ const App = struct {
             vulkan_backend.bindless_layout,
         );
         errdefer scene_renderer.deinit();
+
+        var scene_renderer2: SceneRenderer2 = try .init(
+            allocator,
+            asset_registry,
+            vulkan_backend,
+            swapchain_format,
+            DEPTH_FORMAT,
+            vulkan_backend.bindless_layout,
+        );
+        errdefer scene_renderer2.deinit();
 
         _ = imgui.ImGui_CreateContext(null) orelse return error.ImGuiCreateContextFailure;
         errdefer imgui.ImGui_DestroyContext(null);
@@ -198,7 +230,9 @@ const App = struct {
             .window = window,
             .vulkan_backend = vulkan_backend,
             .resources = resources,
+            .scene2 = scene2,
             .scene_renderer = scene_renderer,
+            .scene_renderer2 = scene_renderer2,
             .imgui_renderer = imgui_renderer,
             .temp_allocator = .init(allocator),
         };
@@ -210,10 +244,12 @@ const App = struct {
         if (self.scene_info) |*info| {
             info.scene.deinit(self.vulkan_backend);
         }
+        self.scene2.deinit();
 
         self.temp_allocator.deinit();
 
         self.scene_renderer.deinit();
+        self.scene_renderer2.deinit();
         self.imgui_renderer.deinit();
         self.resources.deinit();
         self.vulkan_backend.releaseWindow(self.window);
@@ -319,22 +355,40 @@ const App = struct {
 
         if (self.window_visable_flags.debug) {
             if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
-                _ = imgui.ImGui_Checkbox("Enable Gpu Culling", &self.scene_renderer.gpu_culling);
+                _ = imgui.ImGui_Checkbox("Enable New Renderer", &self.new_renderer);
 
-                var is_locked: bool = self.scene_renderer.locked_culling_info != null;
-                if (imgui.ImGui_Checkbox("Lock Culling Camera", &is_locked)) {
-                    if (self.scene_info) |info| {
-                        self.scene_renderer.locked_culling_info = if (is_locked) .{
-                            .settings = info.camera.camera,
-                            .transform = info.camera.transform,
-                        } else null;
-                    } else {
-                        self.scene_renderer.locked_culling_info = null;
+                if (self.new_renderer) {
+                    _ = imgui.ImGui_Checkbox("Enable Gpu Culling", &self.scene_renderer2.gpu_culling);
+
+                    var is_locked: bool = self.scene_renderer2.locked_culling_info != null;
+                    if (imgui.ImGui_Checkbox("Lock Culling Camera", &is_locked)) {
+                        if (self.scene_info) |info| {
+                            self.scene_renderer2.locked_culling_info = if (is_locked) .{
+                                .settings = info.camera.camera,
+                                .transform = info.camera.transform,
+                            } else null;
+                        } else {
+                            self.scene_renderer2.locked_culling_info = null;
+                        }
                     }
-                }
+                } else {
+                    _ = imgui.ImGui_Checkbox("Enable Gpu Culling", &self.scene_renderer.gpu_culling);
 
-                if (self.vulkan_backend.device.extensions.mesh_shading) {
-                    _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
+                    var is_locked: bool = self.scene_renderer.locked_culling_info != null;
+                    if (imgui.ImGui_Checkbox("Lock Culling Camera", &is_locked)) {
+                        if (self.scene_info) |info| {
+                            self.scene_renderer.locked_culling_info = if (is_locked) .{
+                                .settings = info.camera.camera,
+                                .transform = info.camera.transform,
+                            } else null;
+                        } else {
+                            self.scene_renderer.locked_culling_info = null;
+                        }
+                    }
+
+                    if (self.vulkan_backend.device.extensions.mesh_shading) {
+                        _ = imgui.ImGui_Checkbox("Enable Mesh Shading", &self.scene_renderer.mesh_shading);
+                    }
                 }
 
                 imgui.ImGui_End();
@@ -378,24 +432,43 @@ const App = struct {
             const swapchain_texture = try render_graph.acquireSwapchainTexture(self.window);
 
             if (self.scene_info) |info| {
-                const depth_texture = try render_graph.createTransientTexture(.{
-                    .extent = .{ .relative = swapchain_texture },
-                    .format = DEPTH_FORMAT,
-                    .usage = .{ .depth_stencil_attachment_bit = true },
-                });
-
-                try self.scene_renderer.createRenderPass(
-                    temp_allocator,
-                    swapchain_texture,
-                    depth_texture,
-                    &self.resources,
-                    &info.scene,
-                    .{
-                        .settings = info.camera.camera,
-                        .transform = info.camera.transform,
-                    },
-                    &render_graph,
-                );
+                if (self.new_renderer) {
+                    const depth_texture = try render_graph.createTransientTexture(.{
+                        .extent = .{ .relative = swapchain_texture },
+                        .format = DEPTH_FORMAT,
+                        .usage = .{ .depth_stencil_attachment_bit = true },
+                    });
+                    try self.scene_renderer2.createRenderPass(
+                        temp_allocator,
+                        swapchain_texture,
+                        depth_texture,
+                        &self.resources,
+                        &self.scene2,
+                        .{
+                            .settings = info.camera.camera,
+                            .transform = info.camera.transform,
+                        },
+                        &render_graph,
+                    );
+                } else {
+                    const depth_texture = try render_graph.createTransientTexture(.{
+                        .extent = .{ .relative = swapchain_texture },
+                        .format = DEPTH_FORMAT,
+                        .usage = .{ .depth_stencil_attachment_bit = true },
+                    });
+                    try self.scene_renderer.createRenderPass(
+                        temp_allocator,
+                        swapchain_texture,
+                        depth_texture,
+                        &self.resources,
+                        &info.scene,
+                        .{
+                            .settings = info.camera.camera,
+                            .transform = info.camera.transform,
+                        },
+                        &render_graph,
+                    );
+                }
             } else {
                 var render_pass = try Backend.RenderPass.init(temp_allocator, "Screen Clear Pass");
                 try render_pass.addColorAttachment(.{

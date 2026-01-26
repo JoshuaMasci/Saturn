@@ -128,6 +128,7 @@ pub fn init(
 
         .draw_indirect_count = .true,
         //.scalar_block_layout = .true,
+        .buffer_device_address = .true,
     };
 
     var features_13 = vk.PhysicalDeviceVulkan13Features{

@@ -25,6 +25,7 @@ usage: vk.BufferUsageFlags,
 handle: vk.Buffer,
 allocation: GpuAllocator.Allocation,
 
+device_address: ?vk.DeviceAddress = null,
 uniform_binding: ?Binding = null,
 storage_binding: ?Binding = null,
 
@@ -32,9 +33,12 @@ pub fn init(device: *Device, size: usize, usage: vk.BufferUsageFlags, memory_loc
     const handle = try device.proxy.createBuffer(&.{ .size = size, .usage = usage, .sharing_mode = .exclusive }, null);
     errdefer device.proxy.destroyBuffer(handle, null);
 
-    const allocation = try device.gpu_allocator.alloc(device.proxy.getBufferMemoryRequirements(handle), memory_location);
+    const allocation = try device.gpu_allocator.alloc(device.proxy.getBufferMemoryRequirements(handle), memory_location, usage.shader_device_address_bit);
     errdefer device.gpu_allocator.free(allocation);
     try device.proxy.bindBufferMemory(handle, allocation.memory, allocation.offset);
+
+    const device_address: ?u64 =
+        if (usage.shader_device_address_bit) device.proxy.getBufferDeviceAddress(&.{ .buffer = handle }) else null;
 
     return .{
         .device = device,
@@ -42,6 +46,7 @@ pub fn init(device: *Device, size: usize, usage: vk.BufferUsageFlags, memory_loc
         .usage = usage,
         .handle = handle,
         .allocation = allocation,
+        .device_address = device_address,
     };
 }
 

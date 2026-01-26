@@ -78,7 +78,7 @@ pub fn init2D(device: *Device, extent: vk.Extent2D, format: vk.Format, usage: vk
     }, null);
     errdefer device.proxy.destroyImage(handle, null);
 
-    const allocation = try device.gpu_allocator.alloc(device.proxy.getImageMemoryRequirements(handle), memory_location);
+    const allocation = try device.gpu_allocator.alloc(device.proxy.getImageMemoryRequirements(handle), memory_location, false);
     errdefer device.gpu_allocator.free(allocation);
     try device.proxy.bindImageMemory(handle, allocation.memory, allocation.offset);
 
