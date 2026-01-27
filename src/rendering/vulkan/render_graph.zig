@@ -37,6 +37,16 @@ pub const DownloadFn = *const fn (data: ?*anyopaque, src: []u8) void;
 pub const Resources = struct {
     buffers: []const BufferInterface,
     textures: []const ImageInterface,
+
+    pub fn getBuffer(self: @This(), handle: RenderGraphBufferHandle) ?BufferInterface {
+        if (handle.index > self.buffers.len) return null;
+        return self.buffers[handle.index];
+    }
+
+    pub fn getTexture(self: @This(), handle: RenderGraphTextureHandle) ?ImageInterface {
+        if (handle.index > self.textures.len) return null;
+        return self.textures[handle.index];
+    }
 };
 
 pub const CommandBufferBuildFn = *const fn (

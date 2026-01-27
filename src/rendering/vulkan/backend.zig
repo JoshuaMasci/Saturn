@@ -634,6 +634,17 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
     }
 
     for (render_graph.render_passes.items) |render_pass| {
+        if (self.device.debug) {
+            const temp_name: [:0]const u8 = try temp_allocator.dupeZ(u8, render_pass.name);
+            command_buffer.beginDebugUtilsLabelEXT(&.{
+                .p_label_name = temp_name,
+                .color = .{ 1.0, 0.0, 0.0, 1.0 },
+            });
+        }
+        defer if (self.device.debug) {
+            command_buffer.endDebugUtilsLabelEXT();
+        };
+
         var render_extent: ?vk.Extent2D = null;
 
         if (render_pass.raster_pass) |raster_pass| {

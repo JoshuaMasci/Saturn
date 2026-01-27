@@ -81,7 +81,7 @@ pub fn main() !void {
                     .transform = instance.transform,
                     .visable = instance.component.visable,
                     .mesh = instance.component.mesh,
-                    .materials = .fromSlice(instance.component.materials.constSlice()),
+                    .materials = instance.component.materials.constSlice(),
                 });
             }
         }
@@ -358,7 +358,8 @@ const App = struct {
                 _ = imgui.ImGui_Checkbox("Enable New Renderer", &self.new_renderer);
 
                 if (self.new_renderer) {
-                    _ = imgui.ImGui_Checkbox("Enable Gpu Culling", &self.scene_renderer2.gpu_culling);
+                    _ = imgui.ImGui_Checkbox("Indirect", &self.scene_renderer2.indirect);
+                    _ = imgui.ImGui_Checkbox("Enable Culling", &self.scene_renderer2.culling);
 
                     var is_locked: bool = self.scene_renderer2.locked_culling_info != null;
                     if (imgui.ImGui_Checkbox("Lock Culling Camera", &is_locked)) {

@@ -102,6 +102,20 @@ fn GpuBuffer(comptime T: type) type {
 }
 
 const MeshEntry = struct {
+    const Gpu = extern struct {
+        sphere_pos_radius: [4]f32,
+
+        vertex_buffer_offset: u32,
+        index_buffer_offset: u32,
+        primitive_buffer_address: vk.DeviceAddress,
+        meshlet_buffer_address: vk.DeviceAddress,
+
+        meshlet_vertex_buffer_address: vk.DeviceAddress,
+        meshlet_triangle_buffer_address: vk.DeviceAddress,
+        meshlets_loaded: u32,
+        _padding: u32 = 0,
+    };
+
     index: u32,
     sphere_pos_radius: [4]f32,
 
@@ -117,11 +131,11 @@ const MeshEntry = struct {
         meshlet_triangles: GpuBuffer(u8).SubAllocation,
     } = null,
 
-    fn getGpuEntry(self: MeshEntry) GpuMeshEntry {
+    fn getGpuEntry(self: MeshEntry) Gpu {
         return .{
             .sphere_pos_radius = self.sphere_pos_radius,
-            .vertex_buffer_address = self.vertices.device_address,
-            .index_buffer_address = self.indices.device_address,
+            .vertex_buffer_offset = @intCast(self.vertices.offset),
+            .index_buffer_offset = @intCast(self.indices.offset),
             .primitive_buffer_address = self.primitives.device_address,
             .meshlet_buffer_address = if (self.meshlet) |meshlet| meshlet.meshlets.device_address else 0,
             .meshlet_vertex_buffer_address = if (self.meshlet) |meshlet| meshlet.meshlet_vertices.device_address else 0,
@@ -129,20 +143,6 @@ const MeshEntry = struct {
             .meshlets_loaded = @intFromBool(self.meshlet != null),
         };
     }
-};
-
-const GpuMeshEntry = extern struct {
-    sphere_pos_radius: [4]f32,
-
-    vertex_buffer_address: vk.DeviceAddress,
-    index_buffer_address: vk.DeviceAddress,
-    primitive_buffer_address: vk.DeviceAddress,
-    meshlet_buffer_address: vk.DeviceAddress,
-
-    meshlet_vertex_buffer_address: vk.DeviceAddress,
-    meshlet_triangle_buffer_address: vk.DeviceAddress,
-    meshlets_loaded: u32,
-    _padding: u32 = 0,
 };
 
 const MaxMeshCount: usize = 4096;
@@ -248,8 +248,8 @@ pub fn init(
 
     const mesh_info_buffer = try backend.createBuffer(
         "mesh_info_buffer",
-        @sizeOf(GpuMeshEntry) * MaxMeshCount,
-        .{ .storage_buffer_bit = true, .transfer_dst_bit = true },
+        @sizeOf(MeshEntry.Gpu) * MaxMeshCount,
+        .{ .shader_device_address_bit = true, .transfer_dst_bit = true },
     );
     errdefer backend.destroyBuffer(mesh_info_buffer);
 
@@ -309,7 +309,7 @@ pub fn addMesh(self: *Self, handle: AssetRegistry.AssetHandle, mesh: *const Mesh
 
     try self.map.put(handle, entry);
 
-    const entry_offset: usize = index * @sizeOf(GpuMeshEntry);
+    const entry_offset: usize = index * @sizeOf(MeshEntry.Gpu);
     const entry_bytes: []const u8 = std.mem.asBytes(&entry.getGpuEntry());
 
     if (self.backend.getBufferMappedSlice(self.mesh_info_buffer)) |mapped_slice| {
@@ -332,7 +332,7 @@ pub fn canUploadMesh(self: *Self, mesh: *const MeshAsset) bool {
     gpu_mesh_size += mesh.meshlets.len * @sizeOf(MeshAsset.Meshlet);
     gpu_mesh_size += mesh.meshlet_vertices.len * @sizeOf(u32);
     gpu_mesh_size += mesh.meshlet_triangles.len * @sizeOf(u8);
-    gpu_mesh_size += @sizeOf(GpuMeshEntry);
+    gpu_mesh_size += @sizeOf(MeshEntry.Gpu);
 
     const transfer_queue = self.backend.getTransferQueue();
     return transfer_queue.hasSpace(gpu_mesh_size);

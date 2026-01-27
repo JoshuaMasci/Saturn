@@ -13,6 +13,7 @@ pub const Interface = struct {
     handle: vk.Buffer,
     uniform_binding: ?u32,
     storage_binding: ?u32,
+    device_address: ?vk.DeviceAddress,
 };
 
 const Self = @This();
@@ -62,5 +63,6 @@ pub fn interface(self: Self) Interface {
         .handle = self.handle,
         .uniform_binding = if (self.uniform_binding) |binding| binding.index else null,
         .storage_binding = if (self.storage_binding) |binding| binding.index else null,
+        .device_address = self.device_address orelse null,
     };
 }

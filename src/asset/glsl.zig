@@ -168,6 +168,8 @@ pub fn compileGlslToSpirv(
         .free_include_result = freeIncludeCallback,
     };
 
+    const messages = c.GLSLANG_MSG_SPV_RULES_BIT | c.GLSLANG_MSG_VULKAN_RULES_BIT;
+
     const glsl_input: c.glslang_input_t = .{
         .language = c.GLSLANG_SOURCE_GLSL,
         .stage = glsl_shader_stage,
@@ -176,11 +178,14 @@ pub fn compileGlslToSpirv(
         .target_language = c.GLSLANG_TARGET_SPV,
         .target_language_version = c.GLSLANG_TARGET_SPV_1_5,
         .code = shader_code.ptr,
-        .default_version = 100,
-        .default_profile = c.GLSLANG_NO_PROFILE,
+
+        .default_version = 450,
+        .default_profile = c.GLSLANG_CORE_PROFILE,
+
         .force_default_version_and_profile = c.false,
         .forward_compatible = c.false,
-        .messages = c.GLSLANG_MSG_DEFAULT_BIT,
+        .messages = messages,
+
         .resource = c.glslang_default_resource(),
         .callbacks = callbacks,
         .callbacks_ctx = &include_ctx,
@@ -220,9 +225,10 @@ pub fn compileGlslToSpirv(
     if (program == null)
         return error.ProgramCreateFailed;
     defer c.glslang_program_delete(program);
+
     c.glslang_program_add_shader(program, shader);
 
-    if (c.glslang_program_link(program, c.GLSLANG_MSG_SPV_RULES_BIT | c.GLSLANG_MSG_VULKAN_RULES_BIT) == c.false) {
+    if (c.glslang_program_link(program, messages) == c.false) {
         std.log.err("GLSL linking failed: {s}\n{s}\n{s}", .{
             shader_name,
             c.glslang_shader_get_info_log(shader),

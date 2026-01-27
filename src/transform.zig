@@ -55,6 +55,15 @@ pub fn getModelMatrix(self: Self) zm.Mat {
     return zm.mul(scale_matrix, zm.mul(rotation_matrix, translation_matrix));
 }
 
+pub fn getNormalMatrix(self: Self) zm.Mat {
+    const rotation_matrix = zm.matFromQuat(self.rotation);
+    const scale_matrix = zm.scalingV(self.scale);
+    const rotation_scale = zm.mul(scale_matrix, rotation_matrix);
+
+    //Transposing the inverse handles issues with non-uniform scaling
+    return zm.transpose(zm.inverse(rotation_scale));
+}
+
 pub fn getViewMatrix(self: Self) zm.Mat {
     const forward = self.getForward();
     const up = self.getUp();

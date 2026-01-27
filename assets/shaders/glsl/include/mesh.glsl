@@ -31,9 +31,25 @@ layout(std430, buffer_reference) readonly buffer Primitives {
     PrimitiveInfo p[];
 };
 
+//TODO: this
+layout(buffer_reference, std430) readonly buffer Meshlets {
+    uint data[];
+};
+layout(buffer_reference, std430) readonly buffer MeshletVertices {
+    uint data[];
+};
+layout(buffer_reference, std430) readonly buffer MeshletTriangles {
+    uint data[];
+};
+
 struct MeshInfo {
     vec4 sphere_pos_radius;
-    Vertices vertices;
-    Indices indices;
+    uint vertex_offset;
+    uint index_offset;
     Primitives primitives;
+    Meshlets meshlets;
+    MeshletVertices meshlet_vertices;
+    MeshletTriangles meshlet_triangles;
+    uint meshlet_loaded;
+    uint _pad0;
 };
