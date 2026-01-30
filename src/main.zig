@@ -77,7 +77,7 @@ pub fn main() !void {
             try app.loadScene(scene, camera);
 
             for (scene.instances.items) |instance| {
-                _ = app.scene2.addInstance(.{
+                _ = try app.scene2.addInstance(&app.resources, .{
                     .transform = instance.transform,
                     .visable = instance.component.visable,
                     .mesh = instance.component.mesh,
@@ -180,7 +180,7 @@ const App = struct {
         var resources: Resources = try .init(allocator, asset_registry, vulkan_backend);
         errdefer resources.deinit();
 
-        var scene2: RenderScene2 = .init(allocator, vulkan_backend);
+        var scene2: RenderScene2 = try .init(allocator, vulkan_backend);
         errdefer scene2.deinit();
 
         var scene_renderer: SceneRenderer = try .init(

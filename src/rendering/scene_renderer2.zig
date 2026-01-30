@@ -29,8 +29,8 @@ build_indirect_pipeline: vk.Pipeline,
 draw_opaque_indirect_pipeline: vk.Pipeline,
 
 //Debug Values
-indirect: bool = false,
-culling: bool = true,
+indirect: bool = true,
+culling: bool = false,
 locked_culling_info: ?SceneCamera = null,
 
 pub fn init(
@@ -280,7 +280,7 @@ pub const DrawLegacy = struct {
             const vertex_offset: u32 = @intCast(mesh_asset.vertices.offset);
             const index_offset: u32 = @intCast(mesh_asset.indices.offset);
 
-            for (mesh_asset.cpu_primitives, instance.primtives.slice()) |primitive, primtive| {
+            for (mesh_asset.cpu_primitives, instance.primitives.slice()) |primitive, primtive| {
                 const material_entry = data.resources.material_map.get(primtive.material_handle) orelse continue;
                 if (material_entry.material.alpha_mode != .alpha_opaque) continue;
 
@@ -343,58 +343,20 @@ pub const SceneBuffers = struct {
         resources: *const Resources,
         render_graph: *rg.RenderGraph,
     ) !@This() {
-        var instances: std.ArrayList(GpuInstance) = .empty;
-        //defer instances.deinit(temp_allocator);
-
-        var opaque_primitves: std.ArrayList(GpuPrimitiveInstance) = .empty;
-        //defer opaque_primitves.deinit(temp_allocator);
-
-        var iter = scene.instances.iterator();
-        while (iter.next_value()) |instance| {
-            const mesh_asset = resources.meshes2.map.get(instance.mesh) orelse continue;
-
-            const instance_index: u32 = @intCast(instances.items.len);
-
-            try instances.append(temp_allocator, .{
-                .model_matrix = instance.transform.getModelMatrix(),
-                .normal_matrix = instance.transform.getNormalMatrix(),
-                .mesh_index = mesh_asset.index,
-                .visable = @intFromBool(instance.visable),
-            });
-
-            const primtives = instance.primtives.slice();
-            const primitives_count = @min(primtives.len, mesh_asset.cpu_primitives.len);
-
-            for (primtives[0..primitives_count], 0..) |primitve, primitive_index| {
-                const material = resources.material_map.get(primitve.material_handle) orelse continue;
-                const material_index = material.buffer_index orelse continue;
-
-                try opaque_primitves.append(temp_allocator, .{
-                    .instance_index = instance_index,
-                    .primitive_index = @intCast(primitive_index),
-                    .material_instance_index = material_index,
-                });
-            }
-        }
+        _ = temp_allocator; // autofix
+        _ = resources; // autofix
+        const opaque_primitive_count = scene.opaque_primitives_buffer.count();
 
         return .{
-            .instance_buffer = try render_graph.uploadSliceToBuffer(
-                GpuInstance,
-                .{ .transfer_dst_bit = true, .shader_device_address_bit = true },
-                instances.items,
-            ),
+            .instance_buffer = try render_graph.importBuffer(scene.scene_instance_buffer.gpu),
             .indirect_draw_counts_buffer = try render_graph.createTransientBuffer(.{
                 .size = @sizeOf(u32) * 16,
                 .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
             }),
-            .opaque_primitves_count = @intCast(opaque_primitves.items.len),
-            .opaque_primitves_buffer = try render_graph.uploadSliceToBuffer(
-                GpuPrimitiveInstance,
-                .{ .transfer_dst_bit = true, .shader_device_address_bit = true },
-                opaque_primitves.items,
-            ),
+            .opaque_primitves_count = @intCast(opaque_primitive_count),
+            .opaque_primitves_buffer = try render_graph.importBuffer(scene.opaque_primitives_buffer.gpu),
             .opaque_indirect_cmd_info = try render_graph.createTransientBuffer(.{
-                .size = @sizeOf(DrawIndexedIndirectCommandInfo) * opaque_primitves.items.len,
+                .size = @sizeOf(DrawIndexedIndirectCommandInfo) * opaque_primitive_count,
                 .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
             }),
         };
