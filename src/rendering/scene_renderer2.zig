@@ -30,7 +30,7 @@ draw_opaque_indirect_pipeline: vk.Pipeline,
 
 //Debug Values
 indirect: bool = true,
-culling: bool = false,
+culling: bool = true,
 locked_culling_info: ?SceneCamera = null,
 
 pub fn init(
@@ -178,6 +178,13 @@ pub fn createRenderPass(
 
             .scene_buffers = scene_buffers,
         };
+
+        if (self.culling) {
+            build_data.*.culling = .{
+                .camera = self.locked_culling_info orelse camera,
+                .target_texture = color_target,
+            };
+        }
 
         {
             var render_pass = try rg.RenderPass.init(temp_allocator, "Indirect Build Pass");
@@ -390,16 +397,26 @@ pub const DrawIndirect = struct {
         scene_primitives_ptr: vk.DeviceAddress,
 
         indirect_command_infos_ptr: vk.DeviceAddress,
+
+        culling: u32,
+        cull_data: CullData,
     };
 
     fn buildPass(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
         _ = raster_pass_extent; // autofix
         const data: *Data = @ptrCast(@alignCast(build_data.?));
 
+        var cull_data: ?CullData = null;
+        if (data.culling) |culling| {
+            const target_texture = resources.textures[culling.target_texture.index];
+            const target_width: f32 = @floatFromInt(target_texture.extent.width);
+            const target_height: f32 = @floatFromInt(target_texture.extent.height);
+            const aspect_ratio: f32 = target_width / target_height;
+            cull_data = .init(culling.camera, aspect_ratio);
+        }
+
         const mesh_info_buffer = resources.getBuffer(data.mesh_info_buffer).?;
-
         const instance_buffer = resources.getBuffer(data.scene_buffers.instance_buffer).?;
-
         const indirect_draw_counts_buffer = resources.getBuffer(data.scene_buffers.indirect_draw_counts_buffer).?;
 
         command_buffer.bindPipeline(.compute, data.build_pipeline);
@@ -416,6 +433,9 @@ pub const DrawIndirect = struct {
             .scene_primitives_ptr = opaque_primitves_buffer.device_address.?,
 
             .indirect_command_infos_ptr = opaque_indirect_cmd_info.device_address.?,
+
+            .culling = if (data.culling != null) 1 else 0,
+            .cull_data = cull_data orelse undefined,
         };
         command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(BuildPushData), &push_data);
 

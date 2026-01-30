@@ -7,6 +7,7 @@
 #include "include/mesh.glsl"
 #include "include/scene.glsl"
 #include "include/indirect.glsl"
+#include "include/culling.glsl"
 
 layout(std430, buffer_reference) readonly buffer MeshInfoBuffer
 {
@@ -43,6 +44,9 @@ layout(push_constant) uniform PushConstants
     ScenePrimitiveInstanceBuffer scene_primitives_ptr;
 
     IndirectCommandInfosBuffer indirect_command_infos_ptr;
+
+    uint culling;
+    CullData cull_data;
 } push_constants;
 
 void main()
@@ -60,6 +64,12 @@ void main()
     PrimitiveInfo mesh_primitive = mesh.primitives.p[scene_primitive.primitive_index];
 
     //TODO: futher culling
+    if (push_constants.culling != 0) {
+        const vec4 sphere_pos_radius = transformSphere(scene_instance.model_matrix, mesh_primitive.sphere_pos_radius);
+        if (!isSphereVisable(push_constants.cull_data, sphere_pos_radius)) {
+            return;
+        }
+    }
 
     const uint indirect_draw_count_index = push_constants.indirect_draw_count_index;
     uint command_index = atomicAdd(push_constants.indirect_draw_counts_ptr.counts[indirect_draw_count_index], 1);

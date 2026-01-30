@@ -7,11 +7,11 @@ const MaterialAsset = @import("../asset/material.zig");
 const MeshAsset = @import("../asset/mesh.zig");
 const AssetRegistry = @import("../asset/registry.zig");
 const TextureAsset = @import("../asset/texture.zig");
+const Scene = @import("../asset/scene.zig");
 const RenderScene = @import("scene.zig");
 const Backend = @import("vulkan/backend.zig");
 const GpuImage = @import("vulkan/image.zig");
 const rg = @import("vulkan/render_graph.zig");
-const UnifiedGeometryBuffer = @import("unified_geometry_buffer.zig");
 const MeshPool = @import("mesh_pool.zig");
 
 const Self = @This();
@@ -20,7 +20,6 @@ allocator: std.mem.Allocator,
 registry: *const AssetRegistry,
 backend: *Backend,
 
-meshes: UnifiedGeometryBuffer,
 meshes2: MeshPool,
 
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
@@ -46,7 +45,6 @@ pub fn init(
         .allocator = allocator,
         .registry = registry,
         .backend = backend,
-        .meshes = try .init(allocator, registry, backend, GeometryAllocationSize),
         .meshes2 = try .init(allocator, registry, backend, .fromTotalBytes(GeometryAllocationSize)),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
@@ -54,7 +52,6 @@ pub fn init(
 }
 
 pub fn deinit(self: *Self) void {
-    self.meshes.deinit();
     self.meshes2.deinit();
 
     if (self.material_buffer) |buffer| {
@@ -116,11 +113,37 @@ pub fn tryLoadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene:
     return null;
 }
 
+pub fn tryLoadSceneAssets2(self: *Self, temp_allocator: std.mem.Allocator, scene: *const Scene) ?f32 {
+    // Used a warmed arean allocator, but resets it between loads
+    // Yes this is inception but with arena allocators
+    var arena_allocator = std.heap.ArenaAllocator.init(temp_allocator);
+    defer arena_allocator.deinit();
+
+    const instance_count: f32 = @floatFromInt(scene.nodes.len);
+
+    for (scene.nodes, 0..) |node, i| {
+        const progress: f32 = @as(f32, @floatFromInt(i)) / instance_count;
+
+        if (node.mesh) |mesh| {
+            if (!self.tryLoadMesh(arena_allocator.allocator(), mesh.mesh)) return progress;
+            _ = arena_allocator.reset(.retain_capacity);
+
+            for (mesh.materials) |material| {
+                if (!self.tryLoadMaterial(arena_allocator.allocator(), material)) return progress;
+                _ = arena_allocator.reset(.retain_capacity);
+            }
+        }
+    }
+
+    self.updateBuffers(arena_allocator.allocator()) catch |err| std.log.err("Failed to update resource buffers: {}", .{err});
+    return null;
+}
+
 /// Returns true when loaded
 pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) bool {
     const load_meshlets = self.backend.device.extensions.mesh_shading;
 
-    if (!self.meshes.map.contains(handle)) {
+    if (!self.meshes2.map.contains(handle)) {
         if (self.registry.loadAsset(
             MeshAsset,
             temp_allocator,
@@ -129,17 +152,13 @@ pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: Asset
         )) |mesh| {
             defer mesh.deinit(temp_allocator);
 
-            if (!self.meshes.canUploadMesh(&mesh)) {
+            if (!self.meshes2.canUploadMesh(&mesh)) {
                 return false;
             }
 
-            self.meshes.addMesh(handle, &mesh) catch |err| {
-                std.log.err("Failed to upload mesh {}", .{err});
-                return false;
-            };
-
             self.meshes2.addMesh(handle, &mesh) catch |err| {
                 std.log.err("Failed to upload mesh2 {}", .{err});
+                return false;
             };
         } else |err| {
             std.log.err("Failed to load mesh {}", .{err});
