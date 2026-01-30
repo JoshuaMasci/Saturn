@@ -3,7 +3,7 @@ const std = @import("std");
 const AssetHandle = @import("../asset/registry.zig").Handle;
 const Camera = @import("../rendering/camera.zig").Camera;
 const Resources = @import("../rendering/resources.zig");
-const RenderScene = @import("../rendering/scene2.zig");
+const RenderScene = @import("../rendering/scene.zig");
 const Transform = @import("../transform.zig");
 
 const Self = @This();

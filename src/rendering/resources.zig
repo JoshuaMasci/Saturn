@@ -8,7 +8,6 @@ const MeshAsset = @import("../asset/mesh.zig");
 const AssetRegistry = @import("../asset/registry.zig");
 const TextureAsset = @import("../asset/texture.zig");
 const Scene = @import("../asset/scene.zig");
-const RenderScene = @import("scene.zig");
 const Backend = @import("vulkan/backend.zig");
 const GpuImage = @import("vulkan/image.zig");
 const rg = @import("vulkan/render_graph.zig");
@@ -20,7 +19,7 @@ allocator: std.mem.Allocator,
 registry: *const AssetRegistry,
 backend: *Backend,
 
-meshes2: MeshPool,
+meshes: MeshPool,
 
 texture_map: std.AutoArrayHashMap(AssetRegistry.Handle, struct {
     image_handle: Backend.ImageHandle,
@@ -45,14 +44,14 @@ pub fn init(
         .allocator = allocator,
         .registry = registry,
         .backend = backend,
-        .meshes2 = try .init(allocator, registry, backend, .fromTotalBytes(GeometryAllocationSize)),
+        .meshes = try .init(allocator, registry, backend, .fromTotalBytes(GeometryAllocationSize)),
         .texture_map = .init(allocator),
         .material_map = .init(allocator),
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.meshes2.deinit();
+    self.meshes.deinit();
 
     if (self.material_buffer) |buffer| {
         self.backend.destroyBuffer(buffer);
@@ -89,30 +88,6 @@ pub fn updateBuffers(self: *Self, temp_allocator: std.mem.Allocator) !void {
 
 /// Loads the scene till the transfer queue is full
 /// Returns null if it completes loading, otherwise return a rough percentage loaded
-pub fn tryLoadSceneAssets(self: *Self, temp_allocator: std.mem.Allocator, scene: *const RenderScene) ?f32 {
-    // Used a warmed arean allocator, but resets it between loads
-    // Yes this is inception but with arena allocators
-    var arena_allocator = std.heap.ArenaAllocator.init(temp_allocator);
-    defer arena_allocator.deinit();
-
-    const instance_count: f32 = @floatFromInt(scene.instances.items.len);
-
-    for (scene.instances.items, 0..) |instance, i| {
-        const progress: f32 = @as(f32, @floatFromInt(i)) / instance_count;
-
-        if (!self.tryLoadMesh(arena_allocator.allocator(), instance.component.mesh)) return progress;
-        _ = arena_allocator.reset(.retain_capacity);
-
-        for (instance.component.materials.constSlice()) |material| {
-            if (!self.tryLoadMaterial(arena_allocator.allocator(), material)) return progress;
-            _ = arena_allocator.reset(.retain_capacity);
-        }
-    }
-
-    self.updateBuffers(arena_allocator.allocator()) catch |err| std.log.err("Failed to update resource buffers: {}", .{err});
-    return null;
-}
-
 pub fn tryLoadSceneAssets2(self: *Self, temp_allocator: std.mem.Allocator, scene: *const Scene) ?f32 {
     // Used a warmed arean allocator, but resets it between loads
     // Yes this is inception but with arena allocators
@@ -143,7 +118,7 @@ pub fn tryLoadSceneAssets2(self: *Self, temp_allocator: std.mem.Allocator, scene
 pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: AssetRegistry.Handle) bool {
     const load_meshlets = self.backend.device.extensions.mesh_shading;
 
-    if (!self.meshes2.map.contains(handle)) {
+    if (!self.meshes.map.contains(handle)) {
         if (self.registry.loadAsset(
             MeshAsset,
             temp_allocator,
@@ -152,11 +127,11 @@ pub fn tryLoadMesh(self: *Self, temp_allocator: std.mem.Allocator, handle: Asset
         )) |mesh| {
             defer mesh.deinit(temp_allocator);
 
-            if (!self.meshes2.canUploadMesh(&mesh)) {
+            if (!self.meshes.canUploadMesh(&mesh)) {
                 return false;
             }
 
-            self.meshes2.addMesh(handle, &mesh) catch |err| {
+            self.meshes.addMesh(handle, &mesh) catch |err| {
                 std.log.err("Failed to upload mesh2 {}", .{err});
                 return false;
             };

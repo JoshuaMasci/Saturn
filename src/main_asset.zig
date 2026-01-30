@@ -5,10 +5,10 @@ const Progress = std.Progress; //TODO: use this to animate progress like the com
 
 const Gltf = @import("asset/gltf.zig");
 const AssetType = @import("asset/header.zig").AssetType;
-const hlsl = @import("asset/hlsl.zig");
 const glsl = @import("asset/glsl.zig");
 const io = @import("asset/io.zig");
 const Material = @import("asset/material.zig");
+const Shader = @import("asset/shader.zig");
 const obj = @import("asset/obj.zig");
 const stbi = @import("asset/stbi.zig");
 
@@ -238,7 +238,7 @@ fn processMaterial(allocator: std.mem.Allocator, meta_file_path: []const u8) ?[]
 }
 
 fn processShaderDir(allocator: std.mem.Allocator, meta_file_path: []const u8) !void {
-    const meta_data = try loadZonFile(hlsl.DirectoryMeta, allocator, input_dir, meta_file_path, .{ .ignore_unknown_fields = true });
+    const meta_data = try loadZonFile(Shader.DirectoryMeta, allocator, input_dir, meta_file_path, .{ .ignore_unknown_fields = true });
     defer std.zon.parse.free(allocator, meta_data);
 
     const shader_dir_path = std.fs.path.dirname(meta_file_path) orelse return error.failedToGetDirName;
@@ -250,60 +250,12 @@ fn processShaderDir(allocator: std.mem.Allocator, meta_file_path: []const u8) !v
     defer shader_out_dir.close();
 
     switch (meta_data.language) {
-        //.hlsl => return processHlslShaderDir(allocator, meta_data, shader_dir, shader_out_dir),
         .glsl => return processGlslShaderDir(allocator, meta_data, shader_dir, shader_out_dir),
         else => {},
     }
 }
 
-fn processHlslShaderDir(allocator: std.mem.Allocator, meta_data: hlsl.DirectoryMeta, shader_dir: std.fs.Dir, shader_out_dir: std.fs.Dir) !void {
-    const compiler = try hlsl.Compiler.init(allocator, shader_dir, meta_data);
-    defer compiler.deinit();
-
-    var local_error_count: usize = 0;
-
-    var walker = try shader_dir.walk(global_allocator);
-    defer walker.deinit();
-    while (try walker.next()) |entry| {
-        if (entry.kind == .file) {
-            const shader_ext = std.fs.path.extension(entry.path);
-            if (hlsl.getShaderStage(shader_ext)) |stage| {
-                const shader_code = shader_dir.readFileAllocOptions(allocator, entry.path, std.math.maxInt(usize), null, .@"4", 0) catch |err| {
-                    std.log.err("Failed to read shader {s}: {}", .{ entry.path, err });
-                    local_error_count += 1;
-                    continue;
-                };
-                defer allocator.free(shader_code);
-
-                const shader = compiler.compile(allocator, entry.basename, shader_code, stage) catch |err| {
-                    std.log.err("Failed to compile shader {s}: {}", .{ entry.path, err });
-                    local_error_count += 1;
-                    continue;
-                };
-                defer shader.deinit(allocator);
-
-                const new_path = std.fmt.allocPrint(allocator, "{s}.asset", .{entry.path}) catch |err| {
-                    std.log.err("Failed to allocate string: {}", .{err});
-                    local_error_count += 1;
-                    continue;
-                };
-                defer allocator.free(new_path);
-
-                io.writeFile(shader_out_dir, .shader, new_path, shader) catch |err| {
-                    std.log.err("Failed to write asset file: {}", .{err});
-                    local_error_count += 1;
-                    continue;
-                };
-            }
-        }
-    }
-
-    if (local_error_count != 0) {
-        return error.FailedToCompileShader;
-    }
-}
-
-fn processGlslShaderDir(allocator: std.mem.Allocator, meta_data: hlsl.DirectoryMeta, shader_dir: std.fs.Dir, shader_out_dir: std.fs.Dir) !void {
+fn processGlslShaderDir(allocator: std.mem.Allocator, meta_data: Shader.DirectoryMeta, shader_dir: std.fs.Dir, shader_out_dir: std.fs.Dir) !void {
     _ = meta_data; // autofix
     var local_error_count: usize = 0;
 
@@ -312,7 +264,7 @@ fn processGlslShaderDir(allocator: std.mem.Allocator, meta_data: hlsl.DirectoryM
     while (try walker.next()) |entry| {
         if (entry.kind == .file) {
             const shader_ext = std.fs.path.extension(entry.path);
-            if (hlsl.getShaderStage(shader_ext)) |stage| {
+            if (Shader.Stage.getShaderStage(shader_ext)) |stage| {
                 const shader_code = shader_dir.readFileAllocOptions(allocator, entry.path, std.math.maxInt(usize), null, .@"4", 0) catch |err| {
                     std.log.err("Failed to read shader {s}: {}", .{ entry.path, err });
                     local_error_count += 1;

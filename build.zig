@@ -46,6 +46,8 @@ fn buildAsset(
         .root_source_file = b.path("src/main_asset.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
+        .link_libcpp = true,
     });
 
     // zmath
@@ -63,13 +65,6 @@ fn buildAsset(
     // zobj
     const zobj = b.dependency("obj", .{ .target = target, .optimize = optimize });
     exe_mod.addImport("zobj", zobj.module("obj"));
-
-    // Hlsl compiler
-    const zdxc = b.dependency("zdxc", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe_mod.addImport("dxc", zdxc.module("dxc"));
 
     // Glsl compiler
     exe_mod.linkSystemLibrary("glslang", .{});

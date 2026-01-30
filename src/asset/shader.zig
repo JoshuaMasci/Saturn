@@ -32,14 +32,20 @@ pub const Stage = enum(u32) {
     task,
     mesh,
 
-    pub fn getProfileString(self: Stage) []const u8 {
-        return switch (self) {
-            .vertex => "vs",
-            .fragment => "ps",
-            .compute => "cs",
-            .task => "as",
-            .mesh => "ms",
-        };
+    pub fn getShaderStage(ext: []const u8) ?Stage {
+        if (std.mem.eql(u8, ext, ".vert")) {
+            return .vertex;
+        } else if (std.mem.eql(u8, ext, ".frag")) {
+            return .fragment;
+        } else if (std.mem.eql(u8, ext, ".comp")) {
+            return .compute;
+        } else if (std.mem.eql(u8, ext, ".task")) {
+            return .task;
+        } else if (std.mem.eql(u8, ext, ".mesh")) {
+            return .mesh;
+        } else {
+            return null;
+        }
     }
 };
 

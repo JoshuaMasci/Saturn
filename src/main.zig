@@ -12,12 +12,9 @@ const Camera = @import("rendering/camera.zig").Camera;
 const ImguiRenderer = @import("rendering/imgui_renderer.zig");
 const Resources = @import("rendering/resources.zig");
 const RenderScene = @import("rendering/scene.zig");
-const RenderScene2 = @import("rendering/scene2.zig");
 const SceneRenderer = @import("rendering/scene_renderer.zig");
-const SceneRenderer2 = @import("rendering/scene_renderer2.zig");
 const Backend = @import("rendering/vulkan/backend.zig");
 const Transform = @import("transform.zig");
-const UnifiedGeometryBuffer = @import("rendering/unified_geometry_buffer.zig");
 
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
@@ -68,7 +65,7 @@ pub fn main() !void {
             }
 
             try app.loadJsonSceneResources(&scene_json.value);
-            try scene_json.value.loadScene(&app.resources, &app.scene2, .{});
+            try scene_json.value.loadScene(&app.resources, &app.scene, .{});
             app.camera = camera;
         }
     }
@@ -96,10 +93,10 @@ const App = struct {
 
     resources: Resources,
 
-    scene_renderer2: SceneRenderer2,
+    scene_renderer: SceneRenderer,
     imgui_renderer: ImguiRenderer,
 
-    scene2: RenderScene2,
+    scene: RenderScene,
     camera: DebugCamera = .{},
 
     temp_allocator: std.heap.ArenaAllocator,
@@ -161,10 +158,10 @@ const App = struct {
         var resources: Resources = try .init(allocator, asset_registry, vulkan_backend);
         errdefer resources.deinit();
 
-        var scene2: RenderScene2 = try .init(allocator, vulkan_backend);
-        errdefer scene2.deinit();
+        var scene: RenderScene = try .init(allocator, vulkan_backend);
+        errdefer scene.deinit();
 
-        var scene_renderer2: SceneRenderer2 = try .init(
+        var scene_renderer: SceneRenderer = try .init(
             allocator,
             asset_registry,
             vulkan_backend,
@@ -172,7 +169,7 @@ const App = struct {
             DEPTH_FORMAT,
             vulkan_backend.bindless_layout,
         );
-        errdefer scene_renderer2.deinit();
+        errdefer scene_renderer.deinit();
 
         _ = imgui.ImGui_CreateContext(null) orelse return error.ImGuiCreateContextFailure;
         errdefer imgui.ImGui_DestroyContext(null);
@@ -201,8 +198,8 @@ const App = struct {
             .window = window,
             .vulkan_backend = vulkan_backend,
             .resources = resources,
-            .scene2 = scene2,
-            .scene_renderer2 = scene_renderer2,
+            .scene = scene,
+            .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
             .temp_allocator = .init(allocator),
         };
@@ -211,11 +208,11 @@ const App = struct {
     pub fn deinit(self: *Self) void {
         self.vulkan_backend.waitIdle();
 
-        self.scene2.deinit();
+        self.scene.deinit();
 
         self.temp_allocator.deinit();
 
-        self.scene_renderer2.deinit();
+        self.scene_renderer.deinit();
         self.imgui_renderer.deinit();
         self.resources.deinit();
         self.vulkan_backend.releaseWindow(self.window);
@@ -319,12 +316,12 @@ const App = struct {
 
         if (self.window_visable_flags.debug) {
             if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
-                _ = imgui.ImGui_Checkbox("Indirect", &self.scene_renderer2.indirect);
-                _ = imgui.ImGui_Checkbox("Enable Culling", &self.scene_renderer2.culling);
+                _ = imgui.ImGui_Checkbox("Indirect", &self.scene_renderer.indirect);
+                _ = imgui.ImGui_Checkbox("Enable Culling", &self.scene_renderer.culling);
 
-                var is_locked: bool = self.scene_renderer2.locked_culling_info != null;
+                var is_locked: bool = self.scene_renderer.locked_culling_info != null;
                 if (imgui.ImGui_Checkbox("Lock Culling Camera", &is_locked)) {
-                    self.scene_renderer2.locked_culling_info = if (is_locked) .{
+                    self.scene_renderer.locked_culling_info = if (is_locked) .{
                         .settings = self.camera.camera,
                         .transform = self.camera.transform,
                     } else null;
@@ -375,12 +372,12 @@ const App = struct {
                 .format = DEPTH_FORMAT,
                 .usage = .{ .depth_stencil_attachment_bit = true },
             });
-            try self.scene_renderer2.createRenderPass(
+            try self.scene_renderer.createRenderPass(
                 temp_allocator,
                 swapchain_texture,
                 depth_texture,
                 &self.resources,
-                &self.scene2,
+                &self.scene,
                 .{
                     .settings = self.camera.camera,
                     .transform = self.camera.transform,
@@ -420,44 +417,6 @@ const App = struct {
         }
 
         try self.vulkan_backend.render(temp_allocator, render_graph);
-    }
-
-    pub fn loadScene(self: *Self, scene: RenderScene, camera: DebugCamera) !void {
-        if (self.scene_info) |*old| {
-            old.scene.deinit(self.vulkan_backend);
-        }
-
-        var new_scene = scene;
-
-        _ = self.temp_allocator.reset(.retain_capacity);
-        const temp_allocator = self.temp_allocator.allocator();
-        try self.renderBlankScreen(temp_allocator, @splat(0.0));
-
-        while (self.resources.tryLoadSceneAssets(temp_allocator, &new_scene)) |progress| {
-            std.log.info("Progress: {d:0.3}%", .{progress * 100.0});
-
-            if (self.platform_input.should_quit) {
-                new_scene.deinit(self.vulkan_backend);
-                return;
-            }
-
-            //TODO: simple "progress bar"
-            const start_color: zm.Vec = .{ 0.75, 0.0, 0.0, 1.0 };
-            const end_color: zm.Vec = .{ 0.0, 0.0, 0.75, 1.0 };
-            const progress_color = zm.lerp(start_color, end_color, progress);
-
-            _ = self.temp_allocator.reset(.retain_capacity);
-            try self.renderBlankScreen(temp_allocator, progress_color);
-        }
-
-        try new_scene.update(self.allocator, self.vulkan_backend, &self.resources);
-        self.scene_info = .{
-            .scene = new_scene,
-            .camera = camera,
-        };
-
-        // Don't need to keep the memory costs of loads around after this
-        _ = self.temp_allocator.reset(.free_all);
     }
 
     fn loadJsonSceneResources(self: *Self, scene: *const Scene) !void {

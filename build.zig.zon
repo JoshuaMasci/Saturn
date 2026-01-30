@@ -37,11 +37,6 @@
         },
 
         //Assets
-        .zdxc = .{
-            .url = "git+https://github.com/JoshuaMasci/zdxc.git#7d8ab0be5503ece5b3d2c5cd308ac2da6a05e187",
-            .hash = "zdxc-0.1.0-wvzYRVRJAADHNQ6oj7oD4ERRQL_vVaDrBqyqzxn5OCy0",
-            .optional = true,
-        },
         .zgltf = .{
             .url = "git+https://github.com/kooparse/zgltf#34fba4f48fac331b30316b4ace9b5be7b819d3a9",
             .hash = "zgltf-0.1.0-sX6QAlESAgDC3JQJwE68MnU2xMLyNPSN60FT7KLjqUWt",
