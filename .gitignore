@@ -8,6 +8,7 @@ vk.json
 .idea/
 
 game-assets/
+assets/game/
 
 AppDir/
 *.AppImage

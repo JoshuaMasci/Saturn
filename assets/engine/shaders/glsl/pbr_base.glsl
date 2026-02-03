@@ -1,6 +1,3 @@
-#version 450
-#extension GL_EXT_nonuniform_qualifier : enable
-
 struct Material
 {
     int alpha_mode;
@@ -24,14 +21,6 @@ layout(set = 0, binding = 1) readonly buffer MaterialBuffer
 } materialBuffer[];
 
 layout(set = 0, binding = 2) uniform sampler2D BindlessTextures[];
-
-layout(push_constant) uniform PushConstants
-{
-    mat4 view_projection_matrix;
-    mat4 model_matrix;
-    uint material_binding;
-    uint material_index;
-} push_constants;
 
 
 layout(location = 0) in vec2 frag_uv0;

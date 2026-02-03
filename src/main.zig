@@ -40,8 +40,8 @@ pub fn main() !void {
 
         var scene_filepath_opt: ?[]const u8 = undefined;
         scene_filepath_opt = null;
-        //scene_filepath_opt = "zig-out/game-assets/Sponza/NewSponza_Main_glTF_002/scene.json";
-        scene_filepath_opt = "zig-out/game-assets/Bistro/scene.json";
+        //scene_filepath_opt = "zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json";
+        scene_filepath_opt = "zig-out/assets/game/Bistro/scene.json";
 
         if (scene_filepath_opt) |scene_filepath| {
             var scene_json: std.json.Parsed(Scene) = undefined;
@@ -118,8 +118,8 @@ const App = struct {
         errdefer allocator.destroy(asset_registry);
 
         asset_registry.* = .init(allocator);
-        try asset_registry.addRepository("engine", "zig-out/assets");
-        try asset_registry.addRepository("game", "zig-out/game-assets");
+        try asset_registry.addRepository("engine", "zig-out/assets/engine");
+        try asset_registry.addRepository("game", "zig-out/assets/game");
         errdefer asset_registry.deinit();
 
         try sdl3.init(allocator);

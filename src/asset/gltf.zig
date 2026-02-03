@@ -160,9 +160,9 @@ pub fn loadMaterial(self: Self, allocator: std.mem.Allocator, gltf_index: usize)
     const gltf_material = self.gltf_file.data.materials[gltf_index];
 
     const alpha_mode: Material.AlphaMode = switch (gltf_material.alpha_mode) {
-        .@"opaque" => .alpha_opaque,
-        .mask => .alpha_mask,
-        .blend => .alpha_blend,
+        .@"opaque" => .@"opaque",
+        .mask => .mask,
+        .blend => .blend,
     };
 
     var base_color_texture: ?AssetHandle = null;

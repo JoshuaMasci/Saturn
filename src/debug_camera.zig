@@ -18,11 +18,19 @@ pub fn update(self: *Self, input: *sdl3.Input, delta_time: f32) void {
     const x_axis_input = getControllerAxis(input, .left_x);
     const y_axis_input = getControllerButtonAxis(input, .right_shoulder, .left_shoulder);
     const z_axis_input = getControllerAxis(input, .left_y);
-    const linear_input: zm.Vec = .{ -x_axis_input, y_axis_input, -z_axis_input, 0 };
+    var linear_input: zm.Vec = .{ -x_axis_input, y_axis_input, -z_axis_input, 0 };
+    const linear_input_len = zm.length3(linear_input);
+    if (linear_input_len[0] < 0.25) {
+        linear_input = @splat(0.0);
+    }
 
     const pitch_input = getControllerAxis(input, .right_y);
     const yaw_input = getControllerAxis(input, .right_x);
-    const angular_input: zm.Vec = .{ pitch_input, -yaw_input, 0, 0 };
+    var angular_input: zm.Vec = .{ pitch_input, -yaw_input, 0, 0 };
+    const angular_input_len = zm.length3(angular_input);
+    if (angular_input_len[0] < 0.25) {
+        angular_input = @splat(0.0);
+    }
 
     self.transform.position += zm.rotate(self.transform.rotation, linear_input * self.linear_speed * zm.f32x4s(delta_time));
 

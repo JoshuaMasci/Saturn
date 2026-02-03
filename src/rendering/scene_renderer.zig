@@ -16,16 +16,21 @@ const Mesh = @import("vulkan/mesh.zig");
 const Pipeline = @import("vulkan/pipeline.zig");
 const rg = @import("vulkan/render_graph.zig");
 const utils = @import("vulkan/utils.zig");
+const Buffer = @import("vulkan/buffer.zig");
+
+const DrawPipelines = struct {
+    legacy: vk.Pipeline = .null_handle,
+    indirect: vk.Pipeline = .null_handle,
+};
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 device: *Backend,
 
-opaque_draw_legacy_pipeline: vk.Pipeline,
-
 build_indirect_pipeline: vk.Pipeline,
-draw_opaque_indirect_pipeline: vk.Pipeline,
+opaque_pipelines: DrawPipelines,
+alpha_mask_pipelines: DrawPipelines,
 
 //Debug Values
 indirect: bool = true,
@@ -40,6 +45,10 @@ pub fn init(
     depth_format: vk.Format,
     pipeline_layout: vk.PipelineLayout,
 ) !Self {
+    const build_indirect_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/build_indirect.comp.asset"));
+    defer device.device.proxy.destroyShaderModule(build_indirect_shader, null);
+    const build_indirect_pipeline = try Pipeline.createComputePipeline(device.device.proxy, pipeline_layout, build_indirect_shader);
+
     const bindings = [_]vk.VertexInputBindingDescription{
         .{
             .binding = 0,
@@ -87,63 +96,105 @@ pub fn init(
         .cull_mode = .{ .back_bit = true },
     };
 
-    const draw_legacy_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/draw_legacy.vert.asset"));
-    defer device.device.proxy.destroyShaderModule(draw_legacy_shader, null);
+    const legacy_vert_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/draw_legacy.vert.asset"));
+    defer device.device.proxy.destroyShaderModule(legacy_vert_shader, null);
 
-    const opaque_legacy_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/opaque_legacy.frag.asset"));
-    defer device.device.proxy.destroyShaderModule(opaque_legacy_shader, null);
+    const indirect_vert_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/draw_indirect.vert.asset"));
+    defer device.device.proxy.destroyShaderModule(indirect_vert_shader, null);
 
-    const opaque_draw_legacy_pipeline = try Pipeline.createGraphicsPipeline(
-        device.device.proxy,
-        pipeline_layout,
-        pipeline_config,
-        .{
-            .bindings = &bindings,
-            .attributes = &attributes,
-        },
-        draw_legacy_shader,
-        opaque_legacy_shader,
-    );
-    errdefer device.device.proxy.destroyPipeline(opaque_draw_legacy_pipeline, null);
+    //Opaque Pipeline
+    var opaque_pipelines: DrawPipelines = .{};
+    errdefer {
+        device.device.proxy.destroyPipeline(opaque_pipelines.legacy, null);
+        device.device.proxy.destroyPipeline(opaque_pipelines.indirect, null);
+    }
+    {
+        const legacy_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/opaque_legacy.frag.asset"));
+        defer device.device.proxy.destroyShaderModule(legacy_frag_shader, null);
 
-    const build_indirect_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/build_indirect.comp.asset"));
-    defer device.device.proxy.destroyShaderModule(build_indirect_shader, null);
-    const build_indirect_pipeline = try Pipeline.createComputePipeline(device.device.proxy, pipeline_layout, build_indirect_shader);
+        const indirect_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/opaque_indirect.frag.asset"));
+        defer device.device.proxy.destroyShaderModule(indirect_frag_shader, null);
 
-    const draw_indirect_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/draw_indirect.vert.asset"));
-    defer device.device.proxy.destroyShaderModule(draw_indirect_shader, null);
+        opaque_pipelines.legacy = try Pipeline.createGraphicsPipeline(
+            device.device.proxy,
+            pipeline_layout,
+            pipeline_config,
+            .{
+                .bindings = &bindings,
+                .attributes = &attributes,
+            },
+            legacy_vert_shader,
+            legacy_frag_shader,
+        );
 
-    const opaque_indirect_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/opaque_indirect.frag.asset"));
-    defer device.device.proxy.destroyShaderModule(opaque_indirect_shader, null);
+        opaque_pipelines.indirect = try Pipeline.createGraphicsPipeline(
+            device.device.proxy,
+            pipeline_layout,
+            pipeline_config,
+            .{
+                .bindings = &bindings,
+                .attributes = &attributes,
+            },
+            indirect_vert_shader,
+            indirect_frag_shader,
+        );
+    }
 
-    const draw_opaque_indirect_pipeline = try Pipeline.createGraphicsPipeline(
-        device.device.proxy,
-        pipeline_layout,
-        pipeline_config,
-        .{
-            .bindings = &bindings,
-            .attributes = &attributes,
-        },
-        draw_indirect_shader,
-        opaque_indirect_shader,
-    );
-    errdefer device.device.proxy.destroyPipeline(draw_opaque_indirect_pipeline, null);
+    var alpha_mask_pipelines: DrawPipelines = .{};
+    errdefer {
+        device.device.proxy.destroyPipeline(alpha_mask_pipelines.legacy, null);
+        device.device.proxy.destroyPipeline(alpha_mask_pipelines.indirect, null);
+    }
+    {
+        const legacy_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/alpha_mask_legacy.frag.asset"));
+        defer device.device.proxy.destroyShaderModule(legacy_frag_shader, null);
+
+        const indirect_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/alpha_mask_indirect.frag.asset"));
+        defer device.device.proxy.destroyShaderModule(indirect_frag_shader, null);
+
+        alpha_mask_pipelines.legacy = try Pipeline.createGraphicsPipeline(
+            device.device.proxy,
+            pipeline_layout,
+            pipeline_config,
+            .{
+                .bindings = &bindings,
+                .attributes = &attributes,
+            },
+            legacy_vert_shader,
+            legacy_frag_shader,
+        );
+
+        alpha_mask_pipelines.indirect = try Pipeline.createGraphicsPipeline(
+            device.device.proxy,
+            pipeline_layout,
+            pipeline_config,
+            .{
+                .bindings = &bindings,
+                .attributes = &attributes,
+            },
+            indirect_vert_shader,
+            indirect_frag_shader,
+        );
+    }
 
     return .{
         .allocator = allocator,
         .device = device,
 
-        .opaque_draw_legacy_pipeline = opaque_draw_legacy_pipeline,
-
         .build_indirect_pipeline = build_indirect_pipeline,
-        .draw_opaque_indirect_pipeline = draw_opaque_indirect_pipeline,
+        .opaque_pipelines = opaque_pipelines,
+        .alpha_mask_pipelines = alpha_mask_pipelines,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.device.device.proxy.destroyPipeline(self.opaque_draw_legacy_pipeline, null);
     self.device.device.proxy.destroyPipeline(self.build_indirect_pipeline, null);
-    self.device.device.proxy.destroyPipeline(self.draw_opaque_indirect_pipeline, null);
+
+    self.device.device.proxy.destroyPipeline(self.opaque_pipelines.legacy, null);
+    self.device.device.proxy.destroyPipeline(self.opaque_pipelines.indirect, null);
+
+    self.device.device.proxy.destroyPipeline(self.alpha_mask_pipelines.legacy, null);
+    self.device.device.proxy.destroyPipeline(self.alpha_mask_pipelines.indirect, null);
 }
 
 pub fn createRenderPass(
@@ -171,7 +222,9 @@ pub fn createRenderPass(
             .material_info_buffer = material_info_buffer,
             .mesh_info_buffer = mesh_info_buffer,
 
-            .opaque_draw_pipeline = self.draw_opaque_indirect_pipeline,
+            .opaque_draw_pipeline = self.opaque_pipelines.indirect,
+            .alpha_mask_draw_pipeline = self.alpha_mask_pipelines.indirect,
+
             .vertex_buffer = try render_graph.importBuffer(resources.meshes.vertex_buffer.buffer),
             .index_buffer = try render_graph.importBuffer(resources.meshes.index_buffer.buffer),
 
@@ -224,7 +277,8 @@ pub fn createRenderPass(
         build_data.* = .{
             .camera = camera,
 
-            .opaque_draw_pipeline = self.opaque_draw_legacy_pipeline,
+            .opaque_pipeline = self.opaque_pipelines.legacy,
+            .alpha_mask_pipeline = self.alpha_mask_pipelines.legacy,
             .material_info_buffer = material_info_buffer,
 
             .resources = resources,
@@ -239,7 +293,8 @@ pub fn createRenderPass(
 pub const DrawLegacy = struct {
     pub const Data = struct {
         camera: SceneCamera,
-        opaque_draw_pipeline: vk.Pipeline,
+        opaque_pipeline: vk.Pipeline,
+        alpha_mask_pipeline: vk.Pipeline,
         material_info_buffer: rg.RenderGraphBufferHandle,
         resources: *const Resources,
         scene: *const RenderScene,
@@ -265,8 +320,6 @@ pub const DrawLegacy = struct {
 
         const material_info_buffer = resources.getBuffer(data.material_info_buffer).?;
 
-        command_buffer.bindPipeline(.graphics, data.opaque_draw_pipeline);
-
         const vertex_buffer = device.buffers.get(data.resources.meshes.vertex_buffer.buffer).?.handle;
         const index_buffer = device.buffers.get(data.resources.meshes.index_buffer.buffer).?.handle;
 
@@ -288,7 +341,12 @@ pub const DrawLegacy = struct {
 
             for (mesh_asset.cpu_primitives, instance.primitives.slice()) |primitive, primtive| {
                 const material_entry = data.resources.material_map.get(primtive.material_handle) orelse continue;
-                if (material_entry.material.alpha_mode != .alpha_opaque) continue;
+
+                switch (material_entry.material.alpha_mode) {
+                    .@"opaque" => command_buffer.bindPipeline(.graphics, data.opaque_pipeline),
+                    .mask => command_buffer.bindPipeline(.graphics, data.alpha_mask_pipeline),
+                    else => continue,
+                }
 
                 const push_data: PushConstants = .{
                     .view_projection_matrix = view_projection_matrix,
@@ -309,7 +367,6 @@ pub const DrawLegacy = struct {
     }
 };
 
-//TODO: cache and update rather than rebuild every frame
 pub const SceneBuffers = struct {
     pub const GpuInstance = extern struct {
         model_matrix: zm.Mat,
@@ -336,12 +393,18 @@ pub const SceneBuffers = struct {
         material_index: u32,
     };
 
+    const RenderSet = struct {
+        indirect_draw_count_index: u32,
+        primitves_count: u32,
+        primitves_buffer: rg.RenderGraphBufferHandle,
+        indirect_cmd_info: rg.RenderGraphBufferHandle,
+    };
+
     instance_buffer: rg.RenderGraphBufferHandle,
     indirect_draw_counts_buffer: rg.RenderGraphBufferHandle,
 
-    opaque_primitves_count: u32,
-    opaque_primitves_buffer: rg.RenderGraphBufferHandle,
-    opaque_indirect_cmd_info: rg.RenderGraphBufferHandle,
+    opaque_set: RenderSet,
+    alpha_mask_set: RenderSet,
 
     pub fn init(
         scene: *const RenderScene,
@@ -352,6 +415,7 @@ pub const SceneBuffers = struct {
         _ = temp_allocator; // autofix
         _ = resources; // autofix
         const opaque_primitive_count = scene.opaque_primitives_buffer.count();
+        const alpha_mask_primitive_count = scene.alpha_mask_primitives_buffer.count();
 
         return .{
             .instance_buffer = try render_graph.importBuffer(scene.scene_instance_buffer.gpu),
@@ -359,12 +423,24 @@ pub const SceneBuffers = struct {
                 .size = @sizeOf(u32) * 16,
                 .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
             }),
-            .opaque_primitves_count = @intCast(opaque_primitive_count),
-            .opaque_primitves_buffer = try render_graph.importBuffer(scene.opaque_primitives_buffer.gpu),
-            .opaque_indirect_cmd_info = try render_graph.createTransientBuffer(.{
-                .size = @sizeOf(DrawIndexedIndirectCommandInfo) * opaque_primitive_count,
-                .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
-            }),
+            .opaque_set = .{
+                .indirect_draw_count_index = 0,
+                .primitves_count = @intCast(opaque_primitive_count),
+                .primitves_buffer = try render_graph.importBuffer(scene.opaque_primitives_buffer.gpu),
+                .indirect_cmd_info = try render_graph.createTransientBuffer(.{
+                    .size = @sizeOf(DrawIndexedIndirectCommandInfo) * opaque_primitive_count,
+                    .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
+                }),
+            },
+            .alpha_mask_set = .{
+                .indirect_draw_count_index = 1,
+                .primitves_count = @intCast(alpha_mask_primitive_count),
+                .primitves_buffer = try render_graph.importBuffer(scene.alpha_mask_primitives_buffer.gpu),
+                .indirect_cmd_info = try render_graph.createTransientBuffer(.{
+                    .size = @sizeOf(DrawIndexedIndirectCommandInfo) * alpha_mask_primitive_count,
+                    .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
+                }),
+            },
         };
     }
 };
@@ -381,6 +457,8 @@ pub const DrawIndirect = struct {
         material_info_buffer: rg.RenderGraphBufferHandle,
 
         opaque_draw_pipeline: vk.Pipeline,
+        alpha_mask_draw_pipeline: vk.Pipeline,
+
         vertex_buffer: rg.RenderGraphBufferHandle,
         index_buffer: rg.RenderGraphBufferHandle,
 
@@ -420,11 +498,44 @@ pub const DrawIndirect = struct {
 
         command_buffer.bindPipeline(.compute, data.build_pipeline);
 
-        const opaque_primitves_buffer = resources.getBuffer(data.scene_buffers.opaque_primitves_buffer).?;
-        const opaque_indirect_cmd_info = resources.getBuffer(data.scene_buffers.opaque_indirect_cmd_info).?;
+        dispatchRenderSet(
+            device,
+            command_buffer,
+            resources,
+            indirect_draw_counts_buffer,
+            mesh_info_buffer,
+            instance_buffer,
+            cull_data,
+            &data.scene_buffers.opaque_set,
+        );
+
+        dispatchRenderSet(
+            device,
+            command_buffer,
+            resources,
+            indirect_draw_counts_buffer,
+            mesh_info_buffer,
+            instance_buffer,
+            cull_data,
+            &data.scene_buffers.alpha_mask_set,
+        );
+    }
+
+    fn dispatchRenderSet(
+        device: *Backend,
+        command_buffer: vk.CommandBufferProxy,
+        resources: rg.Resources,
+        indirect_draw_counts_buffer: Buffer.Interface,
+        mesh_info_buffer: Buffer.Interface,
+        instance_buffer: Buffer.Interface,
+        cull_data: ?CullData,
+        set: *const SceneBuffers.RenderSet,
+    ) void {
+        const opaque_primitves_buffer = resources.getBuffer(set.primitves_buffer).?;
+        const opaque_indirect_cmd_info = resources.getBuffer(set.indirect_cmd_info).?;
 
         const push_data: BuildPushData = .{
-            .indirect_draw_count_index = 0,
+            .indirect_draw_count_index = set.indirect_draw_count_index,
             .indirect_draw_counts_ptr = indirect_draw_counts_buffer.device_address.?,
 
             .mesh_infos_ptr = mesh_info_buffer.device_address.?,
@@ -433,12 +544,12 @@ pub const DrawIndirect = struct {
 
             .indirect_command_infos_ptr = opaque_indirect_cmd_info.device_address.?,
 
-            .culling = if (data.culling != null) 1 else 0,
+            .culling = if (cull_data != null) 1 else 0,
             .cull_data = cull_data orelse undefined,
         };
         command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(BuildPushData), &push_data);
 
-        command_buffer.dispatch(data.scene_buffers.opaque_primitves_count, 1, 1);
+        command_buffer.dispatch(set.primitves_count, 1, 1);
     }
 
     pub const DrawPushData = extern struct {
@@ -472,24 +583,66 @@ pub const DrawIndirect = struct {
         command_buffer.bindVertexBuffers(0, 1, @ptrCast(&vertex_buffer.handle), @ptrCast(&base_vertex_offset));
         command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
 
-        const opaque_indirect_cmd_info = resources.getBuffer(data.scene_buffers.opaque_indirect_cmd_info).?;
+        drawRenderSet(
+            device,
+            resources,
+            command_buffer,
+            &data.scene_buffers.opaque_set,
+            data.opaque_draw_pipeline,
+            view_projection_matrix,
+            instance_buffer,
+            material_info_buffer,
+            indirect_count_buffer,
+        );
+
+        drawRenderSet(
+            device,
+            resources,
+            command_buffer,
+            &data.scene_buffers.alpha_mask_set,
+            data.alpha_mask_draw_pipeline,
+            view_projection_matrix,
+            instance_buffer,
+            material_info_buffer,
+            indirect_count_buffer,
+        );
+    }
+
+    fn drawRenderSet(
+        device: *Backend,
+        resources: rg.Resources,
+        command_buffer: vk.CommandBufferProxy,
+        render_set: *const SceneBuffers.RenderSet,
+        pipeline: vk.Pipeline,
+        view_projection_matrix: zm.Mat,
+        instance_buffer: Buffer.Interface,
+        material_info_buffer: Buffer.Interface,
+        indirect_count_buffer: Buffer.Interface,
+    ) void {
+        command_buffer.bindPipeline(.graphics, pipeline);
+
+        const indirect_cmd_info_buffer = resources.getBuffer(render_set.indirect_cmd_info).?;
 
         const push_data: DrawPushData = .{
             .view_projection_matrix = view_projection_matrix,
             .scene_instances_ptr = instance_buffer.device_address.?,
-            .indirect_command_infos_ptr = opaque_indirect_cmd_info.device_address.?,
+            .indirect_command_infos_ptr = indirect_cmd_info_buffer.device_address.?,
             .material_info_binding = material_info_buffer.storage_binding.?,
         };
-        command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(DrawPushData), &push_data);
-
-        const indirect_buffer = resources.getBuffer(data.scene_buffers.opaque_indirect_cmd_info).?;
+        command_buffer.pushConstants(
+            device.bindless_layout,
+            device.device.all_stage_flags,
+            0,
+            @sizeOf(DrawPushData),
+            &push_data,
+        );
 
         command_buffer.drawIndexedIndirectCount(
-            indirect_buffer.handle,
+            indirect_cmd_info_buffer.handle,
             0,
             indirect_count_buffer.handle,
-            0 * @sizeOf(u32),
-            data.scene_buffers.opaque_primitves_count,
+            @sizeOf(u32) * render_set.indirect_draw_count_index,
+            render_set.primitves_count,
             @intCast(@sizeOf(SceneBuffers.DrawIndexedIndirectCommandInfo)),
         );
     }

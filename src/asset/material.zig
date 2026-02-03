@@ -6,16 +6,16 @@ const AssetHandle = @import("registry.zig").Handle;
 pub const LoadSettings = struct {};
 
 pub const AlphaMode = enum(u32) {
-    alpha_opaque,
-    alpha_blend,
-    alpha_mask,
+    @"opaque",
+    mask,
+    blend,
 };
 
 const Self = @This();
 
 name: []const u8,
 
-alpha_mode: AlphaMode = .alpha_opaque,
+alpha_mode: AlphaMode = .@"opaque",
 alpha_cutoff: f32 = 0.0,
 
 base_color_texture: ?AssetHandle = null,
@@ -97,7 +97,7 @@ pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype, settings: Load
 //Json Material
 pub const Json = struct {
     name: []const u8,
-    alpha_mode: AlphaMode = .alpha_opaque,
+    alpha_mode: AlphaMode = .@"opaque",
     alpha_cutoff: f32 = 0.0,
 
     base_color_texture: ?[]const u8 = null,
