@@ -7,17 +7,32 @@
     "label": "Build Run Saturn",
     "build": {
       "command": "zig",
-      "args": ["build", "-Duse-llvm=true"]
+      "args": ["build", "-Duse-llvm=true"],
     },
     "program": "$ZED_WORKTREE_ROOT/zig-out/bin/saturn",
     "request": "launch",
-    "adapter": "CodeLLDB"
+    "adapter": "CodeLLDB",
+  },
+  {
+    "label": "Run Saturn Engine Assets",
+    "build": {
+      "command": "zig",
+      "args": ["build", "-Duse-llvm=true"],
+    },
+    "args": ["engine", "assets/engine", "zig-out/assets/engine"],
+    "program": "$ZED_WORKTREE_ROOT/zig-out/bin/saturn_asset",
+    "request": "launch",
+    "adapter": "CodeLLDB",
   },
   {
     "label": "Run Saturn Game Assets",
-    "args": ["game", "game-assets/", "zig-out/game-assets/"],
+    "build": {
+      "command": "zig",
+      "args": ["build", "-Duse-llvm=true"],
+    },
+    "args": ["game", "assets/game", "zig-out/assets/game"],
     "program": "$ZED_WORKTREE_ROOT/zig-out/bin/saturn_asset",
     "request": "launch",
-    "adapter": "CodeLLDB"
-  }
+    "adapter": "CodeLLDB",
+  },
 ]

@@ -1,0 +1,5 @@
+{
+    "name": "transparent",
+    "base_color_factor": [0.4392, 0.1608, 0.3882, 0.25],
+    "alpha_mode": "blend"
+}

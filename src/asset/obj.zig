@@ -16,6 +16,9 @@ pub fn loadObjMesh(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []c
     var vertices: std.ArrayList(Mesh.Vertex) = .empty;
     defer vertices.deinit(allocator);
 
+    var indices: std.ArrayList(Mesh.Index) = .empty;
+    defer indices.deinit(allocator);
+
     for (primitives, model.meshes) |*primitive, obj_mesh| {
         for (obj_mesh.num_vertices) |num_vertices| {
             std.debug.assert(num_vertices == 3);
@@ -24,41 +27,42 @@ pub fn loadObjMesh(allocator: std.mem.Allocator, dir: std.fs.Dir, file_path: []c
         const vertex_offset: u32 = @intCast(vertices.items.len);
         const vertex_count: u32 = @intCast(obj_mesh.indices.len);
 
+        const index_offset: u32 = @intCast(indices.items.len);
+        const index_count: u32 = vertex_count;
+
         primitive.* = .{
             .vertex_offset = vertex_offset,
             .vertex_count = vertex_count,
-            .index_offset = 0,
-            .index_count = 0,
+            .index_offset = index_offset,
+            .index_count = index_count,
         };
 
         try vertices.ensureTotalCapacity(allocator, vertices.items.len + vertex_count);
+        try indices.ensureTotalCapacity(allocator, vertices.capacity);
 
-        for (obj_mesh.indices) |index| {
+        for (obj_mesh.indices, 0..) |index, i| {
             vertices.appendAssumeCapacity(.{
-                .position = try extract3f(model.vertices, index.vertex.?),
-                .normal = try extract3f(model.normals, index.normal.?),
+                .position = extractArrayFromSlice(3, model.vertices, index.vertex.?),
+                .normal = extractArrayFromSlice(3, model.normals, index.normal.?),
                 .tangent = .{ 0, 0, 0, 1 },
-                .uv0 = try extract2f(model.tex_coords, index.tex_coord.?),
+                .uv0 = extractArrayFromSlice(2, model.tex_coords, index.tex_coord.?),
                 .uv1 = .{ 0, 0 },
             });
+            indices.appendAssumeCapacity(@intCast(i));
         }
     }
 
-    return meshopt.buildMesh(allocator, "", vertices.items, &.{}, primitives, .{});
+    return meshopt.buildMesh(allocator, "", vertices.items, indices.items, primitives, .{});
 }
 
-fn extract3f(data: []const f32, idx: u32) ![3]f32 {
-    const base = @as(usize, @intCast(idx)) * 3;
-    if (base + 2 >= data.len) {
-        return error.IndexOutOfBounds;
-    }
-    return [3]f32{ data[base], data[base + 1], data[base + 2] };
-}
+fn extractArrayFromSlice(comptime I: comptime_int, data: []const f32, idx: u32) [I]f32 {
+    const start = @as(usize, @intCast(idx)) * I;
+    const end = start + I;
 
-fn extract2f(data: []const f32, idx: u32) ![2]f32 {
-    const base = @as(usize, @intCast(idx)) * 2;
-    if (base + 1 >= data.len) {
-        return error.IndexOutOfBounds;
+    var arr: [I]f32 = undefined;
+    inline for (&arr, data[start..end]) |*dst, src| {
+        dst.* = src;
     }
-    return [2]f32{ data[base], data[base + 1] };
+
+    return arr;
 }

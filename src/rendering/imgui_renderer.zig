@@ -55,6 +55,18 @@ pub fn deinit(self: *Self) void {
     imgui.cImGui_ImplVulkan_Shutdown();
 }
 
+pub fn bindTexture(self: *Self) !void {
+    _ = self; // autofix
+
+    imgui.cImGui_ImplVulkan_AddTexture(null, null, 0);
+}
+
+pub fn releaseTexture(self: *Self) !void {
+    _ = self; // autofix
+
+    imgui.cImGui_ImplVulkan_RemoveTexture(0);
+}
+
 pub fn createRenderPass(self: *Self, temp_allocator: std.mem.Allocator, target: rg.RenderGraphTextureHandle, render_graph: *rg.RenderGraph) !void {
     _ = self; // autofix
 

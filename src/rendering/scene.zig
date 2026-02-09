@@ -109,8 +109,8 @@ pub fn deinit(self: *Self) void {
 fn getPrimitiveBuffer(self: *Self, alpha_mode: Material.AlphaMode) *GpuArrayList(GpuPrimitiveInstance) {
     return switch (alpha_mode) {
         .@"opaque" => &self.opaque_primitives_buffer,
-        .blend => &self.alpha_blend_primitives_buffer,
         .mask => &self.alpha_mask_primitives_buffer,
+        .blend => &self.alpha_blend_primitives_buffer,
     };
 }
 

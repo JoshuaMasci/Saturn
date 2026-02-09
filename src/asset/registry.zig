@@ -76,7 +76,12 @@ pub const Repository = struct {
 
                     const file_path = try string_allocator.dupe(u8, entry.path);
                     const asset_hash = HashMethod(entry.path);
-                    try assets.putNoClobber(asset_hash, .{
+
+                    if (assets.get(asset_hash)) |asset_info| {
+                        std.log.warn("Asset hash({}) {s} collides with {s}", .{ asset_hash, asset_info.file_path, file_path });
+                    }
+
+                    try assets.put(asset_hash, .{
                         .file_path = file_path,
                         .atype = header.atype,
                         .offset = offset,

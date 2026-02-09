@@ -29,6 +29,33 @@ pub fn main() !void {
     defer app.deinit();
 
     {
+        const sphere_mesh_handle: AssetRegistry.Handle = .fromRepoPath("engine", "shapes/sphere.asset");
+        const cube_mesh_handle: AssetRegistry.Handle = .fromRepoPath("engine", "shapes/cube.asset");
+        const material_handle: AssetRegistry.Handle = .fromRepoPath("engine", "materials/transparent.asset");
+
+        if (app.resources.tryLoadMesh(allocator, sphere_mesh_handle) and app.resources.tryLoadMesh(allocator, cube_mesh_handle) and app.resources.tryLoadMaterial(allocator, material_handle)) {
+            try app.resources.updateBuffers(allocator);
+            _ = try app.scene.addInstance(
+                &app.resources,
+                .{
+                    .transform = .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } },
+                    .mesh = sphere_mesh_handle,
+                    .materials = &.{material_handle},
+                },
+            );
+
+            _ = try app.scene.addInstance(
+                &app.resources,
+                .{
+                    .transform = .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } },
+                    .mesh = cube_mesh_handle,
+                    .materials = &.{material_handle},
+                },
+            );
+        }
+    }
+
+    {
         const now = std.time.nanoTimestamp();
         defer {
             const duration_ns = std.time.nanoTimestamp() - now;

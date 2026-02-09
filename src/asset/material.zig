@@ -91,6 +91,7 @@ pub fn deserialzie(allocator: std.mem.Allocator, reader: anytype, settings: Load
     const name = try serde.deserialzieSlice(allocator, u8, reader);
     var value = (try reader.readStructEndian(Packed, .little)).unpack();
     value.name = name;
+
     return value;
 }
 

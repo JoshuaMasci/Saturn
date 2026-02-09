@@ -99,6 +99,7 @@ pub fn buildPrimitive(
     settings: Settings,
 ) !Mesh.Primitive {
 
+    //TODO: FIX THIS as it seems to be broken
     //If indices aren't provided generate basic indices to be used by meshopt
     var generated_indices: ?[]u32 = null;
     defer if (generated_indices) |temp| allocator.free(temp);
@@ -109,12 +110,12 @@ pub fn buildPrimitive(
             index.* = @intCast(i);
         }
     }
-    const temp = if (generated_indices) |generated| generated else indices;
+    const temp_indices = if (generated_indices) |generated| generated else indices;
 
     const remap_list = try allocator.alloc(Mesh.Index, vertices.len);
     defer allocator.free(remap_list);
 
-    const unique_vertex_count = c.meshopt_generateVertexRemap(remap_list.ptr, temp.ptr, temp.len, vertices.ptr, vertices.len, @sizeOf(Mesh.Vertex));
+    const unique_vertex_count = c.meshopt_generateVertexRemap(remap_list.ptr, temp_indices.ptr, temp_indices.len, vertices.ptr, vertices.len, @sizeOf(Mesh.Vertex));
 
     const new_vertices = try allocator.alloc(Mesh.Vertex, unique_vertex_count);
     defer allocator.free(new_vertices);
