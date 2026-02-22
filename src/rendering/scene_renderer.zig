@@ -374,15 +374,15 @@ pub const DrawLegacy = struct {
 
         const material_info_buffer = resources.getBuffer(data.material_info_buffer).?;
 
-        const vertex_buffer = device.buffers.get(data.resources.meshes.vertex_buffer.buffer).?.handle;
-        const index_buffer = device.buffers.get(data.resources.meshes.index_buffer.buffer).?.handle;
+        const vertex_buffer = device.buffers.get(data.resources.meshes.vertex_buffer.buffer).?.buffer.handle;
+        const index_buffer = device.buffers.get(data.resources.meshes.index_buffer.buffer).?.buffer.handle;
 
         const base_vertex_offset: u64 = 0;
         command_buffer.bindVertexBuffers(0, 1, @ptrCast(&vertex_buffer), @ptrCast(&base_vertex_offset));
         command_buffer.bindIndexBuffer(index_buffer, 0, .uint32);
 
         var instance_iter = data.scene.instances.iterator();
-        while (instance_iter.next_value()) |instance| {
+        while (instance_iter.nextValue()) |instance| {
             if (!instance.visable) {
                 continue;
             }

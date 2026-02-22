@@ -237,8 +237,8 @@ pub fn tryLoadTexture(self: *Self, temp_allocator: std.mem.Allocator, handle: As
 
 fn tryGetTextureSampledBinding(self: *const Self, handle: AssetRegistry.Handle) u32 {
     if (self.texture_map.get(handle)) |entry| {
-        if (self.backend.images.get(entry.image_handle)) |image| {
-            if (image.sampled_binding) |binding| {
+        if (self.backend.images.get(entry.image_handle)) |info| {
+            if (info.texture.sampled_binding) |binding| {
                 return binding.index;
             }
         }

@@ -46,11 +46,13 @@ pub fn HandlePool(comptime T: type) type {
         }
 
         pub fn deinit_with_entries(self: *Self) void {
-            if (comptime std.meta.hasFn(T, "deinit")) {
-                for (self.list.items) |*entry| {
-                    if (entry.value) |*value| {
-                        value.deinit();
-                    }
+            if (!comptime std.meta.hasFn(T, "deinit")) {
+                @compileError("deinit_with_entries on type that doesnt contain a deinit fn");
+            }
+
+            for (self.list.items) |*entry| {
+                if (entry.value) |*value| {
+                    value.deinit();
                 }
             }
             self.deinit();
@@ -134,7 +136,7 @@ pub fn HandlePool(comptime T: type) type {
             return null;
         }
 
-        pub fn iterator(self: Self) Iterator {
+        pub fn iterator(self: *const Self) Iterator {
             return .{
                 .slice = self.list.items,
                 .index = 0,
@@ -149,32 +151,30 @@ pub fn HandlePool(comptime T: type) type {
             index: u32,
 
             pub fn next(it: *Iterator) ?Entry {
-                if (it.index >= it.slice.len) return null;
+                if (it.index < it.slice.len) {
+                    var next_real_opt: ?u32 = null;
+                    for (it.slice[it.index..], it.index..) |entry, i| {
+                        if (entry.value != null) {
+                            next_real_opt = @intCast(i);
+                            break;
+                        }
+                    }
 
-                const list_entry = &it.slice[it.index];
-                if (list_entry.value == null) {
-                    return null;
-                }
+                    if (next_real_opt) |next_entry| {
+                        it.index = next_entry + 1;
 
-                const result: Entry = .{
-                    .handle = .{ .index = it.index, .revision = list_entry.revision },
-                    .value_ptr = &list_entry.value.?,
-                };
-
-                var next_index = it.index + 1;
-                while (next_index < it.slice.len) {
-                    if (it.slice[next_index].value) |_| {
-                        break;
-                    } else {
-                        next_index += 1;
+                        const list_entry = &it.slice[next_entry];
+                        return .{
+                            .handle = .{ .index = next_entry, .revision = list_entry.revision },
+                            .value_ptr = &list_entry.value.?,
+                        };
                     }
                 }
 
-                it.index = next_index;
-                return result;
+                return null;
             }
 
-            pub fn next_value(it: *Iterator) ?*T {
+            pub fn nextValue(it: *Iterator) ?*T {
                 if (it.next()) |entry| {
                     return entry.value_ptr;
                 } else {

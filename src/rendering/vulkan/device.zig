@@ -10,6 +10,7 @@ const Exetensions = struct {
     mesh_shading: bool = false,
     raytracing: bool = false,
     host_image_copy: bool = false,
+    unified_image_layouts: bool = false,
 };
 
 const Self = @This();
@@ -93,6 +94,11 @@ pub fn init(
     if (extentions.host_image_copy) {
         std.debug.assert(physical_device.info.extensions.host_image_copy);
         try device_extentions.append(allocator, "VK_EXT_host_image_copy");
+    }
+
+    if (extentions.unified_image_layouts) {
+        std.debug.assert(physical_device.info.extensions.unified_image_layouts);
+        try device_extentions.append(allocator, "VK_KHR_unified_image_layouts");
     }
 
     var features = vk.PhysicalDeviceFeatures{

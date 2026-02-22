@@ -40,6 +40,7 @@ pub const Extensions = struct {
     mesh_shading: bool,
     raytracing: bool,
     host_image_copy: bool,
+    unified_image_layouts: bool,
     amdx_shader_enqueue: bool,
 };
 
@@ -152,6 +153,8 @@ pub fn init(allocator: std.mem.Allocator, instance: vk.InstanceProxy, physical_d
 
         // Only enable all device local memory is host visable
         .host_image_copy = supportsExtension(extensions_properties, "VK_EXT_host_image_copy") and memory.direct_buffer_upload,
+
+        .unified_image_layouts = supportsExtension(extensions_properties, "VK_KHR_unified_image_layouts"),
 
         .amdx_shader_enqueue = supportsExtension(extensions_properties, "VK_AMDX_shader_enqueue"),
     };

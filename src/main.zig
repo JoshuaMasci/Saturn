@@ -111,6 +111,8 @@ pub fn main() !void {
 const App = struct {
     const Self = @This();
 
+    running: bool = true,
+
     allocator: std.mem.Allocator,
     platform_input: sdl3.Input,
     window: sdl3.Window,
@@ -140,6 +142,8 @@ const App = struct {
         properties: bool = true,
     } = .{},
 
+    window2: sdl3.Window,
+
     pub fn init(allocator: std.mem.Allocator) !Self {
         const asset_registry = try allocator.create(AssetRegistry);
         errdefer allocator.destroy(asset_registry);
@@ -157,6 +161,9 @@ const App = struct {
         var window: sdl3.Window = .init("Saturn Render Sandbox", .{ .windowed = .{ 1920, 1080 } });
         errdefer window.deinit();
 
+        var window2: sdl3.Window = .init("Saturn Renderer 2", .{ .windowed = .{ 1920, 1080 } });
+        errdefer window2.deinit();
+
         const vulkan_backend = try allocator.create(Backend);
         errdefer allocator.destroy(vulkan_backend);
 
@@ -165,9 +172,6 @@ const App = struct {
 
         vulkan_backend.* = try .init(allocator, .{
             .frames_in_flight_count = FRAME_IN_FLIGHT_COUNT,
-            .buffer_count = 1024,
-            .sampler_count = 32,
-            .texture_count = 1024,
         });
         errdefer vulkan_backend.deinit();
 
@@ -181,6 +185,16 @@ const App = struct {
             },
         );
         errdefer vulkan_backend.releaseWindow(window);
+
+        try vulkan_backend.claimWindow(
+            window2,
+            .{
+                .image_count = FRAME_IN_FLIGHT_COUNT,
+                .format = swapchain_format,
+                .vsync = false,
+            },
+        );
+        errdefer vulkan_backend.releaseWindow(window2);
 
         var resources: Resources = try .init(allocator, asset_registry, vulkan_backend);
         errdefer resources.deinit();
@@ -229,11 +243,15 @@ const App = struct {
             .scene_renderer = scene_renderer,
             .imgui_renderer = imgui_renderer,
             .temp_allocator = .init(allocator),
+            .window2 = window2,
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.vulkan_backend.waitIdle();
+
+        self.vulkan_backend.releaseWindow(self.window2);
+        self.window2.deinit();
 
         self.scene.deinit();
 
@@ -259,7 +277,7 @@ const App = struct {
     }
 
     pub fn is_running(self: Self) bool {
-        return !self.platform_input.should_quit;
+        return !self.platform_input.should_quit and self.running;
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
@@ -284,6 +302,7 @@ const App = struct {
             .{
                 .data = @ptrCast(self),
                 .resize = window_resize,
+                .close_requested = window_close,
             },
         );
 
@@ -391,6 +410,52 @@ const App = struct {
         var render_graph = Backend.RenderGraph.init(temp_allocator);
         defer render_graph.deinit();
 
+        //Render Graph 2 Tests
+        {
+            const RenderGraph = @import("rendering/render_graph.zig");
+
+            var render_graph2: RenderGraph.Desc = .init(temp_allocator);
+            defer render_graph2.deinit();
+
+            const some_buffer = try render_graph2.createTransientBuffer(.{ .size = 16 });
+
+            const swapchain_texture = try render_graph2.acquireWindowTexture(self.window2);
+            const color_texture = try render_graph2.createTransientTexture(.{
+                .extent = .{ .relative = swapchain_texture },
+            });
+
+            const depth_texture = try render_graph2.createTransientTexture(.{
+                .extent = .{ .relative = color_texture },
+            });
+
+            const pass1 = try render_graph2.createPass("Pass1", .graphics);
+            try render_graph2.addTextureUsage(pass1, color_texture, .{ .attachment_write = true });
+            try render_graph2.addTextureUsage(pass1, depth_texture, .{ .attachment_write = true });
+
+            const pass2 = try render_graph2.createPass("Pass2", .graphics);
+            try render_graph2.addTextureUsage(pass2, depth_texture, .{ .attachment_read = true });
+            try render_graph2.addTextureUsage(pass2, color_texture, .{ .attachment_write = true });
+
+            const pass3 = try render_graph2.createPass("Pass3", .prefer_async_compute);
+            try render_graph2.addBufferUsage(pass3, some_buffer, .{ .transfer_write = true });
+
+            const pass4 = try render_graph2.createPass("Pass4", .prefer_async_compute);
+            try render_graph2.addBufferUsage(pass4, some_buffer, .{ .compute_storage_write = true });
+
+            const pass5 = try render_graph2.createPass("Pass5", .graphics);
+            try render_graph2.addBufferUsage(pass5, some_buffer, .{ .vertex_storage_read = true, .fragment_storage_read = true });
+            try render_graph2.addTextureUsage(pass5, depth_texture, .{ .fragment_storage_write = true });
+            try render_graph2.addTextureUsage(pass5, color_texture, .{ .fragment_storage_write = true });
+
+            const pass6 = try render_graph2.createPass("Pass6", .graphics);
+            try render_graph2.addBufferUsage(pass6, some_buffer, .{ .vertex_storage_read = true, .fragment_storage_read = true });
+            try render_graph2.addTextureUsage(pass6, color_texture, .{ .fragment_storage_read = true });
+            try render_graph2.addTextureUsage(pass6, depth_texture, .{ .fragment_storage_read = true });
+            //try render_graph2.addTextureUsage(pass6, swapchain_texture, .{ .write = .attachment });
+
+            try self.vulkan_backend.submitRenderGraph(temp_allocator, &render_graph2);
+        }
+
         {
             const swapchain_texture = try render_graph.acquireSwapchainTexture(self.window);
 
@@ -475,6 +540,12 @@ const App = struct {
 fn on_event(data: ?*anyopaque, event: *const sdl3.Event) void {
     _ = data; // autofix
     _ = imgui.cImGui_ImplSDL3_ProcessEvent(@ptrCast(event));
+}
+
+fn window_close(data: ?*anyopaque, window: sdl3.Window) void {
+    _ = window; // autofix
+    const app: *App = @ptrCast(@alignCast(data.?));
+    app.running = false;
 }
 
 fn window_resize(data: ?*anyopaque, window: sdl3.Window, size: [2]u32) void {

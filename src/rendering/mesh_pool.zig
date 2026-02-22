@@ -39,7 +39,7 @@ fn GpuBuffer(comptime T: type) type {
                 buffer_usage,
             );
 
-            const buffer_info = backend.buffers.get(buffer).?;
+            const buffer_info = backend.buffers.get(buffer).?.buffer;
             const byte_slice: ?[]u8 = buffer_info.allocation.getMappedByteSlice();
             const device_address: vk.DeviceAddress = buffer_info.device_address.?;
 

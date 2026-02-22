@@ -169,7 +169,7 @@ fn buildCommandBuffer(build_data: ?*anyopaque, backend: *Backend, resources: rg.
 
             command_buffer.copyBuffer2(&.{
                 .src_buffer = src_buffer.handle,
-                .dst_buffer = dst_buffer.handle,
+                .dst_buffer = dst_buffer.buffer.handle,
                 .region_count = 1,
                 .p_regions = @ptrCast(&region),
             });
@@ -177,7 +177,7 @@ fn buildCommandBuffer(build_data: ?*anyopaque, backend: *Backend, resources: rg.
     }
 
     for (data.texture_transfer_list, data.pre_transfer_barriers, data.post_transfer_barriers) |transfer, *pre, *post| {
-        var interface = backend.images.getPtr(transfer.dst).?.interface();
+        var interface = backend.images.getPtr(transfer.dst).?.texture.interface();
         pre.* = interface.transitionLazy(.transfer_dst_optimal).?;
         post.* = interface.transitionLazy(transfer.final_layout).?;
     }
@@ -189,7 +189,7 @@ fn buildCommandBuffer(build_data: ?*anyopaque, backend: *Backend, resources: rg.
 
     for (data.texture_transfer_list) |transfer| {
         if (backend.images.get(transfer.dst)) |dst_texture| {
-            const interface = dst_texture.interface();
+            const interface = dst_texture.texture.interface();
 
             const region: vk.BufferImageCopy2 = .{
                 .buffer_offset = transfer.src_offset,

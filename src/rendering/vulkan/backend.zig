@@ -19,39 +19,68 @@ const Sampler = @import("sampler.zig");
 const Swapchain = @import("swapchain.zig");
 const TransferQueue = @import("transfer_queue.zig");
 
+const RenderGraph2 = @import("../render_graph.zig");
+
 const Desc = struct {
     frames_in_flight_count: u8,
-    buffer_count: u16,
-    sampler_count: u16,
-    texture_count: u16,
-    accleration_structure_count: u16 = 0,
 };
 
-const BufferPool = HandlePool(Buffer);
-const ImagePool = HandlePool(Image);
+pub const QueueFamily = enum {
+    graphics,
+    compute,
+    transfer,
+};
+
+const BufferInfo = struct {
+    buffer: Buffer,
+    owner_queue: ?QueueFamily = null,
+};
+
+const TextureInfo = struct {
+    texture: Image,
+    owner_queue: ?QueueFamily = null,
+    layout: vk.ImageLayout = .undefined,
+};
+
+const WindowInfo = struct {
+    surface: vk.SurfaceKHR,
+    swapchain: *Swapchain,
+};
+
+const BufferPool = HandlePool(BufferInfo);
+const ImagePool = HandlePool(TextureInfo);
 const SamplerPool = HandlePool(Sampler);
 
 pub const BufferHandle = BufferPool.Handle;
 pub const ImageHandle = ImagePool.Handle;
 pub const SamplerHandle = SamplerPool.Handle;
 
-const SurfaceSwapchain = struct {
-    surface: vk.SurfaceKHR,
-    swapchain: *Swapchain,
-};
-
 const PerFrameData = struct {
-    frame_wait_fences: std.ArrayList(vk.Fence),
+    frame_wait_fences: std.ArrayList(vk.Fence) = .empty,
     graphics_command_pool: object_pools.CommandBufferPool,
     semaphore_pool: object_pools.SemaphorePool,
     fence_pool: object_pools.FencePool,
 
-    transient_buffers: std.ArrayList(BufferHandle),
-    transient_images: std.ArrayList(ImageHandle),
+    transient_buffers: std.ArrayList(BufferHandle) = .empty,
+    transient_images: std.ArrayList(ImageHandle) = .empty,
 
     upload_src_buffer: ?Buffer = null,
 
     transfer_queue: TransferQueue,
+
+    buffer_access: std.AutoArrayHashMap(BufferHandle, RenderGraph2.BufferAccess),
+    texture_access: std.AutoArrayHashMap(ImageHandle, RenderGraph2.TextureAccess),
+
+    transient_buffers2: std.ArrayList(Buffer) = .empty,
+    transient_textures2: std.ArrayList(Image) = .empty,
+
+    pub fn waitForPrevious(self: *@This(), device: vk.DeviceProxy, timeout_ns: u64) bool {
+        if (self.frame_wait_fences.items.len > 0) {
+            defer self.frame_wait_fences.clearRetainingCapacity();
+            _ = device.waitForFences(@intCast(self.frame_wait_fences.items.len), self.frame_wait_fences.items.ptr, .true, timeout_ns) catch return false;
+        }
+        return true;
+    }
 
     pub fn reset(self: *@This()) void {
         self.frame_wait_fences.clearRetainingCapacity();
@@ -60,18 +89,43 @@ const PerFrameData = struct {
         self.fence_pool.reset();
         self.transient_buffers.clearRetainingCapacity();
         self.transient_images.clearRetainingCapacity();
+
+        self.buffer_access.clearRetainingCapacity();
+        self.texture_access.clearRetainingCapacity();
+
+        for (self.transient_buffers2.items) |buffer| {
+            buffer.deinit();
+        }
+        self.transient_buffers2.clearRetainingCapacity();
+
+        for (self.transient_textures2.items) |texture| {
+            texture.deinit();
+        }
+        self.transient_textures2.clearRetainingCapacity();
+    }
+
+    pub fn errorReset(self: *@This(), device: vk.DeviceProxy) void {
+        if (self.frame_wait_fences.items.len > 0) {
+            device.resetFences(@intCast(self.frame_wait_fences.items.len), self.frame_wait_fences.items.ptr) catch |err| {
+                std.log.err("Failed to reset frame_wait_fences: {}", .{err});
+            };
+            self.frame_wait_fences.clearRetainingCapacity();
+        }
     }
 };
+
+const MaxFrameInFlightCount = 4;
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 instance: Instance,
+
 device: *Device,
 bindless_descriptor: *BindlessDescriptor,
 bindless_layout: vk.PipelineLayout,
 
-swapchains: std.AutoArrayHashMap(Window, SurfaceSwapchain),
+swapchains: std.AutoArrayHashMap(Window, WindowInfo),
 
 buffers: BufferPool,
 images: ImagePool,
@@ -81,7 +135,7 @@ frame_index: usize = 0,
 frame_data: []PerFrameData,
 
 pub fn init(allocator: std.mem.Allocator, desc: Desc) !Self {
-    if (desc.frames_in_flight_count == 0) {
+    if (desc.frames_in_flight_count == 0 or desc.frames_in_flight_count > MaxFrameInFlightCount) {
         return error.InvalidFramesInFlightCount;
     }
 
@@ -120,6 +174,7 @@ pub fn init(allocator: std.mem.Allocator, desc: Desc) !Self {
             .mesh_shading = p_device.info.extensions.mesh_shading,
             .raytracing = p_device.info.extensions.raytracing,
             .host_image_copy = p_device.info.extensions.host_image_copy and p_device.info.memory.direct_buffer_upload,
+            .unified_image_layouts = p_device.info.extensions.unified_image_layouts,
         },
         instance.debug_messager != null,
     );
@@ -154,13 +209,12 @@ pub fn init(allocator: std.mem.Allocator, desc: Desc) !Self {
 
     for (frame_data) |*data| {
         data.* = .{
-            .frame_wait_fences = .empty,
             .graphics_command_pool = try .init(allocator, device, device.graphics_queue),
             .semaphore_pool = .init(allocator, device, .binary, 0),
             .fence_pool = .init(allocator, device, .{}),
-            .transient_buffers = .empty,
-            .transient_images = .empty,
             .transfer_queue = try .init(allocator, device, 256 * 1024 * 1024), //256Mb of staging space
+            .buffer_access = .init(allocator),
+            .texture_access = .init(allocator),
         };
     }
 
@@ -183,6 +237,8 @@ pub fn deinit(self: *Self) void {
     _ = self.device.proxy.deviceWaitIdle() catch {};
 
     for (self.frame_data) |*data| {
+        data.reset();
+
         data.frame_wait_fences.deinit(self.allocator);
         data.graphics_command_pool.deinit();
         data.semaphore_pool.deinit();
@@ -190,6 +246,11 @@ pub fn deinit(self: *Self) void {
         data.transient_buffers.deinit(self.allocator);
         data.transient_images.deinit(self.allocator);
         data.transfer_queue.deinit();
+
+        data.buffer_access.deinit();
+
+        data.transient_buffers2.deinit(self.allocator);
+        data.transient_textures2.deinit(self.allocator);
 
         if (data.upload_src_buffer) |buffer| {
             buffer.deinit();
@@ -205,8 +266,22 @@ pub fn deinit(self: *Self) void {
     self.swapchains.deinit();
 
     self.linear_sampler.deinit();
-    self.buffers.deinit_with_entries();
-    self.images.deinit_with_entries();
+
+    {
+        var iter = self.buffers.iterator();
+        while (iter.nextValue()) |value| {
+            value.buffer.deinit();
+        }
+        self.buffers.deinit();
+    }
+
+    {
+        var iter = self.images.iterator();
+        while (iter.nextValue()) |value| {
+            value.texture.deinit();
+        }
+        self.images.deinit();
+    }
 
     self.device.proxy.destroyPipelineLayout(self.bindless_layout, null);
     self.bindless_descriptor.deinit();
@@ -268,7 +343,7 @@ pub fn createBuffer(self: *Self, name: []const u8, size: usize, usage: vk.Buffer
         buffer.storage_binding = self.bindless_descriptor.storage_buffer_array.bind(buffer);
     }
 
-    return self.buffers.insert(buffer);
+    return self.buffers.insert(.{ .buffer = buffer });
 }
 
 pub fn createBufferWithData(self: *Self, name: []const u8, usage: vk.BufferUsageFlags, data: []const u8) !BufferPool.Handle {
@@ -291,7 +366,7 @@ pub fn createBufferWithData(self: *Self, name: []const u8, usage: vk.BufferUsage
         buffer.storage_binding = self.bindless_descriptor.storage_buffer_array.bind(buffer);
     }
 
-    const buffer_handle = try self.buffers.insert(buffer);
+    const buffer_handle = try self.buffers.insert(.{ .buffer = buffer });
 
     if (buffer.allocation.getMappedByteSlice()) |buffer_slice| {
         std.debug.assert(buffer_slice.len >= data.len);
@@ -304,23 +379,23 @@ pub fn createBufferWithData(self: *Self, name: []const u8, usage: vk.BufferUsage
 }
 
 pub fn destroyBuffer(self: *Self, handle: BufferPool.Handle) void {
-    if (self.buffers.remove(handle)) |buffer| {
-        if (buffer.uniform_binding) |binding| {
+    if (self.buffers.remove(handle)) |info| {
+        if (info.buffer.uniform_binding) |binding| {
             self.bindless_descriptor.uniform_buffer_array.clear(binding);
         }
 
-        if (buffer.storage_binding) |binding| {
+        if (info.buffer.storage_binding) |binding| {
             self.bindless_descriptor.storage_buffer_array.clear(binding);
         }
 
-        buffer.deinit(); //TODO: delete after buffer has left pipeline
+        info.buffer.deinit(); //TODO: delete after buffer has left pipeline
     } else {
         std.log.err("Invalid Buffer Handle: {}", .{handle});
     }
 }
 
 pub fn getBufferMappedSlice(self: *Self, handle: BufferPool.Handle) ?[]u8 {
-    return self.buffers.getPtr(handle).?.allocation.getMappedByteSlice();
+    return self.buffers.getPtr(handle).?.buffer.allocation.getMappedByteSlice();
 }
 
 pub fn writeBuffer(self: *Self, handle: BufferPool.Handle, offset: usize, data: []const u8) TransferQueue.WriteBufferError!void {
@@ -339,7 +414,7 @@ pub fn createImage(self: *Self, size: [2]u32, format: vk.Format, usage: vk.Image
         image.storage_binding = self.bindless_descriptor.storage_image_array.bind(image, null);
     }
 
-    return self.images.insert(image);
+    return self.images.insert(.{ .texture = image });
 }
 pub fn createImageWithData(self: *Self, name: []const u8, size: [2]u32, format: vk.Format, usage: vk.ImageUsageFlags, data: []const u8) !ImagePool.Handle {
     var usage_flags = usage;
@@ -362,7 +437,7 @@ pub fn createImageWithData(self: *Self, name: []const u8, size: [2]u32, format: 
         image.storage_binding = self.bindless_descriptor.storage_image_array.bind(image, null);
     }
 
-    const image_handle = try self.images.insert(image);
+    const image_handle = try self.images.insert(.{ .texture = image });
 
     if (self.device.extensions.host_image_copy) {
         try image.hostImageCopy(self.device, .shader_read_only_optimal, data);
@@ -373,16 +448,16 @@ pub fn createImageWithData(self: *Self, name: []const u8, size: [2]u32, format: 
     return image_handle;
 }
 pub fn destroyImage(self: *Self, handle: ImagePool.Handle) void {
-    if (self.images.remove(handle)) |image| {
-        if (image.sampled_binding) |binding| {
+    if (self.images.remove(handle)) |info| {
+        if (info.texture.sampled_binding) |binding| {
             self.bindless_descriptor.sampled_image_array.clear(binding);
         }
 
-        if (image.storage_binding) |binding| {
+        if (info.texture.storage_binding) |binding| {
             self.bindless_descriptor.storage_image_array.clear(binding);
         }
 
-        image.deinit(); //TODO: delete after image has left pipeline
+        info.texture.deinit(); //TODO: delete after image has left pipeline
     } else {
         std.log.err("Invalid Image Handle: {}", .{handle});
     }
@@ -392,10 +467,521 @@ pub fn getTransferQueue(self: *Self) *TransferQueue {
     return &self.frame_data[self.frame_index].transfer_queue;
 }
 
-const SwapchainImageInfo = struct {
+pub fn getNextFrameData(self: *Self) *PerFrameData {
+    defer self.frame_index = @mod(self.frame_index + 1, self.frame_data.len);
+    return &self.frame_data[self.frame_index];
+}
+
+// *************************************************************************************************************************
+// New Graph code starts here
+// *************************************************************************************************************************
+// TODO: move this to somewhere better
+
+pub fn getBufferResource(self: *const Self, handle: BufferHandle) ?BufferResource {
+    const info = self.buffers.get(handle) orelse return null;
+
+    var resource: BufferResource = .{
+        .interface = info.buffer.interface(),
+        .queue = info.owner_queue,
+    };
+
+    var frame_index: usize = self.frame_index;
+    for (0..(self.frame_data.len - 1)) |_| {
+        frame_index = (frame_index + self.frame_data.len - 1) % self.frame_data.len;
+
+        if (self.frame_data[frame_index].buffer_access.get(handle)) |access| {
+            resource.last_access = access;
+            break;
+        }
+    }
+
+    return resource;
+}
+
+pub fn getTextureResource(self: *const Self, handle: ImageHandle) ?TextureResource {
+    const info = self.images.get(handle) orelse return null;
+
+    var resource: TextureResource = .{
+        .interface = info.texture.interface(),
+        .queue = info.owner_queue,
+        .layout = info.layout,
+    };
+
+    var frame_index: usize = self.frame_index;
+    for (0..(self.frame_data.len - 1)) |_| {
+        frame_index = (frame_index + self.frame_data.len - 1) % self.frame_data.len;
+
+        if (self.frame_data[frame_index].texture_access.get(handle)) |access| {
+            resource.last_access = access;
+            break;
+        }
+    }
+
+    return resource;
+}
+
+const BufferResource = struct {
+    interface: Buffer.Interface,
+    queue: ?QueueFamily,
+    last_access: ?RenderGraph2.BufferAccess = null,
+};
+
+const TextureResource = struct {
+    interface: Image.Interface,
+    queue: ?QueueFamily,
+    last_access: ?RenderGraph2.TextureAccess = null,
+    layout: vk.ImageLayout,
+};
+
+const GraphResources = struct {
+    buffers: []BufferResource,
+    textures: []TextureResource,
+};
+
+fn getTextureSize(texture_extent: RenderGraph2.TextureExtent, textures: []const TextureResource) vk.Extent2D {
+    return switch (texture_extent) {
+        .fixed => |extent| .{ .width = extent[0], .height = extent[1] },
+        .relative => |rel_tex| textures[rel_tex.idx].interface.extent,
+    };
+}
+
+pub fn fetchResources(self: *const Self, tpa: std.mem.Allocator, frame_data: *PerFrameData, render_graph: *const RenderGraph2.Desc, swapchain_textures: []const SwapchainTexture) !GraphResources {
+
+    //***************************************************
+    //TODO: ACTUALLY RESUSE AND ALIAS TRANSIENT RESOURCES
+    //***************************************************W
+
+    const buffers: []BufferResource = try tpa.alloc(BufferResource, render_graph.buffers.items.len);
+    errdefer tpa.free(buffers);
+
+    const textures: []TextureResource = try tpa.alloc(TextureResource, render_graph.textures.items.len);
+    errdefer tpa.free(textures);
+
+    for (render_graph.buffers.items, buffers) |graph_buffer, *resource| {
+        resource.* = switch (graph_buffer) {
+            .persistent => |handle| self.getBufferResource(handle).?,
+            .transient => |idx| result: {
+                const desc = render_graph.transient_buffers.items[idx];
+
+                //TODO: finish desc
+                const buffer = try Buffer.init(self.device, desc.size, .{ .storage_buffer_bit = true }, .gpu_only);
+                try frame_data.transient_buffers2.append(self.allocator, buffer);
+                break :result BufferResource{
+                    .interface = buffer.interface(),
+                    .queue = null,
+                    .last_access = null,
+                };
+            },
+        };
+    }
+
+    for (render_graph.textures.items, textures, 0..) |graph_texture, *resource, i| {
+        resource.* = switch (graph_texture) {
+            .persistent => |handle| self.getTextureResource(handle).?,
+            .transient => |idx| result: {
+                const desc = render_graph.transient_textures.items[idx];
+
+                //TODO: finish desc
+                const texture = try Image.init2D(self.device, getTextureSize(desc.extent, textures[0..i]), .r8g8b8a8_unorm, .{ .storage_bit = true }, .gpu_only);
+                try frame_data.transient_textures2.append(self.allocator, texture);
+                break :result TextureResource{
+                    .interface = texture.interface(),
+                    .queue = null,
+                    .last_access = null,
+                    .layout = .undefined,
+                };
+            },
+            .window => |idx| TextureResource{
+                .interface = swapchain_textures[idx].interface,
+                .queue = null,
+                .last_access = null,
+                .layout = .undefined,
+            },
+        };
+    }
+
+    return .{
+        .buffers = buffers,
+        .textures = textures,
+    };
+}
+
+pub fn getBufferStateAccess(access: RenderGraph2.BufferAccess) struct {
+    access: vk.AccessFlags2,
+    state: vk.PipelineStageFlags2,
+} {
+    var access_flags: vk.AccessFlags2 = .{};
+    var stage_flags: vk.PipelineStageFlags2 = .{};
+
+    if (access.vertex_read) {
+        access_flags.vertex_attribute_read_bit = true;
+        stage_flags.vertex_input_bit = true;
+    }
+
+    if (access.index_read) {
+        access_flags.index_read_bit = true;
+        stage_flags.index_input_bit = true;
+    }
+
+    if (access.indirect_read) {
+        access_flags.indirect_command_read_bit = true;
+        stage_flags.draw_indirect_bit = true;
+    }
+
+    if (access.compute_uniform_read) {
+        access_flags.uniform_read_bit = true;
+        stage_flags.compute_shader_bit = true;
+    }
+
+    if (access.vertex_uniform_read) {
+        access_flags.uniform_read_bit = true;
+        stage_flags.vertex_shader_bit = true;
+    }
+
+    if (access.fragment_uniform_read) {
+        access_flags.uniform_read_bit = true;
+        stage_flags.fragment_shader_bit = true;
+    }
+
+    if (access.compute_storage_read) {
+        access_flags.shader_storage_read_bit = true;
+        stage_flags.compute_shader_bit = true;
+    }
+
+    if (access.vertex_storage_read) {
+        access_flags.shader_storage_read_bit = true;
+        stage_flags.vertex_shader_bit = true;
+    }
+
+    if (access.fragment_storage_read) {
+        access_flags.shader_storage_read_bit = true;
+        stage_flags.fragment_shader_bit = true;
+    }
+
+    if (access.compute_storage_write) {
+        access_flags.shader_storage_write_bit = true;
+        stage_flags.compute_shader_bit = true;
+    }
+
+    if (access.vertex_storage_write) {
+        access_flags.shader_storage_write_bit = true;
+        stage_flags.vertex_shader_bit = true;
+    }
+
+    if (access.fragment_storage_write) {
+        access_flags.shader_storage_write_bit = true;
+        stage_flags.fragment_shader_bit = true;
+    }
+
+    if (access.transfer_read) {
+        access_flags.transfer_read_bit = true;
+        stage_flags.all_transfer_bit = true;
+    }
+
+    if (access.transfer_write) {
+        access_flags.transfer_write_bit = true;
+        stage_flags.all_transfer_bit = true;
+    }
+
+    return .{
+        .access = access_flags,
+        .state = stage_flags,
+    };
+}
+
+pub fn getBufferMemoryBarrier(
+    self: *Self,
+    handle: vk.Buffer,
+    src_access: RenderGraph2.BufferAccess,
+    dst_access: RenderGraph2.BufferAccess,
+) vk.BufferMemoryBarrier2 {
+    _ = self; // autofix
+
+    const src = getBufferStateAccess(src_access);
+    const dst = getBufferStateAccess(dst_access);
+
+    return .{
+        .buffer = handle,
+        .offset = 0,
+        .size = vk.WHOLE_SIZE,
+        .src_access_mask = src.access,
+        .src_stage_mask = src.state,
+        .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+        .dst_access_mask = dst.access,
+        .dst_stage_mask = dst.state,
+        .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+    };
+}
+
+pub fn buildBarriers(
+    self: *Self,
+    tpa: std.mem.Allocator,
+    command_buffer: vk.CommandBufferProxy,
+    render_graph: *const RenderGraph2.Desc,
+    pass: RenderGraph2.Compiled.CompiledPass,
+    resources: *const GraphResources,
+) !void {
+
+    //TODO: use only single MemoryBarrier, we wont need more than one
+    var memory_barriers: std.ArrayList(vk.MemoryBarrier2) = .empty;
+    defer memory_barriers.deinit(tpa);
+
+    //TODO: limit to max number, if overflow switch to single MemoryBarrier
+    var buffer_barriers: std.ArrayList(vk.BufferMemoryBarrier2) = .empty;
+    defer buffer_barriers.deinit(tpa);
+
+    var texture_barriers: std.ArrayList(vk.ImageMemoryBarrier2) = .empty;
+    defer texture_barriers.deinit(tpa);
+
+    const DEBUG_FULL_PIPELINE_BARRIER: bool = false;
+
+    if (DEBUG_FULL_PIPELINE_BARRIER) {
+        try memory_barriers.append(tpa, .{
+            .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+            .src_stage_mask = .{ .all_commands_bit = true },
+            .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
+            .dst_stage_mask = .{ .all_commands_bit = true },
+        });
+    } else {
+        const dst_pass = &render_graph.passes.items[pass.handle.idx];
+
+        for (pass.first_usages.items) |first_usage| {
+            switch (first_usage) {
+                .buffer => |handle| {
+                    const buffer = &resources.buffers[handle.idx];
+                    if (buffer.last_access) |src_access| {
+                        if (dst_pass.getBufferAccess(handle)) |dst_access| {
+                            try buffer_barriers.append(tpa, self.getBufferMemoryBarrier(buffer.interface.handle, src_access, dst_access));
+                        }
+                    }
+                },
+                .texture => |_| {},
+            }
+        }
+
+        for (pass.pass_dependencies.items) |pass_dependency| {
+            const src_pass = &render_graph.passes.items[pass_dependency.pass.idx];
+
+            for (pass_dependency.dependecies.items) |dependency| {
+                switch (dependency) {
+                    .buffer => |handle| {
+                        const buffer = &resources.buffers[handle.idx];
+                        if (src_pass.getBufferAccess(handle)) |src_access| {
+                            if (dst_pass.getBufferAccess(handle)) |dst_access| {
+                                try buffer_barriers.append(tpa, self.getBufferMemoryBarrier(buffer.interface.handle, src_access, dst_access));
+                            }
+                        }
+                    },
+                    .texture => |_| {},
+                }
+            }
+        }
+    }
+
+    const dependencies: vk.DependencyInfo = .{
+        .memory_barrier_count = @intCast(memory_barriers.items.len),
+        .p_memory_barriers = memory_barriers.items.ptr,
+
+        .buffer_memory_barrier_count = @intCast(buffer_barriers.items.len),
+        .p_buffer_memory_barriers = buffer_barriers.items.ptr,
+
+        .image_memory_barrier_count = @intCast(texture_barriers.items.len),
+        .p_image_memory_barriers = texture_barriers.items.ptr,
+    };
+
+    if (dependencies.memory_barrier_count + dependencies.buffer_memory_barrier_count + dependencies.image_memory_barrier_count > 0) {
+        command_buffer.pipelineBarrier2(&dependencies);
+    }
+}
+
+pub fn recordRenderGraph(
+    self: *Self,
+    tpa: std.mem.Allocator,
+    frame_data: *PerFrameData,
+    desc: *const RenderGraph2.Desc,
+    compiled: *const RenderGraph2.Compiled,
+    resources: *const GraphResources,
+    swapchain_textures: []const SwapchainTexture,
+) !void {
+    const fence = try frame_data.fence_pool.get();
+    try frame_data.frame_wait_fences.append(self.allocator, fence);
+
+    const command_buffer_handle = try frame_data.graphics_command_pool.get();
+    const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.proxy.wrapper);
+
+    try command_buffer.beginCommandBuffer(&.{});
+
+    for (compiled.passes.items) |compiled_pass| {
+        const pass = desc.passes.items[compiled_pass.handle.idx];
+
+        if (self.device.debug) {
+            const temp_name: [:0]const u8 = try tpa.dupeZ(u8, pass.name);
+            command_buffer.beginDebugUtilsLabelEXT(&.{
+                .p_label_name = temp_name,
+                .color = .{ 1.0, 0.0, 1.0, 1.0 },
+            });
+        }
+        defer if (self.device.debug) {
+            command_buffer.endDebugUtilsLabelEXT();
+        };
+
+        // Generate Barriers
+        try self.buildBarriers(tpa, command_buffer, desc, compiled_pass, resources);
+
+        // Record Command Buffers
+
+    }
+
+    //Transitioning Swapchains to final formats
+    {
+        const swapchain_transitions = try tpa.alloc(vk.ImageMemoryBarrier2, swapchain_textures.len);
+        defer tpa.free(swapchain_transitions);
+
+        //TODO: generate barriers from graph info
+        for (swapchain_textures, swapchain_transitions) |swapchain_texture, *memory_barrier| {
+            memory_barrier.* = .{
+                .image = swapchain_texture.interface.handle,
+                .old_layout = .undefined,
+                .new_layout = .present_src_khr,
+                .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .subresource_range = .{
+                    .aspect_mask = .{ .color_bit = true },
+                    .base_array_layer = 0,
+                    .layer_count = 1,
+                    .base_mip_level = 0,
+                    .level_count = 1,
+                },
+            };
+        }
+        command_buffer.pipelineBarrier2(&.{
+            .image_memory_barrier_count = @intCast(swapchain_transitions.len),
+            .p_image_memory_barriers = swapchain_transitions.ptr,
+        });
+    }
+
+    try command_buffer.endCommandBuffer();
+    const wait_dst_stage_mask: vk.PipelineStageFlags = .{ .all_commands_bit = true };
+
+    const wait_semaphores = try tpa.alloc(vk.Semaphore, swapchain_textures.len);
+    defer tpa.free(wait_semaphores);
+
+    const wait_dst_stage_masks = try tpa.alloc(vk.PipelineStageFlags, swapchain_textures.len);
+    defer tpa.free(wait_dst_stage_masks);
+
+    const signal_semaphores = try tpa.alloc(vk.Semaphore, swapchain_textures.len);
+    defer tpa.free(signal_semaphores);
+
+    for (swapchain_textures, 0..) |swapchain_info, i| {
+        wait_dst_stage_masks[i] = wait_dst_stage_mask;
+        wait_semaphores[i] = swapchain_info.wait_semaphore;
+        signal_semaphores[i] = swapchain_info.present_semaphore;
+    }
+
+    const submit_infos: [1]vk.SubmitInfo = .{vk.SubmitInfo{
+        .command_buffer_count = 1,
+        .p_command_buffers = (&command_buffer_handle)[0..1],
+        .wait_semaphore_count = @intCast(wait_semaphores.len),
+        .p_wait_semaphores = wait_semaphores.ptr,
+        .p_wait_dst_stage_mask = wait_dst_stage_masks.ptr,
+        .signal_semaphore_count = @intCast(signal_semaphores.len),
+        .p_signal_semaphores = signal_semaphores.ptr,
+    }};
+
+    try self.device.proxy.queueSubmit(self.device.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
+}
+
+pub fn submitRenderGraph(self: *Self, tpa: std.mem.Allocator, render_graph: *const RenderGraph2.Desc) !void {
+    const TIMEOUT_NS: u64 = std.time.ns_per_s * 5;
+
+    //Compile graph
+    var compiled: RenderGraph2.Compiled = try .compile(tpa, render_graph);
+    defer compiled.deinit(tpa);
+
+    const frame_data = self.getNextFrameData();
+
+    //Wait for previous frame to finish
+    if (!frame_data.waitForPrevious(self.device.proxy, TIMEOUT_NS)) {
+        std.log.err("Failed to wait for previous frame fences", .{});
+    }
+
+    frame_data.reset();
+    errdefer frame_data.errorReset(self.device.proxy);
+
+    // Swapchain Images
+    const swapchain_textures = try tpa.alloc(SwapchainTexture, render_graph.window_textures.items.len);
+    defer tpa.free(swapchain_textures);
+
+    for (render_graph.window_textures.items, swapchain_textures) |window, *swapchain_texture| {
+        const surface_swapchain = self.swapchains.getPtr(window.handle) orelse return error.InvalidWindow;
+        var swapchain = surface_swapchain.swapchain;
+
+        if (swapchain.out_of_date) {
+            _ = self.device.proxy.deviceWaitIdle() catch {};
+            const window_size = window.handle.getSize();
+            const new_swapchain = try Swapchain.init(
+                self.device,
+                surface_swapchain.surface,
+                .{ .width = window_size[0], .height = window_size[1] },
+                swapchain.settings,
+                swapchain.handle,
+            );
+            swapchain.deinit();
+            swapchain.* = new_swapchain;
+        }
+
+        const wait_semaphore = try frame_data.semaphore_pool.get();
+        const swapchain_image = swapchain.acquireNextImage(null, wait_semaphore, .null_handle) catch |err| {
+            if (err == error.OutOfDateKHR) {
+                swapchain.out_of_date = true;
+            }
+            return err;
+        };
+
+        swapchain_texture.* = .{
+            .swapchain = surface_swapchain.swapchain,
+            .index = swapchain_image.index,
+            .interface = swapchain_image.image,
+            .wait_semaphore = wait_semaphore,
+            .present_semaphore = swapchain_image.present_semaphore,
+            .resource_index = undefined,
+        };
+    }
+
+    //Fetch resources + states
+    const resources = try self.fetchResources(tpa, frame_data, render_graph, swapchain_textures);
+
+    //Record command buffers
+    try self.recordRenderGraph(tpa, frame_data, render_graph, &compiled, &resources, swapchain_textures);
+
+    //Submit command buffers
+
+    //Submit Presents
+    for (swapchain_textures) |swapchain_info| {
+        swapchain_info.swapchain.queuePresent(
+            self.device.graphics_queue.handle,
+            swapchain_info.index,
+            swapchain_info.present_semaphore,
+        ) catch |err| {
+            switch (err) {
+                error.OutOfDateKHR => swapchain_info.swapchain.out_of_date = true,
+                else => return err,
+            }
+        };
+    }
+
+    //Update last usages
+}
+
+// *************************************************************************************************************************
+// Old Graph code starts here
+// *************************************************************************************************************************
+// TODO: replace with new code
+
+const SwapchainTexture = struct {
     swapchain: *Swapchain,
     index: u32,
-    image: Image.Interface,
+    interface: Image.Interface,
     wait_semaphore: vk.Semaphore,
     present_semaphore: vk.Semaphore,
     resource_index: usize,
@@ -409,13 +995,11 @@ const UploadInfo = struct {
 pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.RenderGraph) !void {
     const TIMEOUT_NS: u64 = std.time.ns_per_s * 5;
 
-    self.frame_index = @mod(self.frame_index + 1, self.frame_data.len);
-    const frame_data = &self.frame_data[self.frame_index];
+    const frame_data = self.getNextFrameData();
 
     //Wait for previous frame to finish
-    if (frame_data.frame_wait_fences.items.len > 0) {
-        _ = try self.device.proxy.waitForFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr, .true, TIMEOUT_NS);
-        frame_data.frame_wait_fences.clearRetainingCapacity();
+    if (!frame_data.waitForPrevious(self.device.proxy, TIMEOUT_NS)) {
+        std.log.err("Failed to wait for previous frame fences", .{});
     }
 
     //Clear tranisent data
@@ -427,18 +1011,13 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         self.destroyImage(handle);
     }
     frame_data.reset();
+    errdefer frame_data.errorReset(self.device.proxy);
 
     const fence = try frame_data.fence_pool.get();
     try frame_data.frame_wait_fences.append(self.allocator, fence);
-    errdefer {
-        self.device.proxy.resetFences(@intCast(frame_data.frame_wait_fences.items.len), frame_data.frame_wait_fences.items.ptr) catch |err| {
-            std.log.err("Failed to reset frame_wait_fences: {}", .{err});
-        };
-        frame_data.frame_wait_fences.clearRetainingCapacity();
-    }
 
     // Swapchain Images
-    const swapchain_infos = try temp_allocator.alloc(SwapchainImageInfo, render_graph.swapchains.items.len);
+    const swapchain_infos = try temp_allocator.alloc(SwapchainTexture, render_graph.swapchains.items.len);
     defer temp_allocator.free(swapchain_infos);
 
     for (render_graph.swapchains.items, swapchain_infos) |window, *swapchain_info| {
@@ -470,7 +1049,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         swapchain_info.* = .{
             .swapchain = surface_swapchain.swapchain,
             .index = swapchain_image.index,
-            .image = swapchain_image.image,
+            .interface = swapchain_image.image,
             .wait_semaphore = wait_semaphore,
             .present_semaphore = swapchain_image.present_semaphore,
             .resource_index = undefined,
@@ -489,11 +1068,11 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
 
     for (buffers, render_graph.buffers.items) |*buffer, rg_buffer| {
         buffer.* = switch (rg_buffer) {
-            .persistent => |handle| self.buffers.get(handle).?.interface(),
+            .persistent => |handle| self.buffers.get(handle).?.buffer.interface(),
             .transient => |transient_index| buf: {
                 const transient_desc = render_graph.transient_buffers.items[transient_index];
                 frame_data.transient_buffers.items[transient_index] = try self.createBuffer("transient_buffer", transient_desc.size, transient_desc.usage);
-                break :buf self.buffers.get(frame_data.transient_buffers.items[transient_index]).?.interface();
+                break :buf self.buffers.get(frame_data.transient_buffers.items[transient_index]).?.buffer.interface();
             },
         };
     }
@@ -503,10 +1082,10 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
 
     for (images, render_graph.textures.items, 0..) |*image, rg_texture, i| {
         image.* = switch (rg_texture) {
-            .persistent => |handle| self.images.get(handle).?.interface(),
+            .persistent => |handle| self.images.get(handle).?.texture.interface(),
             .swapchain => |index| img: {
                 swapchain_infos[index].resource_index = i;
-                break :img swapchain_infos[index].image;
+                break :img swapchain_infos[index].interface;
             },
             .transient => |transient_index| img: {
                 // This currently relies on the fact that transient textures can only referance a RenderGraphImage that was create before this one,
@@ -517,7 +1096,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
                     .relative => |r| images[r.index].extent,
                 };
                 frame_data.transient_images.items[transient_index] = try self.createImage(.{ extent.width, extent.height }, transient_desc.format, transient_desc.usage);
-                break :img self.images.get(frame_data.transient_images.items[transient_index]).?.interface();
+                break :img self.images.get(frame_data.transient_images.items[transient_index]).?.texture.interface();
             },
         };
     }
@@ -768,7 +1347,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
 
         for (swapchain_infos, swapchain_transitions) |swapchain_info, *memory_barrier| {
             memory_barrier.* = .{
-                .image = swapchain_info.image.handle,
+                .image = swapchain_info.interface.handle,
                 .old_layout = resources.textures[swapchain_info.resource_index].layout,
                 .new_layout = .present_src_khr,
                 .src_stage_mask = .{ .all_commands_bit = true },
