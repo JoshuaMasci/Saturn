@@ -174,7 +174,7 @@ pub fn init(allocator: std.mem.Allocator, desc: Desc) !Self {
             .mesh_shading = p_device.info.extensions.mesh_shading,
             .raytracing = p_device.info.extensions.raytracing,
             .host_image_copy = p_device.info.extensions.host_image_copy and p_device.info.memory.direct_buffer_upload,
-            .unified_image_layouts = p_device.info.extensions.unified_image_layouts,
+            .unified_image_layouts = p_device.info.extensions.unified_image_layouts and false,
         },
         instance.debug_messager != null,
     );
@@ -558,7 +558,7 @@ pub fn fetchResources(self: *const Self, tpa: std.mem.Allocator, frame_data: *Pe
     errdefer tpa.free(textures);
 
     for (render_graph.buffers.items, buffers) |graph_buffer, *resource| {
-        resource.* = switch (graph_buffer) {
+        resource.* = switch (graph_buffer.source) {
             .persistent => |handle| self.getBufferResource(handle).?,
             .transient => |idx| result: {
                 const desc = render_graph.transient_buffers.items[idx];
@@ -576,7 +576,7 @@ pub fn fetchResources(self: *const Self, tpa: std.mem.Allocator, frame_data: *Pe
     }
 
     for (render_graph.textures.items, textures, 0..) |graph_texture, *resource, i| {
-        resource.* = switch (graph_texture) {
+        resource.* = switch (graph_texture.source) {
             .persistent => |handle| self.getTextureResource(handle).?,
             .transient => |idx| result: {
                 const desc = render_graph.transient_textures.items[idx];
@@ -606,86 +606,66 @@ pub fn fetchResources(self: *const Self, tpa: std.mem.Allocator, frame_data: *Pe
     };
 }
 
-pub fn getBufferStateAccess(access: RenderGraph2.BufferAccess) struct {
+const BufferStateAccess = struct {
     access: vk.AccessFlags2,
     state: vk.PipelineStageFlags2,
-} {
-    var access_flags: vk.AccessFlags2 = .{};
-    var stage_flags: vk.PipelineStageFlags2 = .{};
+};
 
-    if (access.vertex_read) {
-        access_flags.vertex_attribute_read_bit = true;
-        stage_flags.vertex_input_bit = true;
-    }
+pub fn getBufferStateAccess(access: RenderGraph2.BufferAccess) BufferStateAccess {
+    return switch (access) {
+        .none => .{
+            .access = .{},
+            .state = .{},
+        },
 
-    if (access.index_read) {
-        access_flags.index_read_bit = true;
-        stage_flags.index_input_bit = true;
-    }
+        .vertex_read => .{
+            .access = .{ .vertex_attribute_read_bit = true },
+            .state = .{ .vertex_input_bit = true },
+        },
+        .index_read => .{
+            .access = .{ .index_read_bit = true },
+            .state = .{ .index_input_bit = true },
+        },
+        .indirect_read => .{
+            .access = .{ .indirect_command_read_bit = true },
+            .state = .{ .draw_indirect_bit = true },
+        },
 
-    if (access.indirect_read) {
-        access_flags.indirect_command_read_bit = true;
-        stage_flags.draw_indirect_bit = true;
-    }
+        .compute_uniform_read => .{
+            .access = .{ .uniform_read_bit = true },
+            .state = .{ .compute_shader_bit = true },
+        },
+        .graphics_uniform_read => .{
+            .access = .{ .uniform_read_bit = true },
+            .state = .{ .all_graphics_bit = true },
+        },
 
-    if (access.compute_uniform_read) {
-        access_flags.uniform_read_bit = true;
-        stage_flags.compute_shader_bit = true;
-    }
+        .compute_storage_read => .{
+            .access = .{ .shader_storage_read_bit = true },
+            .state = .{ .compute_shader_bit = true },
+        },
+        .graphics_storage_read => .{
+            .access = .{ .shader_storage_read_bit = true },
+            .state = .{ .all_graphics_bit = true },
+        },
 
-    if (access.vertex_uniform_read) {
-        access_flags.uniform_read_bit = true;
-        stage_flags.vertex_shader_bit = true;
-    }
+        .compute_storage_write => .{
+            .access = .{ .shader_storage_read_bit = true, .shader_storage_write_bit = true },
+            .state = .{ .compute_shader_bit = true },
+        },
+        .graphics_storage_write => .{
+            .access = .{ .shader_storage_read_bit = true, .shader_storage_write_bit = true },
+            .state = .{ .all_graphics_bit = true },
+        },
 
-    if (access.fragment_uniform_read) {
-        access_flags.uniform_read_bit = true;
-        stage_flags.fragment_shader_bit = true;
-    }
-
-    if (access.compute_storage_read) {
-        access_flags.shader_storage_read_bit = true;
-        stage_flags.compute_shader_bit = true;
-    }
-
-    if (access.vertex_storage_read) {
-        access_flags.shader_storage_read_bit = true;
-        stage_flags.vertex_shader_bit = true;
-    }
-
-    if (access.fragment_storage_read) {
-        access_flags.shader_storage_read_bit = true;
-        stage_flags.fragment_shader_bit = true;
-    }
-
-    if (access.compute_storage_write) {
-        access_flags.shader_storage_write_bit = true;
-        stage_flags.compute_shader_bit = true;
-    }
-
-    if (access.vertex_storage_write) {
-        access_flags.shader_storage_write_bit = true;
-        stage_flags.vertex_shader_bit = true;
-    }
-
-    if (access.fragment_storage_write) {
-        access_flags.shader_storage_write_bit = true;
-        stage_flags.fragment_shader_bit = true;
-    }
-
-    if (access.transfer_read) {
-        access_flags.transfer_read_bit = true;
-        stage_flags.all_transfer_bit = true;
-    }
-
-    if (access.transfer_write) {
-        access_flags.transfer_write_bit = true;
-        stage_flags.all_transfer_bit = true;
-    }
-
-    return .{
-        .access = access_flags,
-        .state = stage_flags,
+        .transfer_read => .{
+            .access = .{ .transfer_read_bit = true },
+            .state = .{ .all_transfer_bit = true },
+        },
+        .transfer_write => .{
+            .access = .{ .transfer_write_bit = true },
+            .state = .{ .all_transfer_bit = true },
+        },
     };
 }
 
@@ -713,6 +693,125 @@ pub fn getBufferMemoryBarrier(
     };
 }
 
+const TextureStateAccess = struct {
+    access: vk.AccessFlags2,
+    state: vk.PipelineStageFlags2,
+    layout: vk.ImageLayout,
+};
+
+pub fn getTextureStateAccess(access: RenderGraph2.TextureAccess, is_color: bool, unifined_image_layout: bool) TextureStateAccess {
+    var result: TextureStateAccess = switch (access) {
+        .none => .{
+            .access = .{},
+            .state = .{},
+            .layout = .undefined,
+        },
+
+        .attachment_read => if (is_color) .{
+            .access = .{ .color_attachment_read_bit = true },
+            .state = .{ .color_attachment_output_bit = true, .fragment_shader_bit = true },
+            .layout = .attachment_optimal, //TODO: what is the best layout for this stage?
+        } else .{
+            .access = .{ .depth_stencil_attachment_read_bit = true },
+            .state = .{ .early_fragment_tests_bit = true, .late_fragment_tests_bit = true },
+            .layout = .attachment_optimal,
+        },
+        .attachment_write => if (is_color) .{
+            .access = .{ .color_attachment_write_bit = true },
+            .state = .{ .color_attachment_output_bit = true },
+            .layout = .attachment_optimal,
+        } else .{
+            .access = .{ .depth_stencil_attachment_write_bit = true },
+            .state = .{ .early_fragment_tests_bit = true, .late_fragment_tests_bit = true },
+            .layout = .attachment_optimal,
+        },
+
+        .compute_sampled_read => .{
+            .access = .{ .shader_sampled_read_bit = true },
+            .state = .{ .compute_shader_bit = true },
+            .layout = .shader_read_only_optimal,
+        },
+        .graphics_sampled_read => .{
+            .access = .{ .shader_sampled_read_bit = true },
+            .state = .{ .all_graphics_bit = true },
+            .layout = .shader_read_only_optimal,
+        },
+
+        .compute_storage_read => .{
+            .access = .{ .shader_storage_read_bit = true },
+            .state = .{ .compute_shader_bit = true },
+            .layout = .general,
+        },
+        .graphics_storage_read => .{
+            .access = .{ .shader_storage_read_bit = true },
+            .state = .{ .all_graphics_bit = true },
+            .layout = .general,
+        },
+
+        .compute_storage_write => .{
+            .access = .{ .shader_storage_read_bit = true, .shader_storage_write_bit = true },
+            .state = .{ .compute_shader_bit = true },
+            .layout = .general,
+        },
+        .graphics_storage_write => .{
+            .access = .{ .shader_storage_read_bit = true, .shader_storage_write_bit = true },
+            .state = .{ .all_graphics_bit = true },
+            .layout = .general,
+        },
+
+        .transfer_read => .{
+            .access = .{ .transfer_read_bit = true },
+            .state = .{ .all_transfer_bit = true },
+            .layout = .transfer_src_optimal,
+        },
+        .transfer_write => .{
+            .access = .{ .transfer_write_bit = true },
+            .state = .{ .all_transfer_bit = true },
+            .layout = .transfer_dst_optimal,
+        },
+    };
+
+    if (access != .none and unifined_image_layout) {
+        result.layout = .general;
+    }
+
+    return result;
+}
+
+pub fn getTextureMemoryBarrier(
+    self: *Self,
+    texture: Image.Interface,
+    src_access: RenderGraph2.TextureAccess,
+    dst_access: RenderGraph2.TextureAccess,
+) ?vk.ImageMemoryBarrier2 {
+    const aspect_mask = Image.getFormatAspectMask(texture.format);
+    const is_color = aspect_mask.color_bit;
+    const unified_image_layouts = self.device.extensions.unified_image_layouts;
+
+    const src = getTextureStateAccess(src_access, is_color, unified_image_layouts);
+    const dst = getTextureStateAccess(dst_access, is_color, unified_image_layouts);
+
+    return .{
+        .image = texture.handle,
+        .subresource_range = .{
+            .aspect_mask = aspect_mask,
+            .base_array_layer = 0,
+            .layer_count = 1,
+            .base_mip_level = 0,
+            .level_count = 1,
+        },
+        .src_access_mask = src.access,
+        .src_stage_mask = src.state,
+        .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+        .old_layout = src.layout,
+
+        .dst_access_mask = dst.access,
+        .dst_stage_mask = dst.state,
+        .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+        .new_layout = dst.layout,
+    };
+}
+
 pub fn buildBarriers(
     self: *Self,
     tpa: std.mem.Allocator,
@@ -734,7 +833,6 @@ pub fn buildBarriers(
     defer texture_barriers.deinit(tpa);
 
     const DEBUG_FULL_PIPELINE_BARRIER: bool = false;
-
     if (DEBUG_FULL_PIPELINE_BARRIER) {
         try memory_barriers.append(tpa, .{
             .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
@@ -742,38 +840,54 @@ pub fn buildBarriers(
             .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
             .dst_stage_mask = .{ .all_commands_bit = true },
         });
-    } else {
-        const dst_pass = &render_graph.passes.items[pass.handle.idx];
+    }
 
-        for (pass.first_usages.items) |first_usage| {
-            switch (first_usage) {
+    const dst_pass = &render_graph.passes.items[pass.handle.idx];
+
+    for (pass.first_usages.items) |first_usage| {
+        switch (first_usage) {
+            .buffer => |handle| {
+                const buffer = &resources.buffers[handle.idx];
+                if (buffer.last_access) |src_access| {
+                    if (dst_pass.getBufferAccess(handle)) |dst_access| {
+                        try buffer_barriers.append(tpa, self.getBufferMemoryBarrier(buffer.interface.handle, src_access, dst_access));
+                    }
+                }
+            },
+            .texture => |handle| {
+                const texture = &resources.textures[handle.idx];
+                if (dst_pass.getTextureAccess(handle)) |dst_access| {
+                    if (self.getTextureMemoryBarrier(texture.interface, texture.last_access orelse .none, dst_access)) |barrier| {
+                        try texture_barriers.append(tpa, barrier);
+                    }
+                }
+            },
+        }
+    }
+
+    for (pass.pass_dependencies.items) |pass_dependency| {
+        const src_pass = &render_graph.passes.items[pass_dependency.pass.idx];
+
+        for (pass_dependency.dependecies.items) |dependency| {
+            switch (dependency) {
                 .buffer => |handle| {
                     const buffer = &resources.buffers[handle.idx];
-                    if (buffer.last_access) |src_access| {
+                    if (src_pass.getBufferAccess(handle)) |src_access| {
                         if (dst_pass.getBufferAccess(handle)) |dst_access| {
                             try buffer_barriers.append(tpa, self.getBufferMemoryBarrier(buffer.interface.handle, src_access, dst_access));
                         }
                     }
                 },
-                .texture => |_| {},
-            }
-        }
-
-        for (pass.pass_dependencies.items) |pass_dependency| {
-            const src_pass = &render_graph.passes.items[pass_dependency.pass.idx];
-
-            for (pass_dependency.dependecies.items) |dependency| {
-                switch (dependency) {
-                    .buffer => |handle| {
-                        const buffer = &resources.buffers[handle.idx];
-                        if (src_pass.getBufferAccess(handle)) |src_access| {
-                            if (dst_pass.getBufferAccess(handle)) |dst_access| {
-                                try buffer_barriers.append(tpa, self.getBufferMemoryBarrier(buffer.interface.handle, src_access, dst_access));
+                .texture => |handle| {
+                    const texture = &resources.textures[handle.idx];
+                    if (src_pass.getTextureAccess(handle)) |src_access| {
+                        if (dst_pass.getTextureAccess(handle)) |dst_access| {
+                            if (self.getTextureMemoryBarrier(texture.interface, src_access, dst_access)) |barrier| {
+                                try texture_barriers.append(tpa, barrier);
                             }
                         }
-                    },
-                    .texture => |_| {},
-                }
+                    }
+                },
             }
         }
     }
@@ -839,9 +953,21 @@ pub fn recordRenderGraph(
 
         //TODO: generate barriers from graph info
         for (swapchain_textures, swapchain_transitions) |swapchain_texture, *memory_barrier| {
+
+            //Get last usage
+            var src_access: RenderGraph2.TextureAccess = .none;
+
+            if (desc.textures.items[swapchain_texture.resource.idx].last_useage) |pass| {
+                if (desc.passes.items[pass.idx].getTextureAccess(swapchain_texture.resource)) |access| {
+                    src_access = access;
+                }
+            }
+
+            const src_state_access = getTextureStateAccess(src_access, true, self.device.extensions.unified_image_layouts);
+
             memory_barrier.* = .{
                 .image = swapchain_texture.interface.handle,
-                .old_layout = .undefined,
+                .old_layout = src_state_access.layout,
                 .new_layout = .present_src_khr,
                 .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
                 .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
@@ -880,7 +1006,7 @@ pub fn recordRenderGraph(
 
     const submit_infos: [1]vk.SubmitInfo = .{vk.SubmitInfo{
         .command_buffer_count = 1,
-        .p_command_buffers = (&command_buffer_handle)[0..1],
+        .p_command_buffers = @ptrCast(&command_buffer_handle),
         .wait_semaphore_count = @intCast(wait_semaphores.len),
         .p_wait_semaphores = wait_semaphores.ptr,
         .p_wait_dst_stage_mask = wait_dst_stage_masks.ptr,
@@ -903,6 +1029,18 @@ pub fn submitRenderGraph(self: *Self, tpa: std.mem.Allocator, render_graph: *con
     //Wait for previous frame to finish
     if (!frame_data.waitForPrevious(self.device.proxy, TIMEOUT_NS)) {
         std.log.err("Failed to wait for previous frame fences", .{});
+    }
+
+    // Clear old graph tranisent data
+    // TODO: remove once old graph is removed
+    {
+        for (frame_data.transient_buffers.items) |handle| {
+            self.destroyBuffer(handle);
+        }
+
+        for (frame_data.transient_images.items) |handle| {
+            self.destroyImage(handle);
+        }
     }
 
     frame_data.reset();
@@ -944,7 +1082,7 @@ pub fn submitRenderGraph(self: *Self, tpa: std.mem.Allocator, render_graph: *con
             .interface = swapchain_image.image,
             .wait_semaphore = wait_semaphore,
             .present_semaphore = swapchain_image.present_semaphore,
-            .resource_index = undefined,
+            .resource = window.texture,
         };
     }
 
@@ -984,7 +1122,7 @@ const SwapchainTexture = struct {
     interface: Image.Interface,
     wait_semaphore: vk.Semaphore,
     present_semaphore: vk.Semaphore,
-    resource_index: usize,
+    resource: RenderGraph2.Texture,
 };
 
 const UploadInfo = struct {
@@ -1052,7 +1190,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
             .interface = swapchain_image.image,
             .wait_semaphore = wait_semaphore,
             .present_semaphore = swapchain_image.present_semaphore,
-            .resource_index = undefined,
+            .resource = undefined,
         };
     }
 
@@ -1084,7 +1222,7 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         image.* = switch (rg_texture) {
             .persistent => |handle| self.images.get(handle).?.texture.interface(),
             .swapchain => |index| img: {
-                swapchain_infos[index].resource_index = i;
+                swapchain_infos[index].resource = .{ .idx = @intCast(i) };
                 break :img swapchain_infos[index].interface;
             },
             .transient => |transient_index| img: {
@@ -1348,13 +1486,9 @@ pub fn render(self: *Self, temp_allocator: std.mem.Allocator, render_graph: rg.R
         for (swapchain_infos, swapchain_transitions) |swapchain_info, *memory_barrier| {
             memory_barrier.* = .{
                 .image = swapchain_info.interface.handle,
-                .old_layout = resources.textures[swapchain_info.resource_index].layout,
+                .old_layout = resources.textures[swapchain_info.resource.idx].layout,
                 .new_layout = .present_src_khr,
-                .src_stage_mask = .{ .all_commands_bit = true },
-                .src_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
                 .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-                .dst_stage_mask = .{ .all_commands_bit = true },
-                .dst_access_mask = .{ .memory_read_bit = true, .memory_write_bit = true },
                 .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
                 .subresource_range = .{
                     .aspect_mask = .{ .color_bit = true },

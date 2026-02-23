@@ -17,6 +17,12 @@ pub const QueuePreference = enum {
 };
 
 pub const Buffer = struct { idx: u32 };
+pub const GraphBuffer = struct {
+    source: BufferSource,
+    first_usage: ?Pass = null,
+    last_useage: ?Pass = null,
+};
+
 pub const BufferUsage = struct {
     handle: Buffer,
     access: BufferAccess,
@@ -31,6 +37,11 @@ pub const TransientBufferDesc = struct {
 };
 
 pub const Texture = struct { idx: u32 };
+pub const GraphTexture = struct {
+    source: TextureSource,
+    first_usage: ?Pass = null,
+    last_useage: ?Pass = null,
+};
 pub const TextureUsage = struct {
     handle: Texture,
     access: TextureAccess,
@@ -46,118 +57,48 @@ pub const TransientTextureDesc = struct {
 };
 pub const WindowTextureDesc = struct {
     handle: WindowHandle,
+    texture: Texture,
 };
 pub const TextureExtent = union(enum) {
     fixed: [2]u32,
     relative: Texture,
 };
 
-// pub const BufferReadAccess = packed struct(u32) {
-//     vertex: bool = false,
-//     index: bool = false,
-//     uniform: bool = false,
-//     storage: bool = false,
-//     indirect: bool = false,
-//     transfer_src: bool = false,
+pub const BufferAccess = enum(u32) {
+    none,
+    vertex_read,
+    index_read,
+    indirect_read,
 
-//     _padding: u26 = 0,
+    compute_uniform_read,
+    graphics_uniform_read,
 
-//     pub fn merge(self: BufferReadAccess, other: BufferReadAccess) BufferReadAccess {
-//         return @bitCast(@as(u32, @bitCast(self)) | @as(u32, @bitCast(other)));
-//     }
-// };
+    compute_storage_read,
+    graphics_storage_read,
 
-// pub const BufferWriteAccess = enum(u32) {
-//     storage,
-//     transfer_dst,
-// };
+    compute_storage_write,
+    graphics_storage_write,
 
-// pub const BufferAccess = union(enum) {
-//     read: BufferReadAccess,
-//     write: BufferWriteAccess,
-
-//     pub fn isWrite(self: BufferAccess) bool {
-//         switch (self) {
-//             .write => true,
-//             .read => false,
-//         }
-//     }
-// };
-
-pub const BufferAccess = packed struct(u32) {
-    vertex_read: bool = false,
-    index_read: bool = false,
-    indirect_read: bool = false,
-
-    compute_uniform_read: bool = false,
-    vertex_uniform_read: bool = false,
-    fragment_uniform_read: bool = false,
-
-    compute_storage_read: bool = false,
-    vertex_storage_read: bool = false,
-    fragment_storage_read: bool = false,
-
-    compute_storage_write: bool = false,
-    vertex_storage_write: bool = false,
-    fragment_storage_write: bool = false,
-
-    transfer_read: bool = false,
-    transfer_write: bool = false,
-
-    _padding: u18 = 0,
+    transfer_read,
+    transfer_write,
 };
 
-// pub const TextureReadAccess = packed struct(u32) {
-//     sampled: bool = false,
-//     storage: bool = false,
-//     attachment: bool = false,
-//     transfer_src: bool = false,
+pub const TextureAccess = enum(u32) {
+    none,
+    attachment_read,
+    attachment_write,
 
-//     _padding: u28 = 0,
+    compute_sampled_read,
+    graphics_sampled_read,
 
-//     pub fn merge(self: TextureReadAccess, other: TextureReadAccess) TextureReadAccess {
-//         return @bitCast(@as(u32, @bitCast(self)) | @as(u32, @bitCast(other)));
-//     }
-// };
+    compute_storage_read,
+    graphics_storage_read,
 
-// pub const TextureWriteAccess = enum(u32) {
-//     storage,
-//     attachment,
-//     transfer_dst,
-// };
+    compute_storage_write,
+    graphics_storage_write,
 
-// pub const TextureAccess = union(enum) {
-//     read: TextureReadAccess,
-//     write: TextureWriteAccess,
-
-//     pub fn isWrite(self: BufferAccess) bool {
-//         switch (self) {
-//             .write => true,
-//             .read => false,
-//         }
-//     }
-// };
-
-pub const TextureAccess = packed struct(u32) {
-    attachment_read: bool = false,
-    attachment_write: bool = false,
-
-    compute_sampled_read: bool = false,
-    vertex_sampled_read: bool = false,
-    fragment_sampled_read: bool = false,
-
-    compute_storage_read: bool = false,
-    vertex_storage_read: bool = false,
-    fragment_storage_read: bool = false,
-
-    compute_storage_write: bool = false,
-    vertex_storage_write: bool = false,
-    fragment_storage_write: bool = false,
-
-    transfer_read: bool = false,
-    transfer_write: bool = false,
-
-    _padding: u19 = 0,
+    transfer_read,
+    transfer_write,
 };
 
 pub const Pass = struct { idx: u32 };
@@ -165,6 +106,7 @@ pub const PassDesc = struct {
     handle: Pass,
     name: []const u8,
     queue: QueuePreference = .graphics,
+    no_cull: bool = true,
 
     //TODO: store these as Hashmaps for faster fetch?
     //TODO: impl both and test perf
@@ -180,9 +122,9 @@ pub const PassDesc = struct {
         return null;
     }
 
-    pub fn getTextureAccess(self: *const PassDesc, handle: Texture) ?BufferAccess {
+    pub fn getTextureAccess(self: *const PassDesc, handle: Texture) ?TextureAccess {
         for (self.texture_usages.items) |usage| {
-            if (usage.handle == handle) {
+            if (usage.handle.idx == handle.idx) {
                 return usage.access;
             }
         }
@@ -199,8 +141,8 @@ pub const Desc = struct {
     transient_buffers: std.ArrayList(TransientBufferDesc) = .empty,
     transient_textures: std.ArrayList(TransientTextureDesc) = .empty,
 
-    buffers: std.ArrayList(BufferSource) = .empty,
-    textures: std.ArrayList(TextureSource) = .empty,
+    buffers: std.ArrayList(GraphBuffer) = .empty,
+    textures: std.ArrayList(GraphTexture) = .empty,
 
     passes: std.ArrayList(PassDesc) = .empty,
 
@@ -234,41 +176,76 @@ pub const Desc = struct {
 
     pub fn addBufferUsage(self: *Self, pass: Pass, buffer: Buffer, access: BufferAccess) Error!void {
         try self.passes.items[pass.idx].buffer_usages.append(self.gpa, .{ .handle = buffer, .access = access });
+
+        // Passes are guaranteed to be executed in the order of creatation
+        // but usages can be added out of order, so we chose the smallest idx to be the first
+        // and the largest idx to be the last
+
+        const entry = &self.buffers.items[buffer.idx];
+        if (entry.first_usage) |*usage| {
+            usage.idx = @min(usage.idx, pass.idx);
+        } else {
+            entry.first_usage = pass;
+        }
+        if (entry.last_useage) |*usage| {
+            usage.idx = @max(usage.idx, pass.idx);
+        } else {
+            entry.last_useage = pass;
+        }
     }
 
     pub fn addTextureUsage(self: *Self, pass: Pass, texture: Texture, access: TextureAccess) Error!void {
         try self.passes.items[pass.idx].texture_usages.append(self.gpa, .{ .handle = texture, .access = access });
+
+        // Passes are guaranteed to be executed in the order of creatation
+        // but usages can be added out of order, so we chose the smallest idx to be the first
+        // and the largest idx to be the last
+
+        const entry = &self.textures.items[texture.idx];
+        if (entry.first_usage) |*usage| {
+            usage.idx = @min(usage.idx, pass.idx);
+        } else {
+            entry.first_usage = pass;
+        }
+        if (entry.last_useage) |*usage| {
+            usage.idx = @max(usage.idx, pass.idx);
+        } else {
+            entry.last_useage = pass;
+        }
     }
 
     pub fn importBuffer(self: *Self, handle: BufferHandle) Error!Buffer {
-        try self.buffers.append(self.gpa, .{ .persistent = handle });
+        try self.buffers.append(self.gpa, .{ .source = .{ .persistent = handle } });
         return Buffer{ .idx = @intCast(self.buffers.items.len - 1) };
     }
 
     pub fn createTransientBuffer(self: *Self, desc: TransientBufferDesc) Error!Buffer {
         try self.transient_buffers.append(self.gpa, desc);
         const transient_idx = self.transient_buffers.items.len - 1;
-        try self.buffers.append(self.gpa, .{ .transient = transient_idx });
+        try self.buffers.append(self.gpa, .{ .source = .{ .transient = transient_idx } });
         return Buffer{ .idx = @intCast(self.buffers.items.len - 1) };
     }
 
     pub fn importTexture(self: *Self, handle: TextureHandle) Error!Texture {
-        try self.textures.append(self.gpa, .{ .persistent = handle });
+        try self.textures.append(self.gpa, .{ .source = .{ .persistent = handle } });
         return Texture{ .idx = @intCast(self.textures.items.len - 1) };
     }
 
     pub fn createTransientTexture(self: *Self, desc: TransientTextureDesc) Error!Texture {
         try self.transient_textures.append(self.gpa, desc);
         const transient_idx = self.transient_textures.items.len - 1;
-        try self.textures.append(self.gpa, .{ .transient = transient_idx });
+        try self.textures.append(self.gpa, .{ .source = .{ .transient = transient_idx } });
         return Texture{ .idx = @intCast(self.textures.items.len - 1) };
     }
 
     pub fn acquireWindowTexture(self: *Self, window: WindowHandle) Error!Texture {
-        try self.window_textures.append(self.gpa, .{ .handle = window });
+        const texture: Texture = .{ .idx = @intCast(self.textures.items.len) };
+
+        try self.window_textures.append(self.gpa, .{ .handle = window, .texture = texture });
+
         const window_idx = self.window_textures.items.len - 1;
-        try self.textures.append(self.gpa, .{ .window = window_idx });
-        return Texture{ .idx = @intCast(self.textures.items.len - 1) };
+        try self.textures.append(self.gpa, .{ .source = .{ .window = window_idx } });
+        return texture;
     }
 };
 
@@ -281,7 +258,6 @@ pub const Compiled = struct {
             pass: Pass,
             dependecies: Dependencies,
         }) = .empty,
-        last_usages: Dependencies = .empty,
     };
 
     pub const ResourceInfo = struct {
@@ -298,7 +274,6 @@ pub const Compiled = struct {
         for (self.passes.items) |*pass| {
             pass.first_usages.deinit(gpa);
             pass.pass_dependencies.deinit(gpa);
-            pass.last_usages.deinit(gpa);
         }
         self.passes.deinit(gpa);
         self.buffers.deinit(gpa);
@@ -407,18 +382,6 @@ pub const Compiled = struct {
                         .pass = entry.key_ptr.*,
                         .dependecies = try entry.value_ptr.clone(tpa),
                     });
-                }
-
-                for (last_buffer_access, 0..) |last_pass, i| {
-                    if (last_pass != null and last_pass.?.idx == pass_handle.idx) {
-                        try result_pass.last_usages.append(tpa, .{ .buffer = .{ .idx = @intCast(i) } });
-                    }
-                }
-
-                for (last_texture_access, 0..) |last_pass, i| {
-                    if (last_pass != null and last_pass.?.idx == pass_handle.idx) {
-                        try result_pass.last_usages.append(tpa, .{ .texture = .{ .idx = @intCast(i) } });
-                    }
                 }
 
                 try result.passes.append(tpa, result_pass);

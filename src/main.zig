@@ -429,29 +429,29 @@ const App = struct {
             });
 
             const pass1 = try render_graph2.createPass("Pass1", .graphics);
-            try render_graph2.addTextureUsage(pass1, color_texture, .{ .attachment_write = true });
-            try render_graph2.addTextureUsage(pass1, depth_texture, .{ .attachment_write = true });
+            try render_graph2.addTextureUsage(pass1, color_texture, .attachment_write);
+            try render_graph2.addTextureUsage(pass1, depth_texture, .attachment_write);
 
             const pass2 = try render_graph2.createPass("Pass2", .graphics);
-            try render_graph2.addTextureUsage(pass2, depth_texture, .{ .attachment_read = true });
-            try render_graph2.addTextureUsage(pass2, color_texture, .{ .attachment_write = true });
+            try render_graph2.addTextureUsage(pass2, depth_texture, .attachment_read);
+            try render_graph2.addTextureUsage(pass2, color_texture, .attachment_write);
 
             const pass3 = try render_graph2.createPass("Pass3", .prefer_async_compute);
-            try render_graph2.addBufferUsage(pass3, some_buffer, .{ .transfer_write = true });
+            try render_graph2.addBufferUsage(pass3, some_buffer, .transfer_write);
 
             const pass4 = try render_graph2.createPass("Pass4", .prefer_async_compute);
-            try render_graph2.addBufferUsage(pass4, some_buffer, .{ .compute_storage_write = true });
+            try render_graph2.addBufferUsage(pass4, some_buffer, .compute_storage_write);
 
             const pass5 = try render_graph2.createPass("Pass5", .graphics);
-            try render_graph2.addBufferUsage(pass5, some_buffer, .{ .vertex_storage_read = true, .fragment_storage_read = true });
-            try render_graph2.addTextureUsage(pass5, depth_texture, .{ .fragment_storage_write = true });
-            try render_graph2.addTextureUsage(pass5, color_texture, .{ .fragment_storage_write = true });
+            try render_graph2.addBufferUsage(pass5, some_buffer, .graphics_storage_read);
+            try render_graph2.addTextureUsage(pass5, depth_texture, .graphics_storage_write);
+            try render_graph2.addTextureUsage(pass5, color_texture, .graphics_storage_write);
 
             const pass6 = try render_graph2.createPass("Pass6", .graphics);
-            try render_graph2.addBufferUsage(pass6, some_buffer, .{ .vertex_storage_read = true, .fragment_storage_read = true });
-            try render_graph2.addTextureUsage(pass6, color_texture, .{ .fragment_storage_read = true });
-            try render_graph2.addTextureUsage(pass6, depth_texture, .{ .fragment_storage_read = true });
-            //try render_graph2.addTextureUsage(pass6, swapchain_texture, .{ .write = .attachment });
+            try render_graph2.addBufferUsage(pass6, some_buffer, .graphics_storage_read);
+            try render_graph2.addTextureUsage(pass6, color_texture, .graphics_storage_read);
+            try render_graph2.addTextureUsage(pass6, depth_texture, .graphics_storage_read);
+            try render_graph2.addTextureUsage(pass6, swapchain_texture, .attachment_write);
 
             try self.vulkan_backend.submitRenderGraph(temp_allocator, &render_graph2);
         }
