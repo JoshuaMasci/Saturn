@@ -887,16 +887,23 @@ pub const RGDepthAttachment = struct {
 };
 
 pub const RGRenderTarget = struct {
-    color_attachemnts: []RGColorAttachment = &.{},
+    color_attachments: []const RGColorAttachment = &.{},
     depth_attachment: ?RGDepthAttachment = null,
 };
 
-pub const RGPassCallback = struct {
-    ctx: ?*anyopaque,
-    callback: union(enum) {
-        transfer: TransferCommandEncoder.Callback,
-        compute: ComputeCommandEncoder.Callback,
-        graphics: GraphicsCommandEncoder.Callback,
+pub const RGPassCallback = union(enum) {
+    transfer: struct {
+        ctx: ?*anyopaque,
+        func: TransferCommandEncoder.Callback,
+    },
+    compute: struct {
+        ctx: ?*anyopaque,
+        func: ComputeCommandEncoder.Callback,
+    },
+    graphics: struct {
+        render_target: RGRenderTarget,
+        ctx: ?*anyopaque,
+        func: GraphicsCommandEncoder.Callback,
     },
 };
 
@@ -912,7 +919,6 @@ pub const RGPassDesc = struct {
     buffer_usages: std.ArrayList(RGBufferUsage) = .empty,
     texture_usages: std.ArrayList(RGTextureUsage) = .empty,
 
-    render_target: ?RGRenderTarget = null,
     callback: ?RGPassCallback = null,
 
     pub fn getBufferAccess(self: *const RGPassDesc, handle: RGBufferHandle) ?BufferAccess {
@@ -957,8 +963,14 @@ pub const RenderGraph = struct {
             self.gpa.free(pass.name);
             pass.buffer_usages.deinit(self.gpa);
             pass.texture_usages.deinit(self.gpa);
-            if (pass.render_target) |render_target| {
-                self.gpa.free(render_target.color_attachemnts);
+
+            if (pass.callback) |callback| {
+                switch (callback) {
+                    .graphics => |c| {
+                        self.gpa.free(c.render_target.color_attachments);
+                    },
+                    else => {},
+                }
             }
         }
         self.passes.deinit(self.gpa);
@@ -1003,7 +1015,63 @@ pub const RenderGraph = struct {
         return texture;
     }
 
-    pub fn createPass(self: *Self, name: []const u8, queue: QueuePreference) Error!RGPassHandle {
+    pub fn addTransferPass(
+        self: *Self,
+        name: []const u8,
+        ctx: ?*anyopaque,
+        func: TransferCommandEncoder.Callback,
+    ) Error!RGPassHandle {
+        const handle = try self.createPass(name, .graphics);
+        self.passes.items[handle.idx].callback = .{ .transfer = .{
+            .ctx = ctx,
+            .func = func,
+        } };
+        return handle;
+    }
+
+    pub fn addComputePass(
+        self: *Self,
+        name: []const u8,
+        ctx: ?*anyopaque,
+        func: ComputeCommandEncoder.Callback,
+    ) Error!RGPassHandle {
+        const handle = try self.createPass(name, .graphics);
+        self.passes.items[handle.idx].callback = .{ .compute = .{
+            .ctx = ctx,
+            .func = func,
+        } };
+        return handle;
+    }
+
+    pub fn addGraphicsPass(
+        self: *Self,
+        name: []const u8,
+        render_target: RGRenderTarget,
+        ctx: ?*anyopaque,
+        func: GraphicsCommandEncoder.Callback,
+    ) Error!RGPassHandle {
+        const handle = try self.createPass(name, .graphics);
+
+        for (render_target.color_attachments) |attachment| {
+            try self.addTextureUsage(handle, attachment.texture, .attachment_write);
+        }
+
+        if (render_target.depth_attachment) |attachment| {
+            try self.addTextureUsage(handle, attachment.texture, .attachment_write);
+        }
+
+        self.passes.items[handle.idx].callback = .{ .graphics = .{
+            .ctx = ctx,
+            .func = func,
+            .render_target = .{
+                .color_attachments = try self.gpa.dupe(RGColorAttachment, render_target.color_attachments),
+                .depth_attachment = render_target.depth_attachment,
+            },
+        } };
+        return handle;
+    }
+
+    fn createPass(self: *Self, name: []const u8, queue: QueuePreference) Error!RGPassHandle {
         const handle = RGPassHandle{ .idx = @intCast(self.passes.items.len) };
         try self.passes.append(self.gpa, .{
             .handle = handle,
@@ -1051,23 +1119,6 @@ pub const RenderGraph = struct {
         } else {
             entry.last_usage = pass;
         }
-    }
-
-    pub fn addRenderTarget(self: *Self, pass: RGPassHandle, color_attachements: []const RGColorAttachment, depth_target_opt: ?RGDepthAttachment) Error!void {
-        std.debug.assert(self.passes.items[pass.idx].render_target == null);
-
-        for (color_attachements) |attachment| {
-            try self.addTextureUsage(pass, attachment.texture, .attachment_write);
-        }
-
-        if (depth_target_opt) |attachment| {
-            try self.addTextureUsage(pass, attachment.texture, .attachment_write);
-        }
-
-        self.passes.items[pass.idx].render_target = .{
-            .color_attachemnts = try self.gpa.dupe(RGColorAttachment, color_attachements),
-            .depth_attachment = depth_target_opt,
-        };
     }
 };
 

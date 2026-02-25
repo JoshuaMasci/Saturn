@@ -401,7 +401,7 @@ pub const RenderGraphExecutor = struct {
         const command_buffer_handle = try self.frame_data.graphics_command_pool.get();
         const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.device.proxy.wrapper);
 
-        var data: platform.CommandEncoderData = .{
+        var cmd_data: platform.CommandEncoderData = .{
             .tpa = self.tpa,
             .command_buffer = command_buffer,
             .device = self.device,
@@ -415,33 +415,27 @@ pub const RenderGraphExecutor = struct {
 
             if (self.device.device.debug) {
                 const label = try self.tpa.dupeZ(u8, pass.name);
+                defer self.tpa.free(label);
                 command_buffer.beginDebugUtilsLabelEXT(&.{ .p_label_name = label, .color = .{ 1.0, 0.0, 1.0, 1.0 } });
             }
             defer if (self.device.device.debug) command_buffer.endDebugUtilsLabelEXT();
 
             try self.emitBarriers(command_buffer, compiled_pass);
 
-            if (pass.render_target) |render_target| {
-                self.beginRenderPass(command_buffer, render_target);
-            }
-
             if (pass.callback) |pass_callback| {
-                switch (pass_callback.callback) {
-                    .transfer => |callback| {
-                        callback(pass_callback.ctx, .{ .ctx = &data, .vtable = &platform.TransferCommandEncoder.Vtable });
+                switch (pass_callback) {
+                    .transfer => |transfer| {
+                        transfer.func(transfer.ctx, .{ .ctx = &cmd_data, .vtable = &platform.TransferCommandEncoder.Vtable });
                     },
-                    .compute => |callback| {
-                        callback(pass_callback.ctx, .{ .ctx = &data, .vtable = &platform.ComputeCommandEncoder.Vtable });
+                    .compute => |compute| {
+                        compute.func(compute.ctx, .{ .ctx = &cmd_data, .vtable = &platform.ComputeCommandEncoder.Vtable });
                     },
-                    .graphics => |callback| {
-                        if (pass.render_target == null) @panic("Graphics Pass must have a render_target set");
-                        callback(pass_callback.ctx, .{ .ctx = &data, .vtable = &platform.GraphicsCommandEncoder.Vtable });
+                    .graphics => |graphics| {
+                        self.beginRenderPass(command_buffer, graphics.render_target);
+                        graphics.func(graphics.ctx, .{ .ctx = &cmd_data, .vtable = &platform.GraphicsCommandEncoder.Vtable });
+                        command_buffer.endRendering();
                     },
                 }
-            }
-
-            if (pass.render_target != null) {
-                command_buffer.endRendering();
             }
         }
 
@@ -514,12 +508,12 @@ pub const RenderGraphExecutor = struct {
     fn beginRenderPass(self: *Self, command_buffer: vk.CommandBufferProxy, render_target: saturn.RGRenderTarget) void {
         const unified_image_layouts = self.device.device.extensions.unified_image_layouts;
 
-        const color_attachments = self.tpa.alloc(vk.RenderingAttachmentInfo, render_target.color_attachemnts.len) catch @panic("Failed to alloc");
+        const color_attachments = self.tpa.alloc(vk.RenderingAttachmentInfo, render_target.color_attachments.len) catch @panic("Failed to alloc");
         defer self.tpa.free(color_attachments);
 
         var render_area_extent: vk.Extent2D = .{ .width = 0, .height = 0 };
 
-        for (color_attachments, render_target.color_attachemnts) |*vk_attachment, attachment| {
+        for (color_attachments, render_target.color_attachments) |*vk_attachment, attachment| {
             const texture = self.resources.textures[attachment.texture.idx].interface;
             render_area_extent = .{ .width = texture.extent.width, .height = texture.extent.height };
 

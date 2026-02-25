@@ -20,6 +20,16 @@ const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
 const saturn = @import("root.zig");
 
+fn testGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder) void {
+    _ = ctx; // autofix
+    _ = cmd; // autofix
+}
+
+fn testComputeCallback(ctx: ?*anyopaque, cmd: saturn.ComputeCommandEncoder) void {
+    _ = ctx; // autofix
+    _ = cmd; // autofix
+}
+
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }){};
     defer if (debug_allocator.deinit() == .leak) {
@@ -29,7 +39,10 @@ pub fn main() !void {
 
     //Platform Interface Test
     {
-        const interface = try saturn.init(allocator, .{ .app_info = .{ .name = "Saturn Engine", .version = .init(0, 0, 1, 0) } });
+        const interface = try saturn.init(allocator, .{
+            .app_info = .{ .name = "Saturn Engine", .version = .init(0, 0, 1, 0) },
+            .validation = true,
+        });
         defer saturn.deinit();
 
         const window = try interface.createWindow(.{
@@ -55,7 +68,7 @@ pub fn main() !void {
         const test_buffer = try device.createBuffer(.{
             .name = "test_buffer",
             .size = 16,
-            .usage = .{},
+            .usage = .{ .transfer_dst = true },
             .memory = .gpu_only,
         });
         defer device.destroyBuffer(test_buffer);
@@ -65,7 +78,7 @@ pub fn main() !void {
             .name = "test_texture",
             .extent = .{ .width = 1920, .height = 1080 },
             .format = swapchain_format,
-            .usage = .{},
+            .usage = .{ .sampled = true, .transfer = true },
             .memory = .gpu_only,
         });
         defer device.destroyTexture(test_texture);
@@ -91,36 +104,45 @@ pub fn main() !void {
                 .memory = .gpu_only,
             });
 
-            const pass1 = try render_graph.createPass("Pass1", .graphics);
-            try render_graph.addRenderTarget(
-                pass1,
-                &.{.{ .texture = color_texture, .clear = .{ 0.0, 0.0, 0.0, 1.0 } }},
-                .{ .texture = depth_texture, .clear = 1.0 },
+            _ = try render_graph.addGraphicsPass(
+                "Pass1",
+                .{
+                    .color_attachments = &.{.{ .texture = color_texture, .clear = .{ 0.0, 0.0, 0.0, 1.0 } }},
+                    .depth_attachment = .{ .texture = depth_texture, .clear = 1.0 },
+                },
+                null,
+                testGraphicsCallback,
             );
 
-            const pass2 = try render_graph.createPass("Pass2", .graphics);
+            const pass2 = try render_graph.addComputePass("Pass2", null, testComputeCallback);
             try render_graph.addTextureUsage(pass2, depth_texture, .attachment_read);
             try render_graph.addTextureUsage(pass2, color_texture, .attachment_write);
 
-            const pass3 = try render_graph.createPass("Pass3", .prefer_async_compute);
+            const pass3 = try render_graph.addComputePass("Pass3", null, testComputeCallback);
             try render_graph.addBufferUsage(pass3, some_buffer, .transfer_write);
 
-            const pass4 = try render_graph.createPass("Pass4", .prefer_async_compute);
+            const pass4 = try render_graph.addComputePass("Pass4", null, testComputeCallback);
             try render_graph.addBufferUsage(pass4, some_buffer, .compute_storage_write);
 
-            const pass5 = try render_graph.createPass("Pass5", .graphics);
+            const pass5 = try render_graph.addComputePass("Pass5", null, testComputeCallback);
             try render_graph.addBufferUsage(pass5, some_buffer, .graphics_storage_read);
             try render_graph.addTextureUsage(pass5, depth_texture, .graphics_storage_write);
             try render_graph.addTextureUsage(pass5, color_texture, .graphics_storage_write);
 
-            const pass6 = try render_graph.createPass("Pass6", .graphics);
-            try render_graph.addRenderTarget(pass6, &.{.{ .texture = swapchain_texture, .clear = .{ 0.0, 0.5, 0.5, 1.0 } }}, null);
+            const pass6 = try render_graph.addGraphicsPass(
+                "Pass6",
+                .{
+                    .color_attachments = &.{.{ .texture = swapchain_texture, .clear = .{ 0.0, 0.5, 0.5, 1.0 } }},
+                },
+                null,
+                testGraphicsCallback,
+            );
             try render_graph.addBufferUsage(pass6, some_buffer, .graphics_storage_read);
             try render_graph.addTextureUsage(pass6, color_texture, .graphics_storage_read);
             try render_graph.addTextureUsage(pass6, depth_texture, .graphics_storage_read);
         }
 
-        for (0..600) |_| {
+        for (0..60) |_| {
             interface.processEvents(.{});
             try device.submit(allocator, &render_graph);
         }
