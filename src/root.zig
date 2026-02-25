@@ -1434,6 +1434,27 @@ pub const Rect2D = struct {
     height: u32,
 };
 
+pub const IndirectDrawCommand = extern struct {
+    vertex_count: u32,
+    instance_count: u32,
+    first_vertex: u32,
+    first_instance: u32,
+};
+
+pub const IndirectDrawIndexedCommand = extern struct {
+    index_count: u32,
+    instance_count: u32,
+    first_index: u32,
+    vertex_offset: i32,
+    first_instance: u32,
+};
+
+pub const IndirectDrawMeshTasksCommand = extern struct {
+    group_count_x: u32,
+    group_count_y: u32,
+    group_count_z: u32,
+};
+
 pub const GraphicsCommandEncoder = struct {
     const Self = @This();
 
@@ -1457,13 +1478,16 @@ pub const GraphicsCommandEncoder = struct {
         setPipeline: *const fn (ctx: *anyopaque, pipeline: GraphicsPipelineHandle) void,
 
         draw: *const fn (ctx: *anyopaque, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) void,
-        drawIndexed: *const fn (ctx: *anyopaque, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) void,
         drawIndirect: *const fn (ctx: *anyopaque, buffer: BufferArg, offset: u64, draw_count: u32, stride: u32) void,
+        drawIndirectCount: *const fn (ctx: *anyopaque, buffer: BufferArg, offset: u64, count_buffer: BufferArg, count_offset: u64, max_draw_count: u32, stride: u32) void,
+
+        drawIndexed: *const fn (ctx: *anyopaque, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) void,
         drawIndexedIndirect: *const fn (ctx: *anyopaque, buffer: BufferArg, offset: u64, draw_count: u32, stride: u32) void,
         drawIndexedIndirectCount: *const fn (ctx: *anyopaque, buffer: BufferArg, offset: u64, count_buffer: BufferArg, count_offset: u64, max_draw_count: u32, stride: u32) void,
 
         drawMeshTasks: *const fn (ctx: *anyopaque, x: u32, y: u32, z: u32) void,
         drawMeshTasksIndirect: *const fn (ctx: *anyopaque, buffer: BufferArg, offset: u64, draw_count: u32, stride: u32) void,
+        drawMeshTasksIndirectCount: *const fn (ctx: *anyopaque, buffer: BufferArg, offset: u64, count_buffer: BufferArg, count_offset: u64, max_draw_count: u32, stride: u32) void,
     };
 
     pub fn getBufferInfo(self: Self, handle: BufferArg) ?BufferInfo {
@@ -1506,12 +1530,16 @@ pub const GraphicsCommandEncoder = struct {
         self.vtable.draw(self.ctx, vertex_count, instance_count, first_vertex, first_instance);
     }
 
-    pub fn drawIndexed(self: Self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) void {
-        self.vtable.drawIndexed(self.ctx, index_count, instance_count, first_index, vertex_offset, first_instance);
-    }
-
     pub fn drawIndirect(self: Self, buffer: BufferArg, offset: u64, draw_count: u32, stride: u32) void {
         self.vtable.drawIndirect(self.ctx, buffer, offset, draw_count, stride);
+    }
+
+    pub fn drawIndirectCount(self: Self, buffer: BufferArg, offset: u64, count_buffer: BufferArg, count_offset: u64, max_draw_count: u32, stride: u32) void {
+        self.vtable.drawIndirectCount(self.ctx, buffer, offset, count_buffer, count_offset, max_draw_count, stride);
+    }
+
+    pub fn drawIndexed(self: Self, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) void {
+        self.vtable.drawIndexed(self.ctx, index_count, instance_count, first_index, vertex_offset, first_instance);
     }
 
     pub fn drawIndexedIndirect(self: Self, buffer: BufferArg, offset: u64, draw_count: u32, stride: u32) void {
@@ -1528,5 +1556,9 @@ pub const GraphicsCommandEncoder = struct {
 
     pub fn drawMeshTasksIndirect(self: Self, buffer: BufferArg, offset: u64, draw_count: u32, stride: u32) void {
         self.vtable.drawMeshTasksIndirect(self.ctx, buffer, offset, draw_count, stride);
+    }
+
+    pub fn drawMeshTasksIndirectCount(self: Self, buffer: BufferArg, offset: u64, count_buffer: BufferArg, count_offset: u64, max_draw_count: u32, stride: u32) void {
+        self.vtable.drawMeshTasksIndirectCount(self.ctx, buffer, offset, count_buffer, count_offset, max_draw_count, stride);
     }
 };

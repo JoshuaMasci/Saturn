@@ -1399,15 +1399,15 @@ pub const TransferCommandEncoder = struct {
 
     fn updateBuffer(ctx: *anyopaque, dst: saturn.BufferArg, offset: u64, data: []const u8) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const buffer = cmd_data.getBuffer(dst) orelse @panic("Invalid BufferArg");
+        const buffer = cmd_data.getBuffer(dst) orelse @panic("Invalid buffer");
         cmd_data.command_buffer.updateBuffer(buffer.handle, @intCast(offset), @intCast(data.len), data.ptr);
     }
 
     fn copyBuffer(ctx: *anyopaque, src: saturn.BufferArg, dst: saturn.BufferArg, regions: []const saturn.BufferCopyRegion) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
 
-        const src_buffer = cmd_data.getBuffer(src) orelse @panic("Invalid BufferArg");
-        const dst_buffer = cmd_data.getBuffer(dst) orelse @panic("Invalid BufferArg");
+        const src_buffer = cmd_data.getBuffer(src) orelse @panic("Invalid src buffer");
+        const dst_buffer = cmd_data.getBuffer(dst) orelse @panic("Invalid dst buffer");
 
         const vk_regions: []vk.BufferCopy2 = cmd_data.tpa.alloc(vk.BufferCopy2, regions.len) catch @panic("Failed to alloc");
         defer cmd_data.tpa.free(vk_regions);
@@ -1427,8 +1427,8 @@ pub const TransferCommandEncoder = struct {
     fn copyTexture(ctx: *anyopaque, src: saturn.TextureArg, dst: saturn.TextureArg, regions: []const saturn.TextureCopyRegion) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
 
-        const src_texture = cmd_data.getTexture(src) orelse @panic("Invalid TextureArg");
-        const dst_texture = cmd_data.getTexture(dst) orelse @panic("Invalid TextureArg");
+        const src_texture = cmd_data.getTexture(src) orelse @panic("Invalid src texture");
+        const dst_texture = cmd_data.getTexture(dst) orelse @panic("Invalid dst texture");
 
         const vk_regions = cmd_data.tpa.alloc(vk.ImageCopy2, regions.len) catch @panic("Failed to alloc");
         defer cmd_data.tpa.free(vk_regions);
@@ -1468,8 +1468,8 @@ pub const TransferCommandEncoder = struct {
 
     fn copyBufferToTexture(ctx: *anyopaque, src: saturn.BufferArg, dst: saturn.TextureArg, regions: []const saturn.BufferTextureCopyRegion) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const src_buffer = cmd_data.getBuffer(src) orelse @panic("Invalid BufferArg");
-        const dst_texture = cmd_data.getTexture(dst) orelse @panic("Invalid TextureArg");
+        const src_buffer = cmd_data.getBuffer(src) orelse @panic("Invalid src buffer");
+        const dst_texture = cmd_data.getTexture(dst) orelse @panic("Invalid dst texture");
         const vk_regions = cmd_data.tpa.alloc(vk.BufferImageCopy2, regions.len) catch @panic("Failed to alloc");
         defer cmd_data.tpa.free(vk_regions);
         for (vk_regions, regions) |*vk_region, region| {
@@ -1499,8 +1499,8 @@ pub const TransferCommandEncoder = struct {
 
     fn copyTextureToBuffer(ctx: *anyopaque, src: saturn.TextureArg, dst: saturn.BufferArg, regions: []const saturn.BufferTextureCopyRegion) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const src_texture = cmd_data.getTexture(src) orelse @panic("Invalid TextureArg");
-        const dst_buffer = cmd_data.getBuffer(dst) orelse @panic("Invalid BufferArg");
+        const src_texture = cmd_data.getTexture(src) orelse @panic("Invalid src texture");
+        const dst_buffer = cmd_data.getBuffer(dst) orelse @panic("Invalid dst buffer");
         const vk_regions = cmd_data.tpa.alloc(vk.BufferImageCopy2, regions.len) catch @panic("Failed to alloc");
         defer cmd_data.tpa.free(vk_regions);
         for (vk_regions, regions) |*vk_region, region| {
@@ -1563,7 +1563,7 @@ pub const ComputeCommandEncoder = struct {
 
     fn dispatchIndirect(ctx: *anyopaque, buffer: saturn.BufferArg, offset: u64) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid BufferArg");
+        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid indirect buffer");
         cmd_data.command_buffer.dispatchIndirect(indirect_buffer.handle, offset);
     }
 };
@@ -1578,13 +1578,18 @@ pub const GraphicsCommandEncoder = struct {
         .setViewport = setViewport,
         .setScissor = setScissor,
         .setPipeline = setPipeline,
+
         .draw = draw,
-        .drawIndexed = drawIndexed,
         .drawIndirect = drawIndirect,
+        .drawIndirectCount = drawIndirectCount,
+
+        .drawIndexed = drawIndexed,
         .drawIndexedIndirect = drawIndexedIndirect,
         .drawIndexedIndirectCount = drawIndexedIndirectCount,
+
         .drawMeshTasks = drawMeshTasks,
         .drawMeshTasksIndirect = drawMeshTasksIndirect,
+        .drawMeshTasksIndirectCount = drawMeshTasksIndirectCount,
     };
 
     fn pushConstantsRaw(ctx: *anyopaque, data: []const u8) void {
@@ -1603,13 +1608,13 @@ pub const GraphicsCommandEncoder = struct {
 
     fn setVertexBuffer(ctx: *anyopaque, binding: u32, buffer: saturn.BufferArg, offset: u64) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const vk_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid BufferArg");
+        const vk_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid vertex buffer");
         cmd_data.command_buffer.bindVertexBuffers(binding, 1, &vk_buffer.handle, &offset);
     }
 
     fn setIndexBuffer(ctx: *anyopaque, buffer: saturn.BufferArg, index_type: saturn.IndexType, offset: u64) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const vk_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid BufferArg");
+        const vk_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid index buffer");
         const vk_index_type: vk.IndexType = switch (index_type) {
             .u16 => .uint16,
             .u32 => .uint32,
@@ -1648,44 +1653,62 @@ pub const GraphicsCommandEncoder = struct {
         cmd_data.command_buffer.draw(vertex_count, instance_count, first_vertex, first_instance);
     }
 
+    fn drawIndirect(ctx: *anyopaque, buffer: saturn.BufferArg, offset: u64, draw_count: u32, stride: u32) void {
+        const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
+        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid indirect buffer");
+        cmd_data.command_buffer.drawIndirect(indirect_buffer.handle, offset, draw_count, stride);
+    }
+
+    fn drawIndirectCount(ctx: *anyopaque, buffer: saturn.BufferArg, offset: u64, count_buffer: saturn.BufferArg, count_offset: u64, max_draw_count: u32, stride: u32) void {
+        const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
+        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid indirect buffer");
+        const vk_count_buffer = cmd_data.getBuffer(count_buffer) orelse @panic("Invalid indirect count buffer");
+        cmd_data.command_buffer.drawIndirectCount(indirect_buffer.handle, offset, vk_count_buffer.handle, count_offset, max_draw_count, stride);
+    }
+
     fn drawIndexed(ctx: *anyopaque, index_count: u32, instance_count: u32, first_index: u32, vertex_offset: i32, first_instance: u32) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
         cmd_data.command_buffer.drawIndexed(index_count, instance_count, first_index, vertex_offset, first_instance);
     }
 
-    fn drawIndirect(ctx: *anyopaque, buffer: saturn.BufferArg, offset: u64, draw_count: u32, stride: u32) void {
-        const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid BufferArg");
-        cmd_data.command_buffer.drawIndirect(indirect_buffer.handle, offset, draw_count, stride);
-    }
-
     fn drawIndexedIndirect(ctx: *anyopaque, buffer: saturn.BufferArg, offset: u64, draw_count: u32, stride: u32) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid BufferArg");
+        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid indirect buffer");
         cmd_data.command_buffer.drawIndexedIndirect(indirect_buffer.handle, offset, draw_count, stride);
     }
 
     fn drawIndexedIndirectCount(ctx: *anyopaque, buffer: saturn.BufferArg, offset: u64, count_buffer: saturn.BufferArg, count_offset: u64, max_draw_count: u32, stride: u32) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid BufferArg");
-        const vk_count_buffer = cmd_data.getBuffer(count_buffer) orelse @panic("Invalid count BufferArg");
+        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid indirect buffer");
+        const vk_count_buffer = cmd_data.getBuffer(count_buffer) orelse @panic("Invalid indirect count buffer");
         cmd_data.command_buffer.drawIndexedIndirectCount(indirect_buffer.handle, offset, vk_count_buffer.handle, count_offset, max_draw_count, stride);
     }
 
     fn drawMeshTasks(ctx: *anyopaque, x: u32, y: u32, z: u32) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        if (!cmd_data.device.device.extensions.mesh_shading) {
-            @panic("MeshShading not enabled/supported");
-        }
+        if (!cmd_data.device.device.extensions.mesh_shading) @panic("MeshShading not enabled/supported");
         cmd_data.command_buffer.drawMeshTasksEXT(x, y, z);
     }
 
     fn drawMeshTasksIndirect(ctx: *anyopaque, buffer: saturn.BufferArg, offset: u64, draw_count: u32, stride: u32) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
-        if (!cmd_data.device.device.extensions.mesh_shading) {
-            @panic("MeshShading not enabled/supported");
-        }
-        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid BufferArg");
+        if (!cmd_data.device.device.extensions.mesh_shading) @panic("MeshShading not enabled/supported");
+        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid indirect buffer");
         cmd_data.command_buffer.drawMeshTasksIndirectEXT(indirect_buffer.handle, offset, draw_count, stride);
+    }
+
+    fn drawMeshTasksIndirectCount(ctx: *anyopaque, buffer: saturn.BufferArg, offset: u64, count_buffer: saturn.BufferArg, count_offset: u64, max_draw_count: u32, stride: u32) void {
+        const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
+        if (!cmd_data.device.device.extensions.mesh_shading) @panic("MeshShading not enabled/supported");
+        const indirect_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid indirect buffer");
+        const vk_count_buffer = cmd_data.getBuffer(count_buffer) orelse @panic("Invalid indirect count buffer");
+        cmd_data.command_buffer.drawMeshTasksIndirectCountEXT(
+            indirect_buffer.handle,
+            offset,
+            vk_count_buffer.handle,
+            count_offset,
+            max_draw_count,
+            stride,
+        );
     }
 };
