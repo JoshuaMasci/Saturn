@@ -891,6 +891,15 @@ pub const RGRenderTarget = struct {
     depth_attachment: ?RGDepthAttachment = null,
 };
 
+pub const RGPassCallback = struct {
+    ctx: ?*anyopaque,
+    callback: union(enum) {
+        transfer: TransferCommandEncoder.Callback,
+        compute: ComputeCommandEncoder.Callback,
+        graphics: GraphicsCommandEncoder.Callback,
+    },
+};
+
 pub const RGPassHandle = struct { idx: u32 };
 pub const RGPassDesc = struct {
     handle: RGPassHandle,
@@ -904,11 +913,7 @@ pub const RGPassDesc = struct {
     texture_usages: std.ArrayList(RGTextureUsage) = .empty,
 
     render_target: ?RGRenderTarget = null,
-    callback: ?union(enum) {
-        transfer: TransferCommandEncoder.Callback,
-        compute: ComputeCommandEncoder.Callback,
-        graphics: GraphicsCommandEncoder.Callback,
-    } = null,
+    callback: ?RGPassCallback = null,
 
     pub fn getBufferAccess(self: *const RGPassDesc, handle: RGBufferHandle) ?BufferAccess {
         for (self.buffer_usages.items) |usage| {
@@ -952,6 +957,9 @@ pub const RenderGraph = struct {
             self.gpa.free(pass.name);
             pass.buffer_usages.deinit(self.gpa);
             pass.texture_usages.deinit(self.gpa);
+            if (pass.render_target) |render_target| {
+                self.gpa.free(render_target.color_attachemnts);
+            }
         }
         self.passes.deinit(self.gpa);
         self.textures.deinit(self.gpa);
@@ -959,6 +967,40 @@ pub const RenderGraph = struct {
         self.transient_textures.deinit(self.gpa);
         self.transient_buffers.deinit(self.gpa);
         self.window_textures.deinit(self.gpa);
+    }
+
+    pub fn importBuffer(self: *Self, handle: BufferHandle) Error!RGBufferHandle {
+        try self.buffers.append(self.gpa, .{ .source = .{ .persistent = handle } });
+        return RGBufferHandle{ .idx = @intCast(self.buffers.items.len - 1) };
+    }
+
+    pub fn createTransientBuffer(self: *Self, desc: RGTransientBufferDesc) Error!RGBufferHandle {
+        try self.transient_buffers.append(self.gpa, desc);
+        const transient_idx = self.transient_buffers.items.len - 1;
+        try self.buffers.append(self.gpa, .{ .source = .{ .transient = transient_idx } });
+        return RGBufferHandle{ .idx = @intCast(self.buffers.items.len - 1) };
+    }
+
+    pub fn importTexture(self: *Self, handle: TextureHandle) Error!RGTextureHandle {
+        try self.textures.append(self.gpa, .{ .source = .{ .persistent = handle } });
+        return RGTextureHandle{ .idx = @intCast(self.textures.items.len - 1) };
+    }
+
+    pub fn createTransientTexture(self: *Self, desc: RGTransientTextureDesc) Error!RGTextureHandle {
+        try self.transient_textures.append(self.gpa, desc);
+        const transient_idx = self.transient_textures.items.len - 1;
+        try self.textures.append(self.gpa, .{ .source = .{ .transient = transient_idx } });
+        return RGTextureHandle{ .idx = @intCast(self.textures.items.len - 1) };
+    }
+
+    pub fn acquireWindowTexture(self: *Self, window: WindowHandle) Error!RGTextureHandle {
+        const texture: RGTextureHandle = .{ .idx = @intCast(self.textures.items.len) };
+
+        try self.window_textures.append(self.gpa, .{ .handle = window, .texture = texture });
+
+        const window_idx = self.window_textures.items.len - 1;
+        try self.textures.append(self.gpa, .{ .source = .{ .window = window_idx } });
+        return texture;
     }
 
     pub fn createPass(self: *Self, name: []const u8, queue: QueuePreference) Error!RGPassHandle {
@@ -1011,38 +1053,21 @@ pub const RenderGraph = struct {
         }
     }
 
-    pub fn importBuffer(self: *Self, handle: BufferHandle) Error!RGBufferHandle {
-        try self.buffers.append(self.gpa, .{ .source = .{ .persistent = handle } });
-        return RGBufferHandle{ .idx = @intCast(self.buffers.items.len - 1) };
-    }
+    pub fn addRenderTarget(self: *Self, pass: RGPassHandle, color_attachements: []const RGColorAttachment, depth_target_opt: ?RGDepthAttachment) Error!void {
+        std.debug.assert(self.passes.items[pass.idx].render_target == null);
 
-    pub fn createTransientBuffer(self: *Self, desc: RGTransientBufferDesc) Error!RGBufferHandle {
-        try self.transient_buffers.append(self.gpa, desc);
-        const transient_idx = self.transient_buffers.items.len - 1;
-        try self.buffers.append(self.gpa, .{ .source = .{ .transient = transient_idx } });
-        return RGBufferHandle{ .idx = @intCast(self.buffers.items.len - 1) };
-    }
+        for (color_attachements) |attachment| {
+            try self.addTextureUsage(pass, attachment.texture, .attachment_write);
+        }
 
-    pub fn importTexture(self: *Self, handle: TextureHandle) Error!RGTextureHandle {
-        try self.textures.append(self.gpa, .{ .source = .{ .persistent = handle } });
-        return RGTextureHandle{ .idx = @intCast(self.textures.items.len - 1) };
-    }
+        if (depth_target_opt) |attachment| {
+            try self.addTextureUsage(pass, attachment.texture, .attachment_write);
+        }
 
-    pub fn createTransientTexture(self: *Self, desc: RGTransientTextureDesc) Error!RGTextureHandle {
-        try self.transient_textures.append(self.gpa, desc);
-        const transient_idx = self.transient_textures.items.len - 1;
-        try self.textures.append(self.gpa, .{ .source = .{ .transient = transient_idx } });
-        return RGTextureHandle{ .idx = @intCast(self.textures.items.len - 1) };
-    }
-
-    pub fn acquireWindowTexture(self: *Self, window: WindowHandle) Error!RGTextureHandle {
-        const texture: RGTextureHandle = .{ .idx = @intCast(self.textures.items.len) };
-
-        try self.window_textures.append(self.gpa, .{ .handle = window, .texture = texture });
-
-        const window_idx = self.window_textures.items.len - 1;
-        try self.textures.append(self.gpa, .{ .source = .{ .window = window_idx } });
-        return texture;
+        self.passes.items[pass.idx].render_target = .{
+            .color_attachemnts = try self.gpa.dupe(RGColorAttachment, color_attachements),
+            .depth_attachment = depth_target_opt,
+        };
     }
 };
 
@@ -1397,12 +1422,16 @@ pub const ComputeCommandEncoder = struct {
         return self.vtable.getTextureInfo(self.ctx, handle);
     }
 
-    pub fn pushConstantsRaw(self: Self, data: []const u8) void {
+    pub fn pushConstantsBytes(self: Self, data: []const u8) void {
         self.vtable.pushConstantsRaw(self.ctx, data);
     }
 
     pub fn pushConstants(self: Self, comptime T: type, value: T) void {
         self.vtable.pushConstantsRaw(self.ctx, std.mem.asBytes(&value));
+    }
+
+    pub fn pushConstantsSlice(self: Self, comptime T: type, slice: []const T) void {
+        self.vtable.pushConstantsRaw(self.ctx, std.mem.sliceAsBytes(slice));
     }
 
     pub fn setPipeline(self: Self, pipeline: ComputePipelineHandle) void {
@@ -1498,12 +1527,16 @@ pub const GraphicsCommandEncoder = struct {
         return self.vtable.getTextureInfo(self.ctx, handle);
     }
 
-    pub fn pushConstantsRaw(self: Self, data: []const u8) void {
+    pub fn pushConstantsBytes(self: Self, data: []const u8) void {
         self.vtable.pushConstantsRaw(self.ctx, data);
     }
 
     pub fn pushConstants(self: Self, comptime T: type, value: T) void {
         self.vtable.pushConstantsRaw(self.ctx, std.mem.asBytes(&value));
+    }
+
+    pub fn pushConstantsSlice(self: Self, comptime T: type, slice: []const T) void {
+        self.vtable.pushConstantsRaw(self.ctx, std.mem.sliceAsBytes(slice));
     }
 
     pub fn setVertexBuffer(self: Self, binding: u32, buffer: BufferArg, offset: u64) void {

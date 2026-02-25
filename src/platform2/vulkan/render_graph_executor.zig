@@ -401,6 +401,13 @@ pub const RenderGraphExecutor = struct {
         const command_buffer_handle = try self.frame_data.graphics_command_pool.get();
         const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.device.proxy.wrapper);
 
+        var data: platform.CommandEncoderData = .{
+            .tpa = self.tpa,
+            .command_buffer = command_buffer,
+            .device = self.device,
+            .graph_resources = self.resources,
+        };
+
         try command_buffer.beginCommandBuffer(&.{});
 
         for (self.compiled.passes.items) |compiled_pass| {
@@ -414,16 +421,28 @@ pub const RenderGraphExecutor = struct {
 
             try self.emitBarriers(command_buffer, compiled_pass);
 
-            var data: platform.CommandEncoderData = .{
-                .tpa = self.tpa,
-                .command_buffer = command_buffer,
-                .device = self.device,
-                .graph_resources = self.resources,
-            };
-            const transfer_cmd_buf: saturn.TransferCommandEncoder = .{ .ctx = &data, .vtable = &platform.TransferCommandEncoder.Vtable };
-            _ = transfer_cmd_buf; // autofix
+            if (pass.render_target) |render_target| {
+                self.beginRenderPass(command_buffer, render_target);
+            }
 
-            // TODO: record actual draw/dispatch commands
+            if (pass.callback) |pass_callback| {
+                switch (pass_callback.callback) {
+                    .transfer => |callback| {
+                        callback(pass_callback.ctx, .{ .ctx = &data, .vtable = &platform.TransferCommandEncoder.Vtable });
+                    },
+                    .compute => |callback| {
+                        callback(pass_callback.ctx, .{ .ctx = &data, .vtable = &platform.ComputeCommandEncoder.Vtable });
+                    },
+                    .graphics => |callback| {
+                        if (pass.render_target == null) @panic("Graphics Pass must have a render_target set");
+                        callback(pass_callback.ctx, .{ .ctx = &data, .vtable = &platform.GraphicsCommandEncoder.Vtable });
+                    },
+                }
+            }
+
+            if (pass.render_target != null) {
+                command_buffer.endRendering();
+            }
         }
 
         try self.emitSwapchainTransitions(command_buffer);
@@ -490,6 +509,70 @@ pub const RenderGraphExecutor = struct {
             .image_memory_barrier_count = @intCast(barriers.len),
             .p_image_memory_barriers = barriers.ptr,
         });
+    }
+
+    fn beginRenderPass(self: *Self, command_buffer: vk.CommandBufferProxy, render_target: saturn.RGRenderTarget) void {
+        const unified_image_layouts = self.device.device.extensions.unified_image_layouts;
+
+        const color_attachments = self.tpa.alloc(vk.RenderingAttachmentInfo, render_target.color_attachemnts.len) catch @panic("Failed to alloc");
+        defer self.tpa.free(color_attachments);
+
+        var render_area_extent: vk.Extent2D = .{ .width = 0, .height = 0 };
+
+        for (color_attachments, render_target.color_attachemnts) |*vk_attachment, attachment| {
+            const texture = self.resources.textures[attachment.texture.idx].interface;
+            render_area_extent = .{ .width = texture.extent.width, .height = texture.extent.height };
+
+            vk_attachment.* = .{
+                .image_view = texture.view_handle,
+                .image_layout = if (unified_image_layouts) .general else .color_attachment_optimal,
+                .resolve_mode = .{},
+                .resolve_image_layout = .undefined,
+                .load_op = if (attachment.clear != null) .clear else .load,
+                .store_op = .store,
+                .clear_value = if (attachment.clear) |c| .{ .color = .{ .float_32 = c } } else .{ .color = .{ .float_32 = .{ 0, 0, 0, 0 } } },
+            };
+        }
+
+        var depth_attachment: vk.RenderingAttachmentInfo = undefined;
+        if (render_target.depth_attachment) |attachment| {
+            const texture = self.resources.textures[attachment.texture.idx].interface;
+            render_area_extent = .{ .width = texture.extent.width, .height = texture.extent.height };
+
+            depth_attachment = .{
+                .image_view = texture.view_handle,
+                .image_layout = if (unified_image_layouts) .general else .depth_stencil_attachment_optimal,
+                .resolve_mode = .{},
+                .resolve_image_layout = .undefined,
+                .load_op = if (attachment.clear != null) .clear else .load,
+                .store_op = .store,
+                .clear_value = if (attachment.clear) |c| .{ .depth_stencil = .{ .depth = c, .stencil = 0 } } else .{ .depth_stencil = .{ .depth = 0, .stencil = 0 } },
+            };
+        }
+
+        const render_area: vk.Rect2D = .{
+            .offset = .{ .x = 0, .y = 0 },
+            .extent = render_area_extent,
+        };
+        command_buffer.beginRendering(&.{
+            .render_area = render_area,
+            .layer_count = 1,
+            .view_mask = 0,
+            .color_attachment_count = @intCast(color_attachments.len),
+            .p_color_attachments = color_attachments.ptr,
+            .p_depth_attachment = if (render_target.depth_attachment != null) &depth_attachment else null,
+            .p_stencil_attachment = null,
+        });
+        const viewport: vk.Viewport = .{
+            .width = @floatFromInt(render_area.extent.width),
+            .height = @floatFromInt(render_area.extent.height),
+            .x = 0.0,
+            .y = 0.0,
+            .min_depth = 0.0,
+            .max_depth = 1.0,
+        };
+        command_buffer.setViewport(0, 1, @ptrCast(&viewport));
+        command_buffer.setScissor(0, 1, @ptrCast(&render_area));
     }
 
     // ------------------------------------------------------------------

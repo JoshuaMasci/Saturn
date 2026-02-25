@@ -1553,7 +1553,7 @@ pub const ComputeCommandEncoder = struct {
     fn setPipeline(ctx: *anyopaque, pipeline: saturn.ComputePipelineHandle) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
         const compute_pipeline = cmd_data.device.compute_pipelines.get(pipeline) orelse @panic("Invalid ComputePipelineHandle");
-        cmd_data.command_buffer.bindPipeline(.compute, compute_pipeline.handle);
+        cmd_data.command_buffer.bindPipeline(.compute, compute_pipeline);
     }
 
     fn dispatch(ctx: *anyopaque, x: u32, y: u32, z: u32) void {
@@ -1609,7 +1609,7 @@ pub const GraphicsCommandEncoder = struct {
     fn setVertexBuffer(ctx: *anyopaque, binding: u32, buffer: saturn.BufferArg, offset: u64) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
         const vk_buffer = cmd_data.getBuffer(buffer) orelse @panic("Invalid vertex buffer");
-        cmd_data.command_buffer.bindVertexBuffers(binding, 1, &vk_buffer.handle, &offset);
+        cmd_data.command_buffer.bindVertexBuffers(binding, 1, @ptrCast(&vk_buffer.handle), @ptrCast(&offset));
     }
 
     fn setIndexBuffer(ctx: *anyopaque, buffer: saturn.BufferArg, index_type: saturn.IndexType, offset: u64) void {
@@ -1645,7 +1645,7 @@ pub const GraphicsCommandEncoder = struct {
     fn setPipeline(ctx: *anyopaque, pipeline: saturn.GraphicsPipelineHandle) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
         const graphics_pipeline = cmd_data.device.graphics_pipelines.get(pipeline) orelse @panic("Invalid GraphicsPipelineHandle");
-        cmd_data.command_buffer.bindPipeline(.graphics, graphics_pipeline.handle);
+        cmd_data.command_buffer.bindPipeline(.graphics, graphics_pipeline);
     }
 
     fn draw(ctx: *anyopaque, vertex_count: u32, instance_count: u32, first_vertex: u32, first_instance: u32) void {

@@ -92,8 +92,11 @@ pub fn main() !void {
             });
 
             const pass1 = try render_graph.createPass("Pass1", .graphics);
-            try render_graph.addTextureUsage(pass1, color_texture, .attachment_write);
-            try render_graph.addTextureUsage(pass1, depth_texture, .attachment_write);
+            try render_graph.addRenderTarget(
+                pass1,
+                &.{.{ .texture = color_texture, .clear = .{ 0.0, 0.0, 0.0, 1.0 } }},
+                .{ .texture = depth_texture, .clear = 1.0 },
+            );
 
             const pass2 = try render_graph.createPass("Pass2", .graphics);
             try render_graph.addTextureUsage(pass2, depth_texture, .attachment_read);
@@ -111,10 +114,10 @@ pub fn main() !void {
             try render_graph.addTextureUsage(pass5, color_texture, .graphics_storage_write);
 
             const pass6 = try render_graph.createPass("Pass6", .graphics);
+            try render_graph.addRenderTarget(pass6, &.{.{ .texture = swapchain_texture, .clear = .{ 0.0, 0.5, 0.5, 1.0 } }}, null);
             try render_graph.addBufferUsage(pass6, some_buffer, .graphics_storage_read);
             try render_graph.addTextureUsage(pass6, color_texture, .graphics_storage_read);
             try render_graph.addTextureUsage(pass6, depth_texture, .graphics_storage_read);
-            try render_graph.addTextureUsage(pass6, swapchain_texture, .attachment_write);
         }
 
         for (0..600) |_| {
