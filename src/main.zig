@@ -18,12 +18,110 @@ const Transform = @import("transform.zig");
 
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
+const saturn = @import("root.zig");
+
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }){};
     defer if (debug_allocator.deinit() == .leak) {
         std.log.err("DebugAllocator has a memory leak!", .{});
     };
     const allocator = debug_allocator.allocator();
+
+    //Platform Interface Test
+    {
+        const interface = try saturn.init(allocator, .{ .app_info = .{ .name = "Saturn Engine", .version = .init(0, 0, 1, 0) } });
+        defer saturn.deinit();
+
+        const window = try interface.createWindow(.{
+            .name = "Test Window",
+            .resizeable = true,
+            .size = .{ .windowed = .{ 1600, 900 } },
+        });
+        defer interface.destroyWindow(window);
+
+        const device = try interface.createDeviceBasic(window, .prefer_low_power);
+        defer interface.destroyDevice(device);
+
+        try device.claimWindow(
+            window,
+            .{
+                .texture_count = 3,
+                .texture_usage = .{ .attachment = true, .transfer = true },
+                .texture_format = .rgba8_unorm,
+                .present_mode = .fifo,
+            },
+        );
+
+        const test_buffer = try device.createBuffer(.{
+            .name = "test_buffer",
+            .size = 16,
+            .usage = .{},
+            .memory = .gpu_only,
+        });
+        defer device.destroyBuffer(test_buffer);
+
+        const swapchain_format: saturn.TextureFormat = .rgba8_unorm;
+        const test_texture = try device.createTexture(.{
+            .name = "test_texture",
+            .extent = .{ .width = 1920, .height = 1080 },
+            .format = swapchain_format,
+            .usage = .{},
+            .memory = .gpu_only,
+        });
+        defer device.destroyTexture(test_texture);
+
+        var render_graph: saturn.RenderGraph = .init(allocator);
+        defer render_graph.deinit();
+
+        {
+            const some_buffer = try render_graph.createTransientBuffer(.{ .size = 16, .usage = .{ .storage = true }, .memory = .gpu_only });
+
+            const swapchain_texture = try render_graph.acquireWindowTexture(window);
+            const color_texture = try render_graph.createTransientTexture(.{
+                .extent = .{ .relative = swapchain_texture },
+                .format = swapchain_format,
+                .usage = .{ .attachment = true },
+                .memory = .gpu_only,
+            });
+
+            const depth_texture = try render_graph.createTransientTexture(.{
+                .extent = .{ .relative = color_texture },
+                .format = .depth32_float,
+                .usage = .{ .attachment = true },
+                .memory = .gpu_only,
+            });
+
+            const pass1 = try render_graph.createPass("Pass1", .graphics);
+            try render_graph.addTextureUsage(pass1, color_texture, .attachment_write);
+            try render_graph.addTextureUsage(pass1, depth_texture, .attachment_write);
+
+            const pass2 = try render_graph.createPass("Pass2", .graphics);
+            try render_graph.addTextureUsage(pass2, depth_texture, .attachment_read);
+            try render_graph.addTextureUsage(pass2, color_texture, .attachment_write);
+
+            const pass3 = try render_graph.createPass("Pass3", .prefer_async_compute);
+            try render_graph.addBufferUsage(pass3, some_buffer, .transfer_write);
+
+            const pass4 = try render_graph.createPass("Pass4", .prefer_async_compute);
+            try render_graph.addBufferUsage(pass4, some_buffer, .compute_storage_write);
+
+            const pass5 = try render_graph.createPass("Pass5", .graphics);
+            try render_graph.addBufferUsage(pass5, some_buffer, .graphics_storage_read);
+            try render_graph.addTextureUsage(pass5, depth_texture, .graphics_storage_write);
+            try render_graph.addTextureUsage(pass5, color_texture, .graphics_storage_write);
+
+            const pass6 = try render_graph.createPass("Pass6", .graphics);
+            try render_graph.addBufferUsage(pass6, some_buffer, .graphics_storage_read);
+            try render_graph.addTextureUsage(pass6, color_texture, .graphics_storage_read);
+            try render_graph.addTextureUsage(pass6, depth_texture, .graphics_storage_read);
+            try render_graph.addTextureUsage(pass6, swapchain_texture, .attachment_write);
+        }
+
+        for (0..600) |_| {
+            interface.processEvents(.{});
+            try device.submit(allocator, &render_graph);
+        }
+    }
 
     var app: App = try .init(allocator);
     defer app.deinit();
@@ -407,9 +505,6 @@ const App = struct {
             }
         }
 
-        var render_graph = Backend.RenderGraph.init(temp_allocator);
-        defer render_graph.deinit();
-
         //Render Graph 2 Tests
         {
             const RenderGraph = @import("rendering/render_graph.zig");
@@ -455,6 +550,9 @@ const App = struct {
 
             try self.vulkan_backend.submitRenderGraph(temp_allocator, &render_graph2);
         }
+
+        var render_graph = Backend.RenderGraph.init(temp_allocator);
+        defer render_graph.deinit();
 
         {
             const swapchain_texture = try render_graph.acquireSwapchainTexture(self.window);

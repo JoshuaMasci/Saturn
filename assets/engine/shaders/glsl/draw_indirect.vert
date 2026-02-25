@@ -39,7 +39,7 @@ layout(location = 2) flat out uint material_index;
 void main()
 {
     const DrawIndexedIndirectCommandInfo cmd = push_constants.indirect_command_infos_ptr.cmds[gl_InstanceIndex];
-    const Instance instance =  push_constants.scene_instances_ptr.instances[cmd.instance_index];
+    const Instance instance = push_constants.scene_instances_ptr.instances[cmd.instance_index];
 
     const mat4 model_matrix = instance.model_matrix;
     mat3 normal_matrix = mat3(instance.normal_matrix);
