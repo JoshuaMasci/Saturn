@@ -944,6 +944,7 @@ pub const RenderGraph = struct {
     pub const Self = @This();
 
     gpa: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
 
     window_textures: std.ArrayList(RGWindowTextureDesc) = .empty,
     transient_buffers: std.ArrayList(RGTransientBufferDesc) = .empty,
@@ -955,7 +956,7 @@ pub const RenderGraph = struct {
     passes: std.ArrayList(RGPassDesc) = .empty,
 
     pub fn init(gpa: std.mem.Allocator) Self {
-        return .{ .gpa = gpa };
+        return .{ .gpa = gpa, .arena = .init(gpa) };
     }
 
     pub fn deinit(self: *Self) void {
@@ -979,6 +980,15 @@ pub const RenderGraph = struct {
         self.transient_textures.deinit(self.gpa);
         self.transient_buffers.deinit(self.gpa);
         self.window_textures.deinit(self.gpa);
+        self.arena.deinit();
+    }
+
+    // Helper function for allocating data whos lifetime needs to match the RenderGraph
+    // meant mostly for callback ctx's
+    pub fn dupe(self: *Self, comptime T: type, value: T) error{OutOfMemory}!*T {
+        const ptr = try self.arena.allocator().create(T);
+        ptr.* = value;
+        return ptr;
     }
 
     pub fn importBuffer(self: *Self, handle: BufferHandle) Error!RGBufferHandle {

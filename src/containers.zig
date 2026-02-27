@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn HandlePool(comptime T: type) type {
+pub fn SlotMap(comptime T: type) type {
     return struct {
         const Self = @This();
 
@@ -58,7 +58,7 @@ pub fn HandlePool(comptime T: type) type {
             self.deinit();
         }
 
-        pub fn insert(self: *Self, value: T) !Handle {
+        pub fn insert(self: *Self, value: T) error{OutOfMemory}!Handle {
             var handle: Handle = undefined;
             if (self.first_freed) |index| {
                 var entry = &self.list.items[index];

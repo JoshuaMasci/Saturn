@@ -13,7 +13,7 @@ const rg = @import("vulkan/render_graph.zig");
 
 const Transform = @import("../transform.zig");
 
-const InstanceMap = @import("../containers.zig").HandlePool(SceneInstance);
+const InstanceMap = @import("../containers.zig").SlotMap(SceneInstance);
 const FixedArrayList = @import("../fixed_array_list.zig").FixedArrayList;
 
 const MaxPrimitives: comptime_int = 32;

@@ -2,7 +2,7 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const HandlePool = @import("../../containers.zig").HandlePool;
+const HandlePool = @import("../../containers.zig").SlotMap;
 const sdl3 = @import("../../platform/sdl3.zig");
 const Vulkan = sdl3.Vulkan;
 const Window = sdl3.Window;
