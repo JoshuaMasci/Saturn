@@ -280,3 +280,12 @@ pub fn addMesh(self: *Self, mesh: *const CpuMesh) !MeshEntry {
 
     return entry;
 }
+
+pub fn canWriteMesh(self: *const Self) bool {
+    return (self.vertex_buffer.byte_slice != null) and
+        (self.index_buffer.byte_slice != null) and
+        (self.primitive_buffer.byte_slice != null) and
+        (self.meshlet_buffer.byte_slice != null) and
+        (self.meshlet_vertex_buffer.byte_slice != null) and
+        (self.meshlet_triangle_buffer.byte_slice != null);
+}

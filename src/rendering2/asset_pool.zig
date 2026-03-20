@@ -51,6 +51,7 @@ mesh_gpu_load_list: std.ArrayList(MeshAssetHandle) = .empty,
 
 texture_handles: std.AutoHashMap(AssetRegistry.Handle, TextureAssetHandle),
 texture_assets: SlotMap(TextureAsset),
+texture_gpu_load_list: std.ArrayList(TextureAssetHandle) = .empty,
 
 material_handles: std.AutoHashMap(AssetRegistry.Handle, MaterialAssetHandle),
 material_assets: SlotMap(MaterialAsset),
@@ -95,6 +96,7 @@ pub fn deinit(self: *Self) void {
     self.mesh_assets.deinit();
     self.mesh_pool.deinit();
     self.mesh_gpu_load_list.deinit(self.allocator);
+    self.texture_gpu_load_list.deinit(self.allocator);
 
     var texture_iter = self.texture_assets.iterator();
     while (texture_iter.nextValue()) |asset| {
@@ -103,7 +105,7 @@ pub fn deinit(self: *Self) void {
         }
 
         if (asset.gpu) |gpu| {
-            _ = gpu; // autofix
+            self.gpu_device.destroyTexture(gpu);
         }
     }
     self.texture_handles.deinit();
@@ -260,9 +262,9 @@ pub fn loadAllGpu(self: *Self) void {
 
     // Load textures to GPU
     var texture_iter = self.texture_assets.iterator();
-    while (texture_iter.nextValue()) |asset| {
-        if (asset.gpu == null) {
-            if (asset.cpu) |cpu_texture| {
+    while (texture_iter.next()) |entry| {
+        if (entry.value_ptr.gpu == null) {
+            if (entry.value_ptr.cpu) |cpu_texture| {
                 const texture_format: saturn.TextureFormat = switch (cpu_texture.format) {
                     .r8 => .rgba8_unorm,
                     .rg8 => .rgba8_unorm,
@@ -273,41 +275,85 @@ pub fn loadAllGpu(self: *Self) void {
                     .name = cpu_texture.name,
                     .extent = .{ .width = cpu_texture.width, .height = cpu_texture.height, .depth = cpu_texture.depth },
                     .format = texture_format,
-                    .usage = .{ .sampled = true, .transfer = true, .host_transfer = true },
+                    .usage = .{ .sampled = true, .transfer = true },
                     .memory = .gpu_only,
                 }) catch |err| {
                     std.log.err("Failed to create texture {s} {}", .{ cpu_texture.name, err });
                     continue;
                 };
 
-                if (self.gpu_device.uploadTexture(texture_handle, 0, cpu_texture.data)) |_| {} else |err| {
-                    std.log.err("Failed to upload texture {s}: {}", .{ cpu_texture.name, err });
-                    self.gpu_device.destroyTexture(texture_handle);
-                    continue;
+                if (self.gpu_device.canUploadTexture(texture_handle)) {
+                    if (self.gpu_device.uploadTexture(texture_handle, 0, cpu_texture.data)) |_| {} else |err| {
+                        std.log.err("Failed to upload texture {s}: {}", .{ cpu_texture.name, err });
+                        self.gpu_device.destroyTexture(texture_handle);
+                        continue;
+                    }
+                } else {
+                    self.texture_gpu_load_list.append(self.allocator, entry.handle) catch continue;
                 }
 
-                asset.gpu = texture_handle;
+                entry.value_ptr.gpu = texture_handle;
             } else {
-                std.log.debug("Texture {} has no CPU data, skipping GPU upload", .{asset.asset_handle.?});
+                std.log.debug("Texture {} has no CPU data, skipping GPU upload", .{entry.value_ptr.asset_handle.?});
             }
         }
     }
 }
 
 pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
-    for (self.mesh_gpu_load_list.items) |handle| {
-        if (self.mesh_assets.getPtr(handle)) |asset| {
-            const cpu_asset = asset.cpu.?;
-            const gpu_asset = asset.gpu.?;
+    if (self.mesh_gpu_load_list.items.len != 0) {
+        const MAX_MESH_UPLOADS = 100;
 
-            try transfer_queue.addBulkBufferUpload(&.{
-                .{ .dst = self.mesh_pool.vertex_buffer.buffer, .offset = gpu_asset.vertices.offset, .data = std.mem.sliceAsBytes(cpu_asset.vertices) },
-                .{ .dst = self.mesh_pool.index_buffer.buffer, .offset = gpu_asset.indices.offset, .data = std.mem.sliceAsBytes(cpu_asset.indices) },
-                .{ .dst = self.mesh_pool.primitive_buffer.buffer, .offset = gpu_asset.primitives.offset, .data = std.mem.sliceAsBytes(cpu_asset.primitives) },
-                //TODO: write meshlets when needed
-            });
+        const upload_count: usize = @min(self.mesh_gpu_load_list.items.len, MAX_MESH_UPLOADS);
+        const start = self.mesh_gpu_load_list.items.len - upload_count;
+        const end = start + upload_count;
+
+        //std.log.info("Mesh Upload Total({}) Start({}) End({})", .{ self.mesh_gpu_load_list.items.len, start, end });
+
+        for (self.mesh_gpu_load_list.items[start..end]) |handle| {
+            if (self.mesh_assets.getPtr(handle)) |asset| {
+                const cpu_asset = asset.cpu.?;
+                const gpu_asset = asset.gpu.?;
+
+                if (gpu_asset.meshlet) |meshlets| {
+                    try transfer_queue.addBulkBufferUpload(&.{
+                        .{ .dst = self.mesh_pool.vertex_buffer.buffer, .offset = gpu_asset.vertices.offset, .data = std.mem.sliceAsBytes(cpu_asset.vertices) },
+                        .{ .dst = self.mesh_pool.index_buffer.buffer, .offset = gpu_asset.indices.offset, .data = std.mem.sliceAsBytes(cpu_asset.indices) },
+                        .{ .dst = self.mesh_pool.primitive_buffer.buffer, .offset = gpu_asset.primitives.offset, .data = std.mem.sliceAsBytes(cpu_asset.primitives) },
+
+                        .{ .dst = self.mesh_pool.meshlet_buffer.buffer, .offset = meshlets.meshlets.offset, .data = std.mem.sliceAsBytes(cpu_asset.meshlets) },
+                        .{ .dst = self.mesh_pool.meshlet_vertex_buffer.buffer, .offset = meshlets.meshlet_vertices.offset, .data = std.mem.sliceAsBytes(cpu_asset.meshlet_vertices) },
+                        .{ .dst = self.mesh_pool.meshlet_triangle_buffer.buffer, .offset = meshlets.meshlet_triangles.offset, .data = std.mem.sliceAsBytes(cpu_asset.meshlet_triangles) },
+                    });
+                } else {
+                    try transfer_queue.addBulkBufferUpload(&.{
+                        .{ .dst = self.mesh_pool.vertex_buffer.buffer, .offset = gpu_asset.vertices.offset, .data = std.mem.sliceAsBytes(cpu_asset.vertices) },
+                        .{ .dst = self.mesh_pool.index_buffer.buffer, .offset = gpu_asset.indices.offset, .data = std.mem.sliceAsBytes(cpu_asset.indices) },
+                        .{ .dst = self.mesh_pool.primitive_buffer.buffer, .offset = gpu_asset.primitives.offset, .data = std.mem.sliceAsBytes(cpu_asset.primitives) },
+                    });
+                }
+            }
         }
+        self.mesh_gpu_load_list.shrinkRetainingCapacity(start);
     }
 
-    self.mesh_gpu_load_list.clearRetainingCapacity();
+    if (self.texture_gpu_load_list.items.len != 0) {
+        const MAX_TEXTURE_UPLOADS = 100;
+
+        const upload_count: usize = @min(self.texture_gpu_load_list.items.len, MAX_TEXTURE_UPLOADS);
+        const start = self.texture_gpu_load_list.items.len - upload_count;
+        const end = start + upload_count;
+
+        //std.log.info("Texture Upload Total({}) Start({}) End({})", .{ self.texture_gpu_load_list.items.len, start, end });
+
+        for (self.texture_gpu_load_list.items[start..end]) |handle| {
+            if (self.texture_assets.getPtr(handle)) |asset| {
+                const cpu_asset = asset.cpu.?;
+                const gpu_asset = asset.gpu.?;
+
+                try transfer_queue.addTextureUpload(gpu_asset, cpu_asset.data);
+            }
+        }
+        self.texture_gpu_load_list.shrinkRetainingCapacity(start);
+    }
 }

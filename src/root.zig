@@ -730,7 +730,7 @@ pub const DeviceInterface = struct {
     }
 
     pub fn getTextureInfo(self: *const Self, handle: TextureHandle) ?TextureInfo {
-        self.vtable.getTextureInfo(self.ctx, handle);
+        return self.vtable.getTextureInfo(self.ctx, handle);
     }
 
     pub fn canUploadTexture(self: *const Self, handle: TextureHandle) bool {
@@ -1213,11 +1213,15 @@ pub const RenderGraphCompiled = struct {
             try graph.nodes.put(tpa, pass.handle, .{ .pass = pass.handle });
 
             for (pass.buffer_usages.items) |buffer_access| {
+                if (last_buffer_access[buffer_access.handle.idx] != null and last_buffer_access[buffer_access.handle.idx].?.idx == pass.handle.idx) continue;
+
                 try graph.addDependency(last_buffer_access[buffer_access.handle.idx], pass.handle, .{ .buffer = buffer_access.handle });
                 last_buffer_access[buffer_access.handle.idx] = pass.handle;
             }
 
             for (pass.texture_usages.items) |texture_access| {
+                if (last_texture_access[texture_access.handle.idx] != null and last_texture_access[texture_access.handle.idx].?.idx == pass.handle.idx) continue;
+
                 try graph.addDependency(last_texture_access[texture_access.handle.idx], pass.handle, .{ .texture = texture_access.handle });
                 last_texture_access[texture_access.handle.idx] = pass.handle;
             }
@@ -1227,7 +1231,7 @@ pub const RenderGraphCompiled = struct {
         // TODO: eleminate read -> read barriers
 
         // TODO: fix graph reordering cause its broken
-        const reorder_graph: bool = false;
+        const reorder_graph: bool = true;
 
         var pass_execute_order: std.ArrayList(RGPassHandle) = try .initCapacity(tpa, render_graph.passes.items.len);
         defer pass_execute_order.deinit(tpa);
@@ -1399,14 +1403,14 @@ pub const TextureArg = union(enum) {
     tracked: RGTextureHandle,
     untracked: TextureHandle,
 
-    pub fn from(buffer: anytype) BufferArg {
+    pub fn from(buffer: anytype) TextureArg {
         const TextureType = @TypeOf(buffer);
         if (TextureType == RGTextureHandle) {
             return .{ .tracked = buffer };
         } else if (TextureType == TextureHandle) {
             return .{ .untracked = buffer };
         } else {
-            @compileError("Unknown buffer type");
+            @compileError("Unknown texture type");
         }
     }
 };
@@ -1419,9 +1423,11 @@ pub const BufferCopyRegion = struct {
 
 pub const TextureCopyRegion = struct {
     src_mip_level: u32 = 0,
-    dst_mip_level: u32 = 0,
     src_offset: [3]u32 = .{ 0, 0, 0 },
+
+    dst_mip_level: u32 = 0,
     dst_offset: [3]u32 = .{ 0, 0, 0 },
+
     extent: TextureExtent,
 };
 
@@ -1429,8 +1435,10 @@ pub const BufferTextureCopyRegion = struct {
     buffer_offset: u64 = 0,
     buffer_row_length: u32 = 0,
     buffer_image_height: u32 = 0,
+
     texture_mip_level: u32 = 0,
     texture_offset: [3]u32 = .{ 0, 0, 0 },
+
     extent: TextureExtent,
 };
 

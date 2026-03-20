@@ -119,7 +119,7 @@ pub fn main() !void {
         defer {
             const duration_ns = std.time.nanoTimestamp() - now;
             const duration_ns_f: f32 = @floatFromInt(duration_ns);
-            std.log.info("Loading assets took {d:0.5} secs", .{duration_ns_f / std.time.ns_per_s});
+            std.log.info("Loading assets took {d:0.3} secs", .{duration_ns_f / std.time.ns_per_s});
         }
 
         //TEMP: force load of all resources
@@ -127,12 +127,6 @@ pub fn main() !void {
 
         //TODO: load gpu assets
         app.asset_pool.loadAllGpu();
-    }
-
-    const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(allocator, debug_allocator.total_requested_bytes) catch null;
-    if (formatted_string) |mem_usage_string| {
-        std.log.info("Total Memory Usage: {s}", .{mem_usage_string});
-        allocator.free(mem_usage_string);
     }
 
     var last_frame_time_ns = std.time.nanoTimestamp();
@@ -196,7 +190,7 @@ const App = struct {
             .{
                 .texture_count = 3,
                 .texture_usage = .{ .attachment = true, .transfer = true },
-                .texture_format = .rgba8_unorm,
+                .texture_format = .rgba8_srgb,
                 .present_mode = .fifo,
             },
         );
