@@ -1,20 +1,23 @@
 const std = @import("std");
 
-pub const c = @cImport({
-    @cInclude("SDL3/SDL.h");
-    @cInclude("SDL3/SDL_vulkan.h");
-    @cInclude("dcimgui.h");
-    @cInclude("backends/dcimgui_impl_sdl3.h");
-    @cInclude("backends/dcimgui_impl_vulkan.h");
-});
+//const ig = @import("cimgui_docking");
 
-pub const WindowInterface = struct {
-    pub const Info = struct {
-        name: [:0]const u8,
-        p_open: *bool,
-    };
+const saturn = @import("root.zig");
 
-    data: *anyopaque,
-    get_info_fn: *const fn (data: *anyopaque) Info,
-    build_fn: *const fn (data: *anyopaque) void,
-};
+const Self = @This();
+
+device: saturn.DeviceInterface,
+font_texture: ?saturn.TextureHandle = null,
+
+pub fn init(device: saturn.DeviceInterface) !Self {
+    return .{ .device = device };
+}
+
+pub fn deinit(self: *Self) void {
+    _ = self; // autofix
+}
+
+pub fn addRenderPasses(target: saturn.RGTextureHandle, render_graph: *saturn.RenderGraph) error{OutOfMemory}!void {
+    _ = target; // autofix
+    _ = render_graph; // autofix
+}

@@ -139,6 +139,9 @@ pub const PlatformInterface = struct {
         getWindowSupport: *const fn (ctx: *anyopaque, physical_device_index: u32, window_handle: WindowHandle) ?WindowSurfaceInfo,
         createDevice: *const fn (ctx: *anyopaque, physical_device_index: u32, desc: DeviceDesc) Error!DeviceInterface,
         destroyDevice: *const fn (ctx: *anyopaque, device_interface: DeviceInterface) void,
+
+        // initImgui: *const fn (ctx: *anyopaque, device: DeviceInterface, window_handle: WindowHandle) Error!void,
+        // deinitImgui: *const fn (ctx: *anyopaque) void,
     };
 
     // Convenience wrappers
@@ -305,7 +308,7 @@ pub const MemoryType = enum {
 pub const BufferHandle = enum(u64) { null_handle = 0, _ };
 
 pub const BufferDesc = struct {
-    name: [:0]const u8,
+    name: []const u8,
     size: usize,
     usage: BufferUsage,
     memory: MemoryType,
@@ -335,7 +338,7 @@ pub const BufferInfo = struct {
 pub const TextureHandle = enum(u64) { null_handle = 0, _ };
 
 pub const TextureDesc = struct {
-    name: [:0]const u8,
+    name: []const u8,
     extent: TextureExtent,
     format: TextureFormat,
     mip_levels: u32 = 1,
@@ -541,7 +544,7 @@ pub const RenderTargetInfo = struct {
 };
 
 pub const GraphicsPipelineDesc = struct {
-    name: [:0]const u8,
+    name: []const u8,
     vertex: ShaderHandle,
     fragment: ?ShaderHandle = null,
     vertex_input_state: VertexInputState = .{},
@@ -553,7 +556,7 @@ pub const GraphicsPipelineDesc = struct {
 
 pub const ComputePipelineHandle = enum(u64) { null_handle = 0, _ };
 pub const ComputePipelineDesc = struct {
-    name: [:0]const u8,
+    name: []const u8,
     shader: ShaderHandle,
 };
 
@@ -614,6 +617,7 @@ pub const DeviceFeatures = struct {
     ray_tracing: bool,
     host_image_copy: bool,
     unified_image_layouts: bool,
+    buffer_device_address: bool,
 };
 
 pub const DeviceMemory = struct {
@@ -714,7 +718,7 @@ pub const DeviceInterface = struct {
     }
 
     pub fn getBufferInfo(self: *const Self, handle: BufferHandle) ?BufferInfo {
-        self.vtable.getBufferInfo(self.ctx, handle);
+        return self.vtable.getBufferInfo(self.ctx, handle);
     }
 
     pub fn createTexture(self: *const Self, desc: TextureDesc) Error!TextureHandle {
@@ -769,7 +773,7 @@ pub const DeviceInterface = struct {
         self.vtable.releaseWindow(self.ctx, window_handle);
     }
 
-    pub fn submit(self: *const Self, tpa: std.mem.Allocator, graph: *const RenderGraph) Error!void {
+    pub fn submitRenderGraph(self: *const Self, tpa: std.mem.Allocator, graph: *const RenderGraph) Error!void {
         return self.vtable.submit(self.ctx, tpa, graph);
     }
 
@@ -946,6 +950,8 @@ pub const RenderGraph = struct {
     gpa: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
 
+    imported_buffers: std.AutoArrayHashMapUnmanaged(BufferHandle, RGBufferHandle) = .empty,
+    imported_textures: std.AutoArrayHashMapUnmanaged(TextureHandle, RGTextureHandle) = .empty,
     window_textures: std.ArrayList(RGWindowTextureDesc) = .empty,
     transient_buffers: std.ArrayList(RGTransientBufferDesc) = .empty,
     transient_textures: std.ArrayList(RGTransientTextureDesc) = .empty,
@@ -977,23 +983,24 @@ pub const RenderGraph = struct {
         self.passes.deinit(self.gpa);
         self.textures.deinit(self.gpa);
         self.buffers.deinit(self.gpa);
+
         self.transient_textures.deinit(self.gpa);
         self.transient_buffers.deinit(self.gpa);
         self.window_textures.deinit(self.gpa);
+        self.imported_textures.deinit(self.gpa);
+        self.imported_buffers.deinit(self.gpa);
+
         self.arena.deinit();
     }
 
-    // Helper function for allocating data whos lifetime needs to match the RenderGraph
-    // meant mostly for callback ctx's
-    pub fn dupe(self: *Self, comptime T: type, value: T) error{OutOfMemory}!*T {
-        const ptr = try self.arena.allocator().create(T);
-        ptr.* = value;
-        return ptr;
-    }
-
     pub fn importBuffer(self: *Self, handle: BufferHandle) Error!RGBufferHandle {
+        if (self.imported_buffers.get(handle)) |rg_handle| return rg_handle;
+
         try self.buffers.append(self.gpa, .{ .source = .{ .persistent = handle } });
-        return RGBufferHandle{ .idx = @intCast(self.buffers.items.len - 1) };
+        const rg_handle: RGBufferHandle = .{ .idx = @intCast(self.buffers.items.len - 1) };
+        try self.imported_buffers.put(self.gpa, handle, rg_handle);
+
+        return rg_handle;
     }
 
     pub fn createTransientBuffer(self: *Self, desc: RGTransientBufferDesc) Error!RGBufferHandle {
@@ -1004,8 +1011,13 @@ pub const RenderGraph = struct {
     }
 
     pub fn importTexture(self: *Self, handle: TextureHandle) Error!RGTextureHandle {
+        if (self.imported_textures.get(handle)) |rg_handle| return rg_handle;
+
         try self.textures.append(self.gpa, .{ .source = .{ .persistent = handle } });
-        return RGTextureHandle{ .idx = @intCast(self.textures.items.len - 1) };
+        const rg_handle: RGTextureHandle = .{ .idx = @intCast(self.textures.items.len - 1) };
+        try self.imported_textures.put(self.gpa, handle, rg_handle);
+
+        return rg_handle;
     }
 
     pub fn createTransientTexture(self: *Self, desc: RGTransientTextureDesc) Error!RGTextureHandle {
@@ -1130,6 +1142,24 @@ pub const RenderGraph = struct {
             entry.last_usage = pass;
         }
     }
+
+    // Memory Helper Functions:
+    // Helper function for allocating data whos lifetime needs to match the RenderGraph
+    // meant mostly for callback ctx's
+
+    pub fn alloc(self: *Self, comptime T: type, n: usize) error{OutOfMemory}![]T {
+        return try self.arena.allocator().alloc(T, n);
+    }
+
+    pub fn dupe(self: *Self, comptime T: type, value: T) error{OutOfMemory}!*T {
+        const ptr = try self.arena.allocator().create(T);
+        ptr.* = value;
+        return ptr;
+    }
+
+    pub fn dupeSlice(self: *Self, comptime T: type, slice: []const T) error{OutOfMemory}![]T {
+        return try self.arena.allocator().dupe(T, slice);
+    }
 };
 
 pub const RenderGraphCompiled = struct {
@@ -1196,7 +1226,8 @@ pub const RenderGraphCompiled = struct {
         // Optimize Graph
         // TODO: eleminate read -> read barriers
 
-        const reorder_graph: bool = true;
+        // TODO: fix graph reordering cause its broken
+        const reorder_graph: bool = false;
 
         var pass_execute_order: std.ArrayList(RGPassHandle) = try .initCapacity(tpa, render_graph.passes.items.len);
         defer pass_execute_order.deinit(tpa);

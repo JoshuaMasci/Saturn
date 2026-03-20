@@ -103,6 +103,7 @@ pub fn init(
     };
 
     var features_12 = vk.PhysicalDeviceVulkan12Features{
+        .buffer_device_address = if (extentions.buffer_device_address) .true else .false,
         .runtime_descriptor_array = .true,
         .descriptor_indexing = .true,
         .descriptor_binding_update_unused_while_pending = .true,

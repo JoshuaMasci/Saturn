@@ -235,13 +235,7 @@ pub fn createGraphicsPipeline(
         return PipelineError.PipelineCreationFailed;
     }
 
-    if (device.device.debug) {
-        device.device.proxy.setDebugUtilsObjectNameEXT(&.{
-            .object_type = .pipeline,
-            .object_handle = @intFromEnum(pipeline),
-            .p_object_name = desc.name,
-        }) catch {};
-    }
+    device.device.setDebugName(.pipeline, pipeline, desc.name);
 
     return pipeline;
 }
@@ -351,13 +345,7 @@ pub fn createComputePipeline(
         return PipelineError.PipelineCreationFailed;
     }
 
-    if (device.device.debug) {
-        device.device.proxy.setDebugUtilsObjectNameEXT(&.{
-            .object_type = .pipeline,
-            .object_handle = @intFromEnum(pipeline),
-            .p_object_name = desc.name,
-        }) catch {};
-    }
+    device.device.setDebugName(.pipeline, pipeline, desc.name);
 
     return pipeline;
 }

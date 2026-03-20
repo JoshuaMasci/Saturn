@@ -77,6 +77,7 @@ pub fn alloc(
     self: *Self,
     requirements: vk.MemoryRequirements,
     location: MemoryLocation,
+    device_address: bool,
 ) !Allocation {
     const memory_flags: vk.MemoryPropertyFlags = if (self.unified_memory)
         .{ .device_local_bit = true, .host_visible_bit = true, .host_coherent_bit = true }
@@ -91,7 +92,13 @@ pub fn alloc(
         memory_flags,
     );
 
+    var alloc_flags: vk.MemoryAllocateFlagsInfo = .{
+        .device_mask = 0,
+        .flags = .{ .device_address_bit = device_address },
+    };
+
     const alloc_info = vk.MemoryAllocateInfo{
+        .p_next = &alloc_flags,
         .allocation_size = requirements.size,
         .memory_type_index = memory_type_index,
     };

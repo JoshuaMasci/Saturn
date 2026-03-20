@@ -53,18 +53,9 @@ pub const RenderGraphExecutor = struct {
     resources: GraphResources,
     swapchain_textures: []SwapchainTexture,
 
-    pub fn init(device: *Device, tpa: std.mem.Allocator, render_graph: *const saturn.RenderGraph) !Self {
+    pub fn init(device: *Device, tpa: std.mem.Allocator, frame_data: *Device.PerFrameData, render_graph: *const saturn.RenderGraph) !Self {
         var compiled = try saturn.RenderGraphCompiled.compile(tpa, render_graph);
         errdefer compiled.deinit(tpa);
-
-        const frame_data = device.getNextFrameData();
-
-        if (!frame_data.waitForPrevious(device.device.proxy, device.submit_timeout_ns)) {
-            std.log.err("Failed to wait for previous frame fences", .{});
-        }
-
-        device.device.descriptor.writeUpdates(tpa) catch return error.Unknown;
-        frame_data.reset(device.device);
 
         const swapchain_textures = try acquireSwapchainImages(device, tpa, frame_data, render_graph);
         errdefer tpa.free(swapchain_textures);

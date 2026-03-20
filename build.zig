@@ -141,13 +141,30 @@ fn buildMain(
     }).module("vulkan-zig");
     exe_mod.addImport("vulkan", vulkan);
 
-    const cimgui = b.dependency("cimgui_zig", .{
-        .target = target,
-        .optimize = optimize,
-        .platform = .SDL3,
-        .renderer = .Vulkan,
-    });
-    exe_mod.linkLibrary(cimgui.artifact("cimgui"));
+    if (false) {
+        const cimgui = @import("cimgui");
+        const cimgui_conf = cimgui.getConfig(true);
+        const dep_cimgui = b.dependency("cimgui", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        exe_mod.addIncludePath(dep_cimgui.path(cimgui_conf.include_dir));
+        exe_mod.addImport(cimgui_conf.module_name, dep_cimgui.module(cimgui_conf.module_name));
+    } else {
+        const cimgui = @import("cimgui_zig");
+        const Renderer = cimgui.Renderer;
+        const Platform = cimgui.Platform;
+
+        const cimgui_dep = b.dependency("cimgui_zig", .{
+            .target = target,
+            .optimize = optimize,
+            .platforms = &[_]Platform{.SDL3},
+            .renderers = &[_]Renderer{.Vulkan},
+            .docking = true,
+        });
+        const cimgui_lib = cimgui_dep.artifact("cimgui");
+        exe_mod.linkLibrary(cimgui_lib);
+    }
 
     // zmath
     const zmath = b.dependency("zmath", .{});

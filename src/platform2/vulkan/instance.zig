@@ -105,6 +105,7 @@ pub fn init(
                 .ray_tracing = physical_device.info.extensions.ray_tracing,
                 .host_image_copy = physical_device.info.extensions.host_image_copy,
                 .unified_image_layouts = physical_device.info.extensions.unified_image_layouts,
+                .buffer_device_address = physical_device.info.extensions.buffer_device_address,
             },
         };
     }

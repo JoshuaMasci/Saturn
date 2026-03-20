@@ -167,6 +167,26 @@ const TextureInfo = struct {
 };
 
 pub const Device = struct {
+    pub const FreedLists = struct {
+        buffers: std.ArrayList(saturn.BufferHandle) = .empty,
+        textures: std.ArrayList(saturn.TextureHandle) = .empty,
+
+        pub fn deinit(self: *FreedLists, gpa: std.mem.Allocator) void {
+            self.buffers.deinit(gpa);
+            self.textures.deinit(gpa);
+        }
+
+        pub fn clear(self: *FreedLists) void {
+            self.buffers.clearRetainingCapacity();
+            self.textures.clearRetainingCapacity();
+        }
+
+        pub fn append(self: *FreedLists, gpa: std.mem.Allocator, other: FreedLists) error{OutOfMemory}!void {
+            try self.buffers.appendSlice(gpa, other.buffers.items);
+            try self.textures.appendSlice(gpa, other.textures.items);
+        }
+    };
+
     pub const PerFrameData = struct {
         frame_wait_fences: std.ArrayList(vk.Fence) = .empty,
         graphics_command_pool: object_pools.CommandBufferPool,
@@ -178,6 +198,8 @@ pub const Device = struct {
 
         transient_buffers: std.ArrayList(Buffer) = .empty,
         transient_textures: std.ArrayList(Texture) = .empty,
+
+        freed: FreedLists = .{},
 
         pub fn init(gpa: std.mem.Allocator, device: *VkDevice) !PerFrameData {
             return .{
@@ -208,6 +230,8 @@ pub const Device = struct {
 
             self.buffer_access.deinit();
             self.texture_access.deinit();
+
+            self.freed.deinit(gpa);
         }
 
         pub fn waitForPrevious(self: *@This(), device: vk.DeviceProxy, timeout_ns: u64) bool {
@@ -242,6 +266,8 @@ pub const Device = struct {
                 texture.deinit(device);
             }
             self.transient_textures.clearRetainingCapacity();
+
+            self.freed.clear();
         }
 
         pub fn errorReset(self: *@This(), device: vk.DeviceProxy) void {
@@ -270,6 +296,8 @@ pub const Device = struct {
     compute_pipelines: std.AutoHashMap(saturn.ComputePipelineHandle, vk.Pipeline),
     buffers: std.AutoHashMap(saturn.BufferHandle, BufferInfo),
     textures: std.AutoHashMap(saturn.TextureHandle, TextureInfo),
+
+    freed: FreedLists = .{},
 
     // Dynamic frames in flight
     frame_index: usize = 0,
@@ -382,6 +410,8 @@ pub const Device = struct {
     pub fn deinit(self: *Self) void {
         _ = self.device.proxy.deviceWaitIdle() catch {};
 
+        self.freed.deinit(self.gpa);
+
         for (self.per_frame_data) |*frame_data| {
             frame_data.deinit(self.gpa, self.device);
         }
@@ -483,35 +513,24 @@ pub const Device = struct {
 
         self.buffers.put(handle, .{ .buffer = buffer }) catch return error.OutOfMemory;
 
-        if (self.device.debug) {
-            self.device.proxy.setDebugUtilsObjectNameEXT(&.{
-                .object_type = .buffer,
-                .object_handle = @intFromEnum(buffer.handle),
-                .p_object_name = desc.name,
-            }) catch {};
-        }
+        self.device.setDebugName(.buffer, buffer.handle, desc.name);
 
         return handle;
     }
 
     fn destroyBuffer(ctx: *anyopaque, buffer: saturn.BufferHandle) void {
-        _ = buffer; // autofix
         const self: *Self = @ptrCast(@alignCast(ctx));
-        _ = self; // autofix
 
-        // if (self.buffers.fetchRemove(buffer)) |entry| {
-        //     self.per_frame_data[self.frame_index].freed.buffers.append(self.gpa, entry.value) catch {
-        //         if (entry.value.uniform_binding) |binding| {
-        //             self.descriptor.uniform_buffer_array.clear(binding);
-        //         }
+        if (!self.buffers.contains(buffer)) {
+            return;
+        }
 
-        //         if (entry.value.storage_binding) |binding| {
-        //             self.descriptor.storage_buffer_array.clear(binding);
-        //         }
-
-        //         entry.value.deinit(self.device);
-        //     };
-        // }
+        self.freed.buffers.append(self.gpa, buffer) catch {
+            // If list failed, just delete it immediately and suffer the consequences
+            // Frankly this is likely to never happen
+            const entry = self.buffers.fetchRemove(buffer).?;
+            entry.value.buffer.deinit(self.device);
+        };
     }
 
     fn getBufferInfo(ctx: *anyopaque, handle: saturn.BufferHandle) ?saturn.BufferInfo {
@@ -552,35 +571,24 @@ pub const Device = struct {
 
         self.textures.put(handle, .{ .texture = texture }) catch return error.OutOfMemory;
 
-        if (self.device.debug) {
-            self.device.proxy.setDebugUtilsObjectNameEXT(&.{
-                .object_type = .image,
-                .object_handle = @intFromEnum(texture.handle),
-                .p_object_name = desc.name,
-            }) catch {};
-        }
+        self.device.setDebugName(.image, texture.handle, desc.name);
 
         return handle;
     }
 
     fn destroyTexture(ctx: *anyopaque, texture: saturn.TextureHandle) void {
-        _ = texture; // autofix
         const self: *Self = @ptrCast(@alignCast(ctx));
-        _ = self; // autofix
 
-        // if (self.textures.fetchRemove(texture)) |entry| {
-        //     self.per_frame_data[self.frame_index].freed.texture.append(self.gpa, entry.value) catch {
-        //         if (entry.value.sampled_binding) |binding| {
-        //             self.descriptor.sampled_image_array.clear(binding);
-        //         }
+        if (!self.textures.contains(texture)) {
+            return;
+        }
 
-        //         if (entry.value.storage_binding) |binding| {
-        //             self.descriptor.storage_image_array.clear(binding);
-        //         }
-
-        //         entry.value.deinit(self.device);
-        //     };
-        // }
+        self.freed.textures.append(self.gpa, texture) catch {
+            // If list failed, just delete it immediately and suffer the consequences
+            // Frankly this is likely to never happen
+            const entry = self.textures.fetchRemove(texture).?;
+            entry.value.texture.deinit(self.device);
+        };
     }
 
     fn getTextureInfo(ctx: *anyopaque, handle: saturn.TextureHandle) ?saturn.TextureInfo {
@@ -762,10 +770,46 @@ pub const Device = struct {
         }
     }
 
+    fn submitTransfer(ctx: *anyopaque, prefer_async: bool, callback_ctx: ?*anyopaque, callback_func: TransferCommandEncoder.Callback) saturn.Error!void {
+        _ = prefer_async; // autofix
+        _ = callback_ctx; // autofix
+        _ = callback_func; // autofix
+
+        const self: *Self = @ptrCast(@alignCast(ctx));
+
+        const frame_data = self.getNextFrameData();
+        _ = frame_data; // autofix
+
+    }
+
     fn submit(ctx: *anyopaque, tpa: std.mem.Allocator, render_graph: *const saturn.RenderGraph) saturn.Error!void {
         const self: *Self = @ptrCast(@alignCast(ctx));
 
-        var executor = render_graph_executor.RenderGraphExecutor.init(self, tpa, render_graph) catch return error.Unknown;
+        const frame_data = self.getNextFrameData();
+
+        if (!frame_data.waitForPrevious(self.device.proxy, self.submit_timeout_ns)) {
+            std.log.err("Failed to wait for previous frame fences", .{});
+        }
+
+        //Clear prior freed objects
+        {
+            for (frame_data.freed.buffers.items) |handle| {
+                const entry = self.buffers.fetchRemove(handle).?;
+                entry.value.buffer.deinit(self.device);
+            }
+
+            for (frame_data.freed.textures.items) |handle| {
+                const entry = self.textures.fetchRemove(handle).?;
+                entry.value.texture.deinit(self.device);
+            }
+        }
+
+        self.device.descriptor.writeUpdates(tpa) catch return error.Unknown;
+        frame_data.reset(self.device);
+        try frame_data.freed.append(self.gpa, self.freed);
+        self.freed.clear();
+
+        var executor = render_graph_executor.RenderGraphExecutor.init(self, tpa, frame_data, render_graph) catch return error.Unknown;
         defer executor.deinit();
         try executor.execute();
 

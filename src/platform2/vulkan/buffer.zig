@@ -38,7 +38,7 @@ pub fn init(
 
     const mem_requirements = device.proxy.getBufferMemoryRequirements(handle);
 
-    const allocation = try device.gpu_allocator.alloc(mem_requirements, memory);
+    const allocation = try device.gpu_allocator.alloc(mem_requirements, memory, usage.device_address);
     errdefer device.gpu_allocator.free(allocation);
 
     try device.proxy.bindBufferMemory(handle, allocation.memory, allocation.offset);

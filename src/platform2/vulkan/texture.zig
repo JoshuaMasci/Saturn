@@ -50,7 +50,7 @@ pub fn init(device: *Device, extent: saturn.TextureExtent, mip_levels: u32, form
     }, null);
     errdefer device.proxy.destroyImage(handle, null);
 
-    const allocation = try device.gpu_allocator.alloc(device.proxy.getImageMemoryRequirements(handle), memory);
+    const allocation = try device.gpu_allocator.alloc(device.proxy.getImageMemoryRequirements(handle), memory, false);
     errdefer device.gpu_allocator.free(allocation);
     try device.proxy.bindImageMemory(handle, allocation.memory, allocation.offset);
 

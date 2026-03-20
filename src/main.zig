@@ -6,7 +6,7 @@ const zm = @import("zmath");
 const AssetRegistry = @import("asset/registry.zig");
 const Scene = @import("asset/scene.zig");
 const DebugCamera = @import("debug_camera.zig");
-const imgui = @import("imgui.zig").c;
+const SaturnImgui = @import("imgui.zig");
 const sdl3 = @import("platform/sdl3.zig");
 const Camera = @import("rendering/camera.zig").Camera;
 const ImguiRenderer = @import("rendering/imgui_renderer.zig");
@@ -20,6 +20,7 @@ const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
 const saturn = @import("root.zig");
 const AssetPool = @import("rendering2/asset_pool.zig");
+const TransferQueue = @import("rendering2/transfer_queue.zig");
 
 fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder) void {
     _ = ctx; // autofix
@@ -125,7 +126,7 @@ pub fn main() !void {
         app.asset_pool.loadAllCpu();
 
         //TODO: load gpu assets
-
+        app.asset_pool.loadAllGpu();
     }
 
     const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(allocator, debug_allocator.total_requested_bytes) catch null;
@@ -157,7 +158,11 @@ const App = struct {
     gpu_device: saturn.DeviceInterface,
 
     asset_registry: *AssetRegistry,
+
+    transfer_queue: TransferQueue,
     asset_pool: AssetPool,
+
+    imgui: SaturnImgui,
 
     camera: DebugCamera = .{},
 
@@ -166,14 +171,6 @@ const App = struct {
     timer: f32 = 0,
     frames: f32 = 0,
     average_dt: f32 = 0.0,
-
-    window_visable_flags: struct {
-        debug: bool = true,
-        performance: bool = true,
-        viewport: bool = true,
-        scene: bool = true,
-        properties: bool = true,
-    } = .{},
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try saturn.init(allocator, .{
@@ -191,6 +188,8 @@ const App = struct {
 
         const gpu_device = try platform.createDeviceBasic(window, .prefer_high_power);
         errdefer platform.destroyDevice(gpu_device);
+
+        std.log.info("GPU Device Selected: {f}", .{gpu_device.getInfo()});
 
         try gpu_device.claimWindow(
             window,
@@ -211,8 +210,13 @@ const App = struct {
         try asset_registry.addRepository("game", "zig-out/assets/game");
         errdefer asset_registry.deinit();
 
-        var asset_pool: AssetPool = .init(allocator, asset_registry, gpu_device);
+        var asset_pool: AssetPool = try .init(allocator, asset_registry, gpu_device);
         errdefer asset_pool.deinit();
+
+        var transfer_queue: TransferQueue = .init(allocator, gpu_device);
+        errdefer transfer_queue.deinit();
+
+        const imgui: SaturnImgui = try .init(gpu_device);
 
         return .{
             .allocator = allocator,
@@ -221,7 +225,11 @@ const App = struct {
             .gpu_device = gpu_device,
 
             .asset_registry = asset_registry,
+
+            .transfer_queue = transfer_queue,
             .asset_pool = asset_pool,
+
+            .imgui = imgui,
 
             .temp_allocator = .init(allocator),
         };
@@ -232,7 +240,10 @@ const App = struct {
 
         self.temp_allocator.deinit();
 
+        self.imgui.deinit();
+
         self.asset_pool.deinit();
+        self.transfer_queue.deinit();
         self.asset_registry.deinit();
         self.allocator.destroy(self.asset_registry);
 
@@ -247,6 +258,7 @@ const App = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
+        _ = mem_usage_opt; // autofix
         _ = self.temp_allocator.reset(.retain_capacity);
         const temp_allocator = self.temp_allocator.allocator();
 
@@ -267,122 +279,25 @@ const App = struct {
             .window_close_requested = windowCloseCallback,
         });
 
-        const IMGUI_ENABLED: bool = false;
-        if (IMGUI_ENABLED) {
-            {
-                imgui.cImGui_ImplVulkan_NewFrame();
-                imgui.cImGui_ImplSDL3_NewFrame();
-                imgui.ImGui_NewFrame();
-
-                _ = imgui.ImGui_DockSpaceOverViewportEx(0, imgui.ImGui_GetMainViewport(), imgui.ImGuiDockNodeFlags_PassthruCentralNode, null);
-            }
-
-            if (imgui.ImGui_BeginMainMenuBar()) {
-                if (imgui.ImGui_BeginMenu("File")) {
-                    imgui.ImGui_EndMenu();
-                }
-
-                if (imgui.ImGui_BeginMenu("Windows")) {
-                    _ = imgui.ImGui_MenuItemBoolPtr("Performance", null, &self.window_visable_flags.performance, true);
-                    _ = imgui.ImGui_MenuItemBoolPtr("Debug", null, &self.window_visable_flags.debug, true);
-                    _ = imgui.ImGui_MenuItemBoolPtr("Viewport", null, &self.window_visable_flags.viewport, true);
-                    _ = imgui.ImGui_MenuItemBoolPtr("Scene", null, &self.window_visable_flags.scene, true);
-                    _ = imgui.ImGui_MenuItemBoolPtr("Properties", null, &self.window_visable_flags.properties, true);
-                    imgui.ImGui_EndMenu();
-                }
-
-                imgui.ImGui_EndMainMenuBar();
-            }
-
-            if (self.window_visable_flags.performance) {
-                if (imgui.ImGui_Begin("Performance", &self.window_visable_flags.performance, 0)) {
-                    try ImFmtText(temp_allocator, "Delta Time: {d:.3} ms", .{self.average_dt * 1000});
-                    try ImFmtText(temp_allocator, "FPS: {d:.3}", .{1.0 / self.average_dt});
-
-                    if (mem_usage_opt) |mem_usage| {
-                        const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(temp_allocator, mem_usage) catch null;
-                        if (formatted_string) |mem_usage_string| {
-                            try ImFmtText(temp_allocator, "Memory Usage: {s}", .{mem_usage_string});
-                        }
-                    }
-
-                    {
-                        const formatted_string: ?[]const u8 = @import("utils.zig").formatBytes(
-                            temp_allocator,
-                            self.vulkan_backend.device.gpu_allocator.total_requested_bytes,
-                        ) catch null;
-                        if (formatted_string) |mem_usage_string| {
-                            try ImFmtText(temp_allocator, "Gpu Memory Usage: {s}", .{mem_usage_string});
-                        }
-                    }
-
-                    imgui.ImGui_End();
-                }
-            }
-
-            if (self.window_visable_flags.debug) {
-                if (imgui.ImGui_Begin("Debug", &self.window_visable_flags.debug, 0)) {
-                    _ = imgui.ImGui_Checkbox("Indirect", &self.scene_renderer.indirect);
-                    _ = imgui.ImGui_Checkbox("Enable Culling", &self.scene_renderer.culling);
-
-                    var is_locked: bool = self.scene_renderer.locked_culling_info != null;
-                    if (imgui.ImGui_Checkbox("Lock Culling Camera", &is_locked)) {
-                        self.scene_renderer.locked_culling_info = if (is_locked) .{
-                            .settings = self.camera.camera,
-                            .transform = self.camera.transform,
-                        } else null;
-                    }
-
-                    imgui.ImGui_End();
-                }
-            }
-
-            if (self.window_visable_flags.viewport) {
-                if (imgui.ImGui_Begin("Viewport", &self.window_visable_flags.viewport, 0)) {
-                    const size = imgui.ImGui_GetWindowSize();
-                    imgui.ImGui_Text("Window Size: %.1f x %.1f", size.x, size.y);
-                    imgui.ImGui_Text("TODO: draw the scene here and not on the main swapchain");
-                    imgui.ImGui_End();
-                }
-            }
-
-            if (self.window_visable_flags.scene) {
-                if (imgui.ImGui_Begin("Scene", &self.window_visable_flags.scene, 0)) {
-                    imgui.ImGui_End();
-                }
-            }
-
-            if (self.window_visable_flags.properties) {
-                if (imgui.ImGui_Begin("Properties", &self.window_visable_flags.properties, 0)) {
-                    imgui.ImGui_End();
-                }
-            }
-
-            {
-                imgui.ImGui_EndFrame();
-                const io: *imgui.ImGuiIO = imgui.ImGui_GetIO();
-                if ((io.ConfigFlags & imgui.ImGuiConfigFlags_ViewportsEnable) != 0) {
-                    imgui.ImGui_UpdatePlatformWindows();
-                    imgui.ImGui_RenderPlatformWindowsDefault();
-                }
-            }
-        }
+        try self.asset_pool.addTransfers(&self.transfer_queue);
 
         var render_graph: saturn.RenderGraph = .init(temp_allocator);
         defer render_graph.deinit();
+
+        try self.transfer_queue.buildPass(&render_graph);
 
         {
             const swapchain_texture = try render_graph.acquireWindowTexture(self.window);
 
             _ = try render_graph.addGraphicsPass(
-                "Pass6",
+                "Swapchain Pass",
                 .{ .color_attachments = &.{.{ .texture = swapchain_texture, .clear = .{ 0.25, 0.0, 0.4, 1.0 } }} },
                 null,
                 emptyGraphicsCallback,
             );
         }
 
-        try self.gpu_device.submit(temp_allocator, &render_graph);
+        try self.gpu_device.submitRenderGraph(temp_allocator, &render_graph);
     }
 };
 
@@ -398,10 +313,4 @@ fn windowCloseCallback(ctx: ?*anyopaque, window: saturn.WindowHandle) void {
     const app: *App = @ptrCast(@alignCast(ctx.?));
     std.log.info("Window close requested", .{});
     app.is_running = false;
-}
-
-pub fn ImFmtText(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) !void {
-    const fmt_str: [:0]const u8 = try std.fmt.allocPrintSentinel(allocator, fmt, args, 0);
-    defer allocator.free(fmt_str);
-    imgui.ImGui_Text(fmt_str);
 }

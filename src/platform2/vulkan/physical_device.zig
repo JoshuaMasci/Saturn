@@ -23,6 +23,7 @@ pub const Extensions = struct {
     host_image_copy: bool = false,
     unified_image_layouts: bool = false,
     amdx_shader_enqueue: bool = false,
+    buffer_device_address: bool = false,
 };
 
 const Self = @This();
@@ -44,11 +45,20 @@ pub fn init(allocator: std.mem.Allocator, name_allocator: std.mem.Allocator, ins
         .driver_info = undefined,
         .conformance_version = undefined,
     };
+
     var properties2: vk.PhysicalDeviceProperties2 = .{
         .p_next = &driver_properties,
         .properties = undefined,
     };
     instance.getPhysicalDeviceProperties2(physical_device, &properties2);
+
+    var features_vk12: vk.PhysicalDeviceVulkan12Features = .{};
+    var features2: vk.PhysicalDeviceFeatures2 = .{
+        .p_next = &features_vk12,
+        .features = undefined,
+    };
+
+    instance.getPhysicalDeviceFeatures2(physical_device, &features2);
 
     const extensions_properties: []vk.ExtensionProperties = try instance.enumerateDeviceExtensionPropertiesAlloc(physical_device, null, allocator);
     defer allocator.free(extensions_properties);
@@ -116,6 +126,8 @@ pub fn init(allocator: std.mem.Allocator, name_allocator: std.mem.Allocator, ins
         .unified_image_layouts = supportsExtension(extensions_properties, "VK_KHR_unified_image_layouts"),
 
         .amdx_shader_enqueue = supportsExtension(extensions_properties, "VK_AMDX_shader_enqueue"),
+
+        .buffer_device_address = features_vk12.buffer_device_address == .true,
     };
 
     const len = std.mem.indexOf(u8, &properties2.properties.device_name, &.{0}).?;
