@@ -3,6 +3,7 @@ const std = @import("std");
 const saturn = @import("../root.zig");
 const AssetRegistry = @import("../asset/registry.zig");
 const CpuMesh = @import("../asset/mesh.zig");
+const TransferQueue = @import("transfer_queue.zig");
 
 fn GpuBuffer(comptime T: type) type {
     return struct {
@@ -68,19 +69,6 @@ fn GpuBuffer(comptime T: type) type {
             };
         }
 
-        pub fn write(self: *This, allocation: SubAllocation, data: []const T) !void {
-            std.debug.assert(allocation.len == data.len);
-            const byte_offset = allocation.offset * @sizeOf(T);
-            const data_bytes = std.mem.sliceAsBytes(data);
-
-            if (self.byte_slice) |slice| {
-                @memcpy(slice[byte_offset..(byte_offset + data_bytes.len)], data_bytes);
-            } else {
-                std.debug.panic("Transfer Queue Not implmented yet", .{});
-                //try self.backend.getTransferQueue().writeBuffer(self.buffer, byte_offset, data_bytes);
-            }
-        }
-
         pub fn createBuffer(self: *This, data: []const T) !SubAllocation {
             const allocation = try self.alloc(data.len);
             errdefer self.free(allocation);
@@ -116,7 +104,7 @@ pub const MeshEntry = struct {
         meshlet_vertex_buffer_address: u64,
         meshlet_triangle_buffer_address: u64,
         meshlets_loaded: u32,
-        _padding: u32 = 0,
+        loaded: u32,
     };
 
     sphere_pos_radius: [4]f32,
@@ -141,11 +129,10 @@ pub const MeshEntry = struct {
             .meshlet_vertex_buffer_address = if (self.meshlet) |meshlet| meshlet.meshlet_vertices.device_address else 0,
             .meshlet_triangle_buffer_address = if (self.meshlet) |meshlet| meshlet.meshlet_triangles.device_address else 0,
             .meshlets_loaded = @intFromBool(self.meshlet != null),
+            .loaded = 1,
         };
     }
 };
-
-const MaxMeshCount: usize = 4096;
 
 const BufferSizes = struct {
     vertices: usize,
@@ -207,9 +194,13 @@ meshlet_buffer: GpuBuffer(CpuMesh.Meshlet),
 meshlet_vertex_buffer: GpuBuffer(u32),
 meshlet_triangle_buffer: GpuBuffer(u8),
 
+mesh_info_buffer: saturn.BufferHandle,
+max_mesh_count: usize,
+
 pub fn init(
     device: saturn.DeviceInterface,
     buffer_sizes: BufferSizes,
+    max_mesh_count: usize,
 ) !Self {
     const geometry_buffer_usage: saturn.BufferUsage = .{
         .vertex = true,
@@ -236,6 +227,14 @@ pub fn init(
     var meshlet_triangle_buffer = try GpuBuffer(u8).init(device, "meshlet_triangle_buffer", buffer_sizes.meshlet_triangles, geometry_buffer_usage);
     errdefer meshlet_triangle_buffer.deinit();
 
+    const mesh_info_buffer = try device.createBuffer(.{
+        .name = "mesh_info_buffer",
+        .size = @sizeOf(MeshEntry.Gpu) * max_mesh_count,
+        .usage = .{ .storage = true, .transfer_dst = true, .device_address = true },
+        .memory = .gpu_only,
+    });
+    errdefer device.destroyBuffer(mesh_info_buffer);
+
     return .{
         .device = device,
 
@@ -245,10 +244,14 @@ pub fn init(
         .meshlet_buffer = meshlet_buffer,
         .meshlet_vertex_buffer = meshlet_vertex_buffer,
         .meshlet_triangle_buffer = meshlet_triangle_buffer,
+
+        .mesh_info_buffer = mesh_info_buffer,
+        .max_mesh_count = max_mesh_count,
     };
 }
 
 pub fn deinit(self: *Self) void {
+    self.device.destroyBuffer(self.mesh_info_buffer);
     self.vertex_buffer.deinit();
     self.index_buffer.deinit();
     self.primitive_buffer.deinit();
@@ -258,11 +261,7 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn addMesh(self: *Self, mesh: *const CpuMesh) !MeshEntry {
-    if (self.vertex_buffer.byte_slice == null) {
-        return error.CantUploadMesh;
-    }
-
-    const entry: MeshEntry = .{
+    var entry: MeshEntry = .{
         .sphere_pos_radius = mesh.sphere_pos_radius,
         .vertices = try self.vertex_buffer.alloc(mesh.vertices.len),
         .indices = try self.index_buffer.alloc(mesh.indices.len),
@@ -270,22 +269,55 @@ pub fn addMesh(self: *Self, mesh: *const CpuMesh) !MeshEntry {
         .meshlet = null,
     };
 
-    // if (mesh.meshlets.len != 0) {
-    //     entry.meshlet = .{
-    //         .meshlets = try self.meshlet_buffer.alloc(mesh.meshlets.len),
-    //         .meshlet_vertices = try self.meshlet_vertex_buffer.alloc(mesh.meshlet_vertices.len),
-    //         .meshlet_triangles = try self.meshlet_triangle_buffer.alloc(mesh.meshlet_triangles.len),
-    //     };
-    // }
+    if (mesh.meshlets.len != 0) {
+        entry.meshlet = .{
+            .meshlets = try self.meshlet_buffer.alloc(mesh.meshlets.len),
+            .meshlet_vertices = try self.meshlet_vertex_buffer.alloc(mesh.meshlet_vertices.len),
+            .meshlet_triangles = try self.meshlet_triangle_buffer.alloc(mesh.meshlet_triangles.len),
+        };
+    }
 
     return entry;
 }
 
-pub fn canWriteMesh(self: *const Self) bool {
-    return (self.vertex_buffer.byte_slice != null) and
-        (self.index_buffer.byte_slice != null) and
-        (self.primitive_buffer.byte_slice != null) and
-        (self.meshlet_buffer.byte_slice != null) and
-        (self.meshlet_vertex_buffer.byte_slice != null) and
-        (self.meshlet_triangle_buffer.byte_slice != null);
+pub fn removeMesh(self: *Self, mesh: MeshEntry) void {
+    _ = self; // autofix
+    _ = mesh; // autofix
+}
+
+pub fn uploadMeshData(self: *Self, transfer_queue: *TransferQueue, mesh_index: u32, cpu_mesh: *const CpuMesh, entry: MeshEntry) !void {
+    if (mesh_index >= self.max_mesh_count) {
+        return error.MeshIndexOutOfBounds;
+    }
+
+    // Create mesh info for GPU
+    const mesh_info = entry.getGpuEntry();
+
+    const mesh_info_offset = mesh_index * @sizeOf(MeshEntry.Gpu);
+
+    try transfer_queue.addBulkBufferUpload(&.{
+        .{ .dst = self.mesh_info_buffer, .offset = mesh_info_offset, .data = std.mem.asBytes(&mesh_info) },
+    });
+
+    if (entry.meshlet) |meshlets| {
+        try transfer_queue.addBulkBufferUpload(&.{
+            .{ .dst = self.vertex_buffer.buffer, .offset = entry.vertices.offset * @sizeOf(CpuMesh.Vertex), .data = std.mem.sliceAsBytes(cpu_mesh.vertices) },
+            .{ .dst = self.index_buffer.buffer, .offset = entry.indices.offset * @sizeOf(u32), .data = std.mem.sliceAsBytes(cpu_mesh.indices) },
+            .{ .dst = self.primitive_buffer.buffer, .offset = entry.primitives.offset * @sizeOf(CpuMesh.Primitive), .data = std.mem.sliceAsBytes(cpu_mesh.primitives) },
+
+            .{ .dst = self.meshlet_buffer.buffer, .offset = meshlets.meshlets.offset * @sizeOf(CpuMesh.Meshlet), .data = std.mem.sliceAsBytes(cpu_mesh.meshlets) },
+            .{ .dst = self.meshlet_vertex_buffer.buffer, .offset = meshlets.meshlet_vertices.offset * @sizeOf(u32), .data = std.mem.sliceAsBytes(cpu_mesh.meshlet_vertices) },
+            .{ .dst = self.meshlet_triangle_buffer.buffer, .offset = meshlets.meshlet_triangles.offset * @sizeOf(u8), .data = std.mem.sliceAsBytes(cpu_mesh.meshlet_triangles) },
+
+            .{ .dst = self.mesh_info_buffer, .offset = mesh_info_offset, .data = std.mem.asBytes(&mesh_info) },
+        });
+    } else {
+        try transfer_queue.addBulkBufferUpload(&.{
+            .{ .dst = self.vertex_buffer.buffer, .offset = entry.vertices.offset * @sizeOf(CpuMesh.Vertex), .data = std.mem.sliceAsBytes(cpu_mesh.vertices) },
+            .{ .dst = self.index_buffer.buffer, .offset = entry.indices.offset * @sizeOf(u32), .data = std.mem.sliceAsBytes(cpu_mesh.indices) },
+            .{ .dst = self.primitive_buffer.buffer, .offset = entry.primitives.offset * @sizeOf(CpuMesh.Primitive), .data = std.mem.sliceAsBytes(cpu_mesh.primitives) },
+
+            .{ .dst = self.mesh_info_buffer, .offset = mesh_info_offset, .data = std.mem.asBytes(&mesh_info) },
+        });
+    }
 }

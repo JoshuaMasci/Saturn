@@ -168,6 +168,7 @@ pub const RenderGraphExecutor = struct {
                         desc.format,
                         desc.usage,
                         desc.memory,
+                        .null_handle, //TODO: allow sampler for transient textures
                     );
                     try frame_data.transient_textures.append(device.gpa, texture);
                     break :blk .{ .interface = texture, .queue = null, .last_access = null, .layout = .undefined };

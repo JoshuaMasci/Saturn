@@ -156,8 +156,6 @@ const App = struct {
     transfer_queue: TransferQueue,
     asset_pool: AssetPool,
 
-    imgui: SaturnImgui,
-
     camera: DebugCamera = .{},
 
     temp_allocator: std.heap.ArenaAllocator,
@@ -189,8 +187,8 @@ const App = struct {
             window,
             .{
                 .texture_count = 3,
-                .texture_usage = .{ .attachment = true, .transfer = true },
-                .texture_format = .rgba8_srgb,
+                .texture_usage = .{ .attachment = true, .transfer_dst = true },
+                .texture_format = .rgba8_unorm,
                 .present_mode = .fifo,
             },
         );
@@ -200,17 +198,16 @@ const App = struct {
         errdefer allocator.destroy(asset_registry);
 
         asset_registry.* = .init(allocator);
+        errdefer asset_registry.deinit();
+
         try asset_registry.addRepository("engine", "zig-out/assets/engine");
         try asset_registry.addRepository("game", "zig-out/assets/game");
-        errdefer asset_registry.deinit();
 
         var asset_pool: AssetPool = try .init(allocator, asset_registry, gpu_device);
         errdefer asset_pool.deinit();
 
         var transfer_queue: TransferQueue = .init(allocator, gpu_device);
         errdefer transfer_queue.deinit();
-
-        const imgui: SaturnImgui = try .init(gpu_device);
 
         return .{
             .allocator = allocator,
@@ -223,8 +220,6 @@ const App = struct {
             .transfer_queue = transfer_queue,
             .asset_pool = asset_pool,
 
-            .imgui = imgui,
-
             .temp_allocator = .init(allocator),
         };
     }
@@ -233,8 +228,6 @@ const App = struct {
         self.gpu_device.waitIdle();
 
         self.temp_allocator.deinit();
-
-        self.imgui.deinit();
 
         self.asset_pool.deinit();
         self.transfer_queue.deinit();
@@ -278,14 +271,17 @@ const App = struct {
         var render_graph: saturn.RenderGraph = .init(temp_allocator);
         defer render_graph.deinit();
 
-        try self.transfer_queue.buildPass(&render_graph);
+        try self.transfer_queue.buildPasses(&render_graph);
 
         {
             const swapchain_texture = try render_graph.acquireWindowTexture(self.window);
 
             _ = try render_graph.addGraphicsPass(
                 "Swapchain Pass",
-                .{ .color_attachments = &.{.{ .texture = swapchain_texture, .clear = .{ 0.25, 0.0, 0.4, 1.0 } }} },
+                .{ .color_attachments = &.{.{
+                    .texture = swapchain_texture,
+                    .clear = .{ 0.25, 0.0, 0.4, 1.0 },
+                }} },
                 null,
                 emptyGraphicsCallback,
             );

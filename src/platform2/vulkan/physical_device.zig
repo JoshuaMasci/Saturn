@@ -8,7 +8,7 @@ pub const MemoryProperties = struct {
     device_local_bytes: u64 = 0,
     device_local_host_visible_bytes: u64 = 0,
     host_local: u64 = 0,
-    unified_memory: bool = false,
+    unified_memory_access: bool = false,
 };
 
 pub const QueuesFamilies = struct {
@@ -98,7 +98,7 @@ pub fn init(allocator: std.mem.Allocator, name_allocator: std.mem.Allocator, ins
             .device_local_bytes = device_local_bytes,
             .device_local_host_visible_bytes = device_local_host_visible_bytes,
             .host_local = host_visible_bytes,
-            .unified_memory = (device_local_bytes == device_local_host_visible_bytes),
+            .unified_memory_access = (device_local_bytes == device_local_host_visible_bytes),
         };
     };
 

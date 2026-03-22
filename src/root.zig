@@ -263,8 +263,6 @@ pub const MouseButton = enum(u8) {
     x2 = 5,
 };
 
-pub const Keyboard = struct {};
-
 pub const GamepadHandle = enum(u32) { null_handle = 0, _ };
 
 pub const GamepadButton = enum(u8) {
@@ -295,7 +293,7 @@ pub const GamepadAxis = enum(u8) {
     right_trigger = 5,
 };
 
-pub const MemoryType = enum {
+pub const MemoryLocation = enum {
     gpu_only,
     cpu_to_gpu,
     gpu_to_cpu,
@@ -311,7 +309,7 @@ pub const BufferDesc = struct {
     name: []const u8,
     size: usize,
     usage: BufferUsage,
-    memory: MemoryType,
+    memory: MemoryLocation,
 };
 
 pub const BufferUsage = struct {
@@ -327,7 +325,7 @@ pub const BufferUsage = struct {
 pub const BufferInfo = struct {
     size: usize,
     usage: BufferUsage,
-    memory: MemoryType,
+    memory: MemoryLocation,
 
     mapped_slice: ?[]u8 = null,
     device_address: ?u64 = null,
@@ -343,8 +341,8 @@ pub const TextureDesc = struct {
     format: TextureFormat,
     mip_levels: u32 = 1,
     usage: TextureUsage,
-    memory: MemoryType,
-    sampler: SamplerHandle = .null_handle,
+    memory: MemoryLocation,
+    sampler: ?SamplerHandle = null,
 };
 
 pub const TextureExtent = struct {
@@ -396,7 +394,8 @@ pub const TextureUsage = struct {
     sampled: bool = false,
     storage: bool = false,
     attachment: bool = false,
-    transfer: bool = false,
+    transfer_src: bool = false,
+    transfer_dst: bool = false,
     host_transfer: bool = false,
 };
 
@@ -405,14 +404,58 @@ pub const TextureInfo = struct {
     mip_levels: u32 = 1,
     format: TextureFormat,
     usage: TextureUsage,
-    memory: MemoryType,
+    memory: MemoryLocation,
 
     sampled: ?u32 = null,
     storage: ?u32 = null,
 };
 
 pub const SamplerHandle = enum(u64) { null_handle = 0, _ };
-pub const SamplerDesc = struct {};
+
+pub const SamplerFilter = enum {
+    nearest,
+    linear,
+};
+
+pub const SamplerMipmapMode = enum {
+    nearest,
+    linear,
+};
+
+pub const SamplerAddressMode = enum {
+    repeat,
+    mirrored_repeat,
+    clamp_to_edge,
+    clamp_to_border,
+    mirror_clamp_to_edge,
+};
+
+pub const SamplerBorderColor = enum {
+    transparent_black_float,
+    transparent_black_int,
+    opaque_black_float,
+    opaque_black_int,
+    opaque_white_float,
+    opaque_white_int,
+};
+
+pub const SamplerDesc = struct {
+    name: [:0]const u8 = "sampler",
+    mag_filter: SamplerFilter = .linear,
+    min_filter: SamplerFilter = .linear,
+    mipmap_mode: SamplerMipmapMode = .linear,
+    address_mode_u: SamplerAddressMode = .repeat,
+    address_mode_v: SamplerAddressMode = .repeat,
+    address_mode_w: SamplerAddressMode = .repeat,
+    mip_lod_bias: f32 = 0.0,
+    anisotropy_enable: bool = false,
+    max_anisotropy: f32 = 1.0,
+    compare_enable: bool = false,
+    compare_op: CompareOp = .never,
+    min_lod: f32 = 0.0,
+    max_lod: f32 = 1000.0,
+    border_color: SamplerBorderColor = .opaque_black_float,
+};
 
 // ----------------------------
 // Pipline Types
@@ -621,17 +664,18 @@ pub const DeviceFeatures = struct {
 };
 
 pub const DeviceMemory = struct {
-    // Bytes of GPU local (VRAM) memory
+    /// Bytes of GPU local (VRAM) memory
     device_local: u64,
 
-    // CPU visible GPU memory
+    /// Bytes of CPU visible GPU local (VRAM) memory
     device_local_host_visible: u64,
 
-    // GPU visible CPU memory
+    /// Bytes of CPU memory
     host_local: u64,
 
-    // Unified memory flag for IGPUs, or DGPUs with all device-local memory mappabled
-    unified_memory: bool,
+    /// True if all device local memory is directly accessible by the host,
+    /// either via ReBAR or shared system memory (UMA)
+    unified_memory_access: bool,
 };
 
 pub const DeviceInfo = struct {
@@ -686,6 +730,9 @@ pub const DeviceInterface = struct {
         destroyTexture: *const fn (ctx: *anyopaque, handle: TextureHandle) void,
         getTextureInfo: *const fn (ctx: *anyopaque, handle: TextureHandle) ?TextureInfo,
 
+        createSampler: *const fn (ctx: *anyopaque, desc: SamplerDesc) Error!SamplerHandle,
+        destroySampler: *const fn (ctx: *anyopaque, handle: SamplerHandle) void,
+
         canUploadTexture: *const fn (ctx: *anyopaque, handle: TextureHandle) bool,
         uploadTexture: *const fn (ctx: *anyopaque, handle: TextureHandle, mip_level: u32, data: []const u8) Error!void,
 
@@ -739,6 +786,14 @@ pub const DeviceInterface = struct {
 
     pub fn uploadTexture(self: *const Self, handle: TextureHandle, mip_level: u32, data: []const u8) Error!void {
         return self.vtable.uploadTexture(self.ctx, handle, mip_level, data);
+    }
+
+    pub fn createSampler(self: *const Self, desc: SamplerDesc) Error!SamplerHandle {
+        return self.vtable.createSampler(self.ctx, desc);
+    }
+
+    pub fn destroySampler(self: *const Self, handle: SamplerHandle) void {
+        self.vtable.destroySampler(self.ctx, handle);
     }
 
     pub fn createShaderModule(self: *const Self, desc: ShaderDesc) Error!ShaderHandle {
@@ -809,7 +864,7 @@ pub const RGBufferSource = union(enum) {
 pub const RGTransientBufferDesc = struct {
     size: usize,
     usage: BufferUsage,
-    memory: MemoryType,
+    memory: MemoryLocation,
 };
 
 pub const RGTextureHandle = struct { idx: u32 };
@@ -832,7 +887,7 @@ pub const RGTransientTextureDesc = struct {
     format: TextureFormat,
     mip_levels: u32 = 1,
     usage: TextureUsage,
-    memory: MemoryType,
+    memory: MemoryLocation,
 };
 pub const RGWindowTextureDesc = struct {
     handle: WindowHandle,
@@ -1230,7 +1285,6 @@ pub const RenderGraphCompiled = struct {
         // Optimize Graph
         // TODO: eleminate read -> read barriers
 
-        // TODO: fix graph reordering cause its broken
         const reorder_graph: bool = true;
 
         var pass_execute_order: std.ArrayList(RGPassHandle) = try .initCapacity(tpa, render_graph.passes.items.len);

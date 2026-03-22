@@ -170,20 +170,24 @@ pub const Device = struct {
     pub const FreedLists = struct {
         buffers: std.ArrayList(saturn.BufferHandle) = .empty,
         textures: std.ArrayList(saturn.TextureHandle) = .empty,
+        samplers: std.ArrayList(saturn.SamplerHandle) = .empty,
 
         pub fn deinit(self: *FreedLists, gpa: std.mem.Allocator) void {
             self.buffers.deinit(gpa);
             self.textures.deinit(gpa);
+            self.samplers.deinit(gpa);
         }
 
         pub fn clear(self: *FreedLists) void {
             self.buffers.clearRetainingCapacity();
             self.textures.clearRetainingCapacity();
+            self.samplers.clearRetainingCapacity();
         }
 
         pub fn append(self: *FreedLists, gpa: std.mem.Allocator, other: FreedLists) error{OutOfMemory}!void {
             try self.buffers.appendSlice(gpa, other.buffers.items);
             try self.textures.appendSlice(gpa, other.textures.items);
+            try self.samplers.appendSlice(gpa, other.samplers.items);
         }
     };
 
@@ -296,6 +300,7 @@ pub const Device = struct {
     compute_pipelines: std.AutoHashMap(saturn.ComputePipelineHandle, vk.Pipeline),
     buffers: std.AutoHashMap(saturn.BufferHandle, BufferInfo),
     textures: std.AutoHashMap(saturn.TextureHandle, TextureInfo),
+    samplers: std.AutoHashMap(saturn.SamplerHandle, vk.Sampler),
 
     freed: FreedLists = .{},
 
@@ -402,6 +407,7 @@ pub const Device = struct {
 
             .buffers = .init(gpa),
             .textures = .init(gpa),
+            .samplers = .init(gpa),
 
             .per_frame_data = per_frame_data,
         };
@@ -456,6 +462,12 @@ pub const Device = struct {
         }
         self.textures.deinit();
 
+        var sampler_iter = self.samplers.valueIterator();
+        while (sampler_iter.next()) |vk_sampler| {
+            self.device.proxy.destroySampler(vk_sampler.*, null);
+        }
+        self.samplers.deinit();
+
         self.device.deinit();
         self.gpa.destroy(self.device);
     }
@@ -471,6 +483,8 @@ pub const Device = struct {
                 .createTexture = createTexture,
                 .destroyTexture = destroyTexture,
                 .getTextureInfo = getTextureInfo,
+                .createSampler = createSampler,
+                .destroySampler = destroySampler,
                 .canUploadTexture = canUploadTexture,
                 .uploadTexture = uploadTexture,
                 .createShaderModule = createShaderModule,
@@ -551,6 +565,8 @@ pub const Device = struct {
     fn createTexture(ctx: *anyopaque, desc: saturn.TextureDesc) saturn.Error!saturn.TextureHandle {
         const self: *Self = @ptrCast(@alignCast(ctx));
 
+        const sampler = if (desc.sampler) |handle| self.samplers.get(handle).? else .null_handle;
+
         var texture = Texture.init(
             self.device,
             desc.extent,
@@ -558,6 +574,7 @@ pub const Device = struct {
             desc.format,
             desc.usage,
             desc.memory,
+            sampler,
         ) catch |err| {
             return switch (err) {
                 error.OutOfHostMemory, error.OutOfDeviceMemory => error.OutOfMemory,
@@ -611,6 +628,95 @@ pub const Device = struct {
         }
 
         return false;
+    }
+
+    fn createSampler(ctx: *anyopaque, desc: saturn.SamplerDesc) saturn.Error!saturn.SamplerHandle {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+
+        const vk_sampler = self.device.proxy.createSampler(&.{
+            .mag_filter = switch (desc.mag_filter) {
+                .nearest => .nearest,
+                .linear => .linear,
+            },
+            .min_filter = switch (desc.min_filter) {
+                .nearest => .nearest,
+                .linear => .linear,
+            },
+            .mipmap_mode = switch (desc.mipmap_mode) {
+                .nearest => .nearest,
+                .linear => .linear,
+            },
+            .address_mode_u = switch (desc.address_mode_u) {
+                .repeat => .repeat,
+                .mirrored_repeat => .mirrored_repeat,
+                .clamp_to_edge => .clamp_to_edge,
+                .clamp_to_border => .clamp_to_border,
+                .mirror_clamp_to_edge => .mirror_clamp_to_edge,
+            },
+            .address_mode_v = switch (desc.address_mode_v) {
+                .repeat => .repeat,
+                .mirrored_repeat => .mirrored_repeat,
+                .clamp_to_edge => .clamp_to_edge,
+                .clamp_to_border => .clamp_to_border,
+                .mirror_clamp_to_edge => .mirror_clamp_to_edge,
+            },
+            .address_mode_w = switch (desc.address_mode_w) {
+                .repeat => .repeat,
+                .mirrored_repeat => .mirrored_repeat,
+                .clamp_to_edge => .clamp_to_edge,
+                .clamp_to_border => .clamp_to_border,
+                .mirror_clamp_to_edge => .mirror_clamp_to_edge,
+            },
+            .mip_lod_bias = desc.mip_lod_bias,
+            .anisotropy_enable = if (desc.anisotropy_enable) .true else .false,
+            .max_anisotropy = desc.max_anisotropy,
+            .compare_enable = if (desc.compare_enable) .true else .false,
+            .compare_op = switch (desc.compare_op) {
+                .never => .never,
+                .less => .less,
+                .equal => .equal,
+                .less_equal => .less_or_equal,
+                .greater => .greater,
+                .not_equal => .not_equal,
+                .greater_equal => .greater_or_equal,
+                .always => .always,
+            },
+            .min_lod = desc.min_lod,
+            .max_lod = desc.max_lod,
+            .border_color = switch (desc.border_color) {
+                .transparent_black_float => .float_transparent_black,
+                .transparent_black_int => .int_transparent_black,
+                .opaque_black_float => .float_opaque_black,
+                .opaque_black_int => .int_opaque_black,
+                .opaque_white_float => .float_opaque_white,
+                .opaque_white_int => .int_opaque_white,
+            },
+            .unnormalized_coordinates = .false,
+        }, null) catch {
+            return error.InitializationFailed;
+        };
+
+        const handle: saturn.SamplerHandle = @enumFromInt(@intFromEnum(vk_sampler));
+
+        try self.samplers.put(handle, vk_sampler);
+
+        self.device.setDebugName(.sampler, vk_sampler, desc.name);
+
+        return handle;
+    }
+
+    fn destroySampler(ctx: *anyopaque, sampler: saturn.SamplerHandle) void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+
+        if (!self.samplers.contains(sampler)) {
+            return;
+        }
+
+        self.freed.samplers.append(self.gpa, sampler) catch {
+            // If list failed, just delete it immediately and suffer the consequences
+            const vk_sampler = self.samplers.fetchRemove(sampler).?.value;
+            self.device.proxy.destroySampler(vk_sampler, null);
+        };
     }
 
     fn uploadTexture(ctx: *anyopaque, handle: saturn.TextureHandle, mip_level: u32, data: []const u8) saturn.Error!void {
@@ -801,6 +907,11 @@ pub const Device = struct {
             for (frame_data.freed.textures.items) |handle| {
                 const entry = self.textures.fetchRemove(handle).?;
                 entry.value.texture.deinit(self.device);
+            }
+
+            for (frame_data.freed.samplers.items) |handle| {
+                const vk_sampler = self.samplers.fetchRemove(handle).?.value;
+                self.device.proxy.destroySampler(vk_sampler, null);
             }
         }
 

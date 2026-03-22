@@ -17,12 +17,12 @@ extent: saturn.TextureExtent,
 mip_levels: u32,
 format: saturn.TextureFormat,
 usage: saturn.TextureUsage,
-memory: saturn.MemoryType,
+memory: saturn.MemoryLocation,
 
 sampled_binding: ?Binding = null,
 storage_binding: ?Binding = null,
 
-pub fn init(device: *Device, extent: saturn.TextureExtent, mip_levels: u32, format: saturn.TextureFormat, usage: saturn.TextureUsage, memory: saturn.MemoryType) !Self {
+pub fn init(device: *Device, extent: saturn.TextureExtent, mip_levels: u32, format: saturn.TextureFormat, usage: saturn.TextureUsage, memory: saturn.MemoryLocation, sampler: vk.Sampler) !Self {
     const vk_format = getVkFormat(format);
 
     var image_type: vk.ImageType = .@"3d";
@@ -81,10 +81,9 @@ pub fn init(device: *Device, extent: saturn.TextureExtent, mip_levels: u32, form
         .memory = memory,
     };
 
-    //TODO: need sampler as part of create info
-    // if (usage.sampled == true) {
-    //     texture.uniform_binding = device.descriptor.sampled_image_array.bind(texture, .null_handle);
-    // }
+    if (usage.sampled == true and sampler != .null_handle) {
+        texture.sampled_binding = device.descriptor.sampled_image_array.bind(texture, sampler);
+    }
 
     if (usage.storage == true) {
         texture.storage_binding = device.descriptor.storage_image_array.bind(texture, .null_handle);
@@ -210,8 +209,8 @@ pub fn getVkFormat(format: saturn.TextureFormat) vk.Format {
 
 pub fn getVkImageUsage(usage: saturn.TextureUsage, is_color: bool) vk.ImageUsageFlags {
     return .{
-        .transfer_src_bit = usage.transfer,
-        .transfer_dst_bit = usage.transfer,
+        .transfer_src_bit = usage.transfer_src,
+        .transfer_dst_bit = usage.transfer_dst,
         .sampled_bit = usage.sampled,
         .storage_bit = usage.storage,
         .color_attachment_bit = usage.attachment and is_color,

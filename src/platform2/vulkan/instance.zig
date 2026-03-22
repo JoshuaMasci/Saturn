@@ -92,7 +92,7 @@ pub fn init(
                 .device_local = physical_device.info.memory.device_local_bytes,
                 .device_local_host_visible = physical_device.info.memory.device_local_host_visible_bytes,
                 .host_local = physical_device.info.memory.host_local,
-                .unified_memory = physical_device.info.memory.unified_memory,
+                .unified_memory_access = physical_device.info.memory.unified_memory_access,
             },
             .queues = .{
                 .graphics = physical_device.info.queues.graphics != null,

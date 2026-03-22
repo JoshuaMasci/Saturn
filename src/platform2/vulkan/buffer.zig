@@ -14,7 +14,7 @@ allocation: GpuAllocator.Allocation,
 
 size: vk.DeviceSize,
 usage: saturn.BufferUsage,
-memory: saturn.MemoryType,
+memory: saturn.MemoryLocation,
 
 device_address: ?vk.DeviceAddress = null,
 uniform_binding: ?Binding = null,
@@ -24,7 +24,7 @@ pub fn init(
     device: *Device,
     size: vk.DeviceSize,
     usage: saturn.BufferUsage,
-    memory: saturn.MemoryType,
+    memory: saturn.MemoryLocation,
 ) !Self {
     const handle = try device.proxy.createBuffer(&.{
         .size = size,

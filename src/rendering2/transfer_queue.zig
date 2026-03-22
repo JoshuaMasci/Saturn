@@ -123,7 +123,7 @@ pub fn addTextureUpload(self: *Self, texture: saturn.TextureHandle, data: []cons
     });
 }
 
-pub fn buildPass(self: *Self, render_graph: *saturn.RenderGraph) saturn.Error!void {
+pub fn buildPasses(self: *Self, render_graph: *saturn.RenderGraph) saturn.Error!void {
     if (self.buffer_copies.items.len == 0 and self.buffer_texture_copies.items.len == 0) {
         return;
     }

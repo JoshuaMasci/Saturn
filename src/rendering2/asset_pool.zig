@@ -11,6 +11,7 @@ const CpuTexture = @import("../asset/texture.zig");
 const CpuMaterial = @import("material.zig"); //Converts from Raw AssetHandle to TextureAssetHandle
 
 const MeshPool = @import("mesh_pool.zig");
+const TexturePool = @import("texture_pool.zig");
 
 const TransferQueue = @import("transfer_queue.zig");
 
@@ -25,7 +26,7 @@ pub const MeshAssetHandle = MeshAssetMap.Handle;
 pub const TextureAsset = struct {
     asset_handle: ?AssetRegistry.Handle,
     cpu: ?CpuTexture = null,
-    gpu: ?saturn.TextureHandle = null,
+    gpu: ?TexturePool.TextureEntry = null,
 };
 pub const TextureAssetMap = SlotMap(TextureAsset);
 pub const TextureAssetHandle = TextureAssetMap.Handle;
@@ -51,7 +52,9 @@ mesh_gpu_load_list: std.ArrayList(MeshAssetHandle) = .empty,
 
 texture_handles: std.AutoHashMap(AssetRegistry.Handle, TextureAssetHandle),
 texture_assets: SlotMap(TextureAsset),
+texture_pool: TexturePool,
 texture_gpu_load_list: std.ArrayList(TextureAssetHandle) = .empty,
+default_sampler: saturn.SamplerHandle,
 
 material_handles: std.AutoHashMap(AssetRegistry.Handle, MaterialAssetHandle),
 material_assets: SlotMap(MaterialAsset),
@@ -63,6 +66,18 @@ pub fn init(
 ) !Self {
     const BytesPerGibibyte: usize = 1024 * 1024 * 1024;
     const GeometryAllocationSize = BytesPerGibibyte * 1;
+    const MaxMeshCount = 4096;
+    const MaxTextureCount = 2048;
+
+    const default_sampler = try gpu_device.createSampler(.{
+        .name = "default_linear_sampler",
+        .mag_filter = .linear,
+        .min_filter = .linear,
+        .address_mode_u = .repeat,
+        .address_mode_v = .repeat,
+        .address_mode_w = .repeat,
+    });
+    errdefer gpu_device.destroySampler(default_sampler);
 
     return .{
         .allocator = allocator,
@@ -71,10 +86,12 @@ pub fn init(
 
         .mesh_handles = .init(allocator),
         .mesh_assets = .init(allocator),
-        .mesh_pool = try .init(gpu_device, .fromTotalBytes(GeometryAllocationSize)),
+        .mesh_pool = try .init(gpu_device, .fromTotalBytes(GeometryAllocationSize), MaxMeshCount),
 
         .texture_handles = .init(allocator),
         .texture_assets = .init(allocator),
+        .texture_pool = try .init(gpu_device, MaxTextureCount),
+        .default_sampler = default_sampler,
 
         .material_handles = .init(allocator),
         .material_assets = .init(allocator),
@@ -105,11 +122,13 @@ pub fn deinit(self: *Self) void {
         }
 
         if (asset.gpu) |gpu| {
-            self.gpu_device.destroyTexture(gpu);
+            self.texture_pool.destroyTexture(gpu);
         }
     }
     self.texture_handles.deinit();
     self.texture_assets.deinit();
+    self.texture_pool.deinit();
+    self.gpu_device.destroySampler(self.default_sampler);
 
     var material_iter = self.material_assets.iterator();
     while (material_iter.nextValue()) |asset| {
@@ -254,8 +273,12 @@ pub fn loadAllGpu(self: *Self) void {
     while (mesh_iter.next()) |entry| {
         if (entry.value_ptr.gpu == null) {
             if (entry.value_ptr.cpu) |cpu_mesh| {
-                entry.value_ptr.gpu = self.mesh_pool.addMesh(&cpu_mesh) catch continue;
-                self.mesh_gpu_load_list.append(self.allocator, entry.handle) catch continue;
+                if (entry.handle.index >= self.mesh_pool.max_mesh_count) {
+                    std.log.err("Mesh handle index ({}) exceeds maximum mesh count ({})", .{ entry.handle.index, self.mesh_pool.max_mesh_count });
+                    continue;
+                }
+                entry.value_ptr.gpu = self.mesh_pool.addMesh(&cpu_mesh) catch @panic("");
+                self.mesh_gpu_load_list.append(self.allocator, entry.handle) catch @panic("");
             }
         }
     }
@@ -265,34 +288,17 @@ pub fn loadAllGpu(self: *Self) void {
     while (texture_iter.next()) |entry| {
         if (entry.value_ptr.gpu == null) {
             if (entry.value_ptr.cpu) |cpu_texture| {
-                const texture_format: saturn.TextureFormat = switch (cpu_texture.format) {
-                    .r8 => .rgba8_unorm,
-                    .rg8 => .rgba8_unorm,
-                    .rgba8 => .rgba8_unorm,
-                };
+                if (entry.handle.index >= self.texture_pool.max_texture_count) {
+                    std.log.err("Texture handle index ({}) exceeds maximum texture count ({})", .{ entry.handle.index, self.texture_pool.max_texture_count });
+                    continue;
+                }
 
-                const texture_handle = self.gpu_device.createTexture(.{
-                    .name = cpu_texture.name,
-                    .extent = .{ .width = cpu_texture.width, .height = cpu_texture.height, .depth = cpu_texture.depth },
-                    .format = texture_format,
-                    .usage = .{ .sampled = true, .transfer = true },
-                    .memory = .gpu_only,
-                }) catch |err| {
+                entry.value_ptr.gpu = self.texture_pool.createTexture(&cpu_texture, self.default_sampler) catch |err| {
                     std.log.err("Failed to create texture {s} {}", .{ cpu_texture.name, err });
                     continue;
                 };
 
-                if (self.gpu_device.canUploadTexture(texture_handle)) {
-                    if (self.gpu_device.uploadTexture(texture_handle, 0, cpu_texture.data)) |_| {} else |err| {
-                        std.log.err("Failed to upload texture {s}: {}", .{ cpu_texture.name, err });
-                        self.gpu_device.destroyTexture(texture_handle);
-                        continue;
-                    }
-                } else {
-                    self.texture_gpu_load_list.append(self.allocator, entry.handle) catch continue;
-                }
-
-                entry.value_ptr.gpu = texture_handle;
+                self.texture_gpu_load_list.append(self.allocator, entry.handle) catch continue;
             } else {
                 std.log.debug("Texture {} has no CPU data, skipping GPU upload", .{entry.value_ptr.asset_handle.?});
             }
@@ -314,24 +320,7 @@ pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
             if (self.mesh_assets.getPtr(handle)) |asset| {
                 const cpu_asset = asset.cpu.?;
                 const gpu_asset = asset.gpu.?;
-
-                if (gpu_asset.meshlet) |meshlets| {
-                    try transfer_queue.addBulkBufferUpload(&.{
-                        .{ .dst = self.mesh_pool.vertex_buffer.buffer, .offset = gpu_asset.vertices.offset, .data = std.mem.sliceAsBytes(cpu_asset.vertices) },
-                        .{ .dst = self.mesh_pool.index_buffer.buffer, .offset = gpu_asset.indices.offset, .data = std.mem.sliceAsBytes(cpu_asset.indices) },
-                        .{ .dst = self.mesh_pool.primitive_buffer.buffer, .offset = gpu_asset.primitives.offset, .data = std.mem.sliceAsBytes(cpu_asset.primitives) },
-
-                        .{ .dst = self.mesh_pool.meshlet_buffer.buffer, .offset = meshlets.meshlets.offset, .data = std.mem.sliceAsBytes(cpu_asset.meshlets) },
-                        .{ .dst = self.mesh_pool.meshlet_vertex_buffer.buffer, .offset = meshlets.meshlet_vertices.offset, .data = std.mem.sliceAsBytes(cpu_asset.meshlet_vertices) },
-                        .{ .dst = self.mesh_pool.meshlet_triangle_buffer.buffer, .offset = meshlets.meshlet_triangles.offset, .data = std.mem.sliceAsBytes(cpu_asset.meshlet_triangles) },
-                    });
-                } else {
-                    try transfer_queue.addBulkBufferUpload(&.{
-                        .{ .dst = self.mesh_pool.vertex_buffer.buffer, .offset = gpu_asset.vertices.offset, .data = std.mem.sliceAsBytes(cpu_asset.vertices) },
-                        .{ .dst = self.mesh_pool.index_buffer.buffer, .offset = gpu_asset.indices.offset, .data = std.mem.sliceAsBytes(cpu_asset.indices) },
-                        .{ .dst = self.mesh_pool.primitive_buffer.buffer, .offset = gpu_asset.primitives.offset, .data = std.mem.sliceAsBytes(cpu_asset.primitives) },
-                    });
-                }
+                try self.mesh_pool.uploadMeshData(transfer_queue, handle.index, &cpu_asset, gpu_asset);
             }
         }
         self.mesh_gpu_load_list.shrinkRetainingCapacity(start);
@@ -350,8 +339,7 @@ pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
             if (self.texture_assets.getPtr(handle)) |asset| {
                 const cpu_asset = asset.cpu.?;
                 const gpu_asset = asset.gpu.?;
-
-                try transfer_queue.addTextureUpload(gpu_asset, cpu_asset.data);
+                try self.texture_pool.uploadTextureData(transfer_queue, handle.index, &cpu_asset, gpu_asset);
             }
         }
         self.texture_gpu_load_list.shrinkRetainingCapacity(start);
