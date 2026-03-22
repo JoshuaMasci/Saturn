@@ -4,16 +4,9 @@ const vk = @import("vulkan");
 const zm = @import("zmath");
 
 const AssetRegistry = @import("asset/registry.zig");
-const Scene = @import("asset/scene.zig");
+const SceneAsset = @import("asset/scene.zig");
 const DebugCamera = @import("debug_camera.zig");
-const SaturnImgui = @import("imgui.zig");
-const sdl3 = @import("platform/sdl3.zig");
 const Camera = @import("rendering/camera.zig").Camera;
-const ImguiRenderer = @import("rendering/imgui_renderer.zig");
-const Resources = @import("rendering/resources.zig");
-const RenderScene = @import("rendering/scene.zig");
-const SceneRenderer = @import("rendering/scene_renderer.zig");
-const Backend = @import("rendering/vulkan/backend.zig");
 const Transform = @import("transform.zig");
 
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
@@ -21,10 +14,14 @@ const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 const saturn = @import("root.zig");
 const AssetPool = @import("rendering2/asset_pool.zig");
 const TransferQueue = @import("rendering2/transfer_queue.zig");
+const Scene = @import("rendering2/scene.zig");
+const SceneRenderer = @import("rendering2/scene_renderer.zig");
 
-fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder) void {
+fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
     _ = ctx; // autofix
     _ = cmd; // autofix
+    _ = target_resolution; // autofix
+
 }
 
 fn emptyComputeCallback(ctx: ?*anyopaque, cmd: saturn.ComputeCommandEncoder) void {
@@ -42,34 +39,30 @@ pub fn main() !void {
     var app: App = try .init(allocator);
     defer app.deinit();
 
-    if (false) {
-        const sphere_mesh_handle: AssetRegistry.Handle = .fromRepoPath("engine", "shapes/sphere.asset");
-        const cube_mesh_handle: AssetRegistry.Handle = .fromRepoPath("engine", "shapes/cube.asset");
-        const material_handle: AssetRegistry.Handle = .fromRepoPath("engine", "materials/transparent.asset");
+    {
+        const cube_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/cube.asset"));
+        const sphere_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/sphere.asset"));
+        const transparent_material_handle: AssetPool.MaterialAssetHandle = try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/transparent.asset"));
 
-        if (app.resources.tryLoadMesh(allocator, sphere_mesh_handle) and app.resources.tryLoadMesh(allocator, cube_mesh_handle) and app.resources.tryLoadMaterial(allocator, material_handle)) {
-            try app.resources.updateBuffers(allocator);
-            _ = try app.scene.addInstance(
-                &app.resources,
-                .{
-                    .transform = .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } },
-                    .mesh = sphere_mesh_handle,
-                    .materials = &.{material_handle},
-                },
-            );
+        _ = try app.scene.addInstance(
+            true,
+            .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } },
+            sphere_mesh_handle,
+            &.{transparent_material_handle},
+        );
 
-            _ = try app.scene.addInstance(
-                &app.resources,
-                .{
-                    .transform = .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } },
-                    .mesh = cube_mesh_handle,
-                    .materials = &.{material_handle},
-                },
-            );
-        }
+        _ = try app.scene.addInstance(
+            true,
+            .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } },
+            cube_mesh_handle,
+            &.{transparent_material_handle},
+        );
     }
 
     {
+        const tpa = app.temp_allocator.allocator();
+        defer _ = app.temp_allocator.reset(.retain_capacity);
+
         var camera: DebugCamera = .{};
 
         var scene_filepath_opt: ?[]const u8 = undefined;
@@ -80,14 +73,14 @@ pub fn main() !void {
         scene_filepath_opt = "zig-out/assets/game/Bistro/scene.json";
 
         if (scene_filepath_opt) |scene_filepath| {
-            var scene_json: std.json.Parsed(Scene) = undefined;
+            var scene_json: std.json.Parsed(SceneAsset) = undefined;
             {
                 var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
                 defer file.close();
 
                 var read_buffer: [1024]u8 = undefined;
                 var reader = file.reader(&read_buffer);
-                scene_json = try Scene.deserialzie(allocator, &reader.interface);
+                scene_json = try SceneAsset.deserialzie(tpa, &reader.interface);
             }
             defer scene_json.deinit();
 
@@ -101,12 +94,19 @@ pub fn main() !void {
             }
 
             // Loop though the scene and mark all assets to be loaded
-            for (scene_json.value.nodes) |node| {
+            for (scene_json.value.nodes, 0..) |node, node_index| {
                 if (node.mesh) |mesh| {
-                    _ = try app.asset_pool.getMeshAsset(mesh.mesh);
-                    for (mesh.materials) |material| {
-                        _ = try app.asset_pool.getMaterialAsset(material);
+                    const transform = scene_json.value.calcNodeGlobalTransform(node_index);
+
+                    const material_handles = try tpa.alloc(AssetPool.MaterialAssetHandle, mesh.materials.len);
+                    defer tpa.free(material_handles);
+
+                    const mesh_handle = try app.asset_pool.getMeshAsset(mesh.mesh);
+                    for (material_handles, mesh.materials) |*material_handle, material| {
+                        material_handle.* = try app.asset_pool.getMaterialAsset(material);
                     }
+
+                    _ = try app.scene.addInstance(true, transform, mesh_handle, material_handles);
                 }
             }
 
@@ -156,7 +156,10 @@ const App = struct {
     transfer_queue: TransferQueue,
     asset_pool: AssetPool,
 
+    scene_renderer: SceneRenderer,
+
     camera: DebugCamera = .{},
+    scene: Scene,
 
     temp_allocator: std.heap.ArenaAllocator,
 
@@ -183,12 +186,20 @@ const App = struct {
 
         std.log.info("GPU Device Selected: {f}", .{gpu_device.getInfo()});
 
+        const ColorTarget: saturn.TextureFormat = .rgba8_unorm;
+        const DepthTarget: saturn.TextureFormat = .depth32_float;
+
+        const RenderTarget: SceneRenderer.RenderTargetFormats = .{
+            .color_targets = &.{ColorTarget},
+            .depth_target = DepthTarget,
+        };
+
         try gpu_device.claimWindow(
             window,
             .{
                 .texture_count = 3,
                 .texture_usage = .{ .attachment = true, .transfer_dst = true },
-                .texture_format = .rgba8_unorm,
+                .texture_format = ColorTarget,
                 .present_mode = .fifo,
             },
         );
@@ -209,6 +220,12 @@ const App = struct {
         var transfer_queue: TransferQueue = .init(allocator, gpu_device);
         errdefer transfer_queue.deinit();
 
+        var scene_renderer: SceneRenderer = try .init(allocator, gpu_device, asset_registry, RenderTarget);
+        errdefer scene_renderer.deinit();
+
+        var scene: Scene = .init(allocator);
+        errdefer scene.deinit();
+
         return .{
             .allocator = allocator,
             .platform = platform,
@@ -220,6 +237,10 @@ const App = struct {
             .transfer_queue = transfer_queue,
             .asset_pool = asset_pool,
 
+            .scene_renderer = scene_renderer,
+
+            .scene = scene,
+
             .temp_allocator = .init(allocator),
         };
     }
@@ -228,6 +249,10 @@ const App = struct {
         self.gpu_device.waitIdle();
 
         self.temp_allocator.deinit();
+
+        self.scene.deinit();
+
+        self.scene_renderer.deinit();
 
         self.asset_pool.deinit();
         self.transfer_queue.deinit();
@@ -273,11 +298,19 @@ const App = struct {
 
         try self.transfer_queue.buildPasses(&render_graph);
 
-        {
-            const swapchain_texture = try render_graph.acquireWindowTexture(self.window);
+        const swapchain_texture = try render_graph.acquireWindowTexture(self.window);
 
+        if (true) {
+            try self.scene_renderer.addPasses(
+                swapchain_texture,
+                &render_graph,
+                &self.scene,
+                &.{ .camera = self.camera.camera, .transform = self.camera.transform },
+                &self.asset_pool,
+            );
+        } else {
             _ = try render_graph.addGraphicsPass(
-                "Swapchain Pass",
+                "Empty Swapchain Pass",
                 .{ .color_attachments = &.{.{
                     .texture = swapchain_texture,
                     .clear = .{ 0.25, 0.0, 0.4, 1.0 },

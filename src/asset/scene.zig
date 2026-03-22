@@ -2,8 +2,6 @@ const std = @import("std");
 
 const AssetHandle = @import("../asset/registry.zig").Handle;
 const Camera = @import("../rendering/camera.zig").Camera;
-const Resources = @import("../rendering/resources.zig");
-const RenderScene = @import("../rendering/scene.zig");
 const Transform = @import("../transform.zig");
 
 const Self = @This();
@@ -71,28 +69,4 @@ pub fn calcNodeGlobalTransform(self: Self, index: usize) Transform {
     }
 
     return transform;
-}
-
-pub fn loadScene(self: Self, resources: *const Resources, render_scene: *RenderScene, root_transform: Transform) !void {
-    for (self.root_nodes) |index| {
-        try createRenderSceneNode(resources, self.nodes, index, &root_transform, render_scene);
-    }
-}
-
-fn createRenderSceneNode(resources: *const Resources, nodes: []const Node, node_index: usize, parent_transform: *const Transform, render_scene: *RenderScene) !void {
-    const node = &nodes[node_index];
-
-    const transform = parent_transform.applyTransform(&node.local_transform);
-
-    if (node.mesh) |mesh| {
-        _ = try render_scene.addInstance(resources, .{
-            .transform = transform,
-            .mesh = mesh.mesh,
-            .materials = mesh.materials,
-        });
-    }
-
-    for (node.children) |index| {
-        try createRenderSceneNode(resources, nodes, index, &transform, render_scene);
-    }
 }

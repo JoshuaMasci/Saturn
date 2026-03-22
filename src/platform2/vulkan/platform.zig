@@ -1392,115 +1392,6 @@ pub const Device = struct {
             command_buffer.pipelineBarrier2(&dependencies);
         }
     }
-
-    pub fn recordRenderGraph(
-        self: *Self,
-        tpa: std.mem.Allocator,
-        frame_data: *PerFrameData,
-        desc: *const saturn.RenderGraph,
-        compiled: *const saturn.RenderGraphCompiled,
-        resources: *const GraphResources,
-        swapchain_textures: []const SwapchainTexture,
-    ) !void {
-        const fence = try frame_data.fence_pool.get();
-        try frame_data.frame_wait_fences.append(self.gpa, fence);
-
-        const command_buffer_handle = try frame_data.graphics_command_pool.get();
-        const command_buffer = vk.CommandBufferProxy.init(command_buffer_handle, self.device.proxy.wrapper);
-
-        try command_buffer.beginCommandBuffer(&.{});
-
-        for (compiled.passes.items) |compiled_pass| {
-            const pass = desc.passes.items[compiled_pass.handle.idx];
-
-            if (self.device.debug) {
-                const temp_name: [:0]const u8 = try tpa.dupeZ(u8, pass.name);
-                command_buffer.beginDebugUtilsLabelEXT(&.{
-                    .p_label_name = temp_name,
-                    .color = .{ 1.0, 0.0, 1.0, 1.0 },
-                });
-            }
-            defer if (self.device.debug) {
-                command_buffer.endDebugUtilsLabelEXT();
-            };
-
-            // Generate Barriers
-            try self.buildBarriers(tpa, command_buffer, desc, compiled_pass, resources);
-
-            // Record Command Buffers
-
-        }
-
-        //Transitioning Swapchains to final formats
-        {
-            const swapchain_transitions = try tpa.alloc(vk.ImageMemoryBarrier2, swapchain_textures.len);
-            defer tpa.free(swapchain_transitions);
-
-            //TODO: generate barriers from graph info
-            for (swapchain_textures, swapchain_transitions) |swapchain_texture, *memory_barrier| {
-
-                //Get last usage
-                var src_access: saturn.TextureAccess = .none;
-
-                if (desc.textures.items[swapchain_texture.resource.idx].last_usage) |pass| {
-                    if (desc.passes.items[pass.idx].getTextureAccess(swapchain_texture.resource)) |access| {
-                        src_access = access;
-                    }
-                }
-
-                const src_state_access = getTextureStateAccess(src_access, true, self.device.extensions.unified_image_layouts);
-
-                memory_barrier.* = .{
-                    .image = swapchain_texture.interface.handle,
-                    .old_layout = src_state_access.layout,
-                    .new_layout = .present_src_khr,
-                    .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-                    .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-                    .subresource_range = .{
-                        .aspect_mask = .{ .color_bit = true },
-                        .base_array_layer = 0,
-                        .layer_count = 1,
-                        .base_mip_level = 0,
-                        .level_count = 1,
-                    },
-                };
-            }
-            command_buffer.pipelineBarrier2(&.{
-                .image_memory_barrier_count = @intCast(swapchain_transitions.len),
-                .p_image_memory_barriers = swapchain_transitions.ptr,
-            });
-        }
-
-        try command_buffer.endCommandBuffer();
-        const wait_dst_stage_mask: vk.PipelineStageFlags = .{ .all_commands_bit = true };
-
-        const wait_semaphores = try tpa.alloc(vk.Semaphore, swapchain_textures.len);
-        defer tpa.free(wait_semaphores);
-
-        const wait_dst_stage_masks = try tpa.alloc(vk.PipelineStageFlags, swapchain_textures.len);
-        defer tpa.free(wait_dst_stage_masks);
-
-        const signal_semaphores = try tpa.alloc(vk.Semaphore, swapchain_textures.len);
-        defer tpa.free(signal_semaphores);
-
-        for (swapchain_textures, 0..) |swapchain_info, i| {
-            wait_dst_stage_masks[i] = wait_dst_stage_mask;
-            wait_semaphores[i] = swapchain_info.wait_semaphore;
-            signal_semaphores[i] = swapchain_info.present_semaphore;
-        }
-
-        const submit_infos: [1]vk.SubmitInfo = .{vk.SubmitInfo{
-            .command_buffer_count = 1,
-            .p_command_buffers = @ptrCast(&command_buffer_handle),
-            .wait_semaphore_count = @intCast(wait_semaphores.len),
-            .p_wait_semaphores = wait_semaphores.ptr,
-            .p_wait_dst_stage_mask = wait_dst_stage_masks.ptr,
-            .signal_semaphore_count = @intCast(signal_semaphores.len),
-            .p_signal_semaphores = signal_semaphores.ptr,
-        }};
-
-        try self.device.proxy.queueSubmit(self.device.graphics_queue.handle, @intCast(submit_infos.len), &submit_infos, fence);
-    }
 };
 
 pub const CommandEncoderData = struct {
@@ -1696,9 +1587,10 @@ pub const ComputeCommandEncoder = struct {
 
     fn pushConstantsRaw(ctx: *anyopaque, data: []const u8) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
+
         cmd_data.command_buffer.pushConstants(
             cmd_data.device.pipeline_layout,
-            .{ .compute_bit = true },
+            cmd_data.device.device.all_stage_flags,
             0,
             @intCast(data.len),
             data.ptr,
@@ -1750,11 +1642,9 @@ pub const GraphicsCommandEncoder = struct {
     fn pushConstantsRaw(ctx: *anyopaque, data: []const u8) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
 
-        const mesh_shading = cmd_data.device.device.extensions.mesh_shading;
-
         cmd_data.command_buffer.pushConstants(
             cmd_data.device.pipeline_layout,
-            .{ .vertex_bit = true, .fragment_bit = true, .mesh_bit_ext = mesh_shading, .task_bit_ext = mesh_shading },
+            cmd_data.device.device.all_stage_flags,
             0,
             @intCast(data.len),
             data.ptr,

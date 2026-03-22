@@ -402,6 +402,8 @@ pub const RenderGraphExecutor = struct {
 
         try command_buffer.beginCommandBuffer(&.{});
 
+        self.device.device.descriptor.bind(command_buffer, self.device.pipeline_layout);
+
         for (self.compiled.passes.items) |compiled_pass| {
             const pass = self.render_graph.passes.items[compiled_pass.handle.idx];
 
@@ -423,8 +425,8 @@ pub const RenderGraphExecutor = struct {
                         compute.func(compute.ctx, .{ .ctx = &cmd_data, .vtable = &platform.ComputeCommandEncoder.Vtable });
                     },
                     .graphics => |graphics| {
-                        self.beginRenderPass(command_buffer, graphics.render_target);
-                        graphics.func(graphics.ctx, .{ .ctx = &cmd_data, .vtable = &platform.GraphicsCommandEncoder.Vtable });
+                        const target_resolution = self.beginRenderPass(command_buffer, graphics.render_target);
+                        graphics.func(graphics.ctx, .{ .ctx = &cmd_data, .vtable = &platform.GraphicsCommandEncoder.Vtable }, target_resolution);
                         command_buffer.endRendering();
                     },
                 }
@@ -497,7 +499,7 @@ pub const RenderGraphExecutor = struct {
         });
     }
 
-    fn beginRenderPass(self: *Self, command_buffer: vk.CommandBufferProxy, render_target: saturn.RGRenderTarget) void {
+    fn beginRenderPass(self: *Self, command_buffer: vk.CommandBufferProxy, render_target: saturn.RGRenderTarget) [2]u32 {
         const unified_image_layouts = self.device.device.extensions.unified_image_layouts;
 
         const color_attachments = self.tpa.alloc(vk.RenderingAttachmentInfo, render_target.color_attachments.len) catch @panic("Failed to alloc");
@@ -559,6 +561,8 @@ pub const RenderGraphExecutor = struct {
         };
         command_buffer.setViewport(0, 1, @ptrCast(&viewport));
         command_buffer.setScissor(0, 1, @ptrCast(&render_area));
+
+        return [2]u32{ render_area.extent.width, render_area.extent.height };
     }
 
     // ------------------------------------------------------------------

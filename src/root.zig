@@ -1641,7 +1641,7 @@ pub const IndirectDrawMeshTasksCommand = extern struct {
 pub const GraphicsCommandEncoder = struct {
     const Self = @This();
 
-    pub const Callback = *const fn (data: ?*anyopaque, encoder: Self) void;
+    pub const Callback = *const fn (data: ?*anyopaque, encoder: Self, target_resolution: [2]u32) void;
 
     ctx: *anyopaque,
     vtable: *const VTable,
