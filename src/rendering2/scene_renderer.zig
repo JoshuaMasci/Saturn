@@ -89,21 +89,15 @@ fn legacyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, 
 const LegacyScenePass = struct {
     const PushConstants = extern struct {
         view_projection_matrix: zm.Mat,
-
         model_matrix: zm.Mat,
-
         material_info_binding: u32,
-
         material_index: u32,
     };
 
     opaque_pipeline: saturn.GraphicsPipelineHandle,
-
     alpha_mask_pipeline: saturn.GraphicsPipelineHandle,
-
     alpha_blend_pipeline: saturn.GraphicsPipelineHandle,
 
-    /// alpha modes: opaque, alpha mask, and alpha blend. Each pipeline uses the same
     pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: RenderTargetFormats) !LegacyScenePass {
         const ShaderAsset = @import("../asset/shader.zig");
 
@@ -256,6 +250,8 @@ const LegacyScenePass = struct {
         var projection_matrix = camera.camera.getProjectionMatrix(aspect_ratio);
         projection_matrix[1][1] *= -1.0; //TODO: only do this for vulkan
         const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
+
+        //TODO: render opaque instaces first, and reorder non-opaque instances based on distance from camera
 
         var instance_iter = scene.instances.iterator();
         while (instance_iter.nextValue()) |instance| {

@@ -60,12 +60,14 @@ pub fn getNodeFromName(self: Self, name: []const u8) ?usize {
 }
 
 pub fn calcNodeGlobalTransform(self: Self, index: usize) Transform {
-    var node: *const Node = &self.nodes[index];
-    var transform: Transform = node.local_transform;
+    var node: usize = index;
+    var transform: Transform = self.nodes[node].local_transform;
 
-    while (node.parent) |parent| {
-        node = &self.nodes[parent];
-        transform = node.local_transform.applyTransform(&transform);
+    while (self.nodes[node].parent) |parent| {
+        // detect loops, cause this is apparently a problem
+        if (node == parent) break;
+        node = parent;
+        transform = self.nodes[node].local_transform.applyTransform(&transform);
     }
 
     return transform;

@@ -65,12 +65,11 @@ pub fn main() !void {
 
         var camera: DebugCamera = .{};
 
-        var scene_filepath_opt: ?[]const u8 = undefined;
-        scene_filepath_opt = null;
+        var scene_filepath_opt: ?[]const u8 = null;
 
         //TODO: select scene from args
-        //scene_filepath_opt = "zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json";
-        scene_filepath_opt = "zig-out/assets/game/Bistro/scene.json";
+        scene_filepath_opt = "zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json";
+        //scene_filepath_opt = "zig-out/assets/game/Bistro/scene.json";
 
         if (scene_filepath_opt) |scene_filepath| {
             var scene_json: std.json.Parsed(SceneAsset) = undefined;
@@ -114,6 +113,8 @@ pub fn main() !void {
         }
     }
 
+    std.log.info("Loaded Scene", .{});
+
     {
         const now = std.time.nanoTimestamp();
         defer {
@@ -124,6 +125,8 @@ pub fn main() !void {
 
         //TEMP: force load of all resources
         app.asset_pool.loadAllCpu();
+
+        std.log.info("Loaded Cpu Assets", .{});
 
         //TODO: load gpu assets
         app.asset_pool.loadAllGpu();
