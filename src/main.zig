@@ -68,8 +68,8 @@ pub fn main() !void {
         var scene_filepath_opt: ?[]const u8 = null;
 
         //TODO: select scene from args
-        scene_filepath_opt = "zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json";
-        //scene_filepath_opt = "zig-out/assets/game/Bistro/scene.json";
+        //scene_filepath_opt = "zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json";
+        scene_filepath_opt = "zig-out/assets/game/Bistro/scene.json";
 
         if (scene_filepath_opt) |scene_filepath| {
             var scene_json: std.json.Parsed(SceneAsset) = undefined;
@@ -84,6 +84,15 @@ pub fn main() !void {
             defer scene_json.deinit();
 
             if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
+                if (scene_json.value.nodes[camera_node].camera) |node_camera| {
+                    camera.camera = node_camera;
+                }
+
+                camera.transform = scene_json.value.calcNodeGlobalTransform(camera_node);
+                camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), camera.transform.rotation);
+            }
+
+            if (scene_json.value.getNodeFromName("PhysCamera001")) |camera_node| {
                 if (scene_json.value.nodes[camera_node].camera) |node_camera| {
                     camera.camera = node_camera;
                 }
@@ -113,8 +122,6 @@ pub fn main() !void {
         }
     }
 
-    std.log.info("Loaded Scene", .{});
-
     {
         const now = std.time.nanoTimestamp();
         defer {
@@ -125,10 +132,6 @@ pub fn main() !void {
 
         //TEMP: force load of all resources
         app.asset_pool.loadAllCpu();
-
-        std.log.info("Loaded Cpu Assets", .{});
-
-        //TODO: load gpu assets
         app.asset_pool.loadAllGpu();
     }
 
