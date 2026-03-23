@@ -288,13 +288,11 @@ const LegacyScenePass = struct {
                 };
                 cmd.pushConstants(PushConstants, push_constants);
 
-                const vertex_offset: i32 = @intCast(gpu_mesh.vertices.offset);
-                const index_offset: u32 = @intCast(gpu_mesh.indices.offset + cpu_primitive.index_offset);
                 cmd.drawIndexed(
                     cpu_primitive.index_count,
                     1,
-                    index_offset,
-                    vertex_offset,
+                    @intCast(gpu_mesh.indices.offset + cpu_primitive.index_offset),
+                    @intCast(gpu_mesh.vertices.offset + cpu_primitive.vertex_offset),
                     0,
                 );
             }
