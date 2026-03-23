@@ -11,14 +11,6 @@ const Transform = @import("../transform.zig");
 const AssetRegistry = @import("../asset/registry.zig");
 const CpuMesh = @import("../asset/mesh.zig");
 
-/// Render target format specification for pipeline creation
-pub const RenderTargetFormats = struct {
-    /// Color attachment formats
-    color_targets: []const saturn.TextureFormat,
-    /// Optional depth attachment format
-    depth_target: ?saturn.TextureFormat,
-};
-
 pub const Camera = struct {
     camera: @import("../rendering/camera.zig").Camera,
     transform: Transform,
@@ -30,9 +22,10 @@ gpa: std.mem.Allocator,
 device: saturn.DeviceInterface,
 registry: *const AssetRegistry,
 
+depth_format: ?saturn.TextureFormat,
 legacy: LegacyScenePass,
 
-pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: RenderTargetFormats) !Self {
+pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: saturn.RenderTargetInfo) !Self {
     const legacy = try LegacyScenePass.init(gpa, device, registry, formats);
     errdefer legacy.deinit(device);
 
@@ -41,6 +34,7 @@ pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *c
         .device = device,
         .registry = registry,
 
+        .depth_format = formats.depth_target,
         .legacy = legacy,
     };
 }
@@ -49,7 +43,7 @@ pub fn deinit(self: *Self) void {
     self.legacy.deinit(self.device);
 }
 
-pub fn rebuild(self: *Self, formats: RenderTargetFormats) saturn.Error!void {
+pub fn rebuild(self: *Self, formats: saturn.RenderTargetInfo) saturn.Error!void {
     self.legacy.deinit(self.device);
     self.legacy = try LegacyScenePass.init(self.gpa, self.device, self.registry, formats);
 }
@@ -63,12 +57,23 @@ pub fn addPasses(self: *const Self, target: saturn.RGTextureHandle, render_graph
         .asset_pool = asset_pool,
     };
 
+    const depth_texture = try render_graph.createTransientTexture(.{
+        .extent = .{ .relative = target },
+        .format = self.depth_format.?,
+        .usage = .{
+            .attachment = true,
+        },
+        .memory = .gpu_only,
+    });
+
     _ = try render_graph.addGraphicsPass(
         "Legacy Scene Pass",
-        .{ .color_attachments = &.{.{
-            .texture = target,
-            .clear = .{ 0.1, 0.1, 0.1, 1.0 },
-        }} },
+        .{
+            .color_attachments = &.{
+                .{ .texture = target, .clear = .{ 0.1, 0.1, 0.1, 1.0 } },
+            },
+            .depth_attachment = .{ .texture = depth_texture, .clear = 1.0 },
+        },
         legacy_pass_data.ptr,
         legacyGraphicsCallback,
     );
@@ -98,7 +103,7 @@ const LegacyScenePass = struct {
     alpha_mask_pipeline: saturn.GraphicsPipelineHandle,
     alpha_blend_pipeline: saturn.GraphicsPipelineHandle,
 
-    pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: RenderTargetFormats) !LegacyScenePass {
+    pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: saturn.RenderTargetInfo) !LegacyScenePass {
         const ShaderAsset = @import("../asset/shader.zig");
 
         var vertex_shader_asset = try registry.loadAsset(ShaderAsset, gpa, AssetRegistry.Handle.fromRepoPath("engine", "shaders/glsl/draw_legacy.vert.asset"), .{});
@@ -181,10 +186,7 @@ const LegacyScenePass = struct {
             .depth_compare_op = .less,
         };
 
-        const render_target_info: saturn.RenderTargetInfo = .{
-            .color_targets = formats.color_targets,
-            .depth_target = formats.depth_target,
-        };
+        const render_target_info: saturn.RenderTargetInfo = formats;
 
         const opaque_pipeline = try device.createGraphicsPipeline(&.{
             .name = "Legacy Opaque Pipeline",
@@ -260,6 +262,7 @@ const LegacyScenePass = struct {
             const mesh_asset = asset_pool.mesh_assets.get(instance.mesh) orelse continue;
             const cpu_mesh = mesh_asset.cpu orelse continue;
             const gpu_mesh = mesh_asset.gpu orelse continue;
+            if (!gpu_mesh.loaded) continue;
 
             cmd.setVertexBuffer(0, .from(asset_pool.mesh_pool.vertex_buffer.buffer), 0);
             cmd.setIndexBuffer(.from(asset_pool.mesh_pool.index_buffer.buffer), .u32, 0);
@@ -272,8 +275,8 @@ const LegacyScenePass = struct {
 
                 const pipeline = switch (material.alpha_mode) {
                     .@"opaque" => self.opaque_pipeline,
-                    .mask => self.alpha_mask_pipeline,
-                    .blend => self.alpha_blend_pipeline,
+                    .mask => continue, //self.alpha_mask_pipeline,
+                    .blend => continue, //self.alpha_blend_pipeline,
                 };
                 cmd.setPipeline(pipeline);
 

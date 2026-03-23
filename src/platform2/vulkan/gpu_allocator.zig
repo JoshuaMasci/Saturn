@@ -57,7 +57,7 @@ pub fn alloc(
     device_address: bool,
 ) !Allocation {
     const memory_flags: vk.MemoryPropertyFlags = switch (location) {
-        .cpu_to_gpu => .{ .device_local_bit = true, .host_visible_bit = true, .host_coherent_bit = true },
+        .cpu_to_gpu => .{ .host_visible_bit = true, .host_coherent_bit = true },
         .gpu_only => .{ .device_local_bit = true },
         .gpu_to_cpu => .{ .host_visible_bit = true, .host_coherent_bit = true },
     };

@@ -57,6 +57,8 @@ pub fn main() !void {
             cube_mesh_handle,
             &.{transparent_material_handle},
         );
+
+        app.camera.transform = .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } };
     }
 
     {
@@ -66,6 +68,7 @@ pub fn main() !void {
         var camera: DebugCamera = .{};
 
         var scene_filepath_opt: ?[]const u8 = null;
+        scene_filepath_opt = null;
 
         //TODO: select scene from args
         //scene_filepath_opt = "zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json";
@@ -92,7 +95,7 @@ pub fn main() !void {
                 camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), camera.transform.rotation);
             }
 
-            if (scene_json.value.getNodeFromName("PhysCamera001")) |camera_node| {
+            if (scene_json.value.getNodeFromName("PhysCamera002")) |camera_node| {
                 if (scene_json.value.nodes[camera_node].camera) |node_camera| {
                     camera.camera = node_camera;
                 }
@@ -195,7 +198,7 @@ const App = struct {
         const ColorTarget: saturn.TextureFormat = .rgba8_unorm;
         const DepthTarget: saturn.TextureFormat = .depth32_float;
 
-        const RenderTarget: SceneRenderer.RenderTargetFormats = .{
+        const RenderTarget: saturn.RenderTargetInfo = .{
             .color_targets = &.{ColorTarget},
             .depth_target = DepthTarget,
         };

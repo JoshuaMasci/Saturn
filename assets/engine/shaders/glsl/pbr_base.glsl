@@ -35,21 +35,21 @@ vec4 sampleTexture(uint index, vec2 uv)
 
 void main()
 {
-    Material material = materialBuffer[push_constants.material_binding].materials[material_index];
+    // Material material = materialBuffer[push_constants.material_binding].materials[material_index];
 
-    vec4 base_color = material.base_color_factor;
+    // vec4 base_color = material.base_color_factor;
 
-    if (material.base_color_texture != 0u)
-    {
-        base_color *= sampleTexture(material.base_color_texture, frag_uv0);
-    }
+    // if (material.base_color_texture != 0u)
+    // {
+    //     base_color *= sampleTexture(material.base_color_texture, frag_uv0);
+    // }
 
-    #ifdef ALPHA_CUTOFF
-    if (base_color.a < material.alpha_cutoff)
-    {
-        discard;
-    }
-    #endif
+    // #ifdef ALPHA_CUTOFF
+    // if (base_color.a < material.alpha_cutoff)
+    // {
+    //     discard;
+    // }
+    // #endif
 
-    out_frag_color = base_color;
+    out_frag_color = vec4(frag_uv0, 0.0, 1.0);
 }

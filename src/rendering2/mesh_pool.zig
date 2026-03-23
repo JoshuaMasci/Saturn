@@ -107,6 +107,8 @@ pub const MeshEntry = struct {
         loaded: u32,
     };
 
+    loaded: bool = false,
+
     sphere_pos_radius: [4]f32,
 
     vertices: GpuBuffer(CpuMesh.Vertex).SubAllocation,
@@ -129,7 +131,7 @@ pub const MeshEntry = struct {
             .meshlet_vertex_buffer_address = if (self.meshlet) |meshlet| meshlet.meshlet_vertices.device_address else 0,
             .meshlet_triangle_buffer_address = if (self.meshlet) |meshlet| meshlet.meshlet_triangles.device_address else 0,
             .meshlets_loaded = @intFromBool(self.meshlet != null),
-            .loaded = 1,
+            .loaded = @intFromBool(self.loaded),
         };
     }
 };
@@ -183,6 +185,8 @@ const BufferSizes = struct {
     }
 };
 
+const GpuMeshHandle = u32;
+
 const Self = @This();
 
 device: saturn.DeviceInterface,
@@ -190,9 +194,12 @@ device: saturn.DeviceInterface,
 vertex_buffer: GpuBuffer(CpuMesh.Vertex),
 index_buffer: GpuBuffer(u32),
 primitive_buffer: GpuBuffer(CpuMesh.Primitive),
-meshlet_buffer: GpuBuffer(CpuMesh.Meshlet),
-meshlet_vertex_buffer: GpuBuffer(u32),
-meshlet_triangle_buffer: GpuBuffer(u8),
+
+meshlet: ?struct {
+    meshlet_buffer: GpuBuffer(CpuMesh.Meshlet),
+    meshlet_vertex_buffer: GpuBuffer(u32),
+    meshlet_triangle_buffer: GpuBuffer(u8),
+},
 
 mesh_info_buffer: saturn.BufferHandle,
 max_mesh_count: usize,
@@ -218,14 +225,14 @@ pub fn init(
     var primitive_buffer = try GpuBuffer(CpuMesh.Primitive).init(device, "primitive_buffer", buffer_sizes.primitives, geometry_buffer_usage);
     errdefer primitive_buffer.deinit();
 
-    var meshlet_buffer = try GpuBuffer(CpuMesh.Meshlet).init(device, "meshlet_buffer", buffer_sizes.meshlets, geometry_buffer_usage);
-    errdefer meshlet_buffer.deinit();
+    // var meshlet_buffer = try GpuBuffer(CpuMesh.Meshlet).init(device, "meshlet_buffer", buffer_sizes.meshlets, geometry_buffer_usage);
+    // errdefer meshlet_buffer.deinit();
 
-    var meshlet_vertex_buffer = try GpuBuffer(u32).init(device, "meshlet_vertex_buffer", buffer_sizes.meshlet_vertices, geometry_buffer_usage);
-    errdefer meshlet_vertex_buffer.deinit();
+    // var meshlet_vertex_buffer = try GpuBuffer(u32).init(device, "meshlet_vertex_buffer", buffer_sizes.meshlet_vertices, geometry_buffer_usage);
+    // errdefer meshlet_vertex_buffer.deinit();
 
-    var meshlet_triangle_buffer = try GpuBuffer(u8).init(device, "meshlet_triangle_buffer", buffer_sizes.meshlet_triangles, geometry_buffer_usage);
-    errdefer meshlet_triangle_buffer.deinit();
+    // var meshlet_triangle_buffer = try GpuBuffer(u8).init(device, "meshlet_triangle_buffer", buffer_sizes.meshlet_triangles, geometry_buffer_usage);
+    // errdefer meshlet_triangle_buffer.deinit();
 
     const mesh_info_buffer = try device.createBuffer(.{
         .name = "mesh_info_buffer",
@@ -241,9 +248,7 @@ pub fn init(
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
         .primitive_buffer = primitive_buffer,
-        .meshlet_buffer = meshlet_buffer,
-        .meshlet_vertex_buffer = meshlet_vertex_buffer,
-        .meshlet_triangle_buffer = meshlet_triangle_buffer,
+        .meshlet = null,
 
         .mesh_info_buffer = mesh_info_buffer,
         .max_mesh_count = max_mesh_count,
@@ -255,9 +260,12 @@ pub fn deinit(self: *Self) void {
     self.vertex_buffer.deinit();
     self.index_buffer.deinit();
     self.primitive_buffer.deinit();
-    self.meshlet_buffer.deinit();
-    self.meshlet_vertex_buffer.deinit();
-    self.meshlet_triangle_buffer.deinit();
+
+    if (self.meshlet) |*mesh_shading| {
+        mesh_shading.meshlet_buffer.deinit();
+        mesh_shading.meshlet_vertex_buffer.deinit();
+        mesh_shading.meshlet_triangle_buffer.deinit();
+    }
 }
 
 pub fn addMesh(self: *Self, mesh: *const CpuMesh) !MeshEntry {
@@ -269,12 +277,14 @@ pub fn addMesh(self: *Self, mesh: *const CpuMesh) !MeshEntry {
         .meshlet = null,
     };
 
-    if (mesh.meshlets.len != 0) {
-        entry.meshlet = .{
-            .meshlets = try self.meshlet_buffer.alloc(mesh.meshlets.len),
-            .meshlet_vertices = try self.meshlet_vertex_buffer.alloc(mesh.meshlet_vertices.len),
-            .meshlet_triangles = try self.meshlet_triangle_buffer.alloc(mesh.meshlet_triangles.len),
-        };
+    if (self.meshlet) |*mesh_shading| {
+        if (mesh.meshlets.len != 0) {
+            entry.meshlet = .{
+                .meshlets = try mesh_shading.meshlet_buffer.alloc(mesh.meshlets.len),
+                .meshlet_vertices = try mesh_shading.meshlet_vertex_buffer.alloc(mesh.meshlet_vertices.len),
+                .meshlet_triangles = try mesh_shading.meshlet_triangle_buffer.alloc(mesh.meshlet_triangles.len),
+            };
+        }
     }
 
     return entry;
@@ -285,10 +295,12 @@ pub fn removeMesh(self: *Self, mesh: MeshEntry) void {
     _ = mesh; // autofix
 }
 
-pub fn uploadMeshData(self: *Self, transfer_queue: *TransferQueue, mesh_index: u32, cpu_mesh: *const CpuMesh, entry: MeshEntry) !void {
+pub fn uploadMeshData(self: *Self, transfer_queue: *TransferQueue, mesh_index: u32, cpu_mesh: *const CpuMesh, entry: *MeshEntry) !void {
     if (mesh_index >= self.max_mesh_count) {
         return error.MeshIndexOutOfBounds;
     }
+
+    entry.loaded = true;
 
     // Create mesh info for GPU
     const mesh_info = entry.getGpuEntry();
@@ -299,15 +311,18 @@ pub fn uploadMeshData(self: *Self, transfer_queue: *TransferQueue, mesh_index: u
         .{ .dst = self.mesh_info_buffer, .offset = mesh_info_offset, .data = std.mem.asBytes(&mesh_info) },
     });
 
-    if (entry.meshlet) |meshlets| {
+    if (self.meshlet != null and entry.meshlet != null) {
+        const mesh_shading_buffers = &self.meshlet.?;
+        const meshlets = &entry.meshlet.?;
+
         try transfer_queue.addBulkBufferUpload(&.{
             .{ .dst = self.vertex_buffer.buffer, .offset = entry.vertices.offset * @sizeOf(CpuMesh.Vertex), .data = std.mem.sliceAsBytes(cpu_mesh.vertices) },
             .{ .dst = self.index_buffer.buffer, .offset = entry.indices.offset * @sizeOf(u32), .data = std.mem.sliceAsBytes(cpu_mesh.indices) },
             .{ .dst = self.primitive_buffer.buffer, .offset = entry.primitives.offset * @sizeOf(CpuMesh.Primitive), .data = std.mem.sliceAsBytes(cpu_mesh.primitives) },
 
-            .{ .dst = self.meshlet_buffer.buffer, .offset = meshlets.meshlets.offset * @sizeOf(CpuMesh.Meshlet), .data = std.mem.sliceAsBytes(cpu_mesh.meshlets) },
-            .{ .dst = self.meshlet_vertex_buffer.buffer, .offset = meshlets.meshlet_vertices.offset * @sizeOf(u32), .data = std.mem.sliceAsBytes(cpu_mesh.meshlet_vertices) },
-            .{ .dst = self.meshlet_triangle_buffer.buffer, .offset = meshlets.meshlet_triangles.offset * @sizeOf(u8), .data = std.mem.sliceAsBytes(cpu_mesh.meshlet_triangles) },
+            .{ .dst = mesh_shading_buffers.meshlet_buffer.buffer, .offset = meshlets.meshlets.offset * @sizeOf(CpuMesh.Meshlet), .data = std.mem.sliceAsBytes(cpu_mesh.meshlets) },
+            .{ .dst = mesh_shading_buffers.meshlet_vertex_buffer.buffer, .offset = meshlets.meshlet_vertices.offset * @sizeOf(u32), .data = std.mem.sliceAsBytes(cpu_mesh.meshlet_vertices) },
+            .{ .dst = mesh_shading_buffers.meshlet_triangle_buffer.buffer, .offset = meshlets.meshlet_triangles.offset * @sizeOf(u8), .data = std.mem.sliceAsBytes(cpu_mesh.meshlet_triangles) },
 
             .{ .dst = self.mesh_info_buffer, .offset = mesh_info_offset, .data = std.mem.asBytes(&mesh_info) },
         });

@@ -314,13 +314,11 @@ pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
         const start = self.mesh_gpu_load_list.items.len - upload_count;
         const end = start + upload_count;
 
-        //std.log.info("Mesh Upload Total({}) Start({}) End({})", .{ self.mesh_gpu_load_list.items.len, start, end });
-
         for (self.mesh_gpu_load_list.items[start..end]) |handle| {
             if (self.mesh_assets.getPtr(handle)) |asset| {
-                const cpu_asset = asset.cpu.?;
-                const gpu_asset = asset.gpu.?;
-                try self.mesh_pool.uploadMeshData(transfer_queue, handle.index, &cpu_asset, gpu_asset);
+                const cpu_asset = &asset.cpu.?;
+                const gpu_asset = &asset.gpu.?;
+                try self.mesh_pool.uploadMeshData(transfer_queue, handle.index, cpu_asset, gpu_asset);
             }
         }
         self.mesh_gpu_load_list.shrinkRetainingCapacity(start);
@@ -332,8 +330,6 @@ pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
         const upload_count: usize = @min(self.texture_gpu_load_list.items.len, MAX_TEXTURE_UPLOADS);
         const start = self.texture_gpu_load_list.items.len - upload_count;
         const end = start + upload_count;
-
-        //std.log.info("Texture Upload Total({}) Start({}) End({})", .{ self.texture_gpu_load_list.items.len, start, end });
 
         for (self.texture_gpu_load_list.items[start..end]) |handle| {
             if (self.texture_assets.getPtr(handle)) |asset| {
