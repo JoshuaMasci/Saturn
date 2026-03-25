@@ -920,6 +920,16 @@ pub const Device = struct {
         try frame_data.freed.append(self.gpa, self.freed);
         self.freed.clear();
 
+        for (render_graph.window_textures.items) |window| {
+            if (self.swapchains.get(window.handle)) |swapchain| {
+                if (swapchain.out_of_date) {
+                    self.device.proxy.deviceWaitIdle() catch {};
+                    const new_size = self.backend.get_window_size_fn(window.handle, self.backend.get_window_size_user_data);
+                    swapchain.rebuild(.{ .width = new_size[0], .height = new_size[1] }) catch |err| std.log.err("Failed to rebuild swapchain {}", .{err});
+                }
+            }
+        }
+
         var executor = render_graph_executor.RenderGraphExecutor.init(self, tpa, frame_data, render_graph) catch return error.Unknown;
         defer executor.deinit();
         try executor.execute();

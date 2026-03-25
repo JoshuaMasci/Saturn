@@ -108,6 +108,7 @@ pub const MeshEntry = struct {
     };
 
     loaded: bool = false,
+    cpu_primitives: []const CpuMesh.Primitive,
 
     sphere_pos_radius: [4]f32,
 
@@ -270,6 +271,7 @@ pub fn deinit(self: *Self) void {
 
 pub fn addMesh(self: *Self, mesh: *const CpuMesh) !MeshEntry {
     var entry: MeshEntry = .{
+        .cpu_primitives = mesh.primitives, //TODO: allow CpuMesh to be unloaded by duping this instead
         .sphere_pos_radius = mesh.sphere_pos_radius,
         .vertices = try self.vertex_buffer.alloc(mesh.vertices.len),
         .indices = try self.index_buffer.alloc(mesh.indices.len),

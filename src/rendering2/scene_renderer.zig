@@ -260,7 +260,6 @@ const LegacyScenePass = struct {
             if (!instance.visable) continue;
 
             const mesh_asset = asset_pool.mesh_assets.get(instance.mesh) orelse continue;
-            const cpu_mesh = mesh_asset.cpu orelse continue;
             const gpu_mesh = mesh_asset.gpu orelse continue;
             if (!gpu_mesh.loaded) continue;
 
@@ -269,7 +268,7 @@ const LegacyScenePass = struct {
 
             const model_matrix = instance.transform.getModelMatrix();
 
-            for (cpu_mesh.primitives, instance.primitives) |cpu_primitive, scene_primitive| {
+            for (gpu_mesh.cpu_primitives, instance.primitives) |cpu_primitive, scene_primitive| {
                 const material_asset = asset_pool.material_assets.get(scene_primitive.material) orelse continue;
                 const material = material_asset.cpu orelse continue;
 
