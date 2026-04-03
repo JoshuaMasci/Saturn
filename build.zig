@@ -71,7 +71,7 @@ fn buildAsset(
     exe_mod.linkSystemLibrary("glslang-default-resource-limits", .{});
 
     // meshoptimizer
-    // TODO: build from source
+    // TODO: build from source, probably will be easy
     exe_mod.linkSystemLibrary("meshoptimizer", .{});
 
     const exe = b.addExecutable(.{

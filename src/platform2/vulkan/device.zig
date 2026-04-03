@@ -12,6 +12,7 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 
+base: vk.BaseWrapper,
 instance: vk.InstanceProxy,
 proxy: vk.DeviceProxy,
 gpu_allocator: GpuAllocator,
@@ -29,6 +30,7 @@ all_stage_flags: vk.ShaderStageFlags,
 
 pub fn init(
     allocator: std.mem.Allocator,
+    base: vk.BaseWrapper,
     instance: vk.InstanceProxy,
     physical_device: PhysicalDevice,
     extentions: saturn.DeviceFeatures,
@@ -189,6 +191,7 @@ pub fn init(
 
     return .{
         .allocator = allocator,
+        .base = base,
         .instance = instance,
         .physical_device = physical_device,
         .proxy = proxy,
@@ -248,4 +251,25 @@ pub fn setDebugName(self: Self, object_type: vk.ObjectType, handle: anytype, nam
 fn appendNextPtrChain(root: anytype, next_struct: anytype) void {
     next_struct.*.p_next = @constCast(root.*.p_next); //Don't care about the const since im only modifiying the p_next field
     root.*.p_next = next_struct;
+}
+
+fn loadGlobal(self: *const @This(), name: [*c]const u8) vk.PfnVoidFunction {
+    return self.base.getInstanceProcAddr(.null_handle, name);
+}
+
+fn loadInstance(self: *const @This(), name: [*c]const u8) vk.PfnVoidFunction {
+    return self.base.getInstanceProcAddr(self.instance.handle, name);
+}
+
+fn loadDevice(self: *@This(), name: [*c]const u8) vk.PfnVoidFunction {
+    return self.instance.wrapper.dispatch.vkGetDeviceProcAddr.?(self.proxy.handle, name);
+}
+
+pub fn getProcAddr(function_name: [*c]const u8, user_data: ?*anyopaque) callconv(std.builtin.CallingConvention.c) vk.PfnVoidFunction {
+    var self: *Self = @ptrCast(@alignCast(user_data));
+
+    if (self.loadGlobal(function_name)) |func| return func;
+    if (self.loadInstance(function_name)) |func| return func;
+    if (self.loadDevice(function_name)) |func| return func;
+    return null;
 }

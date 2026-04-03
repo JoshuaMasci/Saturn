@@ -1,74 +1,88 @@
 const std = @import("std");
 
 const saturn = @import("../root.zig");
-const AssetRegistry = @import("../asset/registry.zig");
 const CpuTexture = @import("../asset/texture.zig");
 const TransferQueue = @import("transfer_queue.zig");
 
-pub const TextureEntry = struct {
+const GpuPool = @import("gpu_pool.zig").GpuPool;
+
+pub const TextureHandle = u32;
+
+pub const TextureInfo = struct {
     const Gpu = extern struct {
-        loaded: u32,
-        sampled_binding: u32,
-        width: u32,
-        height: u32,
-        depth: u32,
-        mip_count: u32,
-        format: u32,
-        _padding: u32,
+        loaded: u32 = 0,
+        sampled_binding: u32 = 0,
+        width: u32 = 0,
+        height: u32 = 0,
+        depth: u32 = 0,
+        mip_count: u32 = 0,
+        format: u32 = 0,
+        _padding: u32 = 0,
     };
 
     gpu_handle: saturn.TextureHandle,
-    width: u32,
-    height: u32,
-    depth: u32,
-    mip_count: u32,
-    format: saturn.TextureFormat,
-    sampled_binding: u32,
 
-    fn getGpuEntry(self: TextureEntry) Gpu {
+    fn getGpu(self: TextureInfo, device: saturn.DeviceInterface) Gpu {
+        const info = device.getTextureInfo(self.gpu_handle) orelse return .{};
+
         return .{
             .loaded = 1,
-            .sampled_binding = self.sampled_binding,
-            .width = self.width,
-            .height = self.height,
-            .depth = self.depth,
-            .mip_count = self.mip_count,
-            .format = @intFromEnum(self.format),
-            ._padding = 0,
+            .sampled_binding = info.sampled orelse 0,
+            .width = info.extent.width,
+            .height = info.extent.height,
+            .depth = info.extent.depth,
+            .mip_count = info.mip_levels,
+            .format = @intFromEnum(info.format),
         };
     }
 };
 
 const Self = @This();
 
+gpa: std.mem.Allocator,
 device: saturn.DeviceInterface,
-texture_info_buffer: saturn.BufferHandle,
-max_texture_count: usize,
+
+info_buffer: GpuPool(TextureInfo.Gpu),
+
+map: std.AutoHashMapUnmanaged(TextureHandle, TextureInfo) = .empty,
 
 pub fn init(
+    gpa: std.mem.Allocator,
     device: saturn.DeviceInterface,
     max_texture_count: usize,
 ) !Self {
-    const texture_info_buffer = try device.createBuffer(.{
-        .name = "texture_info_buffer",
-        .size = @sizeOf(TextureEntry.Gpu) * max_texture_count,
-        .usage = .{ .storage = true, .transfer_dst = true, .device_address = true },
-        .memory = .gpu_only,
-    });
-    errdefer device.destroyBuffer(texture_info_buffer);
+    var info_buffer: GpuPool(TextureInfo.Gpu) = try .init(gpa, device, "texture_info_buffer", max_texture_count, .{ .storage = true, .transfer_dst = true, .device_address = true }, .{});
+    errdefer info_buffer.deinit();
 
     return .{
+        .gpa = gpa,
         .device = device,
-        .texture_info_buffer = texture_info_buffer,
-        .max_texture_count = max_texture_count,
+
+        .info_buffer = info_buffer,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.device.destroyBuffer(self.texture_info_buffer);
+    var iter = self.map.valueIterator();
+    while (iter.next()) |info| {
+        self.device.destroyTexture(info.gpu_handle);
+    }
+    self.map.deinit(self.gpa);
+    self.info_buffer.deinit();
 }
 
-pub fn createTexture(self: *Self, cpu_texture: *const CpuTexture, sampler: saturn.SamplerHandle) !TextureEntry {
+pub fn create(self: *Self) error{OutOfMemory}!TextureHandle {
+    return try self.info_buffer.alloc();
+}
+
+pub fn destroy(self: *Self, handle: TextureHandle) void {
+    self.unload(handle);
+    self.info_buffer.free(handle);
+}
+
+pub fn load(self: *Self, transfer_queue: *TransferQueue, handle: TextureHandle, cpu_texture: *const CpuTexture, sampler: ?saturn.SamplerHandle) saturn.Error!void {
+    std.debug.assert(!self.map.contains(handle));
+
     const texture_format: saturn.TextureFormat = switch (cpu_texture.format) {
         .r8 => .rgba8_unorm,
         .rg8 => .rgba8_unorm,
@@ -86,36 +100,22 @@ pub fn createTexture(self: *Self, cpu_texture: *const CpuTexture, sampler: satur
         .memory = .gpu_only,
         .sampler = sampler,
     });
+    errdefer self.device.destroyTexture(gpu_handle);
 
-    const info = self.device.getTextureInfo(gpu_handle).?;
-    const sampled_binding = info.sampled orelse 0;
-
-    return TextureEntry{
+    const info: TextureInfo = .{
         .gpu_handle = gpu_handle,
-        .width = cpu_texture.width,
-        .height = cpu_texture.height,
-        .depth = cpu_texture.depth,
-        .mip_count = mip_levels,
-        .format = texture_format,
-        .sampled_binding = sampled_binding,
     };
+    errdefer self.info_buffer.stage(handle, .{});
+
+    self.info_buffer.stage(handle, info.getGpu(self.device));
+
+    try self.map.put(self.gpa, handle, info);
+    try transfer_queue.addTextureUpload(info.gpu_handle, cpu_texture.data);
 }
 
-pub fn destroyTexture(self: *Self, texture_entry: TextureEntry) void {
-    self.device.destroyTexture(texture_entry.gpu_handle);
-}
-
-pub fn uploadTextureData(self: *Self, transfer_queue: *TransferQueue, texture_index: u32, cpu_texture: *const CpuTexture, texture_entry: TextureEntry) !void {
-    if (texture_index >= self.max_texture_count) {
-        return error.TextureIndexOutOfBounds;
+pub fn unload(self: *Self, handle: TextureHandle) void {
+    if (self.map.fetchRemove(handle)) |entry| {
+        self.device.destroyTexture(entry.value.gpu_handle);
+        self.info_buffer.stage(handle, .{});
     }
-
-    const texture_info = texture_entry.getGpuEntry();
-    const texture_info_offset = texture_index * @sizeOf(TextureEntry.Gpu);
-
-    try transfer_queue.addBulkBufferUpload(&.{
-        .{ .dst = self.texture_info_buffer, .offset = texture_info_offset, .data = std.mem.asBytes(&texture_info) },
-    });
-
-    try transfer_queue.addTextureUpload(texture_entry.gpu_handle, cpu_texture.data);
 }

@@ -433,6 +433,13 @@ pub const RenderGraphExecutor = struct {
             }
         }
 
+        // if (true) {
+        //     const cimgui = @import("../imgui.zig").c;
+        //     cimgui.ImGui_Render();
+        //     const draw_data = cimgui.ImGui_GetDrawData();
+        //     cimgui.cImGui_ImplVulkan_RenderDrawData(draw_data, @ptrFromInt(@intFromEnum(command_buffer_handle)));
+        // }
+
         try self.emitSwapchainTransitions(command_buffer);
         try command_buffer.endCommandBuffer();
 

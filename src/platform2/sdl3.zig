@@ -10,14 +10,22 @@ pub const c = @cImport({
 });
 
 const saturn = @import("../root.zig");
+const cimgui = @import("imgui.zig").c;
 
 //TODO: use tagged union
-const RenderingBackend = @import("vulkan/platform.zig").Backend;
+const RenderingPlatform = @import("vulkan/platform.zig");
+const RenderingBackend = RenderingPlatform.Backend;
+const RenderingDevice = RenderingPlatform.Device;
 
 const Self = @This();
 
 gpa: std.mem.Allocator,
 backend: *RenderingBackend,
+
+imgui_opt: ?struct {
+    device: saturn.DeviceInterface,
+    window: saturn.WindowHandle,
+} = null,
 
 pub fn init(gpa: std.mem.Allocator, desc: saturn.PlatformDesc) saturn.Error!Self {
     const compile_version = c.SDL_VERSION;
@@ -91,6 +99,12 @@ pub fn interface(self: *Self) saturn.PlatformInterface {
 
             .createDevice = createDevice,
             .destroyDevice = destroyDevice,
+
+            .initImgui = initImgui,
+            .deinitImgui = deinitImgui,
+
+            .beginImgui = beginImgui,
+            .endImgui = endImgui,
         },
     };
 }
@@ -100,6 +114,10 @@ pub fn process_events(ctx: *anyopaque, callbacks: saturn.PlatformCallbacks) void
 
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
+        if (self.imgui_opt != null) {
+            _ = cimgui.cImGui_ImplSDL3_ProcessEvent(@ptrCast(&event));
+        }
+
         switch (event.type) {
             c.SDL_EVENT_QUIT => {
                 if (callbacks.quit) |quit_fn| {
@@ -268,6 +286,88 @@ pub fn createDevice(ctx: *anyopaque, device_index: u32, desc: saturn.DeviceDesc)
 pub fn destroyDevice(ctx: *anyopaque, device: saturn.DeviceInterface) void {
     const self: *Self = @ptrCast(@alignCast(ctx));
     self.backend.destroyDevice(device);
+}
+
+pub fn initImgui(ctx: *anyopaque, device: saturn.DeviceInterface, window: saturn.WindowHandle) saturn.Error!void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    std.debug.assert(self.imgui_opt == null);
+
+    _ = cimgui.ImGui_CreateContext(null) orelse return error.InitializationFailed;
+    errdefer cimgui.ImGui_DestroyContext(null);
+
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window));
+
+    if (!cimgui.cImGui_ImplSDL3_InitForVulkan(@ptrCast(sdl_window))) return error.InitializationFailed;
+    errdefer cimgui.cImGui_ImplSDL3_Shutdown();
+
+    const vulkan_device: *RenderingDevice = @ptrCast(@alignCast(device.ctx));
+    if (!self.backend.devices.contains(vulkan_device)) return error.InitializationFailed;
+
+    vulkan_device.imguiRenderer = try .init(vulkan_device.device);
+    errdefer {
+        vulkan_device.imguiRenderer.?.deinit();
+        vulkan_device.imguiRenderer = null;
+    }
+
+    vulkan_device.imguiRenderer.?.rebuild(vulkan_device.device, vulkan_device.swapchains.get(window).?);
+
+    self.imgui_opt = .{ .device = device, .window = window };
+    errdefer self.imgui_opt = null;
+
+    //TODO: make abstractions for these
+    cimgui.ImGui_StyleColorsClassic(null);
+
+    var io: *cimgui.ImGuiIO = cimgui.ImGui_GetIO();
+    io.ConfigFlags |= cimgui.ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= cimgui.ImGuiConfigFlags_NavEnableGamepad;
+    io.ConfigFlags |= cimgui.ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= cimgui.ImGuiConfigFlags_ViewportsEnable;
+}
+
+pub fn deinitImgui(ctx: *anyopaque) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    if (self.imgui_opt) |imgui| {
+        imgui.device.waitIdle();
+
+        const vulkan_device: *RenderingDevice = @ptrCast(@alignCast(imgui.device.ctx));
+        vulkan_device.imguiRenderer.?.deinit();
+        vulkan_device.imguiRenderer = null;
+
+        cimgui.cImGui_ImplSDL3_Shutdown();
+        cimgui.ImGui_DestroyContext(null);
+
+        self.imgui_opt = null;
+    }
+}
+
+pub fn beginImgui(ctx: *anyopaque) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    if (self.imgui_opt) |imgui| {
+        const vulkan_device: *RenderingDevice = @ptrCast(@alignCast(imgui.device.ctx));
+        vulkan_device.imguiRenderer.?.newFrame();
+
+        cimgui.cImGui_ImplSDL3_NewFrame();
+        cimgui.ImGui_NewFrame();
+    }
+}
+
+pub fn endImgui(ctx: *anyopaque) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    if (self.imgui_opt) |imgui| {
+        _ = imgui; // autofix
+        cimgui.ImGui_EndFrame();
+
+        // Update and Render additional Platform Windows
+        const io: *cimgui.struct_ImGuiIO_t = cimgui.ImGui_GetIO();
+        if (io.ConfigFlags & cimgui.ImGuiConfigFlags_ViewportsEnable == 0) {
+            cimgui.ImGui_UpdatePlatformWindows();
+            cimgui.ImGui_RenderPlatformWindowsDefault();
+        }
+    }
 }
 
 /// Callback function for getting window size from SDL3

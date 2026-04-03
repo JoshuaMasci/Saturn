@@ -255,16 +255,15 @@ const LegacyScenePass = struct {
 
         //TODO: render opaque instaces first, and reorder non-opaque instances based on distance from camera
 
+        cmd.setVertexBuffer(0, .from(asset_pool.mesh_pool.vertex_buffer.buffer), 0);
+        cmd.setIndexBuffer(.from(asset_pool.mesh_pool.index_buffer.buffer), .u32, 0);
+
         var instance_iter = scene.instances.iterator();
         while (instance_iter.nextValue()) |instance| {
             if (!instance.visable) continue;
 
-            const mesh_asset = asset_pool.mesh_assets.get(instance.mesh) orelse continue;
-            const gpu_mesh = mesh_asset.gpu orelse continue;
-            if (!gpu_mesh.loaded) continue;
-
-            cmd.setVertexBuffer(0, .from(asset_pool.mesh_pool.vertex_buffer.buffer), 0);
-            cmd.setIndexBuffer(.from(asset_pool.mesh_pool.index_buffer.buffer), .u32, 0);
+            //Is the mesh loaded on the gpu
+            const gpu_mesh = asset_pool.mesh_pool.map.get(instance.mesh) orelse continue;
 
             const model_matrix = instance.transform.getModelMatrix();
 

@@ -140,8 +140,11 @@ pub const PlatformInterface = struct {
         createDevice: *const fn (ctx: *anyopaque, physical_device_index: u32, desc: DeviceDesc) Error!DeviceInterface,
         destroyDevice: *const fn (ctx: *anyopaque, device_interface: DeviceInterface) void,
 
-        // initImgui: *const fn (ctx: *anyopaque, device: DeviceInterface, window_handle: WindowHandle) Error!void,
-        // deinitImgui: *const fn (ctx: *anyopaque) void,
+        initImgui: *const fn (ctx: *anyopaque, device: DeviceInterface, window: WindowHandle) Error!void,
+        deinitImgui: *const fn (ctx: *anyopaque) void,
+
+        beginImgui: *const fn (ctx: *anyopaque) void,
+        endImgui: *const fn (ctx: *anyopaque) void,
     };
 
     // Convenience wrappers
@@ -212,6 +215,22 @@ pub const PlatformInterface = struct {
 
     pub fn destroyDevice(self: *const Self, device_interface: DeviceInterface) void {
         self.vtable.destroyDevice(self.ctx, device_interface);
+    }
+
+    pub fn initImgui(self: *const Self, device: DeviceInterface, window: WindowHandle) Error!void {
+        return self.vtable.initImgui(self.ctx, device, window);
+    }
+
+    pub fn deinitImgui(self: *const Self) void {
+        self.vtable.deinitImgui(self.ctx);
+    }
+
+    pub fn beginImgui(self: *const Self) void {
+        self.vtable.beginImgui(self.ctx);
+    }
+
+    pub fn endImgui(self: *const Self) void {
+        self.vtable.endImgui(self.ctx);
     }
 };
 
@@ -750,6 +769,8 @@ pub const DeviceInterface = struct {
 
         submit: *const fn (ctx: *anyopaque, tpa: std.mem.Allocator, graph: *const RenderGraph) Error!void,
         waitIdle: *const fn (ctx: *anyopaque) void,
+
+        createImguiPass: *const fn (ctx: *anyopaque, target: RGTextureHandle, graph: *RenderGraph) ?RGPassHandle,
     };
 
     pub fn getInfo(self: *const Self) DeviceInfo {
@@ -834,6 +855,10 @@ pub const DeviceInterface = struct {
 
     pub fn waitIdle(self: *const Self) void {
         self.vtable.waitIdle(self.ctx);
+    }
+
+    pub fn createImguiPass(self: *const Self, target: RGTextureHandle, graph: *RenderGraph) ?RGPassHandle {
+        return self.vtable.createImguiPass(self.ctx, target, graph);
     }
 };
 

@@ -15,6 +15,8 @@ const Pipeline = @import("pipeline.zig");
 const BindlessDescriptor = @import("bindless_descriptor.zig");
 const render_graph_executor = @import("render_graph_executor.zig");
 
+const ImGuiRenderer = @import("imgui_renderer.zig");
+
 pub const SurfaceCreateFn = *const fn (instance: vk.Instance, window: saturn.WindowHandle, allocator: ?*const vk.AllocationCallbacks) ?vk.SurfaceKHR;
 pub const GetWindowSizeFn = *const fn (window: saturn.WindowHandle, user_data: ?*anyopaque) [2]u32;
 
@@ -23,6 +25,7 @@ pub const Backend = struct {
 
     gpa: std.mem.Allocator,
 
+    loader: vk.PfnGetInstanceProcAddr,
     instance: *Instance,
 
     create_surface_fn: SurfaceCreateFn,
@@ -71,6 +74,7 @@ pub const Backend = struct {
 
         return .{
             .gpa = gpa,
+            .loader = loader,
             .instance = instance,
             .create_surface_fn = create_surface_fn,
             .surfaces = .init(gpa),
@@ -269,6 +273,7 @@ pub const Device = struct {
             for (self.transient_textures.items) |texture| {
                 texture.deinit(device);
             }
+
             self.transient_textures.clearRetainingCapacity();
 
             self.freed.clear();
@@ -308,6 +313,8 @@ pub const Device = struct {
     frame_index: usize = 0,
     per_frame_data: []PerFrameData,
 
+    imguiRenderer: ?ImGuiRenderer = null,
+
     submit_timeout_ns: u64 = std.time.ns_per_s * 5,
 
     pub fn init(
@@ -335,6 +342,7 @@ pub const Device = struct {
 
         device.* = VkDevice.init(
             gpa,
+            backend.instance.base,
             backend.instance.proxy,
             physical_device,
             desc.features,
@@ -497,6 +505,7 @@ pub const Device = struct {
                 .releaseWindow = releaseWindow,
                 .submit = submit,
                 .waitIdle = waitIdle,
+                .createImguiPass = createImguiPass,
             },
         };
     }
@@ -940,6 +949,16 @@ pub const Device = struct {
     fn waitIdle(ctx: *anyopaque) void {
         const self: *Self = @ptrCast(@alignCast(ctx));
         _ = self.device.proxy.deviceWaitIdle() catch {};
+    }
+
+    fn createImguiPass(ctx: *anyopaque, target: saturn.RGTextureHandle, graph: *saturn.RenderGraph) ?saturn.RGPassHandle {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+
+        if (self.imguiRenderer) |*imguiRenderer| {
+            return imguiRenderer.createRenderPass(target, graph) catch null;
+        }
+
+        return null;
     }
 
     pub fn getNextFrameData(self: *Self) *PerFrameData {

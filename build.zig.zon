@@ -19,7 +19,6 @@
             .hash = "sdl-0.2.6+3.2.20-7uIn9NgjfwHH5a6HhyLHat2nHU3OP5B05QHhKJKuxEex",
             .lazy = true,
         },
-
         .cimgui = .{
             .url = "git+https://github.com/floooh/dcimgui#4557d7526fdd977f46ca10c2bbdd63532254f8d6",
             .hash = "cimgui-0.1.0-44ClkXnYlwBKnil7TfCWL9z1Zo_2YJCJREzrpdFiGvA1",
@@ -51,8 +50,8 @@
             .hash = "obj-3.0.1-v8OfiujLAABIhb_JGPB7s_4Tc4tkelEazCeOzOMjXV4A",
         },
         .cimgui_zig = .{
-            .url = "git+https://github.com/tiawl/cimgui.zig#cfb014e19acbd70ea4210d5068bcf849fcdf681e",
-            .hash = "cimgui_zig-1.0.0-2XubkqYvvgBJVxF4vdU1kxQVZrOgQrKtLsWAdWZ229Q1",
+            .url = "git+https://github.com/tiawl/cimgui.zig.git#86cf89a9dbd8628dcf677a186581f48120461f52",
+            .hash = "cimgui_zig-1.0.0-2XubktRbvgAfWxyfiag9fB3rdWVur7rOWS1cTgIXesjF",
         },
     },
 }

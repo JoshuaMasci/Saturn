@@ -21,10 +21,4 @@ pub const HeaderV1 = extern struct {
     }
 };
 
-pub const AssetType = enum(u32) {
-    mesh = 1,
-    texture = 2,
-    material = 3,
-    shader = 4,
-    _,
-};
+pub const AssetType = @import("type.zig").AssetType;

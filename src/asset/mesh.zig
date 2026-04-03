@@ -7,6 +7,7 @@ const serde = @import("../serde.zig");
 pub const LoadSettings = struct {
     load_meshlets: bool = true,
 };
+pub const ATYPE: @import("type.zig").AssetType = .mesh;
 
 //TODO: can compress this down by storing types in ints
 pub const Vertex = extern struct {

@@ -17,6 +17,8 @@ const TransferQueue = @import("rendering2/transfer_queue.zig");
 const Scene = @import("rendering2/scene.zig");
 const SceneRenderer = @import("rendering2/scene_renderer.zig");
 
+const imgui = @import("platform2/imgui.zig");
+
 fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
     _ = ctx; // autofix
     _ = cmd; // autofix
@@ -38,6 +40,9 @@ pub fn main() !void {
 
     var app: App = try .init(allocator);
     defer app.deinit();
+
+    try app.platform.initImgui(app.gpu_device, app.window);
+    defer app.platform.deinitImgui();
 
     {
         const cube_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/cube.asset"));
@@ -300,6 +305,14 @@ const App = struct {
             .window_close_requested = windowCloseCallback,
         });
 
+        const IMGUI_ENABLED = true;
+        if (IMGUI_ENABLED) {
+            self.platform.beginImgui();
+            //DO IMGUI STUFF IN HERE
+            imgui.showDemoWindow(null);
+            self.platform.endImgui();
+        }
+
         try self.asset_pool.addTransfers(&self.transfer_queue);
 
         var render_graph: saturn.RenderGraph = .init(temp_allocator);
@@ -327,6 +340,11 @@ const App = struct {
                 null,
                 emptyGraphicsCallback,
             );
+        }
+
+        if (IMGUI_ENABLED) {
+            const imgui_pass_handle = self.gpu_device.createImguiPass(swapchain_texture, &render_graph);
+            _ = imgui_pass_handle; // autofix
         }
 
         try self.gpu_device.submitRenderGraph(temp_allocator, &render_graph);
