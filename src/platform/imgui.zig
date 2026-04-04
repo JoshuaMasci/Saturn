@@ -26,12 +26,20 @@ pub fn end() void {
     c.ImGui_End();
 }
 
-pub fn text(str: [:0]const u8) void {
-    c.ImGui_Text(str);
+pub fn button(label: [:0]const u8) bool {
+    return c.ImGui_Button(label);
+}
+
+pub fn text(label: [:0]const u8) void {
+    c.ImGui_Text(label);
 }
 
 pub fn labelText(label: [:0]const u8, str: [:0]const u8) void {
     c.ImGui_LabelText(label, str);
+}
+
+pub fn sliderFloat(label: [:0]const u8, value: *f32, min: f32, max: f32) bool {
+    return c.ImGui_SliderFloat(label, value, min, max);
 }
 
 pub fn beginMainMenuBar() bool {

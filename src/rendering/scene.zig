@@ -61,3 +61,62 @@ pub fn removeInstance(self: *Self, handle: InstanceHandle) void {
         self.gpa.free(instance.primitives);
     }
 }
+
+//TODO: culling and depth sorting
+pub fn createBuckets(self: *const Self, gpa: std.mem.Allocator, asset_pool: *const AssetPool) error{OutOfMemory}!RenderBuckets {
+    var render_buckets: RenderBuckets = .{ .gpa = gpa };
+
+    var instance_iter = self.instances.iterator();
+    while (instance_iter.nextValue()) |instance| {
+        if (!instance.visable) continue;
+
+        //Is the mesh loaded on the gpu
+        const gpu_mesh = asset_pool.mesh_pool.map.get(instance.mesh) orelse continue;
+
+        const model_matrix = instance.transform.getModelMatrix();
+
+        for (gpu_mesh.cpu_primitives, instance.primitives) |cpu_primitive, scene_primitive| {
+            const material_asset = asset_pool.material_assets.get(scene_primitive.material) orelse continue;
+            const cpu_mat = material_asset.cpu orelse continue;
+            const gpu_mat = material_asset.gpu orelse continue;
+
+            try switch (cpu_mat.alpha_mode) {
+                .@"opaque" => render_buckets.opaque_instances,
+                .mask => render_buckets.alpha_mask_instances,
+                .blend => render_buckets.alpha_blend_instances,
+            }.append(gpa, .{
+                .draw_data = .{
+                    .index_count = cpu_primitive.index_count,
+                    .instance_count = 1,
+                    .first_index = @intCast(gpu_mesh.indices.offset + cpu_primitive.index_offset),
+                    .vertex_offset = @intCast(gpu_mesh.vertices.offset + cpu_primitive.vertex_offset),
+                    .first_instance = 0,
+                },
+                .model_matrix = model_matrix,
+                .material_index = gpu_mat,
+            });
+        }
+    }
+
+    return render_buckets;
+}
+
+const saturn = @import("../root.zig");
+pub const InstanceDrawData = struct {
+    draw_data: saturn.IndirectDrawIndexedCommand,
+    model_matrix: zm.Mat, //TODO: replace with an index into a buffer
+    material_index: u32,
+};
+
+pub const RenderBuckets = struct {
+    gpa: std.mem.Allocator,
+    opaque_instances: std.ArrayList(InstanceDrawData) = .empty,
+    alpha_mask_instances: std.ArrayList(InstanceDrawData) = .empty,
+    alpha_blend_instances: std.ArrayList(InstanceDrawData) = .empty,
+
+    pub fn deinit(self: RenderBuckets) void {
+        self.opaque_instances.deinit(self.gpa);
+        self.alpha_mask_instances.deinit(self.gpa);
+        self.alpha_mask_instances.deinit(self.gpa);
+    }
+};

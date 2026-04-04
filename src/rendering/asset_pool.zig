@@ -196,9 +196,22 @@ pub fn getMaterialAsset(self: *Self, asset_handle: AssetRegistry.Handle) error{O
     }
 
     //TODO: check asset type first
-    const material_asset: MaterialAsset = .{
+    var material_asset: MaterialAsset = .{
         .asset_handle = asset_handle,
     };
+
+    //Load materials immediately
+    if (CpuMaterial.load(
+        self.allocator,
+        self,
+        asset_handle,
+        .{},
+    )) |material| {
+        material_asset.cpu = material;
+        material_asset.gpu = self.material_pool.add(material);
+    } else |err| {
+        std.log.err("Failed to load material {} {}", .{ asset_handle, err });
+    }
 
     const material_asset_handle = try self.material_assets.insert(material_asset);
     errdefer _ = self.material_assets.remove(material_asset_handle);
@@ -226,29 +239,6 @@ pub fn loadAllCpu(self: *Self) void {
             } else |err| {
                 std.log.err("Failed to load mesh {} {}", .{ asset_handle, err });
             }
-        }
-    }
-
-    //Mat first, so it populates textures
-    var material_iter = self.material_assets.iterator();
-    while (material_iter.nextValue()) |asset| {
-        if (asset.cpu != null) continue;
-
-        if (asset.asset_handle) |asset_handle| {
-            if (CpuMaterial.load(
-                self.allocator,
-                self,
-                asset_handle,
-                .{},
-            )) |material| {
-                asset.cpu = material;
-            } else |err| {
-                std.log.err("Failed to load material {} {}", .{ asset_handle, err });
-            }
-        }
-
-        if (asset.cpu) |cpu_mat| {
-            asset.gpu = self.material_pool.add(cpu_mat);
         }
     }
 

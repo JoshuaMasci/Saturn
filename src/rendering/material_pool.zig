@@ -42,6 +42,8 @@ gpa: std.mem.Allocator,
 device: saturn.DeviceInterface,
 
 opaque_material: Material,
+alpha_mask_material: Material,
+alpha_blend_material: Material,
 
 pub fn init(
     gpa: std.mem.Allocator,
@@ -51,27 +53,35 @@ pub fn init(
     var opaque_material: Material = try .init(gpa, device, max_instance_count);
     errdefer opaque_material.deinit();
 
+    var alpha_mask_material: Material = try .init(gpa, device, max_instance_count);
+    errdefer alpha_mask_material.deinit();
+
+    var alpha_blend_material: Material = try .init(gpa, device, max_instance_count);
+    errdefer alpha_blend_material.deinit();
+
     return .{
         .gpa = gpa,
         .device = device,
 
         .opaque_material = opaque_material,
+        .alpha_mask_material = alpha_mask_material,
+        .alpha_blend_material = alpha_blend_material,
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.opaque_material.deinit();
+    self.alpha_mask_material.deinit();
+    self.alpha_blend_material.deinit();
 }
 
 pub fn flush(self: *Self, transfer_queue: *TransferQueue) !void {
     try self.opaque_material.instance_data.flush(transfer_queue);
+    try self.alpha_mask_material.instance_data.flush(transfer_queue);
+    try self.alpha_blend_material.instance_data.flush(transfer_queue);
 }
 
 pub fn add(self: *Self, mat: CpuMaterial) ?u32 {
-    if (mat.alpha_mode != .@"opaque") {
-        return null;
-    }
-
     const gpu_mat: GpuMaterial = .{
         .alpha_mode = @intCast(@intFromEnum(mat.alpha_mode)),
         .alpha_cutoff = mat.alpha_cutoff,
@@ -87,7 +97,11 @@ pub fn add(self: *Self, mat: CpuMaterial) ?u32 {
         .emissive_factor_pad = .{ mat.emissive_factor[0], mat.emissive_factor[1], mat.emissive_factor[2], 0.0 },
     };
 
-    return self.opaque_material.instance_data.create(gpu_mat) catch null;
+    return switch (mat.alpha_mode) {
+        .@"opaque" => self.opaque_material.instance_data,
+        .mask => self.alpha_mask_material.instance_data,
+        .blend => self.alpha_blend_material.instance_data,
+    }.create(gpu_mat) catch null;
 }
 
 pub const GpuMaterial = extern struct {

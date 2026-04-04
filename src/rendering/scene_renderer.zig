@@ -48,13 +48,14 @@ pub fn rebuild(self: *Self, formats: saturn.RenderTargetInfo) saturn.Error!void 
     self.legacy = try LegacyScenePass.init(self.gpa, self.device, self.registry, formats);
 }
 
-pub fn addPasses(self: *const Self, target: saturn.RGTextureHandle, render_graph: *saturn.RenderGraph, scene: *const Scene, camera: *const Camera, asset_pool: *const AssetPool) saturn.Error!void {
+pub fn addPasses(self: *const Self, tpa: std.mem.Allocator, target: saturn.RGTextureHandle, render_graph: *saturn.RenderGraph, scene: *const Scene, camera: *const Camera, asset_pool: *const AssetPool) saturn.Error!void {
     const legacy_pass_data = try render_graph.alloc(LegacyPassData, 1);
     legacy_pass_data[0] = .{
         .legacy_pass = &self.legacy,
         .scene = scene,
         .camera = camera,
         .asset_pool = asset_pool,
+        .render_buckets = try scene.createBuckets(tpa, asset_pool),
     };
 
     const depth_texture = try render_graph.createTransientTexture(.{
@@ -84,11 +85,12 @@ const LegacyPassData = struct {
     scene: *const Scene,
     camera: *const Camera,
     asset_pool: *const AssetPool,
+    render_buckets: Scene.RenderBuckets,
 };
 
 fn legacyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
     const data: *LegacyPassData = @ptrCast(@alignCast(ctx.?));
-    data.legacy_pass.render(cmd, data.scene, data.camera, data.asset_pool, target_resolution);
+    data.legacy_pass.render(cmd, data.render_buckets, data.camera, data.asset_pool, target_resolution);
 }
 
 const LegacyScenePass = struct {
@@ -244,7 +246,7 @@ const LegacyScenePass = struct {
         device.destroyGraphicsPipeline(self.alpha_blend_pipeline);
     }
 
-    pub fn render(self: *const LegacyScenePass, cmd: saturn.GraphicsCommandEncoder, scene: *const Scene, camera: *const Camera, asset_pool: *const AssetPool, target_resolution: [2]u32) void {
+    pub fn render(self: *const LegacyScenePass, cmd: saturn.GraphicsCommandEncoder, render_buckets: Scene.RenderBuckets, camera: *const Camera, asset_pool: *const AssetPool, target_resolution: [2]u32) void {
         const width_float: f32 = @floatFromInt(target_resolution[0]);
         const height_float: f32 = @floatFromInt(target_resolution[1]);
         const aspect_ratio: f32 = width_float / height_float;
@@ -254,52 +256,30 @@ const LegacyScenePass = struct {
         projection_matrix[1][1] *= -1.0; //TODO: only do this for vulkan
         const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
-        //TODO: render opaque instaces first, and reorder non-opaque instances based on distance from camera
-
         cmd.setVertexBuffer(0, .from(asset_pool.mesh_pool.vertex_buffer.buffer), 0);
         cmd.setIndexBuffer(.from(asset_pool.mesh_pool.index_buffer.buffer), .u32, 0);
 
         const texture_info_binding = asset_pool.texture_pool.info_buffer.storage_binding.?;
-        const opaque_mat_instance_binding = asset_pool.material_pool.opaque_material.instance_data.storage_binding.?;
 
-        var instance_iter = scene.instances.iterator();
-        while (instance_iter.nextValue()) |instance| {
-            if (!instance.visable) continue;
+        const mat_instance_binding = asset_pool.material_pool.opaque_material.instance_data.storage_binding.?;
+        cmd.setPipeline(self.opaque_pipeline);
+        for (render_buckets.opaque_instances.items) |instance| {
+            const push_constants = PushConstants{
+                .view_projection_matrix = view_projection_matrix,
+                .model_matrix = instance.model_matrix,
+                .texture_info_binding = texture_info_binding,
+                .material_instance_binding = mat_instance_binding,
+                .material_index = instance.material_index,
+            };
+            cmd.pushConstants(PushConstants, push_constants);
 
-            //Is the mesh loaded on the gpu
-            const gpu_mesh = asset_pool.mesh_pool.map.get(instance.mesh) orelse continue;
-
-            const model_matrix = instance.transform.getModelMatrix();
-
-            for (gpu_mesh.cpu_primitives, instance.primitives) |cpu_primitive, scene_primitive| {
-                const material_asset = asset_pool.material_assets.get(scene_primitive.material) orelse continue;
-                const cpu_mat = material_asset.cpu orelse continue;
-                const gpu_mat = material_asset.gpu orelse continue;
-
-                const pipeline = switch (cpu_mat.alpha_mode) {
-                    .@"opaque" => self.opaque_pipeline,
-                    .mask => continue, //self.alpha_mask_pipeline,
-                    .blend => continue, //self.alpha_blend_pipeline,
-                };
-                cmd.setPipeline(pipeline);
-
-                const push_constants = PushConstants{
-                    .view_projection_matrix = view_projection_matrix,
-                    .model_matrix = model_matrix,
-                    .texture_info_binding = texture_info_binding,
-                    .material_instance_binding = opaque_mat_instance_binding,
-                    .material_index = gpu_mat,
-                };
-                cmd.pushConstants(PushConstants, push_constants);
-
-                cmd.drawIndexed(
-                    cpu_primitive.index_count,
-                    1,
-                    @intCast(gpu_mesh.indices.offset + cpu_primitive.index_offset),
-                    @intCast(gpu_mesh.vertices.offset + cpu_primitive.vertex_offset),
-                    0,
-                );
-            }
+            cmd.drawIndexed(
+                instance.draw_data.index_count,
+                instance.draw_data.instance_count,
+                instance.draw_data.first_index,
+                instance.draw_data.vertex_offset,
+                instance.draw_data.first_instance,
+            );
         }
     }
 };

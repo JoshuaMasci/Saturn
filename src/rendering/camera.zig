@@ -4,14 +4,26 @@ const zm = @import("zmath");
 
 const Transform = @import("../transform.zig");
 
+/// Fov stored in degress
 pub const Fov = union(enum) {
     x: f32,
     y: f32,
 
-    pub fn get_fov_y_rad(self: @This(), aspect_ratio: f32) f32 {
+    pub fn get_fov_y_rad(self: Fov, aspect_ratio: f32) f32 {
         return switch (self) {
             .x => |fov_x| std.math.atan(std.math.tan(std.math.degreesToRadians(fov_x) / 2.0) / aspect_ratio) * 2.0,
             .y => |fov_y| std.math.degreesToRadians(fov_y),
+        };
+    }
+
+    pub fn flip(self: Fov, aspect_ratio: f32) Fov {
+        return switch (self) {
+            .x => |fov_x| .{ .y = std.math.radiansToDegrees(
+                std.math.atan(std.math.tan(std.math.degreesToRadians(fov_x) / 2.0) / aspect_ratio) * 2.0,
+            ) },
+            .y => |fov_y| .{ .x = std.math.radiansToDegrees(
+                std.math.atan(std.math.tan(std.math.degreesToRadians(fov_y) / 2.0) * aspect_ratio) * 2.0,
+            ) },
         };
     }
 };

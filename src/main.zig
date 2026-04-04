@@ -183,6 +183,7 @@ const App = struct {
 
     //Editor Windows
     perf_win: PerformanceWindow = .{},
+    scene_win: SceneWindow = .{},
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try saturn.init(allocator, .{
@@ -319,6 +320,7 @@ const App = struct {
             if (imgui.beginMainMenuBar()) {
                 if (imgui.beginMenu("Windows")) {
                     _ = imgui.menuItemBool(self.perf_win.name, &self.perf_win.open, true);
+                    _ = imgui.menuItemBool(self.scene_win.name, &self.scene_win.open, true);
                     imgui.endMenu();
                 }
 
@@ -329,6 +331,7 @@ const App = struct {
             imgui.showDemoWindow(null);
 
             self.perf_win.draw(tpa);
+            self.scene_win.draw(tpa, &self.camera, self.platform.getWindowSize(self.window));
 
             self.platform.endImgui();
         }
@@ -344,6 +347,7 @@ const App = struct {
 
         if (true) {
             try self.scene_renderer.addPasses(
+                tpa,
                 swapchain_texture,
                 &render_graph,
                 &self.scene,
@@ -385,7 +389,7 @@ fn windowCloseCallback(ctx: ?*anyopaque, window: saturn.WindowHandle) void {
     app.is_running = false;
 }
 
-//TODO: abstract
+//TODO: abstract and interface for windows
 pub const PerformanceWindow = struct {
     name: [:0]const u8 = "Performance",
     open: bool = true,
@@ -403,6 +407,46 @@ pub const PerformanceWindow = struct {
                     imgui.text(std.fmt.allocPrintSentinel(tpa, "Memory Usage: {s}", .{@import("utils.zig").formatBytes(tpa, mem_usage) catch ""}, 0) catch "");
                 }
 
+                imgui.end();
+            }
+        }
+    }
+};
+
+pub const SceneWindow = struct {
+    name: [:0]const u8 = "Scene",
+    open: bool = true,
+
+    average_dt: f32 = 0.0,
+    mem_usage: ?usize = null,
+
+    pub fn draw(self: *SceneWindow, tpa: std.mem.Allocator, camera: *DebugCamera, window_size: [2]u32) void {
+        const width_float: f32 = @floatFromInt(window_size[0]);
+        const height_float: f32 = @floatFromInt(window_size[1]);
+        const aspect_ratio: f32 = width_float / height_float;
+
+        _ = tpa; // autofix
+        if (self.open) {
+            if (imgui.begin(self.name, &self.open, 0)) {
+                switch (camera.camera) {
+                    .perspective => |*perspective| {
+                        if (imgui.button("Flip Fov Axis")) {
+                            perspective.fov = perspective.fov.flip(aspect_ratio);
+                        }
+
+                        switch (perspective.fov) {
+                            .x => |*x| {
+                                _ = imgui.sliderFloat("Fov X", x, 30, 120);
+                            },
+                            .y => |*y| {
+                                _ = imgui.sliderFloat("Fov Y", y, 10, 80);
+                            },
+                        }
+                    },
+                    else => {
+                        imgui.text("Not implmented for other camera types");
+                    },
+                }
                 imgui.end();
             }
         }
