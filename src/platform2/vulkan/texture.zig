@@ -115,6 +115,8 @@ pub fn getInfo(self: *const Self) saturn.TextureInfo {
         .format = self.format,
         .usage = self.usage,
         .memory = self.memory,
+        .sampled = if (self.sampled_binding) |binding| binding.asU32() else null,
+        .storage = if (self.storage_binding) |binding| binding.asU32() else null,
     };
 }
 

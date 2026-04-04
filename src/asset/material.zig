@@ -130,50 +130,6 @@ pub const Json = struct {
     }
 };
 
-// Gpu Material
-pub const Gpu = extern struct {
-    const ExpectedSize: usize = @sizeOf([4]f32) * 5;
-    comptime {
-        if (@sizeOf(Gpu) != ExpectedSize) {
-            @compileError("Material.Gpu is incorrect size");
-        }
-    }
-
-    // Block 1 (Vec4 size)
-    alpha_mode: i32,
-    alpha_cutoff: f32,
-    base_color_texture: u32,
-    metallic_roughness_texture: u32,
-
-    // Block 2 (Vec4 size)
-    emissive_texture: u32,
-    occlusion_texture: u32,
-    normal_texture: u32,
-    pad0: i32 = 0,
-
-    // Block 3 (3 * Vec4 size)
-    base_color_factor: [4]f32,
-    metallic_roughness_factor_pad2: [4]f32,
-    emissive_factor_pad: [4]f32,
-
-    pub fn pack(material: Self) Gpu {
-        return .{
-            .alpha_mode = @intCast(@intFromEnum(material.alpha_mode)),
-            .alpha_cutoff = material.alpha_cutoff,
-            .base_color_texture = 0,
-            .metallic_roughness_texture = 0,
-
-            .emissive_texture = 0,
-            .occlusion_texture = 0,
-            .normal_texture = 0,
-
-            .base_color_factor = material.base_color_factor,
-            .metallic_roughness_factor_pad2 = .{ material.metallic_roughness_factor[0], material.metallic_roughness_factor[1], 0.0, 0.0 },
-            .emissive_factor_pad = .{ material.emissive_factor[0], material.emissive_factor[1], material.emissive_factor[2], 0.0 },
-        };
-    }
-};
-
 // Packed Material for asset system
 const Packed = extern struct {
     alpha_mode: u32,

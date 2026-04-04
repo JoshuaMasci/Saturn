@@ -27,7 +27,7 @@ pub const TextureInfo = struct {
 
         return .{
             .loaded = 1,
-            .sampled_binding = info.sampled orelse 0,
+            .sampled_binding = info.sampled.?,
             .width = info.extent.width,
             .height = info.extent.height,
             .depth = info.extent.depth,

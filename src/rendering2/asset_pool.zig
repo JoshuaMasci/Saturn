@@ -31,7 +31,7 @@ pub const TextureAssetHandle = TexturePool.TextureHandle;
 pub const MaterialAsset = struct {
     asset_handle: ?AssetRegistry.Handle,
     cpu: ?CpuMaterial = null,
-    gpu: ?void = null,
+    gpu: ?u32 = null,
 };
 pub const MaterialAssetMap = SlotMap(MaterialAsset);
 pub const MaterialAssetHandle = MaterialAssetMap.Handle;
@@ -196,7 +196,6 @@ pub fn getMaterialAsset(self: *Self, asset_handle: AssetRegistry.Handle) error{O
     }
 
     //TODO: check asset type first
-
     const material_asset: MaterialAsset = .{
         .asset_handle = asset_handle,
     };
@@ -247,6 +246,10 @@ pub fn loadAllCpu(self: *Self) void {
                 std.log.err("Failed to load material {} {}", .{ asset_handle, err });
             }
         }
+
+        if (asset.cpu) |cpu_mat| {
+            asset.gpu = self.material_pool.add(cpu_mat);
+        }
     }
 
     var texture_iter = self.texture_assets.valueIterator();
@@ -283,6 +286,8 @@ pub fn loadAllGpu(self: *Self) void {
 
 pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
     try self.mesh_pool.info_buffer.flush(transfer_queue);
+    try self.material_pool.flush(transfer_queue);
+    try self.texture_pool.info_buffer.flush(transfer_queue);
 
     if (self.mesh_gpu_load_list.items.len != 0) {
         const MAX_MESH_UPLOADS = 100;

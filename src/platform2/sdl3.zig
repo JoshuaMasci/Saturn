@@ -322,7 +322,7 @@ pub fn initImgui(ctx: *anyopaque, device: saturn.DeviceInterface, window: saturn
     io.ConfigFlags |= cimgui.ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= cimgui.ImGuiConfigFlags_NavEnableGamepad;
     io.ConfigFlags |= cimgui.ImGuiConfigFlags_DockingEnable;
-    io.ConfigFlags |= cimgui.ImGuiConfigFlags_ViewportsEnable;
+    //io.ConfigFlags |= cimgui.ImGuiConfigFlags_ViewportsEnable;
 }
 
 pub fn deinitImgui(ctx: *anyopaque) void {
@@ -362,11 +362,11 @@ pub fn endImgui(ctx: *anyopaque) void {
         cimgui.ImGui_EndFrame();
 
         // Update and Render additional Platform Windows
-        const io: *cimgui.struct_ImGuiIO_t = cimgui.ImGui_GetIO();
-        if (io.ConfigFlags & cimgui.ImGuiConfigFlags_ViewportsEnable == 0) {
-            cimgui.ImGui_UpdatePlatformWindows();
-            cimgui.ImGui_RenderPlatformWindowsDefault();
-        }
+        // const io: *cimgui.struct_ImGuiIO_t = cimgui.ImGui_GetIO();
+        // if (io.ConfigFlags & cimgui.ImGuiConfigFlags_ViewportsEnable == 0) {
+        //     cimgui.ImGui_UpdatePlatformWindows();
+        //     cimgui.ImGui_RenderPlatformWindowsDefault();
+        // }
     }
 }
 

@@ -1,3 +1,6 @@
+#include "include/bindless.glsl"
+#include "include/texture.glsl"
+
 struct Material
 {
     int alpha_mode;
@@ -20,29 +23,24 @@ layout(set = 0, binding = 1) readonly buffer MaterialBuffer
     Material materials[];
 } materialBuffer[];
 
-layout(set = 0, binding = 2) uniform sampler2D BindlessTextures[];
-
 layout(location = 0) in vec2 frag_uv0;
 layout(location = 1) in vec2 frag_uv1;
 layout(location = 2) flat in uint material_index;
 
 layout(location = 0) out vec4 out_frag_color;
 
-vec4 sampleTexture(uint index, vec2 uv)
-{
-    return texture(BindlessTextures[index], uv);
-}
-
 void main()
 {
-    // Material material = materialBuffer[push_constants.material_binding].materials[material_index];
+    Material material = materialBuffer[getIndex(push_constants.material_binding)].materials[material_index];
 
-    // vec4 base_color = material.base_color_factor;
+    vec4 base_color = material.base_color_factor;
 
-    // if (material.base_color_texture != 0u)
-    // {
-    //     base_color *= sampleTexture(material.base_color_texture, frag_uv0);
-    // }
+    if (material.base_color_texture != 0u)
+    {
+        base_color *= sampleTexture(push_constants.texture_info_binding, material.base_color_texture, frag_uv0);
+    }
+
+    out_frag_color = base_color;
 
     // #ifdef ALPHA_CUTOFF
     // if (base_color.a < material.alpha_cutoff)
@@ -51,5 +49,5 @@ void main()
     // }
     // #endif
 
-    out_frag_color = vec4(frag_uv0, 0.0, 1.0);
+    //out_frag_color = vec4(frag_uv0, 0.0, 1.0);
 }

@@ -181,6 +181,9 @@ const App = struct {
     frames: f32 = 0,
     average_dt: f32 = 0.0,
 
+    //Editor Windows
+    perf_win: PerformanceWindow = .{},
+
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try saturn.init(allocator, .{
             .app_info = .{ .name = "Saturn Engine", .version = .init(0, 0, 1, 0) },
@@ -284,9 +287,8 @@ const App = struct {
     }
 
     pub fn update(self: *Self, delta_time: f32, mem_usage_opt: ?usize) !void {
-        _ = mem_usage_opt; // autofix
         _ = self.temp_allocator.reset(.retain_capacity);
-        const temp_allocator = self.temp_allocator.allocator();
+        const tpa = self.temp_allocator.allocator();
 
         {
             self.timer += delta_time;
@@ -299,6 +301,9 @@ const App = struct {
             }
         }
 
+        self.perf_win.average_dt = self.average_dt;
+        self.perf_win.mem_usage = mem_usage_opt;
+
         self.platform.processEvents(.{
             .ctx = self,
             .quit = quitCallback,
@@ -308,14 +313,29 @@ const App = struct {
         const IMGUI_ENABLED = true;
         if (IMGUI_ENABLED) {
             self.platform.beginImgui();
+            imgui.beginDocking();
+
+            //Menu
+            if (imgui.beginMainMenuBar()) {
+                if (imgui.beginMenu("Windows")) {
+                    _ = imgui.menuItemBool(self.perf_win.name, &self.perf_win.open, true);
+                    imgui.endMenu();
+                }
+
+                imgui.endMainMenuBar();
+            }
+
             //DO IMGUI STUFF IN HERE
             imgui.showDemoWindow(null);
+
+            self.perf_win.draw(tpa);
+
             self.platform.endImgui();
         }
 
         try self.asset_pool.addTransfers(&self.transfer_queue);
 
-        var render_graph: saturn.RenderGraph = .init(temp_allocator);
+        var render_graph: saturn.RenderGraph = .init(tpa);
         defer render_graph.deinit();
 
         try self.transfer_queue.buildPasses(&render_graph);
@@ -347,7 +367,7 @@ const App = struct {
             _ = imgui_pass_handle; // autofix
         }
 
-        try self.gpu_device.submitRenderGraph(temp_allocator, &render_graph);
+        try self.gpu_device.submitRenderGraph(tpa, &render_graph);
     }
 };
 
@@ -364,3 +384,27 @@ fn windowCloseCallback(ctx: ?*anyopaque, window: saturn.WindowHandle) void {
     std.log.info("Window close requested", .{});
     app.is_running = false;
 }
+
+//TODO: abstract
+pub const PerformanceWindow = struct {
+    name: [:0]const u8 = "Performance",
+    open: bool = true,
+
+    average_dt: f32 = 0.0,
+    mem_usage: ?usize = null,
+
+    pub fn draw(self: *PerformanceWindow, tpa: std.mem.Allocator) void {
+        if (self.open) {
+            if (imgui.begin(self.name, &self.open, 0)) {
+                imgui.labelText("Delta Time (ms)", std.fmt.allocPrintSentinel(tpa, "{d:.3}", .{self.average_dt * 1000}, 0) catch "");
+                imgui.labelText("FPS", std.fmt.allocPrintSentinel(tpa, "{d:.3}", .{1.0 / self.average_dt}, 0) catch "");
+
+                if (self.mem_usage) |mem_usage| {
+                    imgui.labelText("Memory Usage", tpa.dupeZ(u8, @import("utils.zig").formatBytes(tpa, mem_usage) catch "") catch "");
+                }
+
+                imgui.end();
+            }
+        }
+    }
+};

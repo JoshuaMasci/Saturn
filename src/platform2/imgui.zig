@@ -10,6 +10,69 @@ pub const c = @cImport({
     @cInclude("backends/dcimgui_impl_vulkan.h");
 });
 
+pub fn beginDocking() void {
+    _ = c.ImGui_DockSpaceOverViewportEx(0, c.ImGui_GetMainViewport(), c.ImGuiDockNodeFlags_PassthruCentralNode, null);
+}
+
 pub fn showDemoWindow(open: ?*bool) void {
     c.ImGui_ShowDemoWindow(open);
 }
+
+pub fn begin(name: [:0]const u8, open: ?*bool, flags: c_int) bool {
+    return c.ImGui_Begin(name, open, flags);
+}
+
+pub fn end() void {
+    c.ImGui_End();
+}
+
+pub fn text(str: [:0]const u8) void {
+    c.ImGui_Text(str);
+}
+
+pub fn labelText(label: [:0]const u8, str: [:0]const u8) void {
+    c.ImGui_LabelText(label, str);
+}
+
+pub fn beginMainMenuBar() bool {
+    return c.ImGui_BeginMainMenuBar();
+}
+pub fn endMainMenuBar() void {
+    c.ImGui_EndMainMenuBar();
+}
+
+pub fn beginMenu(label: [:0]const u8) bool {
+    return c.ImGui_BeginMenu(label);
+}
+pub fn endMenu() void {
+    c.ImGui_EndMenu();
+}
+
+pub fn menuItemBool(label: [:0]const u8, value: ?*bool, enabled: bool) bool {
+    return c.ImGui_MenuItemBoolPtr(label, null, value, enabled);
+}
+
+//TODO: impliment instead of using the Imgui Vulkan backend
+// The Primairy benifits would be better integrate with the RenderGraph and make use of bindless textures
+// Eventually it would be nice to completely detach from the Imgui backends but the platform impl is much more compilicated than the renderer
+pub const Renderer = struct {
+    const Self = @This();
+
+    device: saturn.Device,
+
+    pub fn init(device: saturn.Device) saturn.Error!Self {
+        return .{
+            .device = device,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        _ = self; // autofix
+    }
+
+    pub fn addRenderPasses(self: *Self, main_target: saturn.RGTextureHandle, graph: *saturn.RenderGraph) saturn.Error!void {
+        _ = self; // autofix
+        _ = main_target; // autofix
+        _ = graph; // autofix
+    }
+};

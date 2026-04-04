@@ -10,7 +10,9 @@ pub fn GpuPool(comptime T: type) type {
         allocator: std.mem.Allocator,
         device: saturn.DeviceInterface,
         buffer: saturn.BufferHandle,
-        device_address: u64,
+
+        device_address: ?u64,
+        storage_binding: ?u32,
 
         element_count: usize,
         free_list: std.DynamicBitSetUnmanaged,
@@ -35,7 +37,7 @@ pub fn GpuPool(comptime T: type) type {
             });
             errdefer device.destroyBuffer(buffer);
 
-            const device_address = device.getBufferInfo(buffer).?.device_address.?;
+            const buffer_info = device.getBufferInfo(buffer).?;
 
             var free_list = try std.DynamicBitSetUnmanaged.initFull(allocator, element_count);
             errdefer free_list.deinit(allocator);
@@ -51,7 +53,8 @@ pub fn GpuPool(comptime T: type) type {
                 .allocator = allocator,
                 .device = device,
                 .buffer = buffer,
-                .device_address = device_address,
+                .device_address = buffer_info.device_address,
+                .storage_binding = buffer_info.storage,
                 .element_count = element_count,
                 .free_list = free_list,
                 .default = default,

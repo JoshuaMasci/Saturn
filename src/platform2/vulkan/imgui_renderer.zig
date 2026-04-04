@@ -1,3 +1,5 @@
+//TODO: deprecate this once the Saturn Imgui Renderer is implimentated
+
 const std = @import("std");
 
 const saturn = @import("../../root.zig");
@@ -99,7 +101,7 @@ pub fn createRenderPass(self: Self, target: saturn.RGTextureHandle, graph: *satu
     const ctx_data = try graph.dupe(Data, .{ .target_index = target.idx });
 
     const pass = try graph.addGraphicsPass(
-        "Empty Swapchain Pass",
+        "Main ImGui Pass",
         .{ .color_attachments = &.{.{
             .texture = target,
             .clear = null,

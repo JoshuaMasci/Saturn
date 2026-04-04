@@ -95,7 +95,8 @@ const LegacyScenePass = struct {
     const PushConstants = extern struct {
         view_projection_matrix: zm.Mat,
         model_matrix: zm.Mat,
-        material_info_binding: u32,
+        texture_info_binding: u32,
+        material_instance_binding: u32,
         material_index: u32,
     };
 
@@ -258,6 +259,9 @@ const LegacyScenePass = struct {
         cmd.setVertexBuffer(0, .from(asset_pool.mesh_pool.vertex_buffer.buffer), 0);
         cmd.setIndexBuffer(.from(asset_pool.mesh_pool.index_buffer.buffer), .u32, 0);
 
+        const texture_info_binding = asset_pool.texture_pool.info_buffer.storage_binding.?;
+        const opaque_mat_instance_binding = asset_pool.material_pool.opaque_material.instance_data.storage_binding.?;
+
         var instance_iter = scene.instances.iterator();
         while (instance_iter.nextValue()) |instance| {
             if (!instance.visable) continue;
@@ -269,9 +273,10 @@ const LegacyScenePass = struct {
 
             for (gpu_mesh.cpu_primitives, instance.primitives) |cpu_primitive, scene_primitive| {
                 const material_asset = asset_pool.material_assets.get(scene_primitive.material) orelse continue;
-                const material = material_asset.cpu orelse continue;
+                const cpu_mat = material_asset.cpu orelse continue;
+                const gpu_mat = material_asset.gpu orelse continue;
 
-                const pipeline = switch (material.alpha_mode) {
+                const pipeline = switch (cpu_mat.alpha_mode) {
                     .@"opaque" => self.opaque_pipeline,
                     .mask => continue, //self.alpha_mask_pipeline,
                     .blend => continue, //self.alpha_blend_pipeline,
@@ -281,8 +286,9 @@ const LegacyScenePass = struct {
                 const push_constants = PushConstants{
                     .view_projection_matrix = view_projection_matrix,
                     .model_matrix = model_matrix,
-                    .material_info_binding = 0, // TODO: Integrate with material system
-                    .material_index = 0, // TODO: Get material buffer index
+                    .texture_info_binding = texture_info_binding,
+                    .material_instance_binding = opaque_mat_instance_binding,
+                    .material_index = gpu_mat,
                 };
                 cmd.pushConstants(PushConstants, push_constants);
 
