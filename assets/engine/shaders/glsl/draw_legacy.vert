@@ -19,6 +19,7 @@ layout(location = 4) in vec2 uv1;
 layout(location = 0) out vec2 frag_uv0;
 layout(location = 1) out vec2 frag_uv1;
 layout(location = 2) flat out uint material_index;
+layout(location = 3) out vec3 frag_norm;
 
 void main()
 {
@@ -33,4 +34,5 @@ void main()
     frag_uv0 = uv0,
     frag_uv1 = uv1,
     material_index = push_constants.material_index;
+    frag_norm = world_normal;
 }

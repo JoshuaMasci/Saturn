@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const SdlPlatform = @import("platform2/sdl3.zig");
+const SdlPlatform = @import("platform/sdl3.zig");
 
 // ----------------------------
 // Root Functions

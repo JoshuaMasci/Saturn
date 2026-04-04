@@ -1,9 +1,5 @@
 const std = @import("std");
 
-const Settings = @import("../rendering/settings.zig");
-
-pub const Controller = @import("sdl3/controller.zig");
-
 pub const c = @cImport({
     @cDefine("SDL_DISABLE_OLD_NAMES", {});
     @cInclude("SDL3/SDL.h");
@@ -13,423 +9,393 @@ pub const c = @cImport({
     @cDefine("SDL_MAIN_HANDLED", {});
 });
 
-pub fn init(allocator: std.mem.Allocator) !void {
-    _ = allocator; // autofix
+const saturn = @import("../root.zig");
+const cimgui = @import("imgui.zig").c;
+
+//TODO: use tagged union
+const RenderingPlatform = @import("vulkan/platform.zig");
+const RenderingBackend = RenderingPlatform.Backend;
+const RenderingDevice = RenderingPlatform.Device;
+
+const Self = @This();
+
+gpa: std.mem.Allocator,
+backend: *RenderingBackend,
+
+imgui_opt: ?struct {
+    device: saturn.DeviceInterface,
+    window: saturn.WindowHandle,
+} = null,
+
+pub fn init(gpa: std.mem.Allocator, desc: saturn.PlatformDesc) saturn.Error!Self {
     const compile_version = c.SDL_VERSION;
-    std.log.info("compiled against sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(compile_version), c.SDL_VERSIONNUM_MINOR(compile_version), c.SDL_VERSIONNUM_MICRO(compile_version) });
+    std.log.info("Compiled with sdl: {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(compile_version), c.SDL_VERSIONNUM_MINOR(compile_version), c.SDL_VERSIONNUM_MICRO(compile_version) });
 
     const version = c.SDL_GetVersion();
-    std.log.info("Starting sdl {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
+    std.log.info("Running with sdl:  {}.{}.{}", .{ c.SDL_VERSIONNUM_MAJOR(version), c.SDL_VERSIONNUM_MINOR(version), c.SDL_VERSIONNUM_MICRO(version) });
+
+    if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
+        return error.FailedToInitPlatform;
+    }
+    errdefer c.SDL_Quit();
 
     if (c.SDL_GetCurrentVideoDriver()) |driver| {
         std.log.info("SDL3 using {s} backend", .{driver});
     }
 
-    if (!c.SDL_Init(c.SDL_INIT_EVENTS | c.SDL_INIT_VIDEO | c.SDL_INIT_GAMEPAD | c.SDL_INIT_HAPTIC)) {
-        return error.sdlInitFailed;
+    const backend = try gpa.create(RenderingBackend);
+    errdefer gpa.destroy(backend);
+
+    if (c.SDL_Vulkan_LoadLibrary(null) == false) {
+        return error.FailedToInitRenderingBackend;
     }
+
+    const loader: vk.PfnGetInstanceProcAddr = @ptrCast(c.SDL_Vulkan_GetVkGetInstanceProcAddr());
+
+    var ext_len: u32 = 0;
+    const exts = c.SDL_Vulkan_GetInstanceExtensions(&ext_len);
+
+    backend.* = try .init(
+        gpa,
+        loader,
+        exts[0..ext_len],
+        createSurface,
+        vkGetWindowSize,
+        null,
+        desc.app_info,
+        desc.app_info,
+        desc.validation,
+    );
+    errdefer backend.deinit();
+
+    return .{
+        .gpa = gpa,
+        .backend = backend,
+    };
 }
 
-pub fn deinit() void {
+pub fn deinit(self: *Self) void {
+    self.backend.deinit();
+    self.gpa.destroy(self.backend);
+
     std.log.info("Quiting sdl", .{});
     c.SDL_Quit();
 }
 
-pub const Window = struct {
-    const Self = @This();
+pub fn interface(self: *Self) saturn.PlatformInterface {
+    return .{
+        .ctx = self,
+        .vtable = &.{
+            .process_events = process_events,
 
-    handle: *c.SDL_Window,
+            .createWindow = createWindow,
+            .destroyWindow = destroyWindow,
+            .getWindowSize = getWindowSize,
 
-    pub fn init(name: [:0]const u8, size: Settings.WindowSize) Self {
-        var window_width: i32 = 1600;
-        var window_height: i32 = 900;
-        var window_flags = c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_VULKAN;
+            .getDevices = getDevices,
 
-        switch (size) {
-            .windowed => |window_size| {
-                window_width = window_size[0];
-                window_height = window_size[1];
-            },
-            .maximized => window_flags |= c.SDL_WINDOW_MAXIMIZED,
-            .fullscreen => window_flags |= c.SDL_WINDOW_FULLSCREEN,
-        }
+            .doesDeviceSupportPresent = doesDeviceSupportPresent,
+            .getWindowSupport = getWindowSupport,
 
-        const handle = c.SDL_CreateWindow(name, window_width, window_height, window_flags).?;
+            .createDevice = createDevice,
+            .destroyDevice = destroyDevice,
 
-        return .{ .handle = handle };
-    }
+            .initImgui = initImgui,
+            .deinitImgui = deinitImgui,
 
-    pub fn deinit(self: *Self) void {
-        _ = c.SDL_DestroyWindowSurface(self.handle);
-    }
-
-    pub fn getSize(self: @This()) [2]u32 {
-        var w: c_int = 0;
-        var h: c_int = 0;
-        _ = c.SDL_GetWindowSize(self.handle, &w, &h);
-        return .{ @intCast(w), @intCast(h) };
-    }
-};
-
-pub const Event = c.SDL_Event;
-pub const EventCallback = struct {
-    data: ?*anyopaque = null,
-    on_event: ?*const fn (data: ?*anyopaque, event: *const Event) void = null,
-};
-
-pub const WindowCallbacks = struct {
-    data: ?*anyopaque = null,
-    resize: ?*const fn (data: ?*anyopaque, window: Window, size: [2]u32) void = null,
-    close_requested: ?*const fn (data: ?*anyopaque, window: Window) void = null,
-};
-
-pub const Input = struct {
-    const Self = @This();
-
-    allocator: std.mem.Allocator,
-
-    should_quit: bool,
-    keyboard: ?*Keyboard = null,
-    mouse: ?*Mouse = null,
-    controllers: std.AutoArrayHashMap(c.SDL_JoystickID, *Controller),
-
-    pub fn init(allocator: std.mem.Allocator) !Self {
-        var keyboard: ?*Keyboard = null;
-        if (c.SDL_HasKeyboard()) {
-            keyboard = try allocator.create(Keyboard);
-            keyboard.?.* = Keyboard{};
-        } else {
-            std.log.err("No Keyboard", .{});
-        }
-
-        var mouse: ?*Mouse = null;
-        if (c.SDL_HasMouse()) {
-            mouse = try allocator.create(Mouse);
-            mouse.?.* = Mouse{};
-        } else {
-            std.log.err("No Mouse", .{});
-        }
-
-        const controllers = std.AutoArrayHashMap(c.SDL_JoystickID, *Controller).init(allocator);
-
-        return .{
-            .allocator = allocator,
-            .should_quit = false,
-            .keyboard = keyboard,
-            .mouse = mouse,
-            .controllers = controllers,
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        for (self.controllers.values()) |controller| {
-            controller.deinit();
-            self.allocator.destroy(controller);
-        }
-        self.controllers.deinit();
-
-        if (self.keyboard) |keyboard| {
-            self.allocator.destroy(keyboard);
-        }
-        if (self.mouse) |mouse| {
-            self.allocator.destroy(mouse);
-        }
-    }
-
-    pub fn captureMouse(self: *Self, window: Window) void {
-        if (self.mouse) |mouse| {
-            mouse.capture(window);
-        }
-    }
-
-    pub fn releaseMouse(self: *Self) void {
-        if (self.mouse) |mouse| {
-            mouse.release();
-        }
-    }
-
-    pub fn isMouseCaptured(self: *Self) bool {
-        if (self.mouse) |mouse| {
-            return mouse.isCaptured();
-        }
-        return false;
-    }
-
-    pub fn isMousePressed(self: *Self, button: Mouse.Button) bool {
-        if (self.mouse) |mouse| {
-            return mouse.button_state.get(button).is_pressed and !mouse.button_state.get(button).was_pressed_last_frame;
-        }
-
-        return false;
-    }
-
-    pub fn isMouseDown(self: *Self, button: Mouse.Button) bool {
-        if (self.mouse) |mouse| {
-            return mouse.button_state.get(button).is_pressed;
-        }
-
-        return false;
-    }
-
-    pub fn getMousePosition(self: *Self) ?[2]f32 {
-        if (self.mouse) |mouse| {
-            _ = mouse; // autofix
-            var pos: [2]f32 = @splat(0.0);
-            _ = c.SDL_GetMouseState(@ptrCast(&pos[0]), @ptrCast(&pos[1]));
-            return pos;
-        }
-        return null;
-    }
-
-    pub fn proccessEvents(self: *Self, event_callback: EventCallback, window_callbacks: WindowCallbacks) !void {
-        if (self.keyboard) |keyboard| {
-            keyboard.beginFrame();
-        }
-
-        if (self.mouse) |mouse| {
-            mouse.beginFrame();
-        }
-
-        for (self.controllers.values()) |controller| {
-            controller.beginFrame();
-        }
-
-        var event: c.SDL_Event = undefined;
-        while (c.SDL_PollEvent(&event)) {
-            if (event_callback.on_event) |on_event| {
-                on_event(event_callback.data, &event);
-            }
-
-            switch (event.type) {
-                c.SDL_EVENT_WINDOW_RESIZED => {
-                    if (window_callbacks.resize) |resize_fn| {
-                        if (c.SDL_GetWindowFromID(event.window.windowID)) |handle| {
-                            const window: Window = .{ .handle = handle };
-                            const size: [2]u32 = .{ @intCast(event.window.data1), @intCast(event.window.data2) };
-                            resize_fn(window_callbacks.data, window, size);
-                        } else {
-                            std.log.warn("SDL_GetWindowFromID Failed for ID({})", .{event.window.windowID});
-                        }
-                    }
-                },
-                c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
-                    if (window_callbacks.close_requested) |close_fn| {
-                        if (c.SDL_GetWindowFromID(event.window.windowID)) |handle| {
-                            const window: Window = .{ .handle = handle };
-                            close_fn(window_callbacks.data, window);
-                        } else {
-                            std.log.warn("SDL_GetWindowFromID Failed for ID({})", .{event.window.windowID});
-                        }
-                    }
-                },
-                c.SDL_EVENT_QUIT => {
-                    self.should_quit = true;
-                },
-                c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
-                    // Releases mouse so it can't ever get stuck
-                    if (event.key.scancode == c.SDL_SCANCODE_ESCAPE and event.key.down) {
-                        self.releaseMouse();
-                    }
-
-                    if (self.keyboard) |keyboard| {
-                        keyboard.proccessEvent(&event);
-                    }
-                },
-                c.SDL_EVENT_MOUSE_ADDED => {
-                    std.log.info("Mouse Added: {}", .{event.mdevice.which});
-                },
-                c.SDL_EVENT_MOUSE_REMOVED => {
-                    std.log.info("Mouse Remove: {}", .{event.mdevice.which});
-                },
-                c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_WHEEL, c.SDL_EVENT_MOUSE_MOTION => {
-                    if (self.mouse) |mouse| {
-                        mouse.proccessEvent(&event);
-                    }
-                },
-                c.SDL_EVENT_GAMEPAD_BUTTON_UP, c.SDL_EVENT_GAMEPAD_BUTTON_DOWN => {
-                    if (self.controllers.get(event.gbutton.which)) |controller| {
-                        controller.proccessEvent(&event);
-                    }
-                },
-                c.SDL_EVENT_GAMEPAD_AXIS_MOTION => {
-                    if (self.controllers.get(event.gaxis.which)) |controller| {
-                        controller.proccessEvent(&event);
-                    }
-                },
-                c.SDL_EVENT_GAMEPAD_ADDED => {
-                    if (!self.controllers.contains(event.gdevice.which)) {
-                        const controller = try self.allocator.create(Controller);
-                        controller.* = try .init(self.allocator, c.SDL_OpenGamepad(event.gdevice.which).?);
-                        std.log.info("Gamepad Added: {s}({})", .{ controller.name, event.gdevice.which });
-
-                        try self.controllers.put(controller.joystick, controller);
-                    }
-                },
-                c.SDL_EVENT_GAMEPAD_REMOVED => {
-                    if (self.controllers.fetchSwapRemove(event.gdevice.which)) |entry| {
-                        std.log.info("Gamepad Removed: {s}({})", .{ entry.value.name, event.gdevice.which });
-                        entry.value.deinit();
-                        self.allocator.destroy(entry.value);
-                    }
-                },
-                else => {},
-            }
-        }
-    }
-};
-
-pub const ButtonState = struct {
-    timestamp: u64 = 0,
-    is_pressed: bool = false,
-    was_pressed_last_frame: bool = false,
-};
-
-pub const AxisState = struct {
-    timestamp: u64 = 0,
-    value: f32 = 0.0,
-};
-
-const Keyboard = struct {
-    const Self = @This();
-
-    button_state: [c.SDL_SCANCODE_COUNT]ButtonState = @splat(.{}),
-
-    fn beginFrame(self: *Self) void {
-        for (&self.button_state) |*button_state| {
-            button_state.was_pressed_last_frame = button_state.is_pressed;
-        }
-    }
-
-    fn proccessEvent(self: *Self, event: *c.SDL_Event) void {
-        switch (event.type) {
-            c.SDL_EVENT_KEY_UP, c.SDL_EVENT_KEY_DOWN => {
-                self.button_state[event.key.scancode].timestamp = event.key.timestamp;
-                self.button_state[event.key.scancode].is_pressed = event.key.down;
-            },
-            else => {},
-        }
-    }
-};
-
-const MouseMovementState = union(enum) {
-    active: [2]AxisState, // Currently moving this frame
-    previous: void, // Moved in the last frame, not this one
-    idle: void, // No recent movement
-};
-
-const Mouse = struct {
-    const Self = @This();
-
-    const Button = enum(u32) {
-        left = c.SDL_BUTTON_LEFT,
-        middle = c.SDL_BUTTON_MIDDLE,
-        right = c.SDL_BUTTON_RIGHT,
-        extra1 = c.SDL_BUTTON_X1,
-        extra2 = c.SDL_BUTTON_X2,
+            .beginImgui = beginImgui,
+            .endImgui = endImgui,
+        },
     };
+}
 
-    button_state: std.EnumArray(Button, ButtonState) = .initFill(.{}),
-    axis_state: MouseMovementState = .idle,
+pub fn process_events(ctx: *anyopaque, callbacks: saturn.PlatformCallbacks) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
 
-    captured_window: ?Window = null,
-
-    fn isCaptured(self: *Self) bool {
-        if (self.captured_window) |window| {
-            if (c.SDL_GetWindowRelativeMouseMode(window.handle)) {
-                return true;
-            }
-            self.captured_window = null;
+    var event: c.SDL_Event = undefined;
+    while (c.SDL_PollEvent(&event)) {
+        if (self.imgui_opt != null) {
+            _ = cimgui.cImGui_ImplSDL3_ProcessEvent(@ptrCast(&event));
         }
 
-        return false;
-    }
-
-    fn capture(self: *Self, window: Window) void {
-        if (c.SDL_SetWindowRelativeMouseMode(window.handle, true) == true) {
-            self.captured_window = window;
-        }
-    }
-
-    fn release(self: *Self) void {
-        if (self.captured_window) |window| {
-            _ = c.SDL_SetWindowRelativeMouseMode(window.handle, false);
-            self.captured_window = null;
-        }
-    }
-
-    fn beginFrame(self: *Self) void {
-        for (&self.button_state.values) |*button_state| {
-            button_state.was_pressed_last_frame = button_state.is_pressed;
-        }
-
-        // Clears mouse movement for this new frame
-        // .last is used if the mouse moved last frame, so this frame the mouse axis is reset to 0,0 this frame
-        self.axis_state = switch (self.axis_state) {
-            .active => |_| .previous,
-            .previous => .idle,
-            .idle => .idle,
-        };
-    }
-
-    fn proccessEvent(self: *Self, event: *c.SDL_Event) void {
         switch (event.type) {
-            c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
-                const button = std.meta.intToEnum(Button, event.button.button) catch |err| {
-                    std.log.err("Failed to convert int to enum {} value({})", .{ err, event.button.button });
-                    return;
-                };
+            c.SDL_EVENT_QUIT => {
+                if (callbacks.quit) |quit_fn| {
+                    quit_fn(callbacks.ctx);
+                }
+            },
+            c.SDL_EVENT_WINDOW_RESIZED => {
+                if (c.SDL_GetWindowFromID(event.window.windowID)) |sdl_window| {
+                    const size: [2]u32 = .{ @intCast(event.window.data1), @intCast(event.window.data2) };
+                    const window: saturn.WindowHandle = @enumFromInt(@intFromPtr(sdl_window));
 
-                const state = self.button_state.getPtr(button);
-                state.timestamp = event.button.timestamp;
-                state.is_pressed = event.button.down;
+                    //Mark windows swapchain as out of date
+                    var iter = self.backend.devices.iterator();
+                    while (iter.next()) |entry| {
+                        if (entry.key_ptr.*.swapchains.get(window)) |swapchain| {
+                            swapchain.out_of_date = true;
+                        }
+                    }
+
+                    if (callbacks.window_resize) |resize_fn| {
+                        resize_fn(callbacks.ctx, window, size);
+                    }
+                } else {
+                    std.log.warn("SDL_GetWindowFromID Failed for ID({})", .{event.window.windowID});
+                }
+            },
+            c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
+                if (callbacks.window_close_requested) |close_fn| {
+                    if (c.SDL_GetWindowFromID(event.window.windowID)) |sdl_window| {
+                        const window: saturn.WindowHandle = @enumFromInt(@intFromPtr(sdl_window));
+                        close_fn(callbacks.ctx, window);
+                    } else {
+                        std.log.warn("SDL_GetWindowFromID Failed for ID({})", .{event.window.windowID});
+                    }
+                }
+            },
+            c.SDL_EVENT_MOUSE_BUTTON_UP, c.SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                if (callbacks.mouse_button) |mouse_button_fn| {
+                    const button = std.meta.intToEnum(saturn.MouseButton, event.button.button) catch continue;
+                    const state: saturn.ButtonState = if (event.button.down) .pressed else .released;
+                    mouse_button_fn(callbacks.ctx, button, state);
+                }
             },
             c.SDL_EVENT_MOUSE_MOTION => {
-                const PIXEL_MOVE_AMOUNT = 25.0; //TODO: is this even needed since the xrel is already a float?
-                const mouse_move_state: [2]AxisState = .{
-                    .{
-                        .value = event.motion.xrel / PIXEL_MOVE_AMOUNT,
-                        .timestamp = event.motion.timestamp,
-                    },
-                    .{
-                        .value = event.motion.yrel / PIXEL_MOVE_AMOUNT,
-                        .timestamp = event.motion.timestamp,
-                    },
-                };
-                self.axis_state = .{ .active = mouse_move_state };
+                if (callbacks.mouse_motion) |mouse_motion_fn| {
+                    mouse_motion_fn(callbacks.ctx, .{ event.motion.x, event.motion.y });
+                }
+            },
+            c.SDL_EVENT_MOUSE_WHEEL => {
+                if (callbacks.mouse_wheel) |mouse_wheel_fn| {
+                    mouse_wheel_fn(callbacks.ctx, .{ event.wheel.integer_x, event.wheel.integer_y });
+                }
+            },
+            c.SDL_EVENT_TEXT_INPUT => {
+                if (callbacks.text_input) |text_input_fn| {
+                    const text = std.mem.span(event.text.text);
+                    text_input_fn(callbacks.ctx, text);
+                }
+            },
+            c.SDL_EVENT_GAMEPAD_ADDED => {
+                const gamepad_index = event.gdevice.which;
+                const gamepad = c.SDL_OpenGamepad(gamepad_index).?;
+                _ = gamepad; // autofix
+                //const gamepad_name: []const u8 = std.mem.span(c.SDL_GetGamepadName(gamepad));
+
+                if (callbacks.gamepad_connected) |gamepad_connected_fn| {
+                    gamepad_connected_fn(callbacks.ctx, gamepad_index);
+                }
+            },
+            c.SDL_EVENT_GAMEPAD_REMOVED => {
+                const gamepad_index = event.gdevice.which;
+                const gamepad = c.SDL_GetGamepadFromID(gamepad_index);
+
+                if (callbacks.gamepad_disconnected) |gamepad_disconnected_fn| {
+                    gamepad_disconnected_fn(callbacks.ctx, gamepad_index);
+                }
+
+                c.SDL_CloseGamepad(gamepad);
+            },
+            c.SDL_EVENT_GAMEPAD_BUTTON_UP, c.SDL_EVENT_GAMEPAD_BUTTON_DOWN => {
+                if (callbacks.gamepad_button) |gamepad_button_fn| {
+                    const button = std.meta.intToEnum(saturn.GamepadButton, event.gbutton.button) catch continue;
+                    const state: saturn.ButtonState = if (event.gbutton.down) .pressed else .released;
+                    gamepad_button_fn(callbacks.ctx, event.gbutton.which, button, state);
+                }
+            },
+            c.SDL_EVENT_GAMEPAD_AXIS_MOTION => {
+                if (callbacks.gamepad_axis) |gamepad_axis_motion_fn| {
+                    const axis = std.meta.intToEnum(saturn.GamepadAxis, event.gaxis.axis) catch continue;
+                    const f_value: f32 = @as(f32, @floatFromInt(event.gaxis.value)) / std.math.maxInt(i16);
+                    gamepad_axis_motion_fn(callbacks.ctx, event.gaxis.which, axis, f_value);
+                }
             },
             else => {},
         }
     }
-};
+}
 
-pub const Vulkan = struct {
-    const vk = @import("vulkan");
+pub fn createWindow(ctx: *anyopaque, desc: saturn.WindowDesc) saturn.Error!saturn.WindowHandle {
+    const self: *Self = @ptrCast(@alignCast(ctx));
 
-    pub fn getProcInstanceFunction() ?vk.PfnGetInstanceProcAddr {
-        return @ptrCast(c.SDL_Vulkan_GetVkGetInstanceProcAddr());
+    var window_width: i32 = 1600;
+    var window_height: i32 = 900;
+    var window_flags: c.SDL_WindowFlags = c.SDL_WINDOW_VULKAN; //TODO: Set this based on graphics backend
+
+    if (desc.resizeable) {
+        window_flags |= c.SDL_WINDOW_RESIZABLE;
     }
 
-    pub fn getInstanceExtensions() []const [*c]const u8 {
-        var array_len: u32 = 0;
-        const array = c.SDL_Vulkan_GetInstanceExtensions(&array_len);
-        return array[0..array_len];
+    switch (desc.size) {
+        .windowed => |window_size| {
+            window_width = window_size[0];
+            window_height = window_size[1];
+        },
+        .maximized => window_flags |= c.SDL_WINDOW_MAXIMIZED,
+        .fullscreen => window_flags |= c.SDL_WINDOW_FULLSCREEN,
     }
 
-    pub fn createSurface(instance: vk.Instance, window: Window, allocator: ?*const vk.AllocationCallbacks) ?vk.SurfaceKHR {
-        var c_surface: c.VkSurfaceKHR = undefined;
-        const c_instance: c.VkInstance = @ptrFromInt(@intFromEnum(instance));
-        const c_allocator: ?*c.VkAllocationCallbacks = @ptrCast(@constCast(allocator));
+    const sdl_window: *c.SDL_Window = c.SDL_CreateWindow(desc.name, window_width, window_height, window_flags) orelse return error.FailedToCreateWindow;
+    errdefer c.SDL_DestroyWindow(sdl_window);
 
-        if (c.SDL_Vulkan_CreateSurface(window.handle, c_instance, c_allocator, &c_surface)) {
-            const surface: vk.SurfaceKHR = @enumFromInt(@intFromPtr(c_surface));
-            return surface;
-        }
-        return null;
+    const window: saturn.WindowHandle = @enumFromInt(@intFromPtr(sdl_window));
+    try self.backend.createSurface(window);
+    return window;
+}
+pub fn destroyWindow(ctx: *anyopaque, window: saturn.WindowHandle) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    self.backend.destroySurface(window);
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window));
+    c.SDL_DestroyWindow(sdl_window);
+}
+pub fn getWindowSize(ctx: *anyopaque, window: saturn.WindowHandle) [2]u32 {
+    _ = ctx; // autofix
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window));
+
+    var w: c_int = 0;
+    var h: c_int = 0;
+    _ = c.SDL_GetWindowSize(sdl_window, &w, &h);
+    return .{
+        @intCast(w),
+        @intCast(h),
+    };
+}
+
+pub fn getDevices(ctx: *anyopaque) []const saturn.DeviceInfo {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    return self.backend.instance.physical_devices_info;
+}
+
+pub fn doesDeviceSupportPresent(ctx: *anyopaque, device_index: u32, window: saturn.WindowHandle) bool {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    return self.backend.doesDeviceSupportPresent(device_index, window);
+}
+
+pub fn getWindowSupport(ctx: *anyopaque, device_index: u32, window: saturn.WindowHandle) ?saturn.WindowSurfaceInfo {
+    _ = ctx; // autofix
+    _ = window; // autofix
+    _ = device_index; // autofix
+    return null;
+}
+
+pub fn createDevice(ctx: *anyopaque, device_index: u32, desc: saturn.DeviceDesc) saturn.Error!saturn.DeviceInterface {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    return self.backend.createDevice(device_index, desc);
+}
+pub fn destroyDevice(ctx: *anyopaque, device: saturn.DeviceInterface) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    self.backend.destroyDevice(device);
+}
+
+pub fn initImgui(ctx: *anyopaque, device: saturn.DeviceInterface, window: saturn.WindowHandle) saturn.Error!void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    std.debug.assert(self.imgui_opt == null);
+
+    _ = cimgui.ImGui_CreateContext(null) orelse return error.InitializationFailed;
+    errdefer cimgui.ImGui_DestroyContext(null);
+
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window));
+
+    if (!cimgui.cImGui_ImplSDL3_InitForVulkan(@ptrCast(sdl_window))) return error.InitializationFailed;
+    errdefer cimgui.cImGui_ImplSDL3_Shutdown();
+
+    const vulkan_device: *RenderingDevice = @ptrCast(@alignCast(device.ctx));
+    if (!self.backend.devices.contains(vulkan_device)) return error.InitializationFailed;
+
+    vulkan_device.imguiRenderer = try .init(vulkan_device.device);
+    errdefer {
+        vulkan_device.imguiRenderer.?.deinit();
+        vulkan_device.imguiRenderer = null;
     }
 
-    pub fn destroySurface(instance: vk.Instance, surface: vk.SurfaceKHR, allocator: ?*const vk.AllocationCallbacks) void {
-        const c_instance: c.VkInstance = @ptrFromInt(@intFromEnum(instance));
-        const c_allocator: ?*c.VkAllocationCallbacks = @ptrCast(@constCast(allocator));
-        c.SDL_Vulkan_DestroySurface(c_instance, @ptrFromInt(@intFromEnum(surface)), c_allocator);
+    vulkan_device.imguiRenderer.?.rebuild(vulkan_device.device, vulkan_device.swapchains.get(window).?);
+
+    self.imgui_opt = .{ .device = device, .window = window };
+    errdefer self.imgui_opt = null;
+
+    //TODO: make abstractions for these
+    cimgui.ImGui_StyleColorsClassic(null);
+
+    var io: *cimgui.ImGuiIO = cimgui.ImGui_GetIO();
+    io.ConfigFlags |= cimgui.ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= cimgui.ImGuiConfigFlags_NavEnableGamepad;
+    io.ConfigFlags |= cimgui.ImGuiConfigFlags_DockingEnable;
+    //io.ConfigFlags |= cimgui.ImGuiConfigFlags_ViewportsEnable;
+}
+
+pub fn deinitImgui(ctx: *anyopaque) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    if (self.imgui_opt) |imgui| {
+        imgui.device.waitIdle();
+
+        const vulkan_device: *RenderingDevice = @ptrCast(@alignCast(imgui.device.ctx));
+        vulkan_device.imguiRenderer.?.deinit();
+        vulkan_device.imguiRenderer = null;
+
+        cimgui.cImGui_ImplSDL3_Shutdown();
+        cimgui.ImGui_DestroyContext(null);
+
+        self.imgui_opt = null;
     }
-};
+}
+
+pub fn beginImgui(ctx: *anyopaque) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    if (self.imgui_opt) |imgui| {
+        const vulkan_device: *RenderingDevice = @ptrCast(@alignCast(imgui.device.ctx));
+        vulkan_device.imguiRenderer.?.newFrame();
+
+        cimgui.cImGui_ImplSDL3_NewFrame();
+        cimgui.ImGui_NewFrame();
+    }
+}
+
+pub fn endImgui(ctx: *anyopaque) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+
+    if (self.imgui_opt) |imgui| {
+        _ = imgui; // autofix
+        cimgui.ImGui_EndFrame();
+
+        // Update and Render additional Platform Windows
+        // const io: *cimgui.struct_ImGuiIO_t = cimgui.ImGui_GetIO();
+        // if (io.ConfigFlags & cimgui.ImGuiConfigFlags_ViewportsEnable == 0) {
+        //     cimgui.ImGui_UpdatePlatformWindows();
+        //     cimgui.ImGui_RenderPlatformWindowsDefault();
+        // }
+    }
+}
+
+/// Callback function for getting window size from SDL3
+/// This is passed to the rendering backend to query window dimensions
+/// Returns [width, height] as a backend-agnostic type
+fn vkGetWindowSize(window: saturn.WindowHandle, user_data: ?*anyopaque) [2]u32 {
+    _ = user_data; // autofix
+
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window));
+    var w: c_int = 0;
+    var h: c_int = 0;
+    _ = c.SDL_GetWindowSize(sdl_window, &w, &h);
+    return .{
+        @intCast(w),
+        @intCast(h),
+    };
+}
+
+const vk = @import("vulkan");
+pub fn createSurface(instance: vk.Instance, window: saturn.WindowHandle, allocator: ?*const vk.AllocationCallbacks) ?vk.SurfaceKHR {
+    var c_surface: c.VkSurfaceKHR = undefined;
+    const c_instance: c.VkInstance = @ptrFromInt(@intFromEnum(instance));
+    const c_allocator: ?*c.VkAllocationCallbacks = @ptrCast(@constCast(allocator));
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window));
+
+    if (c.SDL_Vulkan_CreateSurface(sdl_window, c_instance, c_allocator, &c_surface)) {
+        const surface: vk.SurfaceKHR = @enumFromInt(@intFromPtr(c_surface));
+        return surface;
+    }
+    return null;
+}

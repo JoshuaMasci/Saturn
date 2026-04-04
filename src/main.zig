@@ -12,12 +12,12 @@ const Transform = @import("transform.zig");
 const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
 const saturn = @import("root.zig");
-const AssetPool = @import("rendering2/asset_pool.zig");
-const TransferQueue = @import("rendering2/transfer_queue.zig");
-const Scene = @import("rendering2/scene.zig");
-const SceneRenderer = @import("rendering2/scene_renderer.zig");
+const AssetPool = @import("rendering/asset_pool.zig");
+const TransferQueue = @import("rendering/transfer_queue.zig");
+const Scene = @import("rendering/scene.zig");
+const SceneRenderer = @import("rendering/scene_renderer.zig");
 
-const imgui = @import("platform2/imgui.zig");
+const imgui = @import("platform/imgui.zig");
 
 fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
     _ = ctx; // autofix
@@ -396,11 +396,11 @@ pub const PerformanceWindow = struct {
     pub fn draw(self: *PerformanceWindow, tpa: std.mem.Allocator) void {
         if (self.open) {
             if (imgui.begin(self.name, &self.open, 0)) {
-                imgui.labelText("Delta Time (ms)", std.fmt.allocPrintSentinel(tpa, "{d:.3}", .{self.average_dt * 1000}, 0) catch "");
-                imgui.labelText("FPS", std.fmt.allocPrintSentinel(tpa, "{d:.3}", .{1.0 / self.average_dt}, 0) catch "");
+                imgui.text(std.fmt.allocPrintSentinel(tpa, "Delta Time (ms): {d:.3}", .{self.average_dt * std.time.ms_per_s}, 0) catch "");
+                imgui.text(std.fmt.allocPrintSentinel(tpa, "FPS: {d:.3}", .{1.0 / self.average_dt}, 0) catch "");
 
                 if (self.mem_usage) |mem_usage| {
-                    imgui.labelText("Memory Usage", tpa.dupeZ(u8, @import("utils.zig").formatBytes(tpa, mem_usage) catch "") catch "");
+                    imgui.text(std.fmt.allocPrintSentinel(tpa, "Memory Usage: {s}", .{@import("utils.zig").formatBytes(tpa, mem_usage) catch ""}, 0) catch "");
                 }
 
                 imgui.end();
