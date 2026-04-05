@@ -45,6 +45,14 @@ void main()
         base_color *= sampleTexture(push_constants.texture_info_binding, material.base_color_texture, frag_uv0);
     }
 
+    #ifdef ALPHA_CUTOFF
+    if (base_color.a < material.alpha_cutoff)
+    {
+        discard;
+    }
+    base_color.a = 1.0;
+    #endif
+
     // Basic "lighting" code
     // Just to add some depth to the scene
     const vec3 light_dir = normalize(vec3(-0.4, -1, -0.25));
@@ -52,13 +60,4 @@ void main()
     const float light_amount = map(dot, 0.0, 1.0, 0.25, 1.0);
 
     out_frag_color = base_color * light_amount;
-
-    // #ifdef ALPHA_CUTOFF
-    // if (base_color.a < material.alpha_cutoff)
-    // {
-    //     discard;
-    // }
-    // #endif
-
-    //out_frag_color = vec4(frag_uv0, 0.0, 1.0);
 }

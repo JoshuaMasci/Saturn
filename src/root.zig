@@ -599,8 +599,54 @@ pub const DepthStencilState = struct {
     // back: StencilFaceState,
 };
 
-pub const RenderTargetInfo = struct {
-    color_targets: []const TextureFormat = &.{},
+pub const BlendFactor = enum(u8) {
+    zero,
+    one,
+    src_color,
+    one_minus_src_color,
+    dst_color,
+    one_minus_dst_color,
+    src_alpha,
+    one_minus_src_alpha,
+    dst_alpha,
+    one_minus_dst_alpha,
+    constant_color,
+    one_minus_constant_color,
+    constant_alpha,
+    one_minus_constant_alpha,
+    src_alpha_saturate,
+    src1_color,
+    one_minus_src1_color,
+    src1_alpha,
+    one_minus_src1_alpha,
+};
+
+pub const BlendOp = enum(u8) {
+    add,
+    subtract,
+    reverse_subtract,
+    min,
+    max,
+};
+
+pub const BlendComponent = struct {
+    src: BlendFactor,
+    dst: BlendFactor,
+    op: BlendOp,
+};
+
+pub const BlendState = struct {
+    color: BlendComponent,
+    alpha: BlendComponent,
+};
+
+pub const ColorTargetState = struct {
+    format: TextureFormat,
+    blend: ?BlendState = null,
+};
+
+pub const RenderTargetState = struct {
+    color_targets: []ColorTargetState = &.{},
     depth_target: ?TextureFormat = null,
     // stencil_target: ?TextureFormat = null,
 };
@@ -613,7 +659,7 @@ pub const GraphicsPipelineDesc = struct {
     primitive_topology: PrimitiveTopology = .triangle_list,
     raster_state: RasterizerState = .{},
     depth_stencil_state: DepthStencilState = .{},
-    target_info: RenderTargetInfo = .{},
+    target_info: RenderTargetState = .{},
 };
 
 pub const ComputePipelineHandle = enum(u64) { null_handle = 0, _ };

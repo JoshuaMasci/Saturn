@@ -16,6 +16,11 @@ pub const Camera = struct {
     transform: Transform,
 };
 
+pub const RenderTargetState = struct {
+    color_targets: []const saturn.TextureFormat = &.{},
+    depth_target: ?saturn.TextureFormat = null,
+};
+
 const Self = @This();
 
 gpa: std.mem.Allocator,
@@ -25,7 +30,7 @@ registry: *const AssetRegistry,
 depth_format: ?saturn.TextureFormat,
 legacy: LegacyScenePass,
 
-pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: saturn.RenderTargetInfo) !Self {
+pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: RenderTargetState) !Self {
     const legacy = try LegacyScenePass.init(gpa, device, registry, formats);
     errdefer legacy.deinit(device);
 
@@ -43,19 +48,22 @@ pub fn deinit(self: *Self) void {
     self.legacy.deinit(self.device);
 }
 
-pub fn rebuild(self: *Self, formats: saturn.RenderTargetInfo) saturn.Error!void {
+pub fn rebuild(self: *Self, formats: RenderTargetState) saturn.Error!void {
     self.legacy.deinit(self.device);
     self.legacy = try LegacyScenePass.init(self.gpa, self.device, self.registry, formats);
 }
 
 pub fn addPasses(self: *const Self, tpa: std.mem.Allocator, target: saturn.RGTextureHandle, render_graph: *saturn.RenderGraph, scene: *const Scene, camera: *const Camera, asset_pool: *const AssetPool) saturn.Error!void {
+    var render_buckets = try scene.createBuckets(tpa, asset_pool);
+    render_buckets.depthSort(camera.transform.position);
+
     const legacy_pass_data = try render_graph.alloc(LegacyPassData, 1);
     legacy_pass_data[0] = .{
         .legacy_pass = &self.legacy,
         .scene = scene,
         .camera = camera,
         .asset_pool = asset_pool,
-        .render_buckets = try scene.createBuckets(tpa, asset_pool),
+        .render_buckets = render_buckets,
     };
 
     const depth_texture = try render_graph.createTransientTexture(.{
@@ -106,7 +114,7 @@ const LegacyScenePass = struct {
     alpha_mask_pipeline: saturn.GraphicsPipelineHandle,
     alpha_blend_pipeline: saturn.GraphicsPipelineHandle,
 
-    pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: saturn.RenderTargetInfo) !LegacyScenePass {
+    pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: RenderTargetState) !LegacyScenePass {
         const ShaderAsset = @import("../asset/shader.zig");
 
         var vertex_shader_asset = try registry.loadAsset(ShaderAsset, gpa, AssetRegistry.Handle.fromRepoPath("engine", "shaders/glsl/draw_legacy.vert.asset"), .{});
@@ -189,7 +197,15 @@ const LegacyScenePass = struct {
             .depth_compare_op = .less,
         };
 
-        const render_target_info: saturn.RenderTargetInfo = formats;
+        const render_target_info: saturn.RenderTargetState = .{
+            .color_targets = try gpa.alloc(saturn.ColorTargetState, formats.color_targets.len),
+            .depth_target = formats.depth_target,
+        };
+        defer gpa.free(render_target_info.color_targets);
+
+        for (render_target_info.color_targets, formats.color_targets) |*target, format| {
+            target.* = .{ .format = format };
+        }
 
         const opaque_pipeline = try device.createGraphicsPipeline(&.{
             .name = "Legacy Opaque Pipeline",
@@ -215,11 +231,21 @@ const LegacyScenePass = struct {
         });
         errdefer device.destroyGraphicsPipeline(alpha_mask_pipeline);
 
-        var alpha_blend_raster_state = raster_state;
-        alpha_blend_raster_state.cull_mode = .none;
-
-        var alpha_blend_depth_state = depth_stencil_state;
-        alpha_blend_depth_state.depth_write_enable = false;
+        //Add blending
+        for (render_target_info.color_targets) |*target| {
+            target.blend = .{
+                .color = .{
+                    .src = .src_alpha,
+                    .dst = .one_minus_src_alpha,
+                    .op = .add,
+                },
+                .alpha = .{
+                    .src = .one,
+                    .dst = .zero,
+                    .op = .add,
+                },
+            };
+        }
 
         const alpha_blend_pipeline = try device.createGraphicsPipeline(&.{
             .name = "Legacy Alpha Blend Pipeline",
@@ -227,8 +253,8 @@ const LegacyScenePass = struct {
             .fragment = opaque_frag_shader,
             .vertex_input_state = vertex_input_state,
             .primitive_topology = .triangle_list,
-            .raster_state = alpha_blend_raster_state,
-            .depth_stencil_state = alpha_blend_depth_state,
+            .raster_state = raster_state,
+            .depth_stencil_state = depth_stencil_state,
             .target_info = render_target_info,
         });
         errdefer device.destroyGraphicsPipeline(alpha_blend_pipeline);
@@ -261,25 +287,73 @@ const LegacyScenePass = struct {
 
         const texture_info_binding = asset_pool.texture_pool.info_buffer.storage_binding.?;
 
-        const mat_instance_binding = asset_pool.material_pool.opaque_material.instance_data.storage_binding.?;
-        cmd.setPipeline(self.opaque_pipeline);
-        for (render_buckets.opaque_instances.items) |instance| {
-            const push_constants = PushConstants{
-                .view_projection_matrix = view_projection_matrix,
-                .model_matrix = instance.model_matrix,
-                .texture_info_binding = texture_info_binding,
-                .material_instance_binding = mat_instance_binding,
-                .material_index = instance.material_index,
-            };
-            cmd.pushConstants(PushConstants, push_constants);
+        {
+            const mat_instance_binding = asset_pool.material_pool.opaque_material.instance_data.storage_binding.?;
+            cmd.setPipeline(self.opaque_pipeline);
+            for (render_buckets.opaque_instances.items) |instance| {
+                const push_constants = PushConstants{
+                    .view_projection_matrix = view_projection_matrix,
+                    .model_matrix = instance.model_matrix,
+                    .texture_info_binding = texture_info_binding,
+                    .material_instance_binding = mat_instance_binding,
+                    .material_index = instance.material_index,
+                };
+                cmd.pushConstants(PushConstants, push_constants);
 
-            cmd.drawIndexed(
-                instance.draw_data.index_count,
-                instance.draw_data.instance_count,
-                instance.draw_data.first_index,
-                instance.draw_data.vertex_offset,
-                instance.draw_data.first_instance,
-            );
+                cmd.drawIndexed(
+                    instance.draw_data.index_count,
+                    instance.draw_data.instance_count,
+                    instance.draw_data.first_index,
+                    instance.draw_data.vertex_offset,
+                    instance.draw_data.first_instance,
+                );
+            }
+        }
+
+        {
+            const mat_instance_binding = asset_pool.material_pool.alpha_mask_material.instance_data.storage_binding.?;
+            cmd.setPipeline(self.alpha_mask_pipeline);
+            for (render_buckets.alpha_mask_instances.items) |instance| {
+                const push_constants = PushConstants{
+                    .view_projection_matrix = view_projection_matrix,
+                    .model_matrix = instance.model_matrix,
+                    .texture_info_binding = texture_info_binding,
+                    .material_instance_binding = mat_instance_binding,
+                    .material_index = instance.material_index,
+                };
+                cmd.pushConstants(PushConstants, push_constants);
+
+                cmd.drawIndexed(
+                    instance.draw_data.index_count,
+                    instance.draw_data.instance_count,
+                    instance.draw_data.first_index,
+                    instance.draw_data.vertex_offset,
+                    instance.draw_data.first_instance,
+                );
+            }
+        }
+
+        {
+            const mat_instance_binding = asset_pool.material_pool.alpha_blend_material.instance_data.storage_binding.?;
+            cmd.setPipeline(self.alpha_blend_pipeline);
+            for (render_buckets.alpha_blend_instances.items) |instance| {
+                const push_constants = PushConstants{
+                    .view_projection_matrix = view_projection_matrix,
+                    .model_matrix = instance.model_matrix,
+                    .texture_info_binding = texture_info_binding,
+                    .material_instance_binding = mat_instance_binding,
+                    .material_index = instance.material_index,
+                };
+                cmd.pushConstants(PushConstants, push_constants);
+
+                cmd.drawIndexed(
+                    instance.draw_data.index_count,
+                    instance.draw_data.instance_count,
+                    instance.draw_data.first_index,
+                    instance.draw_data.vertex_offset,
+                    instance.draw_data.first_instance,
+                );
+            }
         }
     }
 };

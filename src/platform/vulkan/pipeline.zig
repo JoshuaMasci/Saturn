@@ -146,8 +146,8 @@ pub fn createGraphicsPipeline(
 
     //TODO: enable blending
     // Color blend attachment state
-    for (desc.target_info.color_targets) |_| {
-        color_blend_attachments.add(.{
+    for (desc.target_info.color_targets) |state| {
+        var blend_state: vk.PipelineColorBlendAttachmentState = .{
             .color_write_mask = .{ .r_bit = true, .g_bit = true, .b_bit = true, .a_bit = true },
             .blend_enable = .false,
             .src_color_blend_factor = .src_alpha,
@@ -156,7 +156,19 @@ pub fn createGraphicsPipeline(
             .src_alpha_blend_factor = .one,
             .dst_alpha_blend_factor = .zero,
             .alpha_blend_op = .add,
-        });
+        };
+
+        if (state.blend) |blend| {
+            blend_state.blend_enable = .true;
+            blend_state.src_color_blend_factor = toVkBlendFactor(blend.color.src);
+            blend_state.dst_color_blend_factor = toVkBlendFactor(blend.color.dst);
+            blend_state.color_blend_op = toVkBlendOp(blend.color.op);
+            blend_state.src_alpha_blend_factor = toVkBlendFactor(blend.alpha.src);
+            blend_state.dst_alpha_blend_factor = toVkBlendFactor(blend.alpha.dst);
+            blend_state.alpha_blend_op = toVkBlendOp(blend.alpha.op);
+        }
+
+        color_blend_attachments.add(blend_state);
     }
     const color_blend_attachment_slice = color_blend_attachments.slice();
 
@@ -183,8 +195,8 @@ pub fn createGraphicsPipeline(
     };
 
     var color_attachment_formats: FixedArrayList(vk.Format, 8) = .empty;
-    for (desc.target_info.color_targets) |color_format| {
-        color_attachment_formats.add(Texture.getVkFormat(color_format));
+    for (desc.target_info.color_targets) |color_target| {
+        color_attachment_formats.add(Texture.getVkFormat(color_target.format));
     }
     const color_attachment_format_slice = color_attachment_formats.slice();
 
@@ -309,6 +321,40 @@ fn toVkCompareOp(c: saturn.CompareOp) vk.CompareOp {
         .not_equal => .not_equal,
         .greater_equal => .greater_or_equal,
         .always => .always,
+    };
+}
+
+fn toVkBlendFactor(f: saturn.BlendFactor) vk.BlendFactor {
+    return switch (f) {
+        .zero => .zero,
+        .one => .one,
+        .src_color => .src_color,
+        .one_minus_src_color => .one_minus_src_color,
+        .dst_color => .dst_color,
+        .one_minus_dst_color => .one_minus_dst_color,
+        .src_alpha => .src_alpha,
+        .one_minus_src_alpha => .one_minus_src_alpha,
+        .dst_alpha => .dst_alpha,
+        .one_minus_dst_alpha => .one_minus_dst_alpha,
+        .constant_color => .constant_color,
+        .one_minus_constant_color => .one_minus_constant_color,
+        .constant_alpha => .constant_alpha,
+        .one_minus_constant_alpha => .one_minus_constant_alpha,
+        .src_alpha_saturate => .src_alpha_saturate,
+        .src1_color => .src1_color,
+        .one_minus_src1_color => .one_minus_src1_color,
+        .src1_alpha => .src1_alpha,
+        .one_minus_src1_alpha => .one_minus_src1_alpha,
+    };
+}
+
+fn toVkBlendOp(o: saturn.BlendOp) vk.BlendOp {
+    return switch (o) {
+        .add => .add,
+        .subtract => .subtract,
+        .reverse_subtract => .reverse_subtract,
+        .min => .min,
+        .max => .max,
     };
 }
 

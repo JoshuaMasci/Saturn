@@ -207,7 +207,7 @@ const App = struct {
         const ColorTarget: saturn.TextureFormat = .rgba8_unorm;
         const DepthTarget: saturn.TextureFormat = .depth32_float;
 
-        const RenderTarget: saturn.RenderTargetInfo = .{
+        const RenderTarget: SceneRenderer.RenderTargetState = .{
             .color_targets = &.{ColorTarget},
             .depth_target = DepthTarget,
         };

@@ -114,9 +114,20 @@ pub const RenderBuckets = struct {
     alpha_mask_instances: std.ArrayList(InstanceDrawData) = .empty,
     alpha_blend_instances: std.ArrayList(InstanceDrawData) = .empty,
 
+    pub fn depthSort(self: *RenderBuckets, camera_pos: zm.Vec) void {
+        std.mem.sort(InstanceDrawData, self.alpha_blend_instances.items, camera_pos, compareInstances);
+        std.mem.sort(InstanceDrawData, self.alpha_mask_instances.items, camera_pos, compareInstances);
+    }
+
     pub fn deinit(self: RenderBuckets) void {
         self.opaque_instances.deinit(self.gpa);
         self.alpha_mask_instances.deinit(self.gpa);
         self.alpha_mask_instances.deinit(self.gpa);
     }
 };
+
+fn compareInstances(camera_pos: zm.Vec, a: InstanceDrawData, b: InstanceDrawData) bool {
+    const a_dis = zm.length3(camera_pos - a.model_matrix[3]);
+    const b_dis = zm.length3(camera_pos - b.model_matrix[3]);
+    return a_dis[0] > b_dis[0];
+}
