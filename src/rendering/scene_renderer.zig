@@ -318,97 +318,77 @@ const LegacyScenePass = struct {
 
         settings.draw_count = 0;
         settings.culled_count = 0;
-        {
-            const mat_instance_binding = asset_pool.material_pool.opaque_material.instance_data.storage_binding.?;
-            cmd.setPipeline(self.opaque_pipeline);
-            for (render_buckets.opaque_instances.items) |instance| {
-                if (frustum_opt) |frustum| {
-                    if (!frustum.intersects(culling.Sphere, instance.culling_sphere)) {
-                        settings.culled_count += 1;
-                        continue;
-                    }
-                }
-                settings.draw_count += 1;
 
-                const push_constants = PushConstants{
-                    .view_projection_matrix = view_projection_matrix,
-                    .model_matrix = instance.model_matrix,
-                    .texture_info_binding = texture_info_binding,
-                    .material_instance_binding = mat_instance_binding,
-                    .material_index = instance.material_index,
-                };
-                cmd.pushConstants(PushConstants, push_constants);
+        drawRenderBucket(
+            settings,
+            cmd,
+            self.opaque_pipeline,
+            view_projection_matrix,
+            texture_info_binding,
+            asset_pool.material_pool.opaque_material.instance_data.storage_binding.?,
+            render_buckets.opaque_instances.items,
+            frustum_opt,
+        );
 
-                cmd.drawIndexed(
-                    instance.draw_data.index_count,
-                    instance.draw_data.instance_count,
-                    instance.draw_data.first_index,
-                    instance.draw_data.vertex_offset,
-                    instance.draw_data.first_instance,
-                );
-            }
-        }
+        drawRenderBucket(
+            settings,
+            cmd,
+            self.alpha_blend_pipeline,
+            view_projection_matrix,
+            texture_info_binding,
+            asset_pool.material_pool.alpha_blend_material.instance_data.storage_binding.?,
+            render_buckets.alpha_blend_instances.items,
+            frustum_opt,
+        );
 
-        {
-            const mat_instance_binding = asset_pool.material_pool.alpha_mask_material.instance_data.storage_binding.?;
-            cmd.setPipeline(self.alpha_mask_pipeline);
-            for (render_buckets.alpha_mask_instances.items) |instance| {
-                if (frustum_opt) |frustum| {
-                    if (!frustum.intersects(culling.Sphere, instance.culling_sphere)) {
-                        settings.culled_count += 1;
-                        continue;
-                    }
-                }
-                settings.draw_count += 1;
-
-                const push_constants = PushConstants{
-                    .view_projection_matrix = view_projection_matrix,
-                    .model_matrix = instance.model_matrix,
-                    .texture_info_binding = texture_info_binding,
-                    .material_instance_binding = mat_instance_binding,
-                    .material_index = instance.material_index,
-                };
-                cmd.pushConstants(PushConstants, push_constants);
-
-                cmd.drawIndexed(
-                    instance.draw_data.index_count,
-                    instance.draw_data.instance_count,
-                    instance.draw_data.first_index,
-                    instance.draw_data.vertex_offset,
-                    instance.draw_data.first_instance,
-                );
-            }
-        }
-
-        {
-            const mat_instance_binding = asset_pool.material_pool.alpha_blend_material.instance_data.storage_binding.?;
-            cmd.setPipeline(self.alpha_blend_pipeline);
-            for (render_buckets.alpha_blend_instances.items) |instance| {
-                if (frustum_opt) |frustum| {
-                    if (!frustum.intersects(culling.Sphere, instance.culling_sphere)) {
-                        settings.culled_count += 1;
-                        continue;
-                    }
-                }
-                settings.draw_count += 1;
-
-                const push_constants = PushConstants{
-                    .view_projection_matrix = view_projection_matrix,
-                    .model_matrix = instance.model_matrix,
-                    .texture_info_binding = texture_info_binding,
-                    .material_instance_binding = mat_instance_binding,
-                    .material_index = instance.material_index,
-                };
-                cmd.pushConstants(PushConstants, push_constants);
-
-                cmd.drawIndexed(
-                    instance.draw_data.index_count,
-                    instance.draw_data.instance_count,
-                    instance.draw_data.first_index,
-                    instance.draw_data.vertex_offset,
-                    instance.draw_data.first_instance,
-                );
-            }
-        }
+        drawRenderBucket(
+            settings,
+            cmd,
+            self.alpha_mask_pipeline,
+            view_projection_matrix,
+            texture_info_binding,
+            asset_pool.material_pool.alpha_mask_material.instance_data.storage_binding.?,
+            render_buckets.alpha_mask_instances.items,
+            frustum_opt,
+        );
     }
 };
+
+fn drawRenderBucket(
+    settings: *Settings,
+    cmd: saturn.GraphicsCommandEncoder,
+    pipeline: saturn.GraphicsPipelineHandle,
+    view_projection_matrix: zm.Mat,
+    texture_info_binding: u32,
+    mat_instance_binding: u32,
+    instances: []const Scene.InstanceDrawData,
+    frustum_opt: ?culling.Frustum,
+) void {
+    cmd.setPipeline(pipeline);
+    for (instances) |instance| {
+        if (frustum_opt) |frustum| {
+            if (!frustum.intersects(culling.Sphere, instance.culling_sphere)) {
+                settings.culled_count += 1;
+                continue;
+            }
+        }
+        settings.draw_count += 1;
+
+        const push_constants = LegacyScenePass.PushConstants{
+            .view_projection_matrix = view_projection_matrix,
+            .model_matrix = instance.model_matrix,
+            .texture_info_binding = texture_info_binding,
+            .material_instance_binding = mat_instance_binding,
+            .material_index = instance.material_index,
+        };
+        cmd.pushConstants(LegacyScenePass.PushConstants, push_constants);
+
+        cmd.drawIndexed(
+            instance.draw_data.index_count,
+            instance.draw_data.instance_count,
+            instance.draw_data.first_index,
+            instance.draw_data.vertex_offset,
+            instance.draw_data.first_instance,
+        );
+    }
+}
