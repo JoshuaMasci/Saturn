@@ -44,6 +44,14 @@ pub fn main() !void {
     try app.platform.initImgui(app.gpu_device, app.window);
     defer app.platform.deinitImgui();
 
+    imgui.c.ImGui_StyleColorsClassic(null);
+
+    var io: *imgui.c.ImGuiIO = imgui.c.ImGui_GetIO();
+    io.ConfigFlags |= imgui.c.ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= imgui.c.ImGuiConfigFlags_NavEnableGamepad;
+    io.ConfigFlags |= imgui.c.ImGuiConfigFlags_DockingEnable;
+    //io.ConfigFlags |= imgui.c.ImGuiConfigFlags_ViewportsEnable; //Not functional atm
+
     {
         const cube_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/cube.asset"));
         const sphere_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/sphere.asset"));
@@ -184,6 +192,7 @@ const App = struct {
     //Editor Windows
     perf_win: PerformanceWindow = .{},
     scene_win: SceneWindow = .{},
+    demo_win: DemoWindow = .{},
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const platform = try saturn.init(allocator, .{
@@ -202,9 +211,22 @@ const App = struct {
         const gpu_device = try platform.createDeviceBasic(window, .prefer_high_power);
         errdefer platform.destroyDevice(gpu_device);
 
-        std.log.info("GPU Device Selected: {f}", .{gpu_device.getInfo()});
+        const info = gpu_device.getInfo();
+        std.log.info("GPU Device Selected: {f}", .{info});
 
-        const ColorTarget: saturn.TextureFormat = .rgba8_unorm;
+        const window_caps = platform.getWindowCapabilities(allocator, info.physical_device_index, window).?; // orelse return error.WindowNotSupported;
+        defer window_caps.deinit(allocator);
+        std.log.info("Window Caps: {any}", .{window_caps});
+
+        //Tries to select the prefered settings first, fallbacks to
+        const vsync = true;
+        const usage: saturn.TextureUsage = .{ .attachment = true, .transfer_dst = true };
+
+        var window_settings_opt: ?saturn.WindowSettings = getWindowSettings(window_caps, usage, .@"10_bit", vsync);
+        if (window_settings_opt == null) window_settings_opt = getWindowSettings(window_caps, usage, .@"8bit_unorm", true);
+        const window_settings = window_settings_opt orelse return error.WindowNotSupported;
+
+        const ColorTarget: saturn.TextureFormat = window_settings.texture_format;
         const DepthTarget: saturn.TextureFormat = .depth32_float;
 
         const RenderTarget: SceneRenderer.RenderTargetState = .{
@@ -212,15 +234,7 @@ const App = struct {
             .depth_target = DepthTarget,
         };
 
-        try gpu_device.claimWindow(
-            window,
-            .{
-                .texture_count = 3,
-                .texture_usage = .{ .attachment = true, .transfer_dst = true },
-                .texture_format = ColorTarget,
-                .present_mode = .fifo,
-            },
-        );
+        try gpu_device.claimWindow(window, window_settings);
         errdefer gpu_device.releaseWindow(window);
 
         const asset_registry = try allocator.create(AssetRegistry);
@@ -309,7 +323,12 @@ const App = struct {
             .ctx = self,
             .quit = quitCallback,
             .window_close_requested = windowCloseCallback,
+
+            .gamepad_button = gamepadButtonCallback,
+            .gamepad_axis = gamepadAxisCallback,
         });
+
+        self.camera.update(delta_time);
 
         const IMGUI_ENABLED = true;
         if (IMGUI_ENABLED) {
@@ -318,18 +337,26 @@ const App = struct {
 
             //Menu
             if (imgui.beginMainMenuBar()) {
+                if (imgui.beginMenu("File")) {
+                    _ = imgui.menuItem("Save");
+                    _ = imgui.menuItem("Load");
+                    if (imgui.menuItem("Quit")) {
+                        self.is_running = false;
+                    }
+                    imgui.endMenu();
+                }
+
                 if (imgui.beginMenu("Windows")) {
                     _ = imgui.menuItemBool(self.perf_win.name, &self.perf_win.open, true);
                     _ = imgui.menuItemBool(self.scene_win.name, &self.scene_win.open, true);
+                    _ = imgui.menuItemBool(self.demo_win.name, &self.demo_win.open, true);
                     imgui.endMenu();
                 }
 
                 imgui.endMainMenuBar();
             }
 
-            //DO IMGUI STUFF IN HERE
-            imgui.showDemoWindow(null);
-
+            self.demo_win.draw();
             self.perf_win.draw(tpa);
             self.scene_win.draw(tpa, &self.camera, self.platform.getWindowSize(self.window));
 
@@ -353,6 +380,7 @@ const App = struct {
                 &self.scene,
                 &.{ .camera = self.camera.camera, .transform = self.camera.transform },
                 &self.asset_pool,
+                &self.scene_win.settings,
             );
         } else {
             _ = try render_graph.addGraphicsPass(
@@ -375,6 +403,44 @@ const App = struct {
     }
 };
 
+const WindowFormatClass = enum {
+    @"8bit_unorm",
+    @"8bit_srgb",
+    @"10_bit",
+};
+
+fn getWindowSettings(window_caps: saturn.WindowCapabilities, usage: saturn.TextureUsage, format_class: WindowFormatClass, vsync: bool) ?saturn.WindowSettings {
+    const format: saturn.TextureFormat = switch (format_class) {
+        .@"8bit_unorm" => getFirstSupported(saturn.TextureFormat, window_caps.formats, &.{ .bgra8_unorm, .rgba8_unorm }),
+        .@"8bit_srgb" => getFirstSupported(saturn.TextureFormat, window_caps.formats, &.{ .bgra8_srgb, .rgba8_srgb }),
+        .@"10_bit" => null, //Need to figure out valid formats for this
+    } orelse return null;
+
+    const present_mode = switch (vsync) {
+        true => getFirstSupported(saturn.PresentMode, window_caps.present_modes, &.{ .fifo, .mailbox }),
+        false => getFirstSupported(saturn.PresentMode, window_caps.present_modes, &.{ .immediate, .mailbox }),
+    } orelse return null;
+
+    //TODO: test texture usage
+
+    return .{
+        .texture_count = window_caps.min_texture_count,
+        .texture_usage = usage,
+        .texture_format = format,
+        .present_mode = present_mode,
+    };
+}
+
+fn getFirstSupported(comptime T: type, supported: []const T, desired: []const T) ?T {
+    for (desired) |value| {
+        if (std.mem.indexOfScalar(T, supported, value)) |_| {
+            return value;
+        }
+    }
+    return null;
+}
+
+// Window Callbacks
 fn quitCallback(ctx: ?*anyopaque) void {
     const app: *App = @ptrCast(@alignCast(ctx.?));
     std.log.info("App quit requested", .{});
@@ -387,6 +453,33 @@ fn windowCloseCallback(ctx: ?*anyopaque, window: saturn.WindowHandle) void {
     const app: *App = @ptrCast(@alignCast(ctx.?));
     std.log.info("Window close requested", .{});
     app.is_running = false;
+}
+
+// Input Callbacks\
+fn gamepadButtonCallback(ctx: ?*anyopaque, gamepad_id: u32, button: saturn.GamepadButton, state: saturn.ButtonState) void {
+    _ = gamepad_id; // autofix
+
+    const app: *App = @ptrCast(@alignCast(ctx.?));
+
+    switch (button) {
+        .left_shoulder => app.camera.gamepad.shoulder[0] = state.isPressed(),
+        .right_shoulder => app.camera.gamepad.shoulder[1] = state.isPressed(),
+        else => {},
+    }
+}
+
+fn gamepadAxisCallback(ctx: ?*anyopaque, gamepad_id: u32, axis: saturn.GamepadAxis, value: f32) void {
+    _ = gamepad_id; // autofix
+
+    const app: *App = @ptrCast(@alignCast(ctx.?));
+
+    switch (axis) {
+        .left_x => app.camera.gamepad.left_stick[0] = value,
+        .left_y => app.camera.gamepad.left_stick[1] = value,
+        .right_x => app.camera.gamepad.right_stick[0] = value,
+        .right_y => app.camera.gamepad.right_stick[1] = value,
+        else => {},
+    }
 }
 
 //TODO: abstract and interface for windows
@@ -417,17 +510,19 @@ pub const SceneWindow = struct {
     name: [:0]const u8 = "Scene",
     open: bool = true,
 
-    average_dt: f32 = 0.0,
-    mem_usage: ?usize = null,
+    settings: SceneRenderer.Settings = .{},
 
     pub fn draw(self: *SceneWindow, tpa: std.mem.Allocator, camera: *DebugCamera, window_size: [2]u32) void {
         const width_float: f32 = @floatFromInt(window_size[0]);
         const height_float: f32 = @floatFromInt(window_size[1]);
         const aspect_ratio: f32 = width_float / height_float;
 
-        _ = tpa; // autofix
         if (self.open) {
             if (imgui.begin(self.name, &self.open, 0)) {
+                _ = imgui.checkbox("Culling", &self.settings.culling);
+                imgui.text(std.fmt.allocPrintSentinel(tpa, "Draw Count: {}", .{self.settings.draw_count}, 0) catch "");
+                imgui.text(std.fmt.allocPrintSentinel(tpa, "Cull Count: {}", .{self.settings.culled_count}, 0) catch "");
+
                 switch (camera.camera) {
                     .perspective => |*perspective| {
                         if (imgui.button("Flip Fov Axis")) {
@@ -449,6 +544,17 @@ pub const SceneWindow = struct {
                 }
                 imgui.end();
             }
+        }
+    }
+};
+
+pub const DemoWindow = struct {
+    name: [:0]const u8 = "ImGui Demo",
+    open: bool = false,
+
+    pub fn draw(self: *DemoWindow) void {
+        if (self.open) {
+            imgui.showDemoWindow(&self.open);
         }
     }
 };

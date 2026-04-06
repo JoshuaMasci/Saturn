@@ -38,6 +38,10 @@ pub fn labelText(label: [:0]const u8, str: [:0]const u8) void {
     c.ImGui_LabelText(label, str);
 }
 
+pub fn checkbox(label: [:0]const u8, value: *bool) bool {
+    return c.ImGui_Checkbox(label, value);
+}
+
 pub fn sliderFloat(label: [:0]const u8, value: *f32, min: f32, max: f32) bool {
     return c.ImGui_SliderFloat(label, value, min, max);
 }
@@ -54,6 +58,10 @@ pub fn beginMenu(label: [:0]const u8) bool {
 }
 pub fn endMenu() void {
     c.ImGui_EndMenu();
+}
+
+pub fn menuItem(label: [:0]const u8) bool {
+    return c.ImGui_MenuItem(label);
 }
 
 pub fn menuItemBool(label: [:0]const u8, value: ?*bool, enabled: bool) bool {

@@ -136,7 +136,7 @@ pub const PlatformInterface = struct {
         // Gpu Devices
         getDevices: *const fn (ctx: *anyopaque) []const DeviceInfo,
         doesDeviceSupportPresent: *const fn (ctx: *anyopaque, physical_device_index: u32, window_handle: WindowHandle) bool,
-        getWindowSupport: *const fn (ctx: *anyopaque, physical_device_index: u32, window_handle: WindowHandle) ?WindowSurfaceInfo,
+        getWindowCapabilities: *const fn (ctx: *anyopaque, gpa: std.mem.Allocator, physical_device_index: u32, window_handle: WindowHandle) ?WindowCapabilities,
         createDevice: *const fn (ctx: *anyopaque, physical_device_index: u32, desc: DeviceDesc) Error!DeviceInterface,
         destroyDevice: *const fn (ctx: *anyopaque, device_interface: DeviceInterface) void,
 
@@ -163,6 +163,10 @@ pub const PlatformInterface = struct {
 
     pub fn getWindowSize(self: *const Self, window_handle: WindowHandle) [2]u32 {
         return self.vtable.getWindowSize(self.ctx, window_handle);
+    }
+
+    pub fn getWindowCapabilities(self: *const Self, tpa: std.mem.Allocator, physical_device_index: u32, window_handle: WindowHandle) ?WindowCapabilities {
+        return self.vtable.getWindowCapabilities(self.ctx, tpa, physical_device_index, window_handle);
     }
 
     pub fn createDeviceBasic(self: *const Self, window_opt: ?WindowHandle, power_level: DevicePowerPreference) Error!DeviceInterface {
@@ -254,12 +258,17 @@ pub const PresentMode = enum {
     mailbox,
 };
 
-pub const WindowSurfaceInfo = struct {
-    min_image_count: u32,
-    max_image_count: u32,
+pub const WindowCapabilities = struct {
+    min_texture_count: u32,
+    max_texture_count: u32,
     usage: TextureUsage,
     formats: []const TextureFormat,
     present_modes: []const PresentMode,
+
+    pub fn deinit(self: WindowCapabilities, allocator: std.mem.Allocator) void {
+        allocator.free(self.formats);
+        allocator.free(self.present_modes);
+    }
 };
 
 pub const WindowSettings = struct {
@@ -272,6 +281,10 @@ pub const WindowSettings = struct {
 pub const ButtonState = enum(u1) {
     pressed,
     released,
+
+    pub fn isPressed(self: ButtonState) bool {
+        return self == .pressed;
+    }
 };
 
 pub const MouseButton = enum(u8) {

@@ -95,7 +95,7 @@ pub fn interface(self: *Self) saturn.PlatformInterface {
             .getDevices = getDevices,
 
             .doesDeviceSupportPresent = doesDeviceSupportPresent,
-            .getWindowSupport = getWindowSupport,
+            .getWindowCapabilities = getWindowCapabilities,
 
             .createDevice = createDevice,
             .destroyDevice = destroyDevice,
@@ -272,11 +272,9 @@ pub fn doesDeviceSupportPresent(ctx: *anyopaque, device_index: u32, window: satu
     return self.backend.doesDeviceSupportPresent(device_index, window);
 }
 
-pub fn getWindowSupport(ctx: *anyopaque, device_index: u32, window: saturn.WindowHandle) ?saturn.WindowSurfaceInfo {
-    _ = ctx; // autofix
-    _ = window; // autofix
-    _ = device_index; // autofix
-    return null;
+pub fn getWindowCapabilities(ctx: *anyopaque, gpa: std.mem.Allocator, device_index: u32, window: saturn.WindowHandle) ?saturn.WindowCapabilities {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    return self.backend.getWindowCapabilities(gpa, device_index, window) catch null;
 }
 
 pub fn createDevice(ctx: *anyopaque, device_index: u32, desc: saturn.DeviceDesc) saturn.Error!saturn.DeviceInterface {
@@ -314,15 +312,6 @@ pub fn initImgui(ctx: *anyopaque, device: saturn.DeviceInterface, window: saturn
 
     self.imgui_opt = .{ .device = device, .window = window };
     errdefer self.imgui_opt = null;
-
-    //TODO: make abstractions for these
-    cimgui.ImGui_StyleColorsClassic(null);
-
-    var io: *cimgui.ImGuiIO = cimgui.ImGui_GetIO();
-    io.ConfigFlags |= cimgui.ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= cimgui.ImGuiConfigFlags_NavEnableGamepad;
-    io.ConfigFlags |= cimgui.ImGuiConfigFlags_DockingEnable;
-    //io.ConfigFlags |= cimgui.ImGuiConfigFlags_ViewportsEnable;
 }
 
 pub fn deinitImgui(ctx: *anyopaque) void {
@@ -362,11 +351,11 @@ pub fn endImgui(ctx: *anyopaque) void {
         cimgui.ImGui_EndFrame();
 
         // Update and Render additional Platform Windows
-        // const io: *cimgui.struct_ImGuiIO_t = cimgui.ImGui_GetIO();
-        // if (io.ConfigFlags & cimgui.ImGuiConfigFlags_ViewportsEnable == 0) {
-        //     cimgui.ImGui_UpdatePlatformWindows();
-        //     cimgui.ImGui_RenderPlatformWindowsDefault();
-        // }
+        const io: *cimgui.struct_ImGuiIO_t = cimgui.ImGui_GetIO();
+        if (io.ConfigFlags & cimgui.ImGuiConfigFlags_ViewportsEnable == 0) {
+            cimgui.ImGui_UpdatePlatformWindows();
+            cimgui.ImGui_RenderPlatformWindowsDefault();
+        }
     }
 }
 

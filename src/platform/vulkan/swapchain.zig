@@ -199,10 +199,19 @@ pub fn queuePresent(
     }
 }
 
-pub fn getVkPresentMode(mode: saturn.PresentMode) vk.PresentModeKHR {
+pub fn toVkPresentMode(mode: saturn.PresentMode) vk.PresentModeKHR {
     return switch (mode) {
         .fifo => .fifo_khr,
         .immediate => .immediate_khr,
         .mailbox => .mailbox_khr,
+    };
+}
+
+pub fn fromVkPresentMode(mode: vk.PresentModeKHR) ?saturn.PresentMode {
+    return switch (mode) {
+        .fifo_khr => .fifo,
+        .immediate_khr => .immediate,
+        .mailbox_khr => .mailbox,
+        else => null,
     };
 }

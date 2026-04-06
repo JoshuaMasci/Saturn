@@ -209,6 +209,32 @@ pub fn getVkFormat(format: saturn.TextureFormat) vk.Format {
     };
 }
 
+pub fn fromVkFormat(format: vk.Format) ?saturn.TextureFormat {
+    return switch (format) {
+        .r8g8b8a8_unorm => .rgba8_unorm,
+        .r8g8b8a8_srgb => .rgba8_srgb,
+        .b8g8r8a8_unorm => .bgra8_unorm,
+        .b8g8r8a8_srgb => .bgra8_srgb,
+        .r16g16b16a16_sfloat => .rgba16_float,
+        .d32_sfloat => .depth32_float,
+        .bc1_rgba_unorm_block => .bc1_rgba_unorm,
+        .bc1_rgba_srgb_block => .bc1_rgba_srgb,
+        .bc2_unorm_block => .bc2_rgba_unorm,
+        .bc2_srgb_block => .bc2_rgba_srgb,
+        .bc3_unorm_block => .bc3_rgba_unorm,
+        .bc3_srgb_block => .bc3_rgba_srgb,
+        .bc4_unorm_block => .bc4_r_unorm,
+        .bc4_snorm_block => .bc4_r_snorm,
+        .bc5_unorm_block => .bc5_rg_unorm,
+        .bc5_snorm_block => .bc5_rg_snorm,
+        .bc6h_ufloat_block => .bc6h_rgb_ufloat,
+        .bc6h_sfloat_block => .bc6h_rgb_sfloat,
+        .bc7_unorm_block => .bc7_rgba_unorm,
+        .bc7_srgb_block => .bc7_rgba_srgb,
+        else => null,
+    };
+}
+
 pub fn getVkImageUsage(usage: saturn.TextureUsage, is_color: bool) vk.ImageUsageFlags {
     return .{
         .transfer_src_bit = usage.transfer_src,

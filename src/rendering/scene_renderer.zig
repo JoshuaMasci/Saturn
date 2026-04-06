@@ -1,12 +1,14 @@
 const std = @import("std");
 
-const saturn = @import("../root.zig");
 const zm = @import("zmath");
+
+const saturn = @import("../root.zig");
+const Transform = @import("../transform.zig");
 
 const Scene = @import("scene.zig");
 const AssetPool = @import("asset_pool.zig");
 const Material = @import("material.zig");
-const Transform = @import("../transform.zig");
+const culling = @import("culling.zig");
 
 const AssetRegistry = @import("../asset/registry.zig");
 const CpuMesh = @import("../asset/mesh.zig");
@@ -53,7 +55,16 @@ pub fn rebuild(self: *Self, formats: RenderTargetState) saturn.Error!void {
     self.legacy = try LegacyScenePass.init(self.gpa, self.device, self.registry, formats);
 }
 
-pub fn addPasses(self: *const Self, tpa: std.mem.Allocator, target: saturn.RGTextureHandle, render_graph: *saturn.RenderGraph, scene: *const Scene, camera: *const Camera, asset_pool: *const AssetPool) saturn.Error!void {
+pub fn addPasses(
+    self: *Self,
+    tpa: std.mem.Allocator,
+    target: saturn.RGTextureHandle,
+    render_graph: *saturn.RenderGraph,
+    scene: *const Scene,
+    camera: *const Camera,
+    asset_pool: *const AssetPool,
+    settings: *Settings,
+) saturn.Error!void {
     var render_buckets = try scene.createBuckets(tpa, asset_pool);
     render_buckets.depthSort(camera.transform.position);
 
@@ -64,6 +75,7 @@ pub fn addPasses(self: *const Self, tpa: std.mem.Allocator, target: saturn.RGTex
         .camera = camera,
         .asset_pool = asset_pool,
         .render_buckets = render_buckets,
+        .settings = settings,
     };
 
     const depth_texture = try render_graph.createTransientTexture(.{
@@ -88,17 +100,24 @@ pub fn addPasses(self: *const Self, tpa: std.mem.Allocator, target: saturn.RGTex
     );
 }
 
+pub const Settings = struct {
+    culling: bool = true,
+    draw_count: usize = 0,
+    culled_count: usize = 0,
+};
+
 const LegacyPassData = struct {
     legacy_pass: *const LegacyScenePass,
     scene: *const Scene,
     camera: *const Camera,
     asset_pool: *const AssetPool,
     render_buckets: Scene.RenderBuckets,
+    settings: *Settings,
 };
 
 fn legacyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
     const data: *LegacyPassData = @ptrCast(@alignCast(ctx.?));
-    data.legacy_pass.render(cmd, data.render_buckets, data.camera, data.asset_pool, target_resolution);
+    data.legacy_pass.render(cmd, data.render_buckets, data.camera, data.asset_pool, target_resolution, data.settings);
 }
 
 const LegacyScenePass = struct {
@@ -272,7 +291,15 @@ const LegacyScenePass = struct {
         device.destroyGraphicsPipeline(self.alpha_blend_pipeline);
     }
 
-    pub fn render(self: *const LegacyScenePass, cmd: saturn.GraphicsCommandEncoder, render_buckets: Scene.RenderBuckets, camera: *const Camera, asset_pool: *const AssetPool, target_resolution: [2]u32) void {
+    pub fn render(
+        self: *const LegacyScenePass,
+        cmd: saturn.GraphicsCommandEncoder,
+        render_buckets: Scene.RenderBuckets,
+        camera: *const Camera,
+        asset_pool: *const AssetPool,
+        target_resolution: [2]u32,
+        settings: *Settings,
+    ) void {
         const width_float: f32 = @floatFromInt(target_resolution[0]);
         const height_float: f32 = @floatFromInt(target_resolution[1]);
         const aspect_ratio: f32 = width_float / height_float;
@@ -282,15 +309,27 @@ const LegacyScenePass = struct {
         projection_matrix[1][1] *= -1.0; //TODO: only do this for vulkan
         const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
+        const frustum_opt: ?culling.Frustum = if (settings.culling) .fromViewProjectionMatrix(view_projection_matrix) else null;
+
         cmd.setVertexBuffer(0, .from(asset_pool.mesh_pool.vertex_buffer.buffer), 0);
         cmd.setIndexBuffer(.from(asset_pool.mesh_pool.index_buffer.buffer), .u32, 0);
 
         const texture_info_binding = asset_pool.texture_pool.info_buffer.storage_binding.?;
 
+        settings.draw_count = 0;
+        settings.culled_count = 0;
         {
             const mat_instance_binding = asset_pool.material_pool.opaque_material.instance_data.storage_binding.?;
             cmd.setPipeline(self.opaque_pipeline);
             for (render_buckets.opaque_instances.items) |instance| {
+                if (frustum_opt) |frustum| {
+                    if (!frustum.intersects(culling.Sphere, instance.culling_sphere)) {
+                        settings.culled_count += 1;
+                        continue;
+                    }
+                }
+                settings.draw_count += 1;
+
                 const push_constants = PushConstants{
                     .view_projection_matrix = view_projection_matrix,
                     .model_matrix = instance.model_matrix,
@@ -314,6 +353,14 @@ const LegacyScenePass = struct {
             const mat_instance_binding = asset_pool.material_pool.alpha_mask_material.instance_data.storage_binding.?;
             cmd.setPipeline(self.alpha_mask_pipeline);
             for (render_buckets.alpha_mask_instances.items) |instance| {
+                if (frustum_opt) |frustum| {
+                    if (!frustum.intersects(culling.Sphere, instance.culling_sphere)) {
+                        settings.culled_count += 1;
+                        continue;
+                    }
+                }
+                settings.draw_count += 1;
+
                 const push_constants = PushConstants{
                     .view_projection_matrix = view_projection_matrix,
                     .model_matrix = instance.model_matrix,
@@ -337,6 +384,14 @@ const LegacyScenePass = struct {
             const mat_instance_binding = asset_pool.material_pool.alpha_blend_material.instance_data.storage_binding.?;
             cmd.setPipeline(self.alpha_blend_pipeline);
             for (render_buckets.alpha_blend_instances.items) |instance| {
+                if (frustum_opt) |frustum| {
+                    if (!frustum.intersects(culling.Sphere, instance.culling_sphere)) {
+                        settings.culled_count += 1;
+                        continue;
+                    }
+                }
+                settings.draw_count += 1;
+
                 const push_constants = PushConstants{
                     .view_projection_matrix = view_projection_matrix,
                     .model_matrix = instance.model_matrix,

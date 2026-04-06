@@ -85,6 +85,7 @@ pub fn createBuckets(self: *const Self, gpa: std.mem.Allocator, asset_pool: *con
                 .mask => render_buckets.alpha_mask_instances,
                 .blend => render_buckets.alpha_blend_instances,
             }.append(gpa, .{
+                .culling_sphere = .initWorld(cpu_primitive.sphere_pos_radius, &instance.transform),
                 .draw_data = .{
                     .index_count = cpu_primitive.index_count,
                     .instance_count = 1,
@@ -102,7 +103,10 @@ pub fn createBuckets(self: *const Self, gpa: std.mem.Allocator, asset_pool: *con
 }
 
 const saturn = @import("../root.zig");
+const Sphere = @import("culling.zig").Sphere;
+
 pub const InstanceDrawData = struct {
+    culling_sphere: Sphere,
     draw_data: saturn.IndirectDrawIndexedCommand,
     model_matrix: zm.Mat, //TODO: replace with an index into a buffer
     material_index: u32,

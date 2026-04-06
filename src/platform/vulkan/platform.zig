@@ -122,6 +122,54 @@ pub const Backend = struct {
         return false;
     }
 
+    pub fn getWindowCapabilities(self: *Self, tpa: std.mem.Allocator, device_index: u32, window: saturn.WindowHandle) !saturn.WindowCapabilities {
+        if (!self.doesDeviceSupportPresent(device_index, window)) return error.WindowNotSupported;
+        const physical_device = self.instance.physical_devices[device_index].handle;
+        const surface = self.surfaces.get(window) orelse return error.InvalidWindow;
+        const surface_capabilities = try self.instance.proxy.getPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface);
+
+        const usage: saturn.TextureUsage = .{
+            .sampled = surface_capabilities.supported_usage_flags.sampled_bit,
+            .storage = surface_capabilities.supported_usage_flags.storage_bit,
+            .attachment = surface_capabilities.supported_usage_flags.color_attachment_bit,
+            .transfer_src = surface_capabilities.supported_usage_flags.transfer_src_bit,
+            .transfer_dst = surface_capabilities.supported_usage_flags.transfer_dst_bit,
+            .host_transfer = surface_capabilities.supported_usage_flags.host_transfer_bit,
+        };
+
+        const vk_formats = try self.instance.proxy.getPhysicalDeviceSurfaceFormatsAllocKHR(physical_device, surface, self.gpa);
+        defer self.gpa.free(vk_formats);
+
+        var formats = try std.ArrayList(saturn.TextureFormat).initCapacity(tpa, vk_formats.len);
+        errdefer formats.deinit(tpa);
+
+        for (vk_formats) |vk_format| {
+            if (vk_format.color_space != .srgb_nonlinear_khr) continue; //Any other colorspaces are unsupported
+            const format = Texture.fromVkFormat(vk_format.format) orelse continue;
+            if (std.mem.indexOfScalar(saturn.TextureFormat, formats.items, format) != null) continue; //There might be duplicates I guess, if not this isn't a big deal
+            formats.appendAssumeCapacity(format);
+        }
+
+        const vk_present_modes = try self.instance.proxy.getPhysicalDeviceSurfacePresentModesAllocKHR(physical_device, surface, self.gpa);
+        defer self.gpa.free(vk_present_modes);
+
+        var present_modes = try std.ArrayList(saturn.PresentMode).initCapacity(tpa, vk_present_modes.len);
+        errdefer present_modes.deinit(tpa);
+
+        for (vk_present_modes) |vk_present_mode| {
+            const present_mode = Swapchain.fromVkPresentMode(vk_present_mode) orelse continue;
+            present_modes.appendAssumeCapacity(present_mode);
+        }
+
+        return .{
+            .min_texture_count = surface_capabilities.min_image_count,
+            .max_texture_count = surface_capabilities.max_image_count,
+            .usage = usage,
+            .formats = try formats.toOwnedSlice(tpa),
+            .present_modes = try present_modes.toOwnedSlice(tpa),
+        };
+    }
+
     pub fn createDevice(
         self: *Self,
         physical_device_index: u32,
@@ -819,7 +867,7 @@ pub const Device = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
 
         // Use existing conversion functions
-        const vk_present_mode = Swapchain.getVkPresentMode(desc.present_mode);
+        const vk_present_mode = Swapchain.toVkPresentMode(desc.present_mode);
 
         // Get the surface for this window
         const surface = self.backend.surfaces.get(window) orelse return error.WindowLost;
