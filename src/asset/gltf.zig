@@ -205,7 +205,7 @@ pub fn loadScene(self: Self, allocator: std.mem.Allocator, gltf_index: usize) !S
     }
     errdefer allocator.free(name);
 
-    var nodes: std.ArrayList(Scene.Node) = .{};
+    var nodes: std.ArrayList(Scene.Node) = .empty;
     defer nodes.deinit(allocator);
 
     var root_nodes: []usize = &.{};
@@ -278,8 +278,6 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
         };
     }
 
-    const parent: ?usize = gltf_node.parent;
-
     const children = try allocator.alloc(usize, gltf_node.children.len);
     errdefer allocator.free(children);
     for (gltf_node.children, 0..) |child_index, list_index| {
@@ -290,11 +288,17 @@ fn loadNode(self: Self, allocator: std.mem.Allocator, gltf_index: usize, nodes: 
     try nodes.append(allocator, .{
         .name = name,
         .local_transform = transform,
-        .parent = parent,
+        .parent = null,
         .children = children,
         .mesh = mesh,
         .camera = camera,
     });
+
+    //Update child's parent field
+    for (children) |child_index| {
+        nodes.items[child_index].parent = node_index;
+    }
+
     return node_index;
 }
 
