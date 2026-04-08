@@ -74,69 +74,8 @@ pub fn main() !void {
         app.camera.transform = .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } };
     }
 
-    {
-        const tpa = app.temp_allocator.allocator();
-        defer _ = app.temp_allocator.reset(.retain_capacity);
-
-        var camera: DebugCamera = .{};
-
-        var scene_filepath_opt: ?[]const u8 = null;
-        scene_filepath_opt = null;
-
-        //TODO: select scene from args
-        //scene_filepath_opt = "zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json";
-        scene_filepath_opt = "zig-out/assets/game/Bistro/scene.json";
-
-        if (scene_filepath_opt) |scene_filepath| {
-            var scene_json: std.json.Parsed(SceneAsset) = undefined;
-            {
-                var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
-                defer file.close();
-
-                var read_buffer: [1024]u8 = undefined;
-                var reader = file.reader(&read_buffer);
-                scene_json = try SceneAsset.deserialzie(tpa, &reader.interface);
-            }
-            defer scene_json.deinit();
-
-            if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
-                if (scene_json.value.nodes[camera_node].camera) |node_camera| {
-                    camera.camera = node_camera;
-                }
-
-                camera.transform = scene_json.value.calcNodeGlobalTransform(camera_node);
-                camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), camera.transform.rotation);
-            }
-
-            if (scene_json.value.getNodeFromName("PhysCamera002")) |camera_node| {
-                if (scene_json.value.nodes[camera_node].camera) |node_camera| {
-                    camera.camera = node_camera;
-                }
-
-                camera.transform = scene_json.value.calcNodeGlobalTransform(camera_node);
-                camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), camera.transform.rotation);
-            }
-
-            // Loop though the scene and mark all assets to be loaded
-            for (scene_json.value.nodes, 0..) |node, node_index| {
-                if (node.mesh) |mesh| {
-                    const transform = scene_json.value.calcNodeGlobalTransform(node_index);
-
-                    const material_handles = try tpa.alloc(AssetPool.MaterialAssetHandle, mesh.materials.len);
-                    defer tpa.free(material_handles);
-
-                    const mesh_handle = try app.asset_pool.getMeshAsset(mesh.mesh);
-                    for (material_handles, mesh.materials) |*material_handle, material| {
-                        material_handle.* = try app.asset_pool.getMaterialAsset(material);
-                    }
-
-                    _ = try app.scene.addInstance(true, transform, mesh_handle, material_handles);
-                }
-            }
-
-            app.camera = camera;
-        }
-    }
+    //try app.loadScene("zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json", true);
+    try app.loadScene("zig-out/assets/game/Bistro/scene.json", true);
 
     {
         const now = std.time.nanoTimestamp();
@@ -147,8 +86,7 @@ pub fn main() !void {
         }
 
         //TEMP: force load of all resources
-        app.asset_pool.loadAllCpu();
-        app.asset_pool.loadAllGpu();
+        app.asset_pool.markAllForLoad();
     }
 
     var last_frame_time_ns = std.time.nanoTimestamp();
@@ -202,7 +140,7 @@ const App = struct {
         errdefer saturn.deinit();
 
         const window = try platform.createWindow(.{
-            .name = "Test Window",
+            .name = "Saturn Editor",
             .resizeable = true,
             .size = .{ .windowed = .{ 1920, 1080 } },
         });
@@ -216,7 +154,6 @@ const App = struct {
 
         const window_caps = platform.getWindowCapabilities(allocator, info.physical_device_index, window).?; // orelse return error.WindowNotSupported;
         defer window_caps.deinit(allocator);
-        std.log.info("Window Caps: {any}", .{window_caps});
 
         //Tries to select the prefered settings first, fallbacks to
         const vsync = true;
@@ -338,8 +275,29 @@ const App = struct {
             //Menu
             if (imgui.beginMainMenuBar()) {
                 if (imgui.beginMenu("File")) {
+                    _ = imgui.menuItem("New");
                     _ = imgui.menuItem("Save");
                     _ = imgui.menuItem("Load");
+                    imgui.c.ImGui_Separator();
+                    if (imgui.menuItem("Load Scene")) {
+                        const cwd_path = try std.fs.cwd().realpathAlloc(self.allocator, ".");
+                        defer self.allocator.free(cwd_path);
+
+                        self.platform.showFileOpenDialog(self.window, .{
+                            .allow_many = false,
+                            .default_location = cwd_path,
+                            .filers = &.{.{ .name = "Scene Json", .pattern = "json" }},
+                            .userdata = self,
+                            .callback = sceneLoadCallback,
+                        });
+                    }
+
+                    if (imgui.menuItem("Clear Scene")) {
+                        self.scene.deinit();
+                        self.scene = .init(self.allocator);
+                    }
+
+                    imgui.c.ImGui_Separator();
                     if (imgui.menuItem("Quit")) {
                         self.is_running = false;
                     }
@@ -400,6 +358,60 @@ const App = struct {
         }
 
         try self.gpu_device.submitRenderGraph(tpa, &render_graph);
+    }
+
+    pub fn loadScene(self: *Self, scene_filepath: []const u8, update_camera: bool) !void {
+        const tpa = self.temp_allocator.allocator();
+
+        var scene_json: std.json.Parsed(SceneAsset) = undefined;
+        {
+            var file = try std.fs.cwd().openFile(scene_filepath, .{ .mode = .read_only });
+            defer file.close();
+
+            var read_buffer: [1024]u8 = undefined;
+            var reader = file.reader(&read_buffer);
+            scene_json = try SceneAsset.deserialzie(tpa, &reader.interface);
+        }
+        defer scene_json.deinit();
+
+        if (update_camera) {
+            if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
+                if (scene_json.value.nodes[camera_node].camera) |node_camera| {
+                    self.camera.camera = node_camera;
+                }
+
+                self.camera.transform = scene_json.value.calcNodeGlobalTransform(camera_node);
+                self.camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), self.camera.transform.rotation);
+            }
+
+            if (scene_json.value.getNodeFromName("PhysCamera002")) |camera_node| {
+                if (scene_json.value.nodes[camera_node].camera) |node_camera| {
+                    self.camera.camera = node_camera;
+                }
+
+                self.camera.transform = scene_json.value.calcNodeGlobalTransform(camera_node);
+                self.camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), self.camera.transform.rotation);
+            }
+        }
+
+        // Loop though the scene and mark all assets to be loaded
+        for (scene_json.value.nodes, 0..) |node, node_index| {
+            if (node.mesh) |mesh| {
+                const transform = scene_json.value.calcNodeGlobalTransform(node_index);
+
+                const material_handles = try tpa.alloc(AssetPool.MaterialAssetHandle, mesh.materials.len);
+                defer tpa.free(material_handles);
+
+                const mesh_handle = try self.asset_pool.getMeshAsset(mesh.mesh);
+                for (material_handles, mesh.materials) |*material_handle, material| {
+                    material_handle.* = try self.asset_pool.getMaterialAsset(material);
+                }
+
+                _ = try self.scene.addInstance(true, transform, mesh_handle, material_handles);
+            }
+        }
+
+        self.asset_pool.markAllForLoad();
     }
 };
 
@@ -480,6 +492,16 @@ fn gamepadAxisCallback(ctx: ?*anyopaque, gamepad_id: u32, axis: saturn.GamepadAx
         .right_y => app.camera.gamepad.right_stick[1] = value,
         else => {},
     }
+}
+
+fn sceneLoadCallback(userdata: ?*anyopaque, filelist: []const []const u8, filter: ?u32) void {
+    _ = filter; // autofix
+
+    if (filelist.len == 0) return;
+
+    const app: *App = @ptrCast(@alignCast(userdata.?));
+    std.log.info("sceneLoad: {s}", .{filelist[0]});
+    app.loadScene(filelist[0], false) catch |err| std.log.err("Failed to load scene {}", .{err});
 }
 
 //TODO: abstract and interface for windows

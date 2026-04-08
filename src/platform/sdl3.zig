@@ -100,6 +100,10 @@ pub fn interface(self: *Self) saturn.PlatformInterface {
             .createDevice = createDevice,
             .destroyDevice = destroyDevice,
 
+            .showFileOpenDialog = showFileOpenDialog,
+            .showFolderOpenDialog = showFileOpenDialog,
+            .showFileSaveDialog = showFileSaveDialog,
+
             .initImgui = initImgui,
             .deinitImgui = deinitImgui,
 
@@ -284,6 +288,191 @@ pub fn createDevice(ctx: *anyopaque, device_index: u32, desc: saturn.DeviceDesc)
 pub fn destroyDevice(ctx: *anyopaque, device: saturn.DeviceInterface) void {
     const self: *Self = @ptrCast(@alignCast(ctx));
     self.backend.destroyDevice(device);
+}
+
+const FileDialogCallbackData = struct {
+    //Need to preserve the filters for the lifetime of the dialog window
+    gpa: std.mem.Allocator,
+    c_strings: std.ArrayList([:0]const u8),
+    filters: []const c.SDL_DialogFileFilter,
+
+    userdata: ?*anyopaque,
+    callback: ?*const fn (userdata: ?*anyopaque, filelist: []const []const u8, filter_opt: ?u32) void,
+
+    fn init(
+        gpa: std.mem.Allocator,
+        settings: saturn.FileDialogSettings,
+    ) error{OutOfMemory}!FileDialogCallbackData {
+        var c_strings: std.ArrayList([:0]const u8) = .empty;
+        errdefer {
+            for (c_strings.items) |c_string| {
+                gpa.free(c_string);
+            }
+            c_strings.deinit(gpa);
+        }
+
+        const filters = try gpa.alloc(c.SDL_DialogFileFilter, settings.filers.len);
+        errdefer gpa.free(filters);
+
+        for (filters, settings.filers) |*c_filter, filter| {
+            const name = try gpa.dupeZ(u8, filter.name);
+            errdefer gpa.free(name);
+
+            const pattern = try gpa.dupeZ(u8, filter.pattern);
+            errdefer gpa.free(pattern);
+
+            try c_strings.append(gpa, name);
+            try c_strings.append(gpa, pattern);
+
+            c_filter.* = .{ .name = name, .pattern = pattern };
+        }
+
+        return .{
+            .gpa = gpa,
+            .c_strings = c_strings,
+            .filters = filters,
+            .userdata = settings.userdata,
+            .callback = settings.callback,
+        };
+    }
+
+    fn deinit(self: *FileDialogCallbackData) void {
+        for (self.c_strings.items) |string| {
+            self.gpa.free(string);
+        }
+        self.c_strings.deinit(self.gpa);
+        self.gpa.free(self.filters);
+        self.gpa.destroy(self);
+    }
+};
+
+fn fileDialogCallback(userdata: ?*anyopaque, filepaths: [*c]const [*c]const u8, filter: c_int) callconv(.c) void {
+    if (userdata == null) return;
+    const data: *FileDialogCallbackData = @ptrCast(@alignCast(userdata));
+    defer data.deinit();
+
+    var count: usize = 0;
+    while (filepaths[count] != null) : (count += 1) {}
+    const filepath_slice = data.gpa.alloc([]const u8, count) catch |err| std.debug.panic("Failed to allocate a filepath array {}", .{err});
+    defer data.gpa.free(filepath_slice);
+    for (filepath_slice, 0..count) |*s, i| {
+        s.* = std.mem.span(filepaths[i]);
+    }
+
+    const filter_opt: ?u32 = if (filter >= 0) @intCast(filter) else null;
+
+    if (data.callback) |callback| {
+        callback(data.userdata, filepath_slice, filter_opt);
+    }
+}
+
+fn showFileDialog(fn_type: anytype, ctx: *anyopaque, window_handle: saturn.WindowHandle, settings: saturn.FileDialogSettings) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window_handle));
+
+    const userdata: *FileDialogCallbackData = self.gpa.create(FileDialogCallbackData) catch return;
+    userdata.* = FileDialogCallbackData.init(self.gpa, settings) catch {
+        self.gpa.destroy(userdata);
+        return;
+    };
+
+    var default_location_z: ?[:0]const u8 = null;
+    defer if (default_location_z) |s| self.gpa.free(s);
+
+    if (settings.default_location) |default_location| {
+        default_location_z = self.gpa.dupeZ(u8, default_location) catch null;
+    }
+
+    fn_type(
+        fileDialogCallback,
+        userdata,
+        sdl_window,
+        userdata.filters.ptr,
+        @intCast(userdata.filters.len),
+        if (default_location_z) |s| s.ptr else null,
+        settings.allow_many,
+    );
+}
+
+pub fn showFileOpenDialog(ctx: *anyopaque, window_handle: saturn.WindowHandle, settings: saturn.FileDialogSettings) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window_handle));
+
+    const userdata: *FileDialogCallbackData = self.gpa.create(FileDialogCallbackData) catch return;
+    userdata.* = FileDialogCallbackData.init(self.gpa, settings) catch {
+        self.gpa.destroy(userdata);
+        return;
+    };
+
+    var default_location_z: ?[:0]const u8 = null;
+    defer if (default_location_z) |s| self.gpa.free(s);
+
+    if (settings.default_location) |default_location| {
+        default_location_z = self.gpa.dupeZ(u8, default_location) catch null;
+    }
+
+    c.SDL_ShowOpenFileDialog(
+        fileDialogCallback,
+        userdata,
+        sdl_window,
+        userdata.filters.ptr,
+        @intCast(userdata.filters.len),
+        if (default_location_z) |s| s.ptr else null,
+        settings.allow_many,
+    );
+}
+
+pub fn showFolderOpenDialog(ctx: *anyopaque, window_handle: saturn.WindowHandle, settings: saturn.FileDialogSettings) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window_handle));
+
+    const userdata: *FileDialogCallbackData = self.gpa.create(FileDialogCallbackData) catch return;
+    userdata.* = FileDialogCallbackData.init(self.gpa, settings) catch {
+        self.gpa.destroy(userdata);
+        return;
+    };
+
+    var default_location_z: ?[:0]const u8 = null;
+    defer if (default_location_z) |s| self.gpa.free(s);
+
+    if (settings.default_location) |default_location| {
+        default_location_z = self.gpa.dupeZ(u8, default_location) catch null;
+    }
+
+    c.SDL_ShowOpenFolderDialog(
+        fileDialogCallback,
+        userdata,
+        sdl_window,
+        if (default_location_z) |s| s.ptr else null,
+        settings.allow_many,
+    );
+}
+
+pub fn showFileSaveDialog(ctx: *anyopaque, window_handle: saturn.WindowHandle, settings: saturn.FileDialogSettings) void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    const sdl_window: ?*c.SDL_Window = @ptrFromInt(@intFromEnum(window_handle));
+
+    const userdata: *FileDialogCallbackData = self.gpa.create(FileDialogCallbackData) catch return;
+    userdata.* = FileDialogCallbackData.init(self.gpa, settings) catch {
+        self.gpa.destroy(userdata);
+        return;
+    };
+
+    var default_location_z: ?[:0]const u8 = null;
+    defer if (default_location_z) |s| self.gpa.free(s);
+
+    if (settings.default_location) |default_location| {
+        default_location_z = self.gpa.dupeZ(u8, default_location) catch null;
+    }
+
+    c.SDL_ShowSaveFileDialog(
+        fileDialogCallback,
+        userdata,
+        sdl_window,
+        userdata.filters.ptr,
+        @intCast(userdata.filters.len),
+        if (default_location_z) |s| s.ptr else null,
+    );
 }
 
 pub fn initImgui(ctx: *anyopaque, device: saturn.DeviceInterface, window: saturn.WindowHandle) saturn.Error!void {

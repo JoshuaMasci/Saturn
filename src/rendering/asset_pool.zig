@@ -221,12 +221,12 @@ pub fn getMaterialAsset(self: *Self, asset_handle: AssetRegistry.Handle) error{O
     return material_asset_handle;
 }
 
-pub fn loadAllCpu(self: *Self) void {
-    var mesh_iter = self.mesh_assets.valueIterator();
-    while (mesh_iter.next()) |asset| {
-        if (asset.cpu != null) continue;
+pub fn markAllForLoad(self: *Self) void {
+    var mesh_iter = self.mesh_assets.iterator();
+    while (mesh_iter.next()) |entry| {
+        if (entry.value_ptr.cpu != null) continue;
 
-        if (asset.asset_handle) |asset_handle| {
+        if (entry.value_ptr.asset_handle) |asset_handle| {
             if (self.registry.loadAsset(
                 CpuMesh,
                 self.allocator,
@@ -235,17 +235,18 @@ pub fn loadAllCpu(self: *Self) void {
                     .load_meshlets = false,
                 },
             )) |mesh| {
-                asset.cpu = mesh;
+                entry.value_ptr.cpu = mesh;
+                self.mesh_gpu_load_list.append(self.allocator, entry.key_ptr.*) catch @panic("");
             } else |err| {
                 std.log.err("Failed to load mesh {} {}", .{ asset_handle, err });
             }
         }
     }
 
-    var texture_iter = self.texture_assets.valueIterator();
-    while (texture_iter.next()) |asset| {
-        if (asset.asset_handle) |asset_handle| {
-            if (asset.cpu != null) continue;
+    var texture_iter = self.texture_assets.iterator();
+    while (texture_iter.next()) |entry| {
+        if (entry.value_ptr.asset_handle) |asset_handle| {
+            if (entry.value_ptr.cpu != null) continue;
 
             if (self.registry.loadAsset(
                 CpuTexture,
@@ -253,24 +254,12 @@ pub fn loadAllCpu(self: *Self) void {
                 asset_handle,
                 .{},
             )) |texture| {
-                asset.cpu = texture;
+                entry.value_ptr.cpu = texture;
+                self.texture_gpu_load_list.append(self.allocator, entry.key_ptr.*) catch @panic("");
             } else |err| {
                 std.log.err("Failed to load texture {} {}", .{ asset_handle, err });
             }
         }
-    }
-}
-
-pub fn loadAllGpu(self: *Self) void {
-    var mesh_iter = self.mesh_assets.iterator();
-    while (mesh_iter.next()) |entry| {
-        self.mesh_gpu_load_list.append(self.allocator, entry.key_ptr.*) catch @panic("");
-    }
-
-    // Load textures to GPU
-    var texture_iter = self.texture_assets.iterator();
-    while (texture_iter.next()) |entry| {
-        self.texture_gpu_load_list.append(self.allocator, entry.key_ptr.*) catch @panic("");
     }
 }
 

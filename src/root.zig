@@ -93,6 +93,20 @@ pub const PlatformDesc = struct {
     validation: bool = false,
 };
 
+pub const FileDialogFilter = struct {
+    name: []const u8,
+    pattern: []const u8,
+};
+
+pub const FileDialogSettings = struct {
+    allow_many: bool = false,
+    default_location: ?[]const u8 = null,
+    filers: []const FileDialogFilter = &.{},
+
+    userdata: ?*anyopaque = null,
+    callback: ?*const fn (userdata: ?*anyopaque, filelist: []const []const u8, filter: ?u32) void = null,
+};
+
 pub const PlatformCallbacks = struct {
     ctx: ?*anyopaque = null,
 
@@ -139,6 +153,11 @@ pub const PlatformInterface = struct {
         getWindowCapabilities: *const fn (ctx: *anyopaque, gpa: std.mem.Allocator, physical_device_index: u32, window_handle: WindowHandle) ?WindowCapabilities,
         createDevice: *const fn (ctx: *anyopaque, physical_device_index: u32, desc: DeviceDesc) Error!DeviceInterface,
         destroyDevice: *const fn (ctx: *anyopaque, device_interface: DeviceInterface) void,
+
+        //File Dialogs
+        showFileOpenDialog: *const fn (ctx: *anyopaque, window_handle: WindowHandle, settings: FileDialogSettings) void,
+        showFolderOpenDialog: *const fn (ctx: *anyopaque, window_handle: WindowHandle, settings: FileDialogSettings) void,
+        showFileSaveDialog: *const fn (ctx: *anyopaque, window_handle: WindowHandle, settings: FileDialogSettings) void,
 
         initImgui: *const fn (ctx: *anyopaque, device: DeviceInterface, window: WindowHandle) Error!void,
         deinitImgui: *const fn (ctx: *anyopaque) void,
@@ -219,6 +238,18 @@ pub const PlatformInterface = struct {
 
     pub fn destroyDevice(self: *const Self, device_interface: DeviceInterface) void {
         self.vtable.destroyDevice(self.ctx, device_interface);
+    }
+
+    pub fn showFileOpenDialog(self: *const Self, window_handle: WindowHandle, settings: FileDialogSettings) void {
+        self.vtable.showFileOpenDialog(self.ctx, window_handle, settings);
+    }
+
+    pub fn showFolderOpenDialog(self: *const Self, window_handle: WindowHandle, settings: FileDialogSettings) void {
+        self.vtable.showFolderOpenDialog(self.ctx, window_handle, settings);
+    }
+
+    pub fn showFileSaveDialog(self: *const Self, window_handle: WindowHandle) void {
+        self.vtable.showFileSaveDialog(self.ctx, window_handle);
     }
 
     pub fn initImgui(self: *const Self, device: DeviceInterface, window: WindowHandle) Error!void {
