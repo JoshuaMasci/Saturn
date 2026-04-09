@@ -124,7 +124,7 @@ const App = struct {
     //Editor Windows
     perf_win: PerformanceWindow = .{},
     scene_win: SceneWindow = .{},
-    prop_win: EntityPropertiesWindow = .{},
+    prop_win: PropertiesWindow = .{},
     camera_win: CameraWindow = .{},
     demo_win: DemoWindow = .{},
 
@@ -692,6 +692,22 @@ pub const SceneWindow = struct {
                 imgui.end();
             }
         }
+
+        if (self.selected_world) |selected_world| {
+            if (self.selected_entity) |selected_entity| {
+                if (universe.entities.get(selected_entity)) |entity| {
+                    if (entity.world) |entity_world| {
+                        if (entity_world.toU64() != selected_world.toU64()) {
+                            self.selected_entity = null;
+                        }
+                    } else {
+                        self.selected_entity = null;
+                    }
+                }
+            }
+        } else {
+            self.selected_entity = null;
+        }
     }
 
     fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, selected_world: Universe.WorldHandle) void {
@@ -740,11 +756,11 @@ pub const SceneWindow = struct {
     }
 };
 
-pub const EntityPropertiesWindow = struct {
-    name: [:0]const u8 = "Entity Properties",
+pub const PropertiesWindow = struct {
+    name: [:0]const u8 = "Properties",
     open: bool = true,
 
-    pub fn draw(self: *EntityPropertiesWindow, tpa: std.mem.Allocator, universe: *Universe, selected_entity: ?Universe.EntityHandle) void {
+    pub fn draw(self: *PropertiesWindow, tpa: std.mem.Allocator, universe: *Universe, selected_entity: ?Universe.EntityHandle) void {
         _ = tpa; // autofix
         if (self.open) {
             const flags: i32 = 0;
