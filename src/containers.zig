@@ -189,3 +189,58 @@ pub fn SlotMap(comptime T: type) type {
         };
     };
 }
+
+pub fn ArrayListSet(comptime T: type, eql_fn_opt: ?*const fn (a: T, b: T) bool) type {
+    return struct {
+        const Self = @This();
+        pub const empty: Self = .{};
+
+        items: std.ArrayList(T) = .empty,
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return .{ .items = .init(allocator) };
+        }
+
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            self.items.deinit(allocator);
+        }
+
+        pub fn insert(self: *Self, allocator: std.mem.Allocator, value: T) std.mem.Allocator.Error!bool {
+            if (self.contains(value)) return false;
+            try self.items.append(allocator, value);
+            return true;
+        }
+
+        pub fn remove(self: *Self, value: T) bool {
+            for (self.items.items, 0..) |item, i| {
+                if (eql(item, value)) {
+                    _ = self.items.swapRemove(i);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        pub fn contains(self: Self, value: T) bool {
+            for (self.items.items) |item| {
+                if (eql(item, value)) return true;
+            }
+            return false;
+        }
+
+        pub fn slice(self: Self) []const T {
+            return self.items.items;
+        }
+
+        pub fn count(self: Self) usize {
+            return self.items.items.len;
+        }
+
+        inline fn eql(a: T, b: T) bool {
+            if (comptime eql_fn_opt) |eql_fn| {
+                return eql_fn(a, b);
+            }
+            return std.meta.eql(a, b);
+        }
+    };
+}

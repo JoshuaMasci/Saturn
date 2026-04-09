@@ -19,17 +19,7 @@ const SceneRenderer = @import("rendering/scene_renderer.zig");
 
 const imgui = @import("platform/imgui.zig");
 
-fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
-    _ = ctx; // autofix
-    _ = cmd; // autofix
-    _ = target_resolution; // autofix
-
-}
-
-fn emptyComputeCallback(ctx: ?*anyopaque, cmd: saturn.ComputeCommandEncoder) void {
-    _ = ctx; // autofix
-    _ = cmd; // autofix
-}
+const Universe = @import("universe.zig");
 
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }).init;
@@ -52,6 +42,7 @@ pub fn main() !void {
     io.ConfigFlags |= imgui.c.ImGuiConfigFlags_DockingEnable;
     //io.ConfigFlags |= imgui.c.ImGuiConfigFlags_ViewportsEnable; //Not functional atm
 
+    //Adds some shapes to the scene for fun
     {
         const cube_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/cube.asset"));
         const sphere_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/sphere.asset"));
@@ -118,6 +109,9 @@ const App = struct {
 
     scene_renderer: SceneRenderer,
 
+    universe: Universe,
+    main_world: Universe.WorldHandle,
+
     camera: DebugCamera = .{},
     scene: Scene,
 
@@ -130,6 +124,7 @@ const App = struct {
     //Editor Windows
     perf_win: PerformanceWindow = .{},
     scene_win: SceneWindow = .{},
+    camera_win: CameraWindow = .{},
     demo_win: DemoWindow = .{},
 
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -174,6 +169,25 @@ const App = struct {
         try gpu_device.claimWindow(window, window_settings);
         errdefer gpu_device.releaseWindow(window);
 
+        // Wayland won't display a window until it has been drawn to
+        // So just draw a black window until everyting is loaded
+        // Could be an engine splash screen in the future
+        {
+            var render_graph: saturn.RenderGraph = .init(allocator);
+            defer render_graph.deinit();
+            const swapchain_texture = try render_graph.acquireWindowTexture(window);
+            _ = try render_graph.addGraphicsPass(
+                "Empty Swapchain Pass",
+                .{ .color_attachments = &.{.{
+                    .texture = swapchain_texture,
+                    .clear = @splat(0.0),
+                }} },
+                null,
+                emptyGraphicsCallback,
+            );
+            try gpu_device.submitRenderGraph(allocator, &render_graph);
+        }
+
         const asset_registry = try allocator.create(AssetRegistry);
         errdefer allocator.destroy(asset_registry);
 
@@ -195,6 +209,13 @@ const App = struct {
         var scene: Scene = .init(allocator);
         errdefer scene.deinit();
 
+        var universe: Universe = .init(allocator);
+        errdefer universe.deinit();
+
+        const main_world = try universe.createWorld("main_world");
+        const root_entity = try universe.createEntity("root_entity", main_world, null, .{});
+        _ = root_entity; // autofix
+
         return .{
             .allocator = allocator,
             .platform = platform,
@@ -209,6 +230,8 @@ const App = struct {
             .scene_renderer = scene_renderer,
 
             .scene = scene,
+            .universe = universe,
+            .main_world = main_world,
 
             .temp_allocator = .init(allocator),
         };
@@ -220,6 +243,7 @@ const App = struct {
         self.temp_allocator.deinit();
 
         self.scene.deinit();
+        self.universe.deinit();
 
         self.scene_renderer.deinit();
 
@@ -307,6 +331,7 @@ const App = struct {
                 if (imgui.beginMenu("Windows")) {
                     _ = imgui.menuItemBool(self.perf_win.name, &self.perf_win.open, true);
                     _ = imgui.menuItemBool(self.scene_win.name, &self.scene_win.open, true);
+                    _ = imgui.menuItemBool(self.camera_win.name, &self.camera_win.open, true);
                     _ = imgui.menuItemBool(self.demo_win.name, &self.demo_win.open, true);
                     imgui.endMenu();
                 }
@@ -314,9 +339,10 @@ const App = struct {
                 imgui.endMainMenuBar();
             }
 
-            self.demo_win.draw();
             self.perf_win.draw(tpa);
-            self.scene_win.draw(tpa, &self.camera, self.platform.getWindowSize(self.window));
+            self.camera_win.draw(tpa, &self.camera, self.platform.getWindowSize(self.window));
+            self.scene_win.draw(tpa, &self.universe);
+            self.demo_win.draw();
 
             self.platform.endImgui();
         }
@@ -338,7 +364,7 @@ const App = struct {
                 &self.scene,
                 &.{ .camera = self.camera.camera, .transform = self.camera.transform },
                 &self.asset_pool,
-                &self.scene_win.settings,
+                &self.camera_win.settings,
             );
         } else {
             _ = try render_graph.addGraphicsPass(
@@ -373,6 +399,13 @@ const App = struct {
             scene_json = try SceneAsset.deserialzie(tpa, &reader.interface);
         }
         defer scene_json.deinit();
+
+        {
+            const world_scene = try self.universe.createWorld(scene_json.value.name);
+            for (scene_json.value.root_nodes) |root_node| {
+                try self.loadSceneNode(&scene_json.value, world_scene, null, root_node);
+            }
+        }
 
         if (update_camera) {
             if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
@@ -412,6 +445,16 @@ const App = struct {
         }
 
         self.asset_pool.markAllForLoad();
+    }
+
+    fn loadSceneNode(self: *Self, scene: *const SceneAsset, world_handle: Universe.WorldHandle, parent_handle: ?Universe.EntityHandle, node_index: usize) !void {
+        const node = scene.nodes[node_index];
+
+        const node_entity = try self.universe.createEntity(node.name, world_handle, parent_handle, node.local_transform);
+
+        for (node.children) |child| {
+            try self.loadSceneNode(scene, world_handle, node_entity, child);
+        }
     }
 };
 
@@ -504,6 +547,18 @@ fn sceneLoadCallback(userdata: ?*anyopaque, filelist: []const []const u8, filter
     app.loadScene(filelist[0], false) catch |err| std.log.err("Failed to load scene {}", .{err});
 }
 
+fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
+    _ = ctx; // autofix
+    _ = cmd; // autofix
+    _ = target_resolution; // autofix
+
+}
+
+fn emptyComputeCallback(ctx: ?*anyopaque, cmd: saturn.ComputeCommandEncoder) void {
+    _ = ctx; // autofix
+    _ = cmd; // autofix
+}
+
 //TODO: abstract and interface for windows
 pub const PerformanceWindow = struct {
     name: [:0]const u8 = "Performance",
@@ -528,13 +583,13 @@ pub const PerformanceWindow = struct {
     }
 };
 
-pub const SceneWindow = struct {
-    name: [:0]const u8 = "Scene",
+pub const CameraWindow = struct {
+    name: [:0]const u8 = "Camera",
     open: bool = true,
 
     settings: SceneRenderer.Settings = .{},
 
-    pub fn draw(self: *SceneWindow, tpa: std.mem.Allocator, camera: *DebugCamera, window_size: [2]u32) void {
+    pub fn draw(self: *CameraWindow, tpa: std.mem.Allocator, camera: *DebugCamera, window_size: [2]u32) void {
         const width_float: f32 = @floatFromInt(window_size[0]);
         const height_float: f32 = @floatFromInt(window_size[1]);
         const aspect_ratio: f32 = width_float / height_float;
@@ -561,10 +616,118 @@ pub const SceneWindow = struct {
                         }
                     },
                     else => {
-                        imgui.text("Not implmented for other camera types");
+                        imgui.text("Not implemented for other camera types");
                     },
                 }
                 imgui.end();
+            }
+        }
+    }
+};
+
+pub const SceneWindow = struct {
+    const EntityViewType = enum { hierarchy };
+
+    name: [:0]const u8 = "Scene",
+    open: bool = true,
+
+    selected_world: ?Universe.WorldHandle = null,
+    selected_entity: ?Universe.EntityHandle = null,
+
+    entity_view_type: EntityViewType = .hierarchy,
+
+    pub fn draw(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe) void {
+        if (self.open) {
+            const flags: i32 = imgui.c.ImGuiWindowFlags_MenuBar;
+            if (imgui.begin(self.name, &self.open, flags)) {
+                if (imgui.beginMenuBar()) {
+                    if (imgui.beginMenu("World")) {
+                        var iter = universe.worlds.iterator();
+
+                        while (iter.nextValue()) |world| {
+                            const is_selected: bool = if (self.selected_world) |sw| world.handle.toU64() == sw.toU64() else false;
+                            if (imgui.radioButton(world.name.?, is_selected)) {
+                                self.selected_world = if (is_selected) null else world.handle;
+                            }
+                        }
+
+                        imgui.endMenu();
+                    }
+
+                    if (imgui.beginMenu("View")) {
+                        const view_types = std.enums.values(EntityViewType);
+
+                        for (view_types) |view_type| {
+                            const name = std.enums.tagName(EntityViewType, view_type) orelse "";
+                            if (imgui.radioButton(name, self.entity_view_type == view_type)) {
+                                self.entity_view_type = view_type;
+                            }
+                        }
+
+                        imgui.endMenu();
+                    }
+
+                    if (imgui.beginMenu("Sort")) {
+                        const sort_types: []const [:0]const u8 = &.{"by name"};
+
+                        for (sort_types) |sort_type| {
+                            _ = imgui.radioButton(sort_type, true);
+                        }
+
+                        imgui.endMenu();
+                    }
+
+                    imgui.endMenuBar();
+                }
+
+                if (self.selected_world) |selected_world| {
+                    switch (self.entity_view_type) {
+                        .hierarchy => self.drawEntityHierarchy(tpa, universe, selected_world),
+                    }
+                }
+
+                imgui.end();
+            }
+        }
+    }
+
+    fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, selected_world: Universe.WorldHandle) void {
+        if (universe.worlds.getPtr(selected_world)) |world| {
+            for (world.entities.slice()) |entity_handle| {
+                self.drawEntityNode(tpa, universe, entity_handle);
+            }
+        }
+    }
+
+    fn drawEntityNode(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, entity_handle: Universe.EntityHandle) void {
+        if (universe.entities.getPtr(entity_handle)) |entity| {
+            const is_selected: bool = if (self.selected_entity) |se| entity_handle.toU64() == se.toU64() else false;
+
+            var flags: i32 = imgui.c.ImGuiTreeNodeFlags_OpenOnDoubleClick | imgui.c.ImGuiTreeNodeFlags_OpenOnArrow;
+
+            if (is_selected) {
+                flags |= imgui.c.ImGuiTreeNodeFlags_Selected;
+            }
+
+            if (entity.children.count() == 0) {
+                flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
+            }
+
+            const node_open = imgui.c.ImGui_TreeNodeEx(entity.name.?, flags);
+
+            if (imgui.c.ImGui_IsItemClicked()) {
+                if (is_selected) {
+                    self.selected_entity = null;
+                } else {
+                    self.selected_entity = entity_handle;
+                }
+            }
+
+            if (node_open) {
+                for (entity.children.slice()) |child| {
+                    self.drawEntityNode(tpa, universe, child);
+                }
+                imgui.c.ImGui_TreePop();
             }
         }
     }

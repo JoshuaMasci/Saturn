@@ -42,6 +42,10 @@ pub fn checkbox(label: [:0]const u8, value: *bool) bool {
     return c.ImGui_Checkbox(label, value);
 }
 
+pub fn radioButton(label: [:0]const u8, active: bool) bool {
+    return c.ImGui_RadioButton(label, active);
+}
+
 pub fn sliderFloat(label: [:0]const u8, value: *f32, min: f32, max: f32) bool {
     return c.ImGui_SliderFloat(label, value, min, max);
 }
@@ -51,6 +55,13 @@ pub fn beginMainMenuBar() bool {
 }
 pub fn endMainMenuBar() void {
     c.ImGui_EndMainMenuBar();
+}
+
+pub fn beginMenuBar() bool {
+    return c.ImGui_BeginMenuBar();
+}
+pub fn endMenuBar() void {
+    c.ImGui_EndMenuBar();
 }
 
 pub fn beginMenu(label: [:0]const u8) bool {
