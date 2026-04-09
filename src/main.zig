@@ -141,7 +141,7 @@ const App = struct {
         });
         errdefer platform.destroyWindow(window);
 
-        const gpu_device = try platform.createDeviceBasic(window, .prefer_low_power);
+        const gpu_device = try platform.createDeviceBasic(window, .prefer_high_power);
         errdefer platform.destroyDevice(gpu_device);
 
         const info = gpu_device.getInfo();
@@ -615,6 +615,21 @@ pub const CameraWindow = struct {
                         imgui.text("Not implemented for other camera types");
                     },
                 }
+
+                var position = zm.vecToArr3(camera.transform.position);
+                if (imgui.c.ImGui_InputFloat3("Position", &position)) {
+                    camera.transform.position = zm.loadArr3(position);
+                }
+
+                var rotation = zm.quatToRollPitchYaw(camera.transform.rotation);
+                inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
+                if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
+                    inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
+
+                    // Broken :(
+                    // camera.transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
+                }
+
                 imgui.end();
             }
         }
@@ -782,23 +797,19 @@ pub const PropertiesWindow = struct {
 
                         //Transform
                         {
-                            const whatever = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
-                            if (whatever) {
+                            const header_open = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
+                            if (header_open) {
                                 var position = zm.vecToArr3(entity.local_transform.position);
                                 if (imgui.c.ImGui_InputFloat3("Position", &position)) {
                                     entity.local_transform.position = zm.loadArr3(position);
                                 }
 
                                 var rotation = zm.quatToRollPitchYaw(entity.local_transform.rotation);
-                                inline for (&rotation) |*float| {
-                                    float.* = std.math.radiansToDegrees(float.*);
-                                }
-
+                                inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
                                 if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
-                                    inline for (&rotation) |*float| {
-                                        float.* = std.math.degreesToRadians(float.*);
-                                    }
-                                    entity.local_transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
+                                    inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
+                                    // Broken :(
+                                    //entity.local_transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
                                 }
 
                                 var scale = zm.vecToArr3(entity.local_transform.scale);
