@@ -767,14 +767,53 @@ pub const PropertiesWindow = struct {
             if (imgui.begin(self.name, &self.open, flags)) {
                 if (selected_entity) |entity_handle| {
                     if (universe.entities.getPtr(entity_handle)) |entity| {
-                        var name_buffer: [256]u8 = @splat(0);
-                        if (entity.name) |name| {
-                            @memcpy(name_buffer[0..name.len], name);
+                        imgui.c.ImGui_SeparatorText("Entity");
+
+                        //Name Field
+                        {
+                            var name_buffer: [256]u8 = @splat(0);
+                            if (entity.name) |name| {
+                                @memcpy(name_buffer[0..name.len], name);
+                            }
+
+                            if (imgui.inputText("Name", &name_buffer)) {
+                                const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
+                                universe.updateEntityName(entity_handle, name_buffer[0..index_of]) catch @panic("Failed to update entity name");
+                            }
                         }
 
-                        if (imgui.inputText("Name", &name_buffer)) {
-                            const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
-                            universe.updateEntityName(entity_handle, name_buffer[0..index_of]) catch @panic("Failed to update entity name");
+                        //Transform
+                        {
+                            const whatever = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
+                            if (whatever) {
+                                var position = zm.vecToArr3(entity.local_transform.position);
+                                if (imgui.c.ImGui_InputFloat3("Position", &position)) {
+                                    entity.local_transform.position = zm.loadArr3(position);
+                                }
+
+                                var rotation = zm.quatToRollPitchYaw(entity.local_transform.rotation);
+                                inline for (&rotation) |*float| {
+                                    float.* = std.math.radiansToDegrees(float.*);
+                                }
+
+                                if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
+                                    inline for (&rotation) |*float| {
+                                        float.* = std.math.degreesToRadians(float.*);
+                                    }
+                                    entity.local_transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
+                                }
+
+                                var scale = zm.vecToArr3(entity.local_transform.scale);
+                                if (imgui.c.ImGui_InputFloat3("Scale", &scale)) {
+                                    entity.local_transform.scale = zm.loadArr3(scale);
+                                }
+                            }
+
+                            imgui.c.ImGui_SeparatorText("Components");
+
+                            if (imgui.c.ImGui_CollapsingHeader("Model Component", 0)) {
+                                imgui.text("Still under construction 🚧");
+                            }
                         }
                     } else {
                         imgui.text("Invalid Entity Selected");
