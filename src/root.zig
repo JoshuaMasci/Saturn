@@ -420,6 +420,9 @@ pub const TextureFormat = enum {
     bgra8_unorm,
     bgra8_srgb,
 
+    rgb10_a2_unorm,
+    bgr10_a2_unorm,
+
     rgba16_float,
 
     bc1_rgba_unorm,

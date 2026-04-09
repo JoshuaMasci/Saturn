@@ -56,6 +56,13 @@ pub fn addInstance(self: *Self, visable: bool, transform: Transform, mesh: Asset
     });
 }
 
+pub fn updateInstance(self: *Self, handle: InstanceHandle, visable: bool, transform: Transform) void {
+    if (self.instances.getPtr(handle)) |instance| {
+        instance.visable = visable;
+        instance.transform = transform;
+    }
+}
+
 pub fn removeInstance(self: *Self, handle: InstanceHandle) void {
     if (self.instances.remove(handle)) |instance| {
         self.gpa.free(instance.primitives);

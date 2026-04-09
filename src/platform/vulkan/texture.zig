@@ -190,8 +190,13 @@ pub fn getVkFormat(format: saturn.TextureFormat) vk.Format {
         .rgba8_srgb => .r8g8b8a8_srgb,
         .bgra8_unorm => .b8g8r8a8_unorm,
         .bgra8_srgb => .b8g8r8a8_srgb,
+
+        .rgb10_a2_unorm => .a2r10g10b10_unorm_pack32,
+        .bgr10_a2_unorm => .a2b10g10r10_unorm_pack32,
+
         .rgba16_float => .r16g16b16a16_sfloat,
         .depth32_float => .d32_sfloat,
+
         .bc1_rgba_unorm => .bc1_rgba_unorm_block,
         .bc1_rgba_srgb => .bc1_rgba_srgb_block,
         .bc2_rgba_unorm => .bc2_unorm_block,
@@ -215,8 +220,14 @@ pub fn fromVkFormat(format: vk.Format) ?saturn.TextureFormat {
         .r8g8b8a8_srgb => .rgba8_srgb,
         .b8g8r8a8_unorm => .bgra8_unorm,
         .b8g8r8a8_srgb => .bgra8_srgb,
+
+        .a2r10g10b10_unorm_pack32 => .rgb10_a2_unorm,
+        .a2b10g10r10_unorm_pack32 => .bgr10_a2_unorm,
+
         .r16g16b16a16_sfloat => .rgba16_float,
+
         .d32_sfloat => .depth32_float,
+
         .bc1_rgba_unorm_block => .bc1_rgba_unorm,
         .bc1_rgba_srgb_block => .bc1_rgba_srgb,
         .bc2_unorm_block => .bc2_rgba_unorm,

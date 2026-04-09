@@ -65,8 +65,8 @@ pub fn main() !void {
         app.camera.transform = .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } };
     }
 
-    //try app.loadScene("zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json", true);
-    try app.loadScene("zig-out/assets/game/Bistro/scene.json", true);
+    app.scene_win.selected_world = try app.loadScene("zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json", true);
+    //app.scene_win.selected_world = try app.loadScene("zig-out/assets/game/Bistro/scene.json", true);
 
     {
         const now = std.time.nanoTimestamp();
@@ -110,7 +110,6 @@ const App = struct {
     scene_renderer: SceneRenderer,
 
     universe: Universe,
-    main_world: Universe.WorldHandle,
 
     camera: DebugCamera = .{},
     scene: Scene,
@@ -142,7 +141,7 @@ const App = struct {
         });
         errdefer platform.destroyWindow(window);
 
-        const gpu_device = try platform.createDeviceBasic(window, .prefer_high_power);
+        const gpu_device = try platform.createDeviceBasic(window, .prefer_low_power);
         errdefer platform.destroyDevice(gpu_device);
 
         const info = gpu_device.getInfo();
@@ -155,8 +154,8 @@ const App = struct {
         const vsync = true;
         const usage: saturn.TextureUsage = .{ .attachment = true, .transfer_dst = true };
 
-        var window_settings_opt: ?saturn.WindowSettings = getWindowSettings(window_caps, usage, .@"10_bit", vsync);
-        if (window_settings_opt == null) window_settings_opt = getWindowSettings(window_caps, usage, .@"8bit_unorm", true);
+        var window_settings_opt: ?saturn.WindowSettings = getPreferredWindowSettings(window_caps, usage, .@"10_bit", vsync);
+        if (window_settings_opt == null) window_settings_opt = getPreferredWindowSettings(window_caps, usage, .@"8bit_unorm", true);
         const window_settings = window_settings_opt orelse return error.WindowNotSupported;
 
         const ColorTarget: saturn.TextureFormat = window_settings.texture_format;
@@ -213,10 +212,6 @@ const App = struct {
         var universe: Universe = .init(allocator);
         errdefer universe.deinit();
 
-        const main_world = try universe.createWorld("main_world");
-        const root_entity = try universe.createEntity("root_entity", main_world, null, .{});
-        _ = root_entity; // autofix
-
         return .{
             .allocator = allocator,
             .platform = platform,
@@ -232,7 +227,6 @@ const App = struct {
 
             .scene = scene,
             .universe = universe,
-            .main_world = main_world,
 
             .temp_allocator = .init(allocator),
         };
@@ -389,7 +383,7 @@ const App = struct {
         try self.gpu_device.submitRenderGraph(tpa, &render_graph);
     }
 
-    pub fn loadScene(self: *Self, scene_filepath: []const u8, update_camera: bool) !void {
+    pub fn loadScene(self: *Self, scene_filepath: []const u8, update_camera: bool) !Universe.WorldHandle {
         const tpa = self.temp_allocator.allocator();
 
         var scene_json: std.json.Parsed(SceneAsset) = undefined;
@@ -402,13 +396,6 @@ const App = struct {
             scene_json = try SceneAsset.deserialzie(tpa, &reader.interface);
         }
         defer scene_json.deinit();
-
-        {
-            const world_scene = try self.universe.createWorld(scene_json.value.name);
-            for (scene_json.value.root_nodes) |root_node| {
-                try self.loadSceneNode(&scene_json.value, world_scene, null, root_node);
-            }
-        }
 
         if (update_camera) {
             if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
@@ -448,6 +435,12 @@ const App = struct {
         }
 
         self.asset_pool.markAllForLoad();
+
+        const world_scene = try self.universe.createWorld(scene_json.value.name);
+        for (scene_json.value.root_nodes) |root_node| {
+            try self.loadSceneNode(&scene_json.value, world_scene, null, root_node);
+        }
+        return world_scene;
     }
 
     fn loadSceneNode(self: *Self, scene: *const SceneAsset, world_handle: Universe.WorldHandle, parent_handle: ?Universe.EntityHandle, node_index: usize) !void {
@@ -467,11 +460,11 @@ const WindowFormatClass = enum {
     @"10_bit",
 };
 
-fn getWindowSettings(window_caps: saturn.WindowCapabilities, usage: saturn.TextureUsage, format_class: WindowFormatClass, vsync: bool) ?saturn.WindowSettings {
+fn getPreferredWindowSettings(window_caps: saturn.WindowCapabilities, usage: saturn.TextureUsage, format_class: WindowFormatClass, vsync: bool) ?saturn.WindowSettings {
     const format: saturn.TextureFormat = switch (format_class) {
         .@"8bit_unorm" => getFirstSupported(saturn.TextureFormat, window_caps.formats, &.{ .bgra8_unorm, .rgba8_unorm }),
         .@"8bit_srgb" => getFirstSupported(saturn.TextureFormat, window_caps.formats, &.{ .bgra8_srgb, .rgba8_srgb }),
-        .@"10_bit" => null, //Need to figure out valid formats for this
+        .@"10_bit" => getFirstSupported(saturn.TextureFormat, window_caps.formats, &.{ .bgr10_a2_unorm, .rgb10_a2_unorm }),
     } orelse return null;
 
     const present_mode = switch (vsync) {
@@ -547,7 +540,7 @@ fn sceneLoadCallback(userdata: ?*anyopaque, filelist: []const []const u8, filter
 
     const app: *App = @ptrCast(@alignCast(userdata.?));
     std.log.info("sceneLoad: {s}", .{filelist[0]});
-    app.loadScene(filelist[0], false) catch |err| std.log.err("Failed to load scene {}", .{err});
+    _ = app.loadScene(filelist[0], false) catch |err| std.log.err("Failed to load scene {}", .{err});
 }
 
 fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
@@ -646,12 +639,17 @@ pub const SceneWindow = struct {
                 if (imgui.beginMenuBar()) {
                     if (imgui.beginMenu("World")) {
                         var iter = universe.worlds.iterator();
-
+                        var count: u32 = 0;
                         while (iter.nextValue()) |world| {
+                            count += 1;
                             const is_selected: bool = if (self.selected_world) |sw| world.handle.toU64() == sw.toU64() else false;
                             if (imgui.radioButton(world.name.?, is_selected)) {
                                 self.selected_world = if (is_selected) null else world.handle;
                             }
+                        }
+
+                        if (count == 0) {
+                            imgui.text("No Worlds");
                         }
 
                         imgui.endMenu();
