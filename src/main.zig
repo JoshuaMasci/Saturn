@@ -159,7 +159,7 @@ const App = struct {
         const window_settings = window_settings_opt orelse return error.WindowNotSupported;
 
         const ColorTarget: saturn.TextureFormat = window_settings.texture_format;
-        const DepthTarget: saturn.TextureFormat = .depth32_float;
+        const DepthTarget: saturn.TextureFormat = .d16_unorm;
 
         const RenderTarget: SceneRenderer.RenderTargetState = .{
             .color_targets = &.{ColorTarget},

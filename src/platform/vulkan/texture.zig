@@ -195,7 +195,6 @@ pub fn getVkFormat(format: saturn.TextureFormat) vk.Format {
         .bgr10_a2_unorm => .a2b10g10r10_unorm_pack32,
 
         .rgba16_float => .r16g16b16a16_sfloat,
-        .depth32_float => .d32_sfloat,
 
         .bc1_rgba_unorm => .bc1_rgba_unorm_block,
         .bc1_rgba_srgb => .bc1_rgba_srgb_block,
@@ -211,6 +210,9 @@ pub fn getVkFormat(format: saturn.TextureFormat) vk.Format {
         .bc6h_rgb_sfloat => .bc6h_sfloat_block,
         .bc7_rgba_unorm => .bc7_unorm_block,
         .bc7_rgba_srgb => .bc7_srgb_block,
+
+        .d16_unorm => .d16_unorm,
+        .d32_float => .d32_sfloat,
     };
 }
 
@@ -226,8 +228,6 @@ pub fn fromVkFormat(format: vk.Format) ?saturn.TextureFormat {
 
         .r16g16b16a16_sfloat => .rgba16_float,
 
-        .d32_sfloat => .depth32_float,
-
         .bc1_rgba_unorm_block => .bc1_rgba_unorm,
         .bc1_rgba_srgb_block => .bc1_rgba_srgb,
         .bc2_unorm_block => .bc2_rgba_unorm,
@@ -242,6 +242,10 @@ pub fn fromVkFormat(format: vk.Format) ?saturn.TextureFormat {
         .bc6h_sfloat_block => .bc6h_rgb_sfloat,
         .bc7_unorm_block => .bc7_rgba_unorm,
         .bc7_srgb_block => .bc7_rgba_srgb,
+
+        .d16_unorm => .d16_unorm,
+        .d32_sfloat => .d32_float,
+
         else => null,
     };
 }
@@ -261,15 +265,9 @@ pub fn getVkImageUsage(usage: saturn.TextureUsage, is_color: bool) vk.ImageUsage
 pub fn getFormatAspectMask(format: saturn.TextureFormat) vk.ImageAspectFlags {
     return switch (format) {
         // Depth-only formats
-        .depth32_float => .{ .depth_bit = true },
+        .d32_float, .d16_unorm => .{ .depth_bit = true },
 
-        // // Stencil-only formats
-        // .s8_uint => .{ .stencil_bit = true },
-
-        // // Depth-stencil formats
-        // .d16_unorm_s8_uint, .d24_unorm_s8_uint, .d32_sfloat_s8_uint => .{ .depth_bit = true, .stencil_bit = true },
-
-        // All other formats (color formats)
+        // Color formats
         else => .{ .color_bit = true },
     };
 }

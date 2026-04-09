@@ -446,11 +446,12 @@ pub const TextureFormat = enum {
     bc7_rgba_unorm,
     bc7_rgba_srgb,
 
-    depth32_float,
+    d32_float,
+    d16_unorm,
 
     pub fn isColor(self: TextureFormat) bool {
         return switch (self) {
-            .depth32_float => false,
+            .d32_float, .d16_unorm => false,
             else => true,
         };
     }
