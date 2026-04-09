@@ -125,6 +125,13 @@ pub fn createEntity(self: *Self, name_opt: ?[]const u8, world_handle: ?WorldHand
     return handle;
 }
 
+pub fn updateEntityName(self: *Self, handle: EntityHandle, new_name: []const u8) AllocationError!void {
+    const entity = self.entities.getPtr(handle).?;
+    const old = entity.name;
+    defer self.freeName(old);
+    entity.name = try self.dupeName(new_name);
+}
+
 // Helper Functions for names, mostly here just to reduce duplicate code
 // Ideally these would be inlined
 fn dupeName(self: *Self, name_opt: ?[]const u8) AllocationError!?[:0]const u8 {

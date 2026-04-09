@@ -26,16 +26,20 @@ pub fn end() void {
     c.ImGui_End();
 }
 
-pub fn button(label: [:0]const u8) bool {
-    return c.ImGui_Button(label);
-}
-
 pub fn text(label: [:0]const u8) void {
     c.ImGui_Text(label);
 }
 
 pub fn labelText(label: [:0]const u8, str: [:0]const u8) void {
     c.ImGui_LabelText(label, str);
+}
+
+pub fn inputText(label: [:0]const u8, buffer: []u8) bool {
+    return c.ImGui_InputText(label, buffer.ptr, buffer.len, 0);
+}
+
+pub fn button(label: [:0]const u8) bool {
+    return c.ImGui_Button(label);
 }
 
 pub fn checkbox(label: [:0]const u8, value: *bool) bool {

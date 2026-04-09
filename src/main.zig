@@ -124,6 +124,7 @@ const App = struct {
     //Editor Windows
     perf_win: PerformanceWindow = .{},
     scene_win: SceneWindow = .{},
+    prop_win: EntityPropertiesWindow = .{},
     camera_win: CameraWindow = .{},
     demo_win: DemoWindow = .{},
 
@@ -331,6 +332,7 @@ const App = struct {
                 if (imgui.beginMenu("Windows")) {
                     _ = imgui.menuItemBool(self.perf_win.name, &self.perf_win.open, true);
                     _ = imgui.menuItemBool(self.scene_win.name, &self.scene_win.open, true);
+                    _ = imgui.menuItemBool(self.prop_win.name, &self.prop_win.open, true);
                     _ = imgui.menuItemBool(self.camera_win.name, &self.camera_win.open, true);
                     _ = imgui.menuItemBool(self.demo_win.name, &self.demo_win.open, true);
                     imgui.endMenu();
@@ -342,6 +344,7 @@ const App = struct {
             self.perf_win.draw(tpa);
             self.camera_win.draw(tpa, &self.camera, self.platform.getWindowSize(self.window));
             self.scene_win.draw(tpa, &self.universe);
+            self.prop_win.draw(tpa, &self.universe, self.scene_win.selected_entity);
             self.demo_win.draw();
 
             self.platform.endImgui();
@@ -713,7 +716,11 @@ pub const SceneWindow = struct {
                 flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
             }
 
-            const node_open = imgui.c.ImGui_TreeNodeEx(entity.name.?, flags);
+            var entity_name = entity.name.?;
+            if (entity_name.len == 0) {
+                entity_name = " ";
+            }
+            const node_open = imgui.c.ImGui_TreeNodeEx(entity_name, flags);
 
             if (imgui.c.ImGui_IsItemClicked()) {
                 if (is_selected) {
@@ -728,6 +735,39 @@ pub const SceneWindow = struct {
                     self.drawEntityNode(tpa, universe, child);
                 }
                 imgui.c.ImGui_TreePop();
+            }
+        }
+    }
+};
+
+pub const EntityPropertiesWindow = struct {
+    name: [:0]const u8 = "Entity Properties",
+    open: bool = true,
+
+    pub fn draw(self: *EntityPropertiesWindow, tpa: std.mem.Allocator, universe: *Universe, selected_entity: ?Universe.EntityHandle) void {
+        _ = tpa; // autofix
+        if (self.open) {
+            const flags: i32 = 0;
+            if (imgui.begin(self.name, &self.open, flags)) {
+                if (selected_entity) |entity_handle| {
+                    if (universe.entities.getPtr(entity_handle)) |entity| {
+                        var name_buffer: [256]u8 = @splat(0);
+                        if (entity.name) |name| {
+                            @memcpy(name_buffer[0..name.len], name);
+                        }
+
+                        if (imgui.inputText("Name", &name_buffer)) {
+                            const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
+                            universe.updateEntityName(entity_handle, name_buffer[0..index_of]) catch @panic("Failed to update entity name");
+                        }
+                    } else {
+                        imgui.text("Invalid Entity Selected");
+                    }
+                } else {
+                    imgui.text("No Entity Selected");
+                }
+
+                imgui.end();
             }
         }
     }
