@@ -75,10 +75,10 @@ pub fn deinit(self: *Self) void {
     self.alpha_blend_material.deinit();
 }
 
-pub fn flush(self: *Self, transfer_queue: *TransferQueue) !void {
-    try self.opaque_material.instance_data.flush(transfer_queue);
-    try self.alpha_mask_material.instance_data.flush(transfer_queue);
-    try self.alpha_blend_material.instance_data.flush(transfer_queue);
+pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
+    try self.opaque_material.instance_data.addTransfers(transfer_queue);
+    try self.alpha_mask_material.instance_data.addTransfers(transfer_queue);
+    try self.alpha_blend_material.instance_data.addTransfers(transfer_queue);
 }
 
 pub fn add(self: *Self, mat: CpuMaterial) ?u32 {
@@ -113,16 +113,16 @@ pub const GpuMaterial = extern struct {
     }
 
     // Block 1 (Vec4 size)
+    loaded: u32 = 0,
     alpha_mode: i32,
     alpha_cutoff: f32,
     base_color_texture: u32,
-    metallic_roughness_texture: u32,
 
     // Block 2 (Vec4 size)
+    metallic_roughness_texture: u32,
     emissive_texture: u32,
     occlusion_texture: u32,
     normal_texture: u32,
-    pad0: u32 = 0,
 
     // Block 3 (3 * Vec4 size)
     base_color_factor: [4]f32,

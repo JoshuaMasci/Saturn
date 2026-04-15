@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
-    const build_sdl3 = b.option(bool, "build-sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
+    const build_sdl3 = b.option(bool, "build-sdl3", "Build and link SDL3 from source instead of using system lib") orelse false;
     const no_assets = b.option(bool, "no-assets", "Don't compile asset pipeline") orelse false;
     const no_main = b.option(bool, "no-render", "Don't compile main sandbox") orelse false;
     const use_llvm = b.option(bool, "use-llvm", "Compile using llvm") orelse false;
@@ -178,10 +178,13 @@ fn buildMain(
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
+    run_cmd.setCwd(b.path("zig-out/"));
+
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
-    const run_step = b.step("run", "Run the render sandbox");
+    const run_step = b.step("run", "Run the saturn editor");
+
     run_step.dependOn(&run_cmd.step);
 }

@@ -54,7 +54,7 @@ texture_gpu_load_list: std.ArrayList(TextureAssetHandle) = .empty,
 default_sampler: saturn.SamplerHandle,
 
 material_handles: std.AutoHashMap(AssetRegistry.Handle, MaterialAssetHandle),
-material_assets: SlotMap(MaterialAsset),
+material_assets: SlotMap(MaterialAsset) = .empty,
 material_pool: MaterialPool,
 
 pub fn init(
@@ -98,7 +98,6 @@ pub fn init(
         .default_sampler = default_sampler,
 
         .material_handles = .init(allocator),
-        .material_assets = .init(allocator),
         .material_pool = material_pool,
     };
 }
@@ -138,7 +137,7 @@ pub fn deinit(self: *Self) void {
         }
     }
     self.material_handles.deinit();
-    self.material_assets.deinit();
+    self.material_assets.deinit(self.allocator);
     self.material_pool.deinit();
 }
 
@@ -166,6 +165,22 @@ pub fn getMeshAsset(self: *Self, asset_handle: AssetRegistry.Handle) error{OutOf
     });
     errdefer _ = self.mesh_assets.remove(mesh_asset_handle);
 
+    //TODO: not load it here
+    const mesh_asset = self.mesh_assets.getPtr(mesh_asset_handle).?;
+    if (self.registry.loadAsset(
+        CpuMesh,
+        self.allocator,
+        asset_handle,
+        .{
+            .load_meshlets = false,
+        },
+    )) |mesh| {
+        mesh_asset.cpu = mesh;
+        self.mesh_gpu_load_list.append(self.allocator, mesh_asset_handle) catch @panic("");
+    } else |err| {
+        std.log.err("Failed to load mesh {} {}", .{ asset_handle, err });
+    }
+
     return mesh_asset_handle;
 }
 
@@ -186,6 +201,20 @@ pub fn getTextureAsset(self: *Self, asset_handle: AssetRegistry.Handle) error{Ou
         .asset_handle = asset_handle,
     });
     errdefer _ = self.texture_assets.remove(texture_asset_handle);
+
+    //TODO: not load it here
+    const texture_asset = self.texture_assets.getPtr(texture_asset_handle).?;
+    if (self.registry.loadAsset(
+        CpuTexture,
+        self.allocator,
+        asset_handle,
+        .{},
+    )) |texture| {
+        texture_asset.cpu = texture;
+        self.texture_gpu_load_list.append(self.allocator, texture_asset_handle) catch @panic("");
+    } else |err| {
+        std.log.err("Failed to load texture {} {}", .{ asset_handle, err });
+    }
 
     return texture_asset_handle;
 }
@@ -213,7 +242,7 @@ pub fn getMaterialAsset(self: *Self, asset_handle: AssetRegistry.Handle) error{O
         std.log.err("Failed to load material {} {}", .{ asset_handle, err });
     }
 
-    const material_asset_handle = try self.material_assets.insert(material_asset);
+    const material_asset_handle = try self.material_assets.insert(self.allocator, material_asset);
     errdefer _ = self.material_assets.remove(material_asset_handle);
 
     try self.material_handles.put(asset_handle, material_asset_handle);
@@ -222,51 +251,54 @@ pub fn getMaterialAsset(self: *Self, asset_handle: AssetRegistry.Handle) error{O
 }
 
 pub fn markAllForLoad(self: *Self) void {
-    var mesh_iter = self.mesh_assets.iterator();
-    while (mesh_iter.next()) |entry| {
-        if (entry.value_ptr.cpu != null) continue;
+    _ = self; // autofix
+    return;
 
-        if (entry.value_ptr.asset_handle) |asset_handle| {
-            if (self.registry.loadAsset(
-                CpuMesh,
-                self.allocator,
-                asset_handle,
-                .{
-                    .load_meshlets = false,
-                },
-            )) |mesh| {
-                entry.value_ptr.cpu = mesh;
-                self.mesh_gpu_load_list.append(self.allocator, entry.key_ptr.*) catch @panic("");
-            } else |err| {
-                std.log.err("Failed to load mesh {} {}", .{ asset_handle, err });
-            }
-        }
-    }
+    // var mesh_iter = self.mesh_assets.iterator();
+    // while (mesh_iter.next()) |entry| {
+    //     if (entry.value_ptr.cpu != null) continue;
 
-    var texture_iter = self.texture_assets.iterator();
-    while (texture_iter.next()) |entry| {
-        if (entry.value_ptr.asset_handle) |asset_handle| {
-            if (entry.value_ptr.cpu != null) continue;
+    //     if (entry.value_ptr.asset_handle) |asset_handle| {
+    //         if (self.registry.loadAsset(
+    //             CpuMesh,
+    //             self.allocator,
+    //             asset_handle,
+    //             .{
+    //                 .load_meshlets = false,
+    //             },
+    //         )) |mesh| {
+    //             entry.value_ptr.cpu = mesh;
+    //             self.mesh_gpu_load_list.append(self.allocator, entry.key_ptr.*) catch @panic("");
+    //         } else |err| {
+    //             std.log.err("Failed to load mesh {} {}", .{ asset_handle, err });
+    //         }
+    //     }
+    // }
 
-            if (self.registry.loadAsset(
-                CpuTexture,
-                self.allocator,
-                asset_handle,
-                .{},
-            )) |texture| {
-                entry.value_ptr.cpu = texture;
-                self.texture_gpu_load_list.append(self.allocator, entry.key_ptr.*) catch @panic("");
-            } else |err| {
-                std.log.err("Failed to load texture {} {}", .{ asset_handle, err });
-            }
-        }
-    }
+    // var texture_iter = self.texture_assets.iterator();
+    // while (texture_iter.next()) |entry| {
+    //     if (entry.value_ptr.asset_handle) |asset_handle| {
+    //         if (entry.value_ptr.cpu != null) continue;
+
+    //         if (self.registry.loadAsset(
+    //             CpuTexture,
+    //             self.allocator,
+    //             asset_handle,
+    //             .{},
+    //         )) |texture| {
+    //             entry.value_ptr.cpu = texture;
+    //             self.texture_gpu_load_list.append(self.allocator, entry.key_ptr.*) catch @panic("");
+    //         } else |err| {
+    //             std.log.err("Failed to load texture {} {}", .{ asset_handle, err });
+    //         }
+    //     }
+    // }
 }
 
 pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
-    try self.mesh_pool.info_buffer.flush(transfer_queue);
-    try self.material_pool.flush(transfer_queue);
-    try self.texture_pool.info_buffer.flush(transfer_queue);
+    try self.mesh_pool.info_buffer.addTransfers(transfer_queue);
+    try self.material_pool.addTransfers(transfer_queue);
+    try self.texture_pool.info_buffer.addTransfers(transfer_queue);
 
     if (self.mesh_gpu_load_list.items.len != 0) {
         const MAX_MESH_UPLOADS = 100;

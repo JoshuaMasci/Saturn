@@ -376,7 +376,7 @@ pub fn createComputePipeline(
         },
     };
 
-    const result = device.device.proxy.createGraphicsPipelines(
+    const result = device.device.proxy.createComputePipelines(
         .null_handle, // pipeline cache
         1,
         @ptrCast(&pipeline_info),

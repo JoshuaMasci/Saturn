@@ -35,6 +35,7 @@ layout(location = 4) in vec2 uv1;
 layout(location = 0) out vec2 frag_uv0;
 layout(location = 1) out vec2 frag_uv1;
 layout(location = 2) flat out uint material_index;
+layout(location = 3) out vec3 frag_norm;
 
 void main()
 {
@@ -42,7 +43,7 @@ void main()
     const Instance instance = push_constants.scene_instances_ptr.instances[cmd.instance_index];
 
     const mat4 model_matrix = instance.model_matrix;
-    mat3 normal_matrix = mat3(instance.normal_matrix);
+    const mat3 normal_matrix = mat3(instance.normal_matrix);
 
     vec4 world_position = model_matrix * vec4(position, 1.0f);
     vec3 world_normal = normalize(normal_matrix * normal);
@@ -52,4 +53,5 @@ void main()
     frag_uv0 = uv0,
     frag_uv1 = uv1,
     material_index = cmd.material_index;
+    frag_norm = world_normal;
 }

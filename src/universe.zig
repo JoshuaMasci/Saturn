@@ -5,7 +5,7 @@ const zm = @import("zmath");
 const Transform = @import("transform.zig");
 
 const containers = @import("containers.zig");
-const SlotMap = @import("containers.zig").SlotMap;
+const SlotMap = containers.SlotMap;
 const ArrayListSet = containers.ArrayListSet;
 
 pub const AllocationError = std.mem.Allocator.Error;
@@ -20,7 +20,7 @@ pub const WorldHandle = WorldPool.Handle;
 pub const Entity = struct {
     handle: EntityHandle,
 
-    /// Name owned by the universe, cstring(null term) for convience with ffi
+    /// Name owned by the universe, cstring(null term) for convenience with ffi
     name: ?[:0]const u8 = null,
 
     world: ?WorldHandle,
@@ -30,12 +30,16 @@ pub const Entity = struct {
     parent: ?EntityHandle = null,
     children: EntityHandleSet = .empty,
     owned_world: ?WorldHandle = null,
+
+    // Components
+    //TODO: make it more configurable?
+    scene_instance: ?@import("rendering/scene.zig").StaticMeshInstanceHandle = null,
 };
 
 pub const World = struct {
     handle: WorldHandle,
 
-    /// Name owned by the universe, cstring(null term) for convience with ffi
+    /// Name owned by the universe, cstring(null term) for convenience with ffi
     name: ?[:0]const u8 = null,
 
     parent_entity: ?EntityHandle = null,
@@ -46,14 +50,12 @@ pub const World = struct {
 const Self = @This();
 
 gpa: std.mem.Allocator,
-entities: EntityPool,
-worlds: WorldPool,
+entities: EntityPool = .empty,
+worlds: WorldPool = .empty,
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
         .gpa = allocator,
-        .entities = .init(allocator),
-        .worlds = .init(allocator),
     };
 }
 
@@ -63,21 +65,21 @@ pub fn deinit(self: *Self) void {
         self.freeName(entity.name);
         entity.children.deinit(self.gpa);
     }
-    self.entities.deinit();
+    self.entities.deinit(self.gpa);
 
     var wit = self.worlds.iterator();
     while (wit.nextValue()) |world| {
         self.freeName(world.name);
         world.entities.deinit(self.gpa);
     }
-    self.worlds.deinit();
+    self.worlds.deinit(self.gpa);
 }
 
 pub fn createWorld(self: *Self, name_opt: ?[]const u8) AllocationError!WorldHandle {
     const name: ?[:0]const u8 = try self.dupeName(name_opt);
     errdefer if (name) |s| self.gpa.free(s);
 
-    const handle = try self.worlds.insert(.{
+    const handle = try self.worlds.insert(self.gpa, .{
         .handle = undefined, //Chicken & Egg problem
         .name = name,
     });
@@ -98,7 +100,7 @@ pub fn createEntity(self: *Self, name_opt: ?[]const u8, world_handle: ?WorldHand
     const name: ?[:0]const u8 = try self.dupeName(name_opt);
     errdefer if (name) |s| self.gpa.free(s);
 
-    const handle = try self.entities.insert(.{
+    const handle = try self.entities.insert(self.gpa, .{
         .handle = undefined, //Chicken & Egg problem
         .name = name,
 

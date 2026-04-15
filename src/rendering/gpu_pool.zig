@@ -5,7 +5,7 @@ const TransferQueue = @import("transfer_queue.zig");
 
 pub fn GpuPool(comptime T: type) type {
     return struct {
-        const This = @This();
+        const Self = @This();
 
         allocator: std.mem.Allocator,
         device: saturn.DeviceInterface,
@@ -28,7 +28,7 @@ pub fn GpuPool(comptime T: type) type {
             element_count: usize,
             buffer_usage: saturn.BufferUsage,
             default: T,
-        ) saturn.Error!This {
+        ) saturn.Error!Self {
             const buffer = try device.createBuffer(.{
                 .name = name,
                 .size = element_count * @sizeOf(T),
@@ -63,40 +63,45 @@ pub fn GpuPool(comptime T: type) type {
             };
         }
 
-        pub fn deinit(self: *This) void {
+        pub fn deinit(self: *Self) void {
             self.allocator.free(self.staging);
             self.dirty.deinit(self.allocator);
             self.free_list.deinit(self.allocator);
             self.device.destroyBuffer(self.buffer);
         }
 
-        pub fn alloc(self: *This) error{OutOfMemory}!u32 {
+        pub fn getCount(self: Self) u64 {
+            const index = self.free_list.findFirstSet() orelse self.element_count;
+            return @intCast(index);
+        }
+
+        pub fn alloc(self: *Self) error{OutOfMemory}!u32 {
             const index = self.free_list.findFirstSet() orelse return error.OutOfMemory;
             self.free_list.unset(index);
             return @intCast(index);
         }
 
-        pub fn free(self: *This, index: u32) void {
+        pub fn free(self: *Self, index: u32) void {
             self.free_list.set(index);
             self.stage(index, self.default);
         }
 
-        pub fn deviceAddress(self: *const This, index: u32) u64 {
+        pub fn deviceAddress(self: *const Self, index: u32) u64 {
             return self.device_address + (@as(u64, index) * @sizeOf(T));
         }
 
-        pub fn stage(self: *This, index: u32, value: T) void {
+        pub fn stage(self: *Self, index: u32, value: T) void {
             self.staging[index] = value;
             self.dirty.set(index);
         }
 
-        pub fn create(self: *This, value: T) !u32 {
+        pub fn create(self: *Self, value: T) !u32 {
             const index = try self.alloc();
             self.stage(index, value);
             return index;
         }
 
-        pub fn flush(self: *This, transfer_queue: *TransferQueue) !void {
+        pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
             var it = self.dirty.iterator(.{});
             while (it.next()) |index| {
                 const byte_offset = @as(u64, index) * @sizeOf(T);
@@ -105,11 +110,11 @@ pub fn GpuPool(comptime T: type) type {
             self.dirty.setRangeValue(.{ .start = 0, .end = self.element_count }, false);
         }
 
-        pub fn freeCount(self: *const This) usize {
+        pub fn freeCount(self: *const Self) usize {
             return self.free_list.count();
         }
 
-        pub fn reset(self: *This) void {
+        pub fn reset(self: *Self) void {
             self.free_list.setRangeValue(.{ .start = 0, .end = self.element_count }, true);
             @memset(self.staging, self.default);
             self.dirty.setRangeValue(.{ .start = 0, .end = self.element_count }, true);

@@ -5,7 +5,7 @@ struct CullData {
     float frustum[4];
 };
 
-bool isSphereVisable(CullData cull_data, vec4 sphere_pos_radius) {
+bool isSphereVisible(CullData cull_data, vec4 sphere_pos_radius) {
     vec3 center = (cull_data.view_matrix * vec4(sphere_pos_radius.xyz, 1.0)).xyz;
     float radius = sphere_pos_radius.w;
 
@@ -15,7 +15,7 @@ bool isSphereVisable(CullData cull_data, vec4 sphere_pos_radius) {
     visible = visible && center.z * cull_data.frustum[1] - abs(center.x) * cull_data.frustum[0] > -radius;
     visible = visible && center.z * cull_data.frustum[3] - abs(center.y) * cull_data.frustum[2] > -radius;
 
-    //this line doesnt work for some reason I will figure out later
+    //this line doesn't work for some reason I will figure out later
     //visible = visible && center.z + radius > cull_data.znear && center.z - radius < cull_data.zfar;
 
     return visible;

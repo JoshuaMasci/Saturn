@@ -1627,6 +1627,7 @@ pub const TransferCommandEncoder = struct {
         getBufferInfo: *const fn (ctx: *anyopaque, handle: BufferArg) ?BufferInfo,
         getTextureInfo: *const fn (ctx: *anyopaque, handle: TextureArg) ?TextureInfo,
 
+        writeBuffer: *const fn (ctx: *anyopaque, dst: BufferArg, offset: u64, size: u64, data: u32) void,
         updateBuffer: *const fn (ctx: *anyopaque, buffer: BufferArg, offset: u64, data: []const u8) void,
         copyBuffer: *const fn (ctx: *anyopaque, src: BufferArg, dst: BufferArg, regions: []const BufferCopyRegion) void,
         copyTexture: *const fn (ctx: *anyopaque, src: TextureArg, dst: TextureArg, regions: []const TextureCopyRegion) void,
@@ -1640,6 +1641,10 @@ pub const TransferCommandEncoder = struct {
 
     pub fn getTextureInfo(self: Self, handle: BufferArg) ?TextureInfo {
         return self.vtable.getTextureInfo(self.ctx, handle);
+    }
+
+    pub fn writeBuffer(self: Self, buffer: BufferArg, offset: u64, size: u64, data: u32) void {
+        self.vtable.writeBuffer(self.ctx, buffer, offset, size, data);
     }
 
     pub fn updateBuffer(self: Self, buffer: BufferArg, offset: u64, data: []const u8) void {

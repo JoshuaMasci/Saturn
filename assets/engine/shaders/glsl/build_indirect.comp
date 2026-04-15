@@ -5,6 +5,8 @@
 #extension GL_EXT_scalar_block_layout : require
 
 #include "include/mesh.glsl"
+#include "include/material.glsl"
+
 #include "include/scene.glsl"
 #include "include/indirect.glsl"
 #include "include/culling.glsl"
@@ -12,6 +14,11 @@
 layout(std430, buffer_reference) readonly buffer MeshInfoBuffer
 {
     MeshInfo infos[];
+};
+
+layout(std430, buffer_reference) readonly buffer MaterialInfoBuffer
+{
+    Material infos[];
 };
 
 layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer SceneInstanceBuffer
@@ -26,7 +33,7 @@ layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer Sce
 
 layout(std430, buffer_reference, buffer_reference_align = 8) buffer IndirectDrawCountsBuffer
 {
-    uint counts[];
+    uint count;
 };
 
 layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer IndirectCommandInfosBuffer
@@ -36,7 +43,6 @@ layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer In
 
 layout(push_constant) uniform PushConstants
 {
-    uint indirect_draw_count_index;
     IndirectDrawCountsBuffer indirect_draw_counts_ptr;
 
     MeshInfoBuffer mesh_infos_ptr;
@@ -54,35 +60,45 @@ void main()
     const uint scene_primitives_index = gl_GlobalInvocationID.x;
     const PrimitiveInstance scene_primitive = push_constants.scene_primitives_ptr.primitives[scene_primitives_index];
 
+    //TODO: test if material is loaded else use fallback?
+
+    if (scene_primitive.visible == 0) {
+        return;
+    }
+
     const Instance scene_instance = push_constants.scene_instances_ptr.instances[scene_primitive.instance_index];
 
-    if (scene_instance.visable == 0) {
+    if (scene_instance.visible == 0) {
         return;
     }
 
     MeshInfo mesh = push_constants.mesh_infos_ptr.infos[scene_instance.mesh_index];
+
+    if (mesh.loaded == 0) {
+        return;
+    }
+
     PrimitiveInfo mesh_primitive = mesh.primitives.p[scene_primitive.primitive_index];
 
     //TODO: futher culling
-    if (push_constants.culling != 0) {
-        const vec4 sphere_pos_radius = transformSphere(scene_instance.model_matrix, mesh_primitive.sphere_pos_radius);
-        if (!isSphereVisable(push_constants.cull_data, sphere_pos_radius)) {
-            return;
-        }
-    }
+    // if (push_constants.culling != 0) {
+    //     const vec4 sphere_pos_radius = transformSphere(scene_instance.model_matrix, mesh_primitive.sphere_pos_radius);
+    //     if (!isSphereVisible(push_constants.cull_data, sphere_pos_radius)) {
+    //         return;
+    //     }
+    // }
 
-    const uint indirect_draw_count_index = push_constants.indirect_draw_count_index;
-    uint command_index = atomicAdd(push_constants.indirect_draw_counts_ptr.counts[indirect_draw_count_index], 1);
+    uint command_index = atomicAdd(push_constants.indirect_draw_counts_ptr.count, 1);
 
-    DrawIndexedIndirectCommandInfo cmd;
-    cmd.indexCount = mesh_primitive.index_count;
-    cmd.instanceCount = 1;
-    cmd.firstIndex =  mesh.index_offset + mesh_primitive.index_offset;
-    cmd.vertexOffset = int(mesh.vertex_offset + mesh_primitive.vertex_offset);
-    cmd.firstInstance = command_index;
+    DrawIndexedIndirectCommandInfo cmd_info;
+    // cmd_info.cmd.indexCount = mesh_primitive.index_count;
+    // cmd_info.cmd.instanceCount = 1;
+    // cmd_info.cmd.firstIndex = mesh.index_offset + mesh_primitive.index_offset;
+    // cmd_info.cmd.vertexOffset = int(mesh.vertex_offset + mesh_primitive.vertex_offset);
+    // cmd_info.cmd.firstInstance = command_index;
 
-    cmd.instance_index =  scene_primitive.instance_index;
-    cmd.material_index = scene_primitive.material_instance_index;
+    cmd_info.instance_index = scene_primitive.instance_index;
+    cmd_info.material_index = scene_primitive.material_instance_index;
 
-    push_constants.indirect_command_infos_ptr.cmds[command_index] = cmd;
+    push_constants.indirect_command_infos_ptr.cmds[command_index] = cmd_info;
 }

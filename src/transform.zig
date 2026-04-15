@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const zm = @import("zmath");
 
 pub const Right = zm.f32x4(1, 0, 0, 0);
@@ -46,6 +48,18 @@ pub fn getRelativeTransform(parent: *const Self, child: *const Self) Self {
 
 pub fn transformPoint(self: *const Self, point: zm.Vec) zm.Vec {
     return (zm.rotate(self.rotation, point) * self.scale) + self.position;
+}
+
+pub fn eql(self: *const Self, other: *const Self) bool {
+    const eps: zm.Vec = @splat(std.math.floatEps(f32));
+
+    const pos_eql = zm.isNearEqual(self.position, other.position, eps);
+    const rot_eql = zm.isNearEqual(self.rotation, other.rotation, eps);
+    const sal_eql = zm.isNearEqual(self.scale, other.scale, eps);
+
+    return @reduce(.And, pos_eql) and
+        @reduce(.And, rot_eql) and
+        @reduce(.And, sal_eql);
 }
 
 pub fn getModelMatrix(self: Self) zm.Mat {

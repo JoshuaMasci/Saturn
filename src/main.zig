@@ -20,6 +20,7 @@ const SceneRenderer = @import("rendering/scene_renderer.zig");
 const imgui = @import("platform/imgui.zig");
 
 const Universe = @import("universe.zig");
+const Universe2 = @import("entity.zig");
 
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }).init;
@@ -28,7 +29,11 @@ pub fn main() !void {
     };
     const allocator = debug_allocator.allocator();
 
-    var app: App = try .init(allocator);
+    var app: App = try .init(allocator, .{
+        .window_size = .maximized,
+        .vsync = false,
+        .power_level = .prefer_high_power,
+    });
     defer app.deinit();
 
     try app.platform.initImgui(app.gpu_device, app.window);
@@ -47,15 +52,16 @@ pub fn main() !void {
         const cube_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/cube.asset"));
         const sphere_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/sphere.asset"));
         const transparent_material_handle: AssetPool.MaterialAssetHandle = try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/transparent.asset"));
+        app.asset_pool.markAllForLoad();
 
-        _ = try app.scene.addInstance(
+        _ = try app.scene.createStaticMeshInstance(
             true,
             .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } },
             sphere_mesh_handle,
             &.{transparent_material_handle},
         );
 
-        _ = try app.scene.addInstance(
+        _ = try app.scene.createStaticMeshInstance(
             true,
             .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } },
             cube_mesh_handle,
@@ -65,20 +71,8 @@ pub fn main() !void {
         app.camera.transform = .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } };
     }
 
-    app.scene_win.selected_world = try app.loadScene("zig-out/assets/game/Sponza/NewSponza_Main_glTF_002/scene.json", true);
-    //app.scene_win.selected_world = try app.loadScene("zig-out/assets/game/Bistro/scene.json", true);
-
-    {
-        const now = std.time.nanoTimestamp();
-        defer {
-            const duration_ns = std.time.nanoTimestamp() - now;
-            const duration_ns_f: f32 = @floatFromInt(duration_ns);
-            std.log.info("Loading assets took {d:0.3} secs", .{duration_ns_f / std.time.ns_per_s});
-        }
-
-        //TEMP: force load of all resources
-        app.asset_pool.markAllForLoad();
-    }
+    //app.scene_win.selected_world = try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json", true);
+    app.scene_win.selected_world = try app.loadScene("assets/game/Bistro/scene.json", true);
 
     var last_frame_time_ns = std.time.nanoTimestamp();
     while (app.isRunning()) {
@@ -92,6 +86,12 @@ pub fn main() !void {
 }
 
 const App = struct {
+    const Config = struct {
+        window_size: saturn.WindowSize,
+        vsync: bool,
+        power_level: saturn.DevicePowerPreference,
+    };
+
     const Self = @This();
 
     is_running: bool = true,
@@ -105,11 +105,12 @@ const App = struct {
     asset_registry: *AssetRegistry,
 
     transfer_queue: TransferQueue,
-    asset_pool: AssetPool,
+    asset_pool: *AssetPool,
 
     scene_renderer: SceneRenderer,
 
     universe: Universe,
+    universe2: Universe2,
 
     camera: DebugCamera = .{},
     scene: Scene,
@@ -127,7 +128,7 @@ const App = struct {
     camera_win: CameraWindow = .{},
     demo_win: DemoWindow = .{},
 
-    pub fn init(allocator: std.mem.Allocator) !Self {
+    pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
         const platform = try saturn.init(allocator, .{
             .app_info = .{ .name = "Saturn Engine", .version = .init(0, 0, 1, 0) },
             .validation = true,
@@ -137,11 +138,11 @@ const App = struct {
         const window = try platform.createWindow(.{
             .name = "Saturn Editor",
             .resizeable = true,
-            .size = .{ .windowed = .{ 1920, 1080 } },
+            .size = config.window_size, // .{ .windowed = .{ 1920, 1080 } },
         });
         errdefer platform.destroyWindow(window);
 
-        const gpu_device = try platform.createDeviceBasic(window, .prefer_high_power);
+        const gpu_device = try platform.createDeviceBasic(window, config.power_level);
         errdefer platform.destroyDevice(gpu_device);
 
         const info = gpu_device.getInfo();
@@ -151,7 +152,7 @@ const App = struct {
         defer window_caps.deinit(allocator);
 
         //Tries to select the prefered settings first, fallbacks to
-        const vsync = true;
+        const vsync = config.vsync;
         const usage: saturn.TextureUsage = .{ .attachment = true, .transfer_dst = true };
 
         var window_settings_opt: ?saturn.WindowSettings = getPreferredWindowSettings(window_caps, usage, .@"10_bit", vsync);
@@ -194,10 +195,13 @@ const App = struct {
         asset_registry.* = .init(allocator);
         errdefer asset_registry.deinit();
 
-        try asset_registry.addRepository("engine", "zig-out/assets/engine");
-        try asset_registry.addRepository("game", "zig-out/assets/game");
+        try asset_registry.addRepository("engine", "assets/engine");
+        try asset_registry.addRepository("game", "assets/game");
 
-        var asset_pool: AssetPool = try .init(allocator, asset_registry, gpu_device);
+        const asset_pool = try allocator.create(AssetPool);
+        errdefer allocator.destroy(asset_pool);
+
+        asset_pool.* = try .init(allocator, asset_registry, gpu_device);
         errdefer asset_pool.deinit();
 
         var transfer_queue: TransferQueue = .init(allocator, gpu_device);
@@ -206,11 +210,14 @@ const App = struct {
         var scene_renderer: SceneRenderer = try .init(allocator, gpu_device, asset_registry, RenderTarget);
         errdefer scene_renderer.deinit();
 
-        var scene: Scene = .init(allocator);
+        var scene: Scene = try .init(allocator, gpu_device, asset_pool, 4096);
         errdefer scene.deinit();
 
         var universe: Universe = .init(allocator);
         errdefer universe.deinit();
+
+        var universe2: Universe2 = .init(allocator);
+        errdefer universe2.deinit();
 
         return .{
             .allocator = allocator,
@@ -227,6 +234,7 @@ const App = struct {
 
             .scene = scene,
             .universe = universe,
+            .universe2 = universe2,
 
             .temp_allocator = .init(allocator),
         };
@@ -239,10 +247,13 @@ const App = struct {
 
         self.scene.deinit();
         self.universe.deinit();
+        self.universe2.deinit();
 
         self.scene_renderer.deinit();
 
         self.asset_pool.deinit();
+        self.allocator.destroy(self.asset_pool);
+
         self.transfer_queue.deinit();
         self.asset_registry.deinit();
         self.allocator.destroy(self.asset_registry);
@@ -286,6 +297,17 @@ const App = struct {
 
         self.camera.update(delta_time);
 
+        // LAZY WAY TO UPDATE WORLD
+        // Im still deciding on the design of the entity system so im going to be lazy till then
+        {
+            var world_iter = self.universe.worlds.iterator();
+            while (world_iter.nextValue()) |world| {
+                for (world.entities.slice()) |root_entity| {
+                    self.updateEntity(root_entity, .{});
+                }
+            }
+        }
+
         const IMGUI_ENABLED = true;
         if (IMGUI_ENABLED) {
             self.platform.beginImgui();
@@ -309,11 +331,6 @@ const App = struct {
                             .userdata = self,
                             .callback = sceneLoadCallback,
                         });
-                    }
-
-                    if (imgui.menuItem("Clear Scene")) {
-                        self.scene.deinit();
-                        self.scene = .init(self.allocator);
                     }
 
                     imgui.c.ImGui_Separator();
@@ -345,6 +362,7 @@ const App = struct {
         }
 
         try self.asset_pool.addTransfers(&self.transfer_queue);
+        try self.scene.addTransfers(&self.transfer_queue);
 
         var render_graph: saturn.RenderGraph = .init(tpa);
         defer render_graph.deinit();
@@ -360,7 +378,7 @@ const App = struct {
                 &render_graph,
                 &self.scene,
                 &.{ .camera = self.camera.camera, .transform = self.camera.transform },
-                &self.asset_pool,
+                self.asset_pool,
                 &self.camera_win.settings,
             );
         } else {
@@ -417,29 +435,13 @@ const App = struct {
             }
         }
 
-        // Loop though the scene and mark all assets to be loaded
-        for (scene_json.value.nodes, 0..) |node, node_index| {
-            if (node.mesh) |mesh| {
-                const transform = scene_json.value.calcNodeGlobalTransform(node_index);
-
-                const material_handles = try tpa.alloc(AssetPool.MaterialAssetHandle, mesh.materials.len);
-                defer tpa.free(material_handles);
-
-                const mesh_handle = try self.asset_pool.getMeshAsset(mesh.mesh);
-                for (material_handles, mesh.materials) |*material_handle, material| {
-                    material_handle.* = try self.asset_pool.getMaterialAsset(material);
-                }
-
-                _ = try self.scene.addInstance(true, transform, mesh_handle, material_handles);
-            }
-        }
-
-        self.asset_pool.markAllForLoad();
-
         const world_scene = try self.universe.createWorld(scene_json.value.name);
         for (scene_json.value.root_nodes) |root_node| {
             try self.loadSceneNode(&scene_json.value, world_scene, null, root_node);
         }
+
+        self.asset_pool.markAllForLoad();
+
         return world_scene;
     }
 
@@ -447,9 +449,44 @@ const App = struct {
         const node = scene.nodes[node_index];
 
         const node_entity = try self.universe.createEntity(node.name, world_handle, parent_handle, node.local_transform);
+        const entity = self.universe.entities.getPtr(node_entity).?;
+
+        const entity2_handle = try self.universe2.createEntity(node.name);
+        errdefer self.universe2.destroyEntity(entity2_handle);
+        const entity2 = self.universe2.entities.getPtr(entity2_handle).?;
+
+        const global_transform = scene.calcNodeGlobalTransform(node_index);
+        entity2.transform = global_transform;
+
+        if (node.mesh) |mesh| {
+            const material_handles = try self.allocator.alloc(AssetPool.MaterialAssetHandle, mesh.materials.len);
+            defer self.allocator.free(material_handles);
+
+            const mesh_handle = try self.asset_pool.getMeshAsset(mesh.mesh);
+            for (material_handles, mesh.materials) |*material_handle, material| {
+                material_handle.* = try self.asset_pool.getMaterialAsset(material);
+            }
+
+            entity2.components.static_mesh = try self.scene.createStaticMeshInstance(true, global_transform, mesh_handle, material_handles);
+            entity.scene_instance = entity2.components.static_mesh;
+        }
 
         for (node.children) |child| {
             try self.loadSceneNode(scene, world_handle, node_entity, child);
+        }
+    }
+
+    ///Lazy entity update, need to write a better system for this
+    fn updateEntity(self: *Self, entity_handle: Universe.EntityHandle, parent_transform: Transform) void {
+        const entity = self.universe.entities.getPtr(entity_handle).?;
+        const global_transform = parent_transform.applyTransform(&entity.local_transform);
+
+        if (entity.scene_instance) |scene_instance| {
+            self.scene.updateStaticMeshInstance(scene_instance, true, global_transform);
+        }
+
+        for (entity.children.slice()) |child| {
+            self.updateEntity(child, global_transform);
         }
     }
 };
@@ -547,7 +584,6 @@ fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, t
     _ = ctx; // autofix
     _ = cmd; // autofix
     _ = target_resolution; // autofix
-
 }
 
 fn emptyComputeCallback(ctx: ?*anyopaque, cmd: saturn.ComputeCommandEncoder) void {

@@ -495,6 +495,7 @@ pub const Device = struct {
         while (compute_iter.next()) |pipeline| {
             self.device.proxy.destroyPipeline(pipeline.*, null);
         }
+        self.compute_pipelines.deinit();
 
         self.device.proxy.destroySampler(self.linear_sampler, null);
         self.device.proxy.destroyPipelineLayout(self.pipeline_layout, null);
@@ -1513,12 +1514,19 @@ pub const TransferCommandEncoder = struct {
     pub const Vtable: saturn.TransferCommandEncoder.VTable = .{
         .getBufferInfo = CommandEncoderData.getBufferInfo,
         .getTextureInfo = CommandEncoderData.getTextureInfo,
+        .writeBuffer = writeBuffer,
         .updateBuffer = updateBuffer,
         .copyBuffer = copyBuffer,
         .copyTexture = copyTexture,
         .copyBufferToTexture = copyBufferToTexture,
         .copyTextureToBuffer = copyTextureToBuffer,
     };
+
+    fn writeBuffer(ctx: *anyopaque, dst: saturn.BufferArg, offset: u64, size: u64, data: u32) void {
+        const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
+        const buffer = cmd_data.getBuffer(dst) orelse @panic("Invalid buffer");
+        cmd_data.command_buffer.fillBuffer(buffer.handle, offset, size, data);
+    }
 
     fn updateBuffer(ctx: *anyopaque, dst: saturn.BufferArg, offset: u64, data: []const u8) void {
         const cmd_data: *const CommandEncoderData = @ptrCast(@alignCast(ctx));
