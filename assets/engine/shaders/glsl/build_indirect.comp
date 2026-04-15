@@ -80,7 +80,7 @@ void main()
 
     PrimitiveInfo mesh_primitive = mesh.primitives.p[scene_primitive.primitive_index];
 
-    //TODO: futher culling
+    //TODO: further culling
     // if (push_constants.culling != 0) {
     //     const vec4 sphere_pos_radius = transformSphere(scene_instance.model_matrix, mesh_primitive.sphere_pos_radius);
     //     if (!isSphereVisible(push_constants.cull_data, sphere_pos_radius)) {
@@ -91,11 +91,11 @@ void main()
     uint command_index = atomicAdd(push_constants.indirect_draw_counts_ptr.count, 1);
 
     DrawIndexedIndirectCommandInfo cmd_info;
-    // cmd_info.cmd.indexCount = mesh_primitive.index_count;
-    // cmd_info.cmd.instanceCount = 1;
-    // cmd_info.cmd.firstIndex = mesh.index_offset + mesh_primitive.index_offset;
-    // cmd_info.cmd.vertexOffset = int(mesh.vertex_offset + mesh_primitive.vertex_offset);
-    // cmd_info.cmd.firstInstance = command_index;
+    cmd_info.cmd.indexCount = mesh_primitive.index_count;
+    cmd_info.cmd.instanceCount = 1;
+    cmd_info.cmd.firstIndex = mesh.index_offset + mesh_primitive.index_offset;
+    cmd_info.cmd.vertexOffset = int(mesh.vertex_offset + mesh_primitive.vertex_offset);
+    cmd_info.cmd.firstInstance = command_index;
 
     cmd_info.instance_index = scene_primitive.instance_index;
     cmd_info.material_index = scene_primitive.material_instance_index;

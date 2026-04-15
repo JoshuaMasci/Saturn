@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const vk = @import("vulkan");
 const zm = @import("zmath");
 
 const AssetRegistry = @import("asset/registry.zig");
@@ -8,8 +7,6 @@ const SceneAsset = @import("asset/scene.zig");
 const DebugCamera = @import("debug_camera.zig");
 const Camera = @import("rendering/camera.zig").Camera;
 const Transform = @import("transform.zig");
-
-const DEPTH_FORMAT: vk.Format = .d32_sfloat;
 
 const saturn = @import("root.zig");
 const AssetPool = @import("rendering/asset_pool.zig");
@@ -160,7 +157,7 @@ const App = struct {
         const window_settings = window_settings_opt orelse return error.WindowNotSupported;
 
         const ColorTarget: saturn.TextureFormat = window_settings.texture_format;
-        const DepthTarget: saturn.TextureFormat = .d16_unorm;
+        const DepthTarget: saturn.TextureFormat = .d32_float;
 
         const RenderTarget: SceneRenderer.RenderTargetState = .{
             .color_targets = &.{ColorTarget},
@@ -629,6 +626,7 @@ pub const CameraWindow = struct {
         if (self.open) {
             if (imgui.begin(self.name, &self.open, 0)) {
                 _ = imgui.checkbox("Culling", &self.settings.culling);
+                _ = imgui.checkbox("Indirect", &self.settings.indirect);
                 imgui.text(std.fmt.allocPrintSentinel(tpa, "Draw Count: {}", .{self.settings.draw_count}, 0) catch "");
                 imgui.text(std.fmt.allocPrintSentinel(tpa, "Cull Count: {}", .{self.settings.culled_count}, 0) catch "");
 
@@ -646,6 +644,11 @@ pub const CameraWindow = struct {
                                 _ = imgui.sliderFloat("Fov Y", y, 10, 80);
                             },
                         }
+
+                        // _ = imgui.sliderFloat("Z Near", &perspective.near, 0.0000000001, 1);
+                        // if (perspective.far) |*far| {
+                        //     _ = imgui.sliderFloat("Z Far", far, 10, 10000);
+                        // }
                     },
                     else => {
                         imgui.text("Not implemented for other camera types");

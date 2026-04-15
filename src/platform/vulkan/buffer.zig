@@ -102,6 +102,7 @@ pub fn getMappedSlice(self: *const Self, comptime T: type) ?[]T {
 
 pub fn getVkUsage(usage: saturn.BufferUsage) vk.BufferUsageFlags {
     return .{
+        .indirect_buffer_bit = usage.indirect,
         .vertex_buffer_bit = usage.vertex,
         .index_buffer_bit = usage.index,
         .uniform_buffer_bit = usage.uniform,

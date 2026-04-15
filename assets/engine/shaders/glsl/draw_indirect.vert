@@ -3,28 +3,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_buffer_reference : require
 
-#include "include/scene.glsl"
-#include "include/indirect.glsl"
-
-layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer SceneInstanceBuffer
-{
-    Instance instances[];
-};
-
-layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer IndirectCommandInfosBuffer
-{
-    DrawIndexedIndirectCommandInfo cmds[];
-};
-
-layout(push_constant) uniform PushConstants
-{
-    mat4 view_projection_matrix;
-
-    SceneInstanceBuffer scene_instances_ptr;
-    IndirectCommandInfosBuffer indirect_command_infos_ptr;
-
-    uint material_binding;
-} push_constants;
+#include "include/push_indirect.glsl"
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -32,10 +11,11 @@ layout(location = 2) in vec4 tangent;
 layout(location = 3) in vec2 uv0;
 layout(location = 4) in vec2 uv1;
 
-layout(location = 0) out vec2 frag_uv0;
-layout(location = 1) out vec2 frag_uv1;
-layout(location = 2) flat out uint material_index;
-layout(location = 3) out vec3 frag_norm;
+layout(location = 0) out vec3 frag_postion;
+layout(location = 1) out vec3 frag_normal;
+layout(location = 2) out vec2 frag_uv0;
+layout(location = 3) out vec2 frag_uv1;
+layout(location = 4) flat out uint material_index;
 
 void main()
 {
@@ -49,9 +29,12 @@ void main()
     vec3 world_normal = normalize(normal_matrix * normal);
     vec3 world_tangent = normalize(normal_matrix * tangent.xyz);
 
-    gl_Position = push_constants.view_projection_matrix * world_position;
+    frag_postion = world_position.xyz;
+    frag_normal = world_normal;
+
     frag_uv0 = uv0,
     frag_uv1 = uv1,
     material_index = cmd.material_index;
-    frag_norm = world_normal;
+
+    gl_Position = push_constants.view_projection_matrix * world_position;
 }

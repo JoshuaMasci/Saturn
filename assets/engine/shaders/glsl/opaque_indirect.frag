@@ -3,7 +3,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_buffer_reference : require
 
-#include "include/push_legacy.glsl"
+#include "include/push_indirect.glsl"
 
 layout(location = 0) in vec3 frag_postion;
 layout(location = 1) in vec3 frag_normal;
@@ -22,7 +22,7 @@ void main()
     data.normal = frag_normal;
     data.uv0 = frag_uv0;
     data.uv1 = frag_uv1;
-    data.material_index = push_constants.material_index;
+    data.material_index = material_index;
 
     out_frag_color = calcColor(push_constants.material_binding, push_constants.texture_binding, data);
 }

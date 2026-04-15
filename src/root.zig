@@ -380,6 +380,7 @@ pub const BufferUsage = struct {
     index: bool = false,
     uniform: bool = false,
     storage: bool = false,
+    indirect: bool = false,
     device_address: bool = false,
     transfer_src: bool = false,
     transfer_dst: bool = false,
