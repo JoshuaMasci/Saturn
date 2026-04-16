@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const zm = @import("zmath");
 
@@ -24,7 +25,11 @@ pub fn main() !void {
     defer if (debug_allocator.deinit() == .leak) {
         std.log.err("DebugAllocator has a memory leak!", .{});
     };
-    const allocator = debug_allocator.allocator();
+
+    const allocator = switch (builtin.mode) {
+        .ReleaseFast, .ReleaseSmall => std.heap.smp_allocator,
+        .Debug, .ReleaseSafe => debug_allocator.allocator(),
+    };
 
     var app: App = try .init(allocator, .{
         .window_size = .maximized,
@@ -68,8 +73,8 @@ pub fn main() !void {
         app.camera.transform = .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } };
     }
 
-    //app.scene_win.selected_world = try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json", true);
-    app.scene_win.selected_world = try app.loadScene("assets/game/Bistro/scene.json", true);
+    app.scene_win.selected_world = try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json", true);
+    //app.scene_win.selected_world = try app.loadScene("assets/game/Bistro/scene.json", true);
 
     var last_frame_time_ns = std.time.nanoTimestamp();
     while (app.isRunning()) {
@@ -629,6 +634,11 @@ pub const CameraWindow = struct {
                 _ = imgui.checkbox("Indirect", &self.settings.indirect);
                 imgui.text(std.fmt.allocPrintSentinel(tpa, "Draw Count: {}", .{self.settings.draw_count}, 0) catch "");
                 imgui.text(std.fmt.allocPrintSentinel(tpa, "Cull Count: {}", .{self.settings.culled_count}, 0) catch "");
+
+                var linear_speed = camera.linear_speed[0];
+                if (imgui.sliderFloat("Move Speed", &linear_speed, 1, 15)) {
+                    camera.linear_speed = @splat(linear_speed);
+                }
 
                 switch (camera.camera) {
                     .perspective => |*perspective| {

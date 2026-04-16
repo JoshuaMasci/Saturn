@@ -81,12 +81,12 @@ void main()
     PrimitiveInfo mesh_primitive = mesh.primitives.p[scene_primitive.primitive_index];
 
     //TODO: further culling
-    // if (push_constants.culling != 0) {
-    //     const vec4 sphere_pos_radius = transformSphere(scene_instance.model_matrix, mesh_primitive.sphere_pos_radius);
-    //     if (!isSphereVisible(push_constants.cull_data, sphere_pos_radius)) {
-    //         return;
-    //     }
-    // }
+    if (push_constants.culling != 0) {
+        const vec4 sphere_pos_radius = transformSphere(scene_instance.model_matrix, mesh_primitive.sphere_pos_radius);
+        if (!isSphereVisible(push_constants.cull_data, sphere_pos_radius)) {
+            return;
+        }
+    }
 
     uint command_index = atomicAdd(push_constants.indirect_draw_counts_ptr.count, 1);
 

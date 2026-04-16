@@ -443,7 +443,9 @@ const IndirectScenePass = struct {
 
         instance_buffer: saturn.RGBufferHandle,
 
+        target: saturn.RGTextureHandle,
         camera: Camera,
+        culling: bool,
     };
 
     const RenderBucketData = struct {
@@ -645,7 +647,6 @@ const IndirectScenePass = struct {
         settings: *Settings,
     ) saturn.Error!void {
         _ = tpa; // autofix
-        _ = settings; // autofix
 
         const indirect_draw_cmds_buffer = try render_graph.createTransientBuffer(.{
             .size = @sizeOf(u32) * 16,
@@ -663,7 +664,9 @@ const IndirectScenePass = struct {
 
             .instance_buffer = try render_graph.importBuffer(scene.gpu_instances.buffer),
 
+            .target = color_target,
             .camera = camera.*,
+            .culling = settings.culling,
         };
 
         //TODO: Round up to the nearest pow2, needed for Bitonic Sort
@@ -776,6 +779,11 @@ const IndirectScenePass = struct {
     fn buildPassCallback(ctx: ?*anyopaque, cmd: saturn.ComputeCommandEncoder) void {
         const data: *IndirectBucketData = @ptrCast(@alignCast(ctx.?));
 
+        const target_info = cmd.getTextureInfo(.from(data.scene.target)).?;
+        const width_float: f32 = @floatFromInt(target_info.extent.width);
+        const height_float: f32 = @floatFromInt(target_info.extent.height);
+        const aspect_ratio: f32 = width_float / height_float;
+
         const indirect_draw_counts_ptr: u64 = cmd.getBufferInfo(.from(data.bucket.indirect_draw_counts_buffer)).?.device_address.? + (data.bucket.indirect_draw_count_index * @sizeOf(u32));
 
         const mesh_infos_ptr: u64 = cmd.getBufferInfo(.from(data.scene.mesh_info_buffer)).?.device_address.?;
@@ -798,8 +806,8 @@ const IndirectScenePass = struct {
 
             .indirect_command_infos_ptr = indirect_command_infos_ptr,
 
-            .culling = 0,
-            .cull_data = undefined,
+            .culling = @intFromBool(data.scene.culling),
+            .cull_data = .init(data.scene.camera, aspect_ratio),
         });
         cmd.dispatch(primitive_count, 1, 1);
     }
@@ -860,7 +868,7 @@ pub const GpuCullData = extern struct {
     pub fn init(camera: Camera, aspect_ratio: f32) @This() {
         // The following culling code is based on the magic found here: github.com/zeux/niagara
         const view_matrix = camera.transform.getViewMatrix();
-        const camera_data = camera.settings.perspective; //Only works for perspective
+        const camera_data = camera.camera.perspective; //Only works for perspective
         const projection_matrix = camera_data.getPerspectiveMatrix(aspect_ratio);
         const projection_t = zm.transpose(projection_matrix);
         const frustum_x = normalizePlane(projection_t[3] + projection_t[0]);
