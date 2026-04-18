@@ -390,8 +390,7 @@ pub const Device = struct {
 
         device.* = VkDevice.init(
             gpa,
-            backend.instance.base,
-            backend.instance.proxy,
+            backend.instance,
             physical_device,
             desc.features,
             backend.instance.debug_messager != null,
@@ -574,8 +573,8 @@ pub const Device = struct {
             desc.memory,
         ) catch |err| {
             return switch (err) {
-                error.OutOfHostMemory, error.OutOfDeviceMemory => error.OutOfMemory,
-                error.NoSuitableMemoryType => error.InvalidUsage,
+                //error.OutOfHostMemory, error.OutOfDeviceMemory => error.OutOfMemory,
+                //error.NoSuitableMemoryType => error.InvalidUsage,
                 else => error.Unknown,
             };
         };

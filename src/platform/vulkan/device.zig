@@ -3,8 +3,11 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const saturn = @import("../../root.zig");
+
+const Instance = @import("instance.zig");
+const PhysicalDevice = Instance.PhysicalDevice;
+
 const GpuAllocator = @import("gpu_allocator.zig");
-const PhysicalDevice = @import("instance.zig").PhysicalDevice;
 const Queue = @import("queue.zig");
 const BindlessDescriptor = @import("bindless_descriptor.zig");
 
@@ -30,10 +33,9 @@ all_stage_flags: vk.ShaderStageFlags,
 
 pub fn init(
     allocator: std.mem.Allocator,
-    base: vk.BaseWrapper,
-    instance: vk.InstanceProxy,
+    instance: *Instance,
     physical_device: PhysicalDevice,
-    extentions: saturn.DeviceFeatures,
+    features: saturn.DeviceFeatures,
     debug: bool,
 ) !Self {
     const queue_priority = [_]f32{1.0};
@@ -65,14 +67,14 @@ pub fn init(
     defer device_extentions.deinit(allocator);
     try device_extentions.append(allocator, "VK_KHR_swapchain");
 
-    if (extentions.mesh_shading) {
+    if (features.mesh_shading) {
         std.debug.assert(physical_device.info.extensions.mesh_shading);
         try device_extentions.append(allocator, "VK_EXT_mesh_shader");
         all_stage_flags.task_bit_ext = true;
         all_stage_flags.mesh_bit_ext = true;
     }
 
-    if (extentions.ray_tracing) {
+    if (features.ray_tracing) {
         std.debug.assert(physical_device.info.extensions.ray_tracing);
         try device_extentions.append(allocator, "VK_KHR_deferred_host_operations");
         try device_extentions.append(allocator, "VK_KHR_acceleration_structure");
@@ -84,12 +86,12 @@ pub fn init(
         // all_stage_flags.callable_bit_khr = true;
     }
 
-    if (extentions.host_image_copy) {
+    if (features.host_image_copy) {
         std.debug.assert(physical_device.info.extensions.host_image_copy);
         try device_extentions.append(allocator, "VK_EXT_host_image_copy");
     }
 
-    var features = vk.PhysicalDeviceFeatures{
+    var features_1 = vk.PhysicalDeviceFeatures{
         .robust_buffer_access = .true,
         .fill_mode_non_solid = .true,
         .multi_draw_indirect = .true,
@@ -105,7 +107,7 @@ pub fn init(
     };
 
     var features_12 = vk.PhysicalDeviceVulkan12Features{
-        .buffer_device_address = if (extentions.buffer_device_address) .true else .false,
+        .buffer_device_address = if (features.buffer_device_address) .true else .false,
         .runtime_descriptor_array = .true,
         .descriptor_indexing = .true,
         .descriptor_binding_update_unused_while_pending = .true,
@@ -145,14 +147,14 @@ pub fn init(
         .p_queue_create_infos = &queue_info,
         .pp_enabled_extension_names = @ptrCast(device_extentions.items),
         .enabled_extension_count = @intCast(device_extentions.items.len),
-        .p_enabled_features = &features,
+        .p_enabled_features = &features_1,
     };
 
     if (physical_device.info.extensions.mesh_shading) {
         appendNextPtrChain(&create_info, &feature_mesh_shading);
     }
 
-    if (extentions.host_image_copy) {
+    if (features.host_image_copy) {
         appendNextPtrChain(&create_info, &features_host_image_copy);
     }
 
@@ -160,7 +162,7 @@ pub fn init(
     appendNextPtrChain(&create_info, &features_13);
     appendNextPtrChain(&create_info, &features_12);
 
-    const device_handle = try instance.createDevice(
+    const device_handle = try instance.proxy.createDevice(
         physical_device.handle,
         &create_info,
         null,
@@ -168,7 +170,7 @@ pub fn init(
 
     const device_wrapper = try allocator.create(vk.DeviceWrapper);
     errdefer allocator.destroy(device_wrapper);
-    device_wrapper.* = vk.DeviceWrapper.load(device_handle, instance.wrapper.dispatch.vkGetDeviceProcAddr.?);
+    device_wrapper.* = vk.DeviceWrapper.load(device_handle, instance.proxy.wrapper.dispatch.vkGetDeviceProcAddr.?);
 
     const proxy = vk.DeviceProxy.init(device_handle, device_wrapper);
 
@@ -189,13 +191,16 @@ pub fn init(
         async_transfer_queue = try .init(proxy, index);
     }
 
+    var gpu_allocator: GpuAllocator = try .init(physical_device.handle, instance.proxy, proxy, instance.base.dispatch.vkGetInstanceProcAddr.?, instance.proxy.wrapper.dispatch.vkGetDeviceProcAddr.?);
+    errdefer gpu_allocator.deinit();
+
     return .{
         .allocator = allocator,
-        .base = base,
-        .instance = instance,
+        .base = instance.base,
+        .instance = instance.proxy,
         .physical_device = physical_device,
         .proxy = proxy,
-        .gpu_allocator = .init(physical_device.handle, instance, proxy),
+        .gpu_allocator = gpu_allocator,
         .descriptor = try .init(allocator, proxy, .{
             .uniform_buffers = 1024,
             .storage_buffers = 1024,
@@ -206,7 +211,7 @@ pub fn init(
         .graphics_queue = graphics_queue,
         .async_compute_queue = async_compute_queue,
         .async_transfer_queue = async_transfer_queue,
-        .extensions = extentions,
+        .extensions = features,
         .debug = debug,
 
         .all_stage_flags = all_stage_flags,

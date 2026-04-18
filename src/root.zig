@@ -359,7 +359,6 @@ pub const GamepadAxis = enum(u8) {
 pub const MemoryLocation = enum {
     gpu_only,
     cpu_to_gpu,
-    gpu_to_cpu,
 };
 
 // ----------------------------

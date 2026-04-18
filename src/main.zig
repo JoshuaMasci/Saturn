@@ -140,7 +140,7 @@ const App = struct {
         const window = try platform.createWindow(.{
             .name = "Saturn Editor",
             .resizeable = true,
-            .size = config.window_size, // .{ .windowed = .{ 1920, 1080 } },
+            .size = config.window_size,
         });
         errdefer platform.destroyWindow(window);
 

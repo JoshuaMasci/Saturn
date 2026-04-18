@@ -141,6 +141,29 @@ fn buildMain(
     }).module("vulkan-zig");
     exe_mod.addImport("vulkan", vulkan);
 
+    // vma
+    {
+        const vma_path = b.path("src/platform/vulkan/vma_include.h");
+
+        exe_mod.link_libcpp = true;
+        exe_mod.addCSourceFile(.{
+            .file = vma_path,
+            .flags = &.{
+                "-std=c++17",
+                "-Wall",
+                "-DVMA_IMPLEMENTATION",
+            },
+            .language = .cpp,
+        });
+
+        const vma_c = b.addTranslateC(.{
+            .root_source_file = vma_path,
+            .target = target,
+            .optimize = optimize,
+        });
+        exe_mod.addImport("vma", vma_c.createModule());
+    }
+
     if (false) {
         const cimgui = @import("cimgui");
         const cimgui_conf = cimgui.getConfig(true);
