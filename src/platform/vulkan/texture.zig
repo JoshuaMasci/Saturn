@@ -36,7 +36,7 @@ pub fn init(device: *Device, extent: saturn.TextureExtent, mip_levels: u32, form
         image_view_type = .@"1d";
     }
 
-    const handle = try device.proxy.createImage(&.{
+    const result = try device.gpu_allocator.createTexture(&.{
         .image_type = image_type,
         .format = vk_format,
         .extent = .{ .width = extent.width, .height = extent.height, .depth = extent.depth },
@@ -47,12 +47,9 @@ pub fn init(device: *Device, extent: saturn.TextureExtent, mip_levels: u32, form
         .usage = getVkImageUsage(usage, format.isColor()),
         .sharing_mode = .exclusive,
         .initial_layout = .undefined,
-    }, null);
-    errdefer device.proxy.destroyImage(handle, null);
-
-    const allocation = try device.gpu_allocator.alloc(device.proxy.getImageMemoryRequirements(handle), memory, false);
-    errdefer device.gpu_allocator.free(allocation);
-    try device.proxy.bindImageMemory(handle, allocation.memory, allocation.offset);
+    });
+    const handle = result.texture;
+    const allocation = result.allocation;
 
     const view_handle = try device.proxy.createImageView(&.{
         .view_type = image_view_type,
@@ -102,10 +99,12 @@ pub fn deinit(self: Self, device: *Device) void {
     }
 
     device.proxy.destroyImageView(self.view_handle, null);
-    device.proxy.destroyImage(self.handle, null);
 
-    if (self.allocation) |allocation|
-        device.gpu_allocator.free(allocation);
+    if (self.allocation) |allocation| {
+        device.gpu_allocator.destroyTexture(self.handle, allocation);
+    } else {
+        device.proxy.destroyImage(self.handle, null);
+    }
 }
 
 pub fn getInfo(self: *const Self) saturn.TextureInfo {

@@ -83,19 +83,12 @@ pub fn deinit(self: Self) void {
 
 pub fn createBuffer(
     self: *Self,
-    size: vk.DeviceSize,
-    usage: vk.BufferUsageFlags,
+    create_info: *const vk.BufferCreateInfo,
     memory: MemoryLocation,
 ) error{OutOfMemory}!struct {
     buffer: vk.Buffer,
     allocation: Allocation,
 } {
-    const create_info: vk.BufferCreateInfo = .{
-        .size = size,
-        .usage = usage,
-        .sharing_mode = .exclusive,
-    };
-
     var alloc_info: vma.VmaAllocationCreateInfo = switch (memory) {
         .cpu_to_gpu => .{
             .usage = vma.VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
@@ -113,7 +106,7 @@ pub fn createBuffer(
 
     const result = vma.vmaCreateBuffer(
         self.allocator,
-        @ptrCast(&create_info),
+        @ptrCast(create_info),
         &alloc_info,
         &vk_buffer,
         &vma_allocation,
@@ -143,6 +136,54 @@ pub fn destroyBuffer(
     allocation: Allocation,
 ) void {
     vma.vmaDestroyBuffer(self.allocator, @ptrFromInt(@intFromEnum(buffer)), allocation.vma_allocation);
+}
+
+pub fn createTexture(
+    self: *Self,
+    create_info: *const vk.ImageCreateInfo,
+) error{OutOfMemory}!struct {
+    texture: vk.Image,
+    allocation: Allocation,
+} {
+    var alloc_info: vma.VmaAllocationCreateInfo = .{
+        .usage = vma.VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+    };
+
+    var vk_image: vma.VkImage = null;
+    var vma_allocation: vma.VmaAllocation = null;
+
+    const result = vma.vmaCreateImage(
+        self.allocator,
+        @ptrCast(create_info),
+        &alloc_info,
+        &vk_image,
+        &vma_allocation,
+        null,
+    );
+
+    if (result != 0) {
+        return error.OutOfMemory;
+    }
+
+    return .{
+        .texture = @enumFromInt(@intFromPtr(vk_image)),
+        .allocation = .{
+            .memory = .null_handle,
+            .offset = 0,
+            .size = 0,
+            .location = .gpu_only,
+            .mapped_ptr = null,
+            .vma_allocation = vma_allocation,
+        },
+    };
+}
+
+pub fn destroyTexture(
+    self: *Self,
+    image: vk.Image,
+    allocation: Allocation,
+) void {
+    vma.vmaDestroyImage(self.allocator, @ptrFromInt(@intFromEnum(image)), allocation.vma_allocation);
 }
 
 pub fn alloc(

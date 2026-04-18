@@ -26,24 +26,14 @@ pub fn init(
     usage: saturn.BufferUsage,
     memory: saturn.MemoryLocation,
 ) !Self {
-    // const handle = try device.proxy.createBuffer(&.{
-    //     .size = size,
-    //     .usage = getVkUsage(usage),
-    //     .sharing_mode = .exclusive,
-    //     .queue_family_index_count = 0,
-    //     .p_queue_family_indices = undefined,
-    //     .flags = .{},
-    // }, null);
-    // errdefer device.proxy.destroyBuffer(handle, null);
-
-    // const mem_requirements = device.proxy.getBufferMemoryRequirements(handle);
-
-    // const allocation = try device.gpu_allocator.alloc(mem_requirements, memory, usage.device_address);
-    // errdefer device.gpu_allocator.free(allocation);
-
-    // try device.proxy.bindBufferMemory(handle, allocation.memory, allocation.offset);
-
-    const result = try device.gpu_allocator.createBuffer(size, getVkUsage(usage), memory);
+    const result = try device.gpu_allocator.createBuffer(&.{
+        .size = size,
+        .usage = getVkUsage(usage),
+        .sharing_mode = .exclusive,
+        .queue_family_index_count = 0,
+        .p_queue_family_indices = undefined,
+        .flags = .{},
+    }, memory);
     const handle = result.buffer;
     const allocation = result.allocation;
 

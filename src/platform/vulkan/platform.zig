@@ -634,8 +634,8 @@ pub const Device = struct {
             sampler,
         ) catch |err| {
             return switch (err) {
-                error.OutOfHostMemory, error.OutOfDeviceMemory => error.OutOfMemory,
-                error.NoSuitableMemoryType => error.InvalidUsage,
+                // error.OutOfHostMemory, error.OutOfDeviceMemory => error.OutOfMemory,
+                // error.NoSuitableMemoryType => error.InvalidUsage,
                 else => error.Unknown,
             };
         };
