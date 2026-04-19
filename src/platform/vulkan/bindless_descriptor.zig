@@ -3,21 +3,20 @@ const std = @import("std");
 const vk = @import("vulkan");
 
 const Buffer = @import("buffer.zig");
-const Image = @import("image.zig");
-const Sampler = @import("sampler.zig");
-const Device = @import("device.zig");
+const Texture = @import("texture.zig");
+const Device = vk.DeviceProxy;
 
 pub const DescriptorCounts = struct {
-    uniform_buffers: u32,
-    storage_buffers: u32,
-    sampled_images: u32,
-    storage_images: u32,
-    accleration_structures: u32 = 0,
+    uniform_buffers: u16,
+    storage_buffers: u16,
+    sampled_images: u16,
+    storage_images: u16,
+    accleration_structures: u16 = 0,
 };
 
 const Self = @This();
 
-device: *Device,
+device: Device,
 layout: vk.DescriptorSetLayout,
 
 pool: vk.DescriptorPool,
@@ -28,40 +27,38 @@ storage_buffer_array: BufferDescriptor,
 sampled_image_array: ImageDescriptor,
 storage_image_array: ImageDescriptor,
 
-pub fn init(allocator: std.mem.Allocator, device: *Device, descriptor_counts: DescriptorCounts) !Self {
-    const All_STAGE_FLAGS = device.all_stage_flags;
-
+pub fn init(allocator: std.mem.Allocator, device: Device, descriptor_counts: DescriptorCounts, all_stage_flags: vk.ShaderStageFlags) !Self {
     const BINDING_COUNT = 5;
     const bindings = [BINDING_COUNT]vk.DescriptorSetLayoutBinding{
         .{
             .binding = 0,
             .descriptor_type = .uniform_buffer,
             .descriptor_count = descriptor_counts.uniform_buffers,
-            .stage_flags = All_STAGE_FLAGS,
+            .stage_flags = all_stage_flags,
         },
         .{
             .binding = 1,
             .descriptor_type = .storage_buffer,
             .descriptor_count = descriptor_counts.storage_buffers,
-            .stage_flags = All_STAGE_FLAGS,
+            .stage_flags = all_stage_flags,
         },
         .{
             .binding = 2,
             .descriptor_type = .combined_image_sampler,
             .descriptor_count = descriptor_counts.sampled_images,
-            .stage_flags = All_STAGE_FLAGS,
+            .stage_flags = all_stage_flags,
         },
         .{
             .binding = 3,
             .descriptor_type = .storage_image,
             .descriptor_count = descriptor_counts.storage_images,
-            .stage_flags = All_STAGE_FLAGS,
+            .stage_flags = all_stage_flags,
         },
         .{
             .binding = 4,
             .descriptor_type = .acceleration_structure_khr,
             .descriptor_count = descriptor_counts.accleration_structures,
-            .stage_flags = All_STAGE_FLAGS,
+            .stage_flags = all_stage_flags,
         },
     };
 
@@ -79,7 +76,7 @@ pub fn init(allocator: std.mem.Allocator, device: *Device, descriptor_counts: De
         .p_binding_flags = &binding_flags,
     };
 
-    const layout = try device.proxy.createDescriptorSetLayout(&.{
+    const layout = try device.createDescriptorSetLayout(&.{
         .p_next = @ptrCast(&binding_create_info),
         .binding_count = binding_count,
         .p_bindings = &bindings,
@@ -94,10 +91,10 @@ pub fn init(allocator: std.mem.Allocator, device: *Device, descriptor_counts: De
         .{ .type = .acceleration_structure_khr, .descriptor_count = descriptor_counts.accleration_structures },
     };
 
-    const pool = try device.proxy.createDescriptorPool(&.{ .max_sets = 1, .pool_size_count = binding_count, .p_pool_sizes = &pool_sizes, .flags = .{ .update_after_bind_bit = true } }, null);
+    const pool = try device.createDescriptorPool(&.{ .max_sets = 1, .pool_size_count = binding_count, .p_pool_sizes = &pool_sizes, .flags = .{ .update_after_bind_bit = true } }, null);
 
     var set: vk.DescriptorSet = .null_handle;
-    try device.proxy.allocateDescriptorSets(&.{ .descriptor_pool = pool, .descriptor_set_count = 1, .p_set_layouts = @ptrCast(&layout) }, @ptrCast(&set));
+    try device.allocateDescriptorSets(&.{ .descriptor_pool = pool, .descriptor_set_count = 1, .p_set_layouts = @ptrCast(&layout) }, @ptrCast(&set));
 
     return Self{
         .device = device,
@@ -112,8 +109,8 @@ pub fn init(allocator: std.mem.Allocator, device: *Device, descriptor_counts: De
 }
 
 pub fn deinit(self: *Self) void {
-    self.device.proxy.destroyDescriptorPool(self.pool, null);
-    self.device.proxy.destroyDescriptorSetLayout(self.layout, null);
+    self.device.destroyDescriptorPool(self.pool, null);
+    self.device.destroyDescriptorSetLayout(self.layout, null);
 
     self.uniform_buffer_array.deinit();
     self.storage_buffer_array.deinit();
@@ -121,30 +118,44 @@ pub fn deinit(self: *Self) void {
     self.storage_image_array.deinit();
 }
 
-pub fn write_updates(self: *Self, temp_allocator: std.mem.Allocator) !void {
-    try self.uniform_buffer_array.write_updates(temp_allocator);
-    try self.storage_buffer_array.write_updates(temp_allocator);
-    try self.sampled_image_array.write_updates(temp_allocator);
-    try self.storage_image_array.write_updates(temp_allocator);
+pub fn writeUpdates(self: *Self, temp_allocator: std.mem.Allocator) !void {
+    try self.uniform_buffer_array.writeUpdates(temp_allocator);
+    try self.storage_buffer_array.writeUpdates(temp_allocator);
+    try self.sampled_image_array.writeUpdates(temp_allocator);
+    try self.storage_image_array.writeUpdates(temp_allocator);
 }
 
 pub fn bind(self: Self, command_buffer: vk.CommandBufferProxy, layout: vk.PipelineLayout) void {
     const bind_points = [_]vk.PipelineBindPoint{ .graphics, .compute };
     for (bind_points) |bind_point| {
-        command_buffer.bindDescriptorSets(bind_point, layout, 0, 1, (&self.set)[0..1], 0, null);
+        command_buffer.bindDescriptorSets(
+            bind_point,
+            layout,
+            0,
+            1,
+            @ptrCast(&self.set),
+            0,
+            null,
+        );
     }
 }
 
 pub const Binding = struct {
-    binding: u32,
-    index: u32,
+    binding: u16,
+    index: u16,
+
+    pub fn asU32(self: Binding) u32 {
+        const low: u32 = @intCast(self.binding);
+        const high: u32 = @intCast(self.index);
+        return high << 16 | low;
+    }
 };
 
 const BufferDescriptor = struct {
-    device: *Device,
+    device: Device,
     set: vk.DescriptorSet,
 
-    descriptor_index: u32,
+    descriptor_index: u16,
     descriptor_type: vk.DescriptorType,
 
     allocator: std.mem.Allocator,
@@ -153,11 +164,11 @@ const BufferDescriptor = struct {
 
     fn init(
         allocator: std.mem.Allocator,
-        device: *Device,
+        device: Device,
         set: vk.DescriptorSet,
-        descriptor_index: u32,
+        descriptor_index: u16,
         descriptor_type: vk.DescriptorType,
-        array_count: u32,
+        array_count: u16,
     ) BufferDescriptor {
         return .{
             .allocator = allocator,
@@ -194,10 +205,11 @@ const BufferDescriptor = struct {
         }) catch |err| std.log.info("Failed to free descriptor binding {}:{} {}", .{ self.descriptor_index, binding.index, err });
     }
 
-    pub fn write_updates(self: *BufferDescriptor, temp_allocator: std.mem.Allocator) !void {
+    pub fn writeUpdates(self: *BufferDescriptor, temp_allocator: std.mem.Allocator) !void {
         const buffer_infos = self.update_list.values();
         const indexes = self.update_list.keys();
         const descriptor_writes = try temp_allocator.alloc(vk.WriteDescriptorSet, self.update_list.count());
+        defer temp_allocator.free(descriptor_writes);
 
         for (indexes, buffer_infos, descriptor_writes) |index, *info, *descriptor_write| {
             descriptor_write.* = .{
@@ -212,16 +224,16 @@ const BufferDescriptor = struct {
             };
         }
 
-        self.device.proxy.updateDescriptorSets(@intCast(descriptor_writes.len), @ptrCast(descriptor_writes.ptr), 0, null);
+        self.device.updateDescriptorSets(@intCast(descriptor_writes.len), @ptrCast(descriptor_writes.ptr), 0, null);
         self.update_list.clearRetainingCapacity();
     }
 };
 
 const ImageDescriptor = struct {
-    device: *Device,
+    device: Device,
     set: vk.DescriptorSet,
 
-    descriptor_index: u32,
+    descriptor_index: u16,
     descriptor_type: vk.DescriptorType,
     image_layout: vk.ImageLayout,
 
@@ -231,12 +243,12 @@ const ImageDescriptor = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        device: *Device,
+        device: Device,
         set: vk.DescriptorSet,
-        descriptor_index: u32,
+        descriptor_index: u16,
         descriptor_type: vk.DescriptorType,
         image_layout: vk.ImageLayout,
-        array_count: u32,
+        array_count: u16,
     ) ImageDescriptor {
         return .{
             .allocator = allocator,
@@ -255,10 +267,10 @@ const ImageDescriptor = struct {
         self.update_list.deinit();
     }
 
-    pub fn bind(self: *ImageDescriptor, image: Image, sampler: ?Sampler) Binding {
+    pub fn bind(self: *ImageDescriptor, image: Texture, sampler: vk.Sampler) Binding {
         const index = self.index_list.get().?;
         self.update_list.put(index, .{
-            .sampler = if (sampler) |some| some.handle else .null_handle,
+            .sampler = sampler,
             .image_view = image.view_handle,
             .image_layout = self.image_layout,
         }) catch |err| std.log.info("Failed to update descriptor binding {}:{} {}", .{ self.descriptor_index, index, err });
@@ -274,10 +286,11 @@ const ImageDescriptor = struct {
         }) catch |err| std.log.info("Failed to free descriptor binding {}:{} {}", .{ self.descriptor_index, binding.index, err });
     }
 
-    pub fn write_updates(self: *ImageDescriptor, temp_allocator: std.mem.Allocator) !void {
+    pub fn writeUpdates(self: *ImageDescriptor, temp_allocator: std.mem.Allocator) !void {
         const buffer_infos = self.update_list.values();
         const indexes = self.update_list.keys();
         const descriptor_writes = try temp_allocator.alloc(vk.WriteDescriptorSet, self.update_list.count());
+        defer temp_allocator.free(descriptor_writes);
 
         for (indexes, buffer_infos, descriptor_writes) |index, *info, *descriptor_write| {
             descriptor_write.* = .{
@@ -292,18 +305,18 @@ const ImageDescriptor = struct {
             };
         }
 
-        self.device.proxy.updateDescriptorSets(@intCast(descriptor_writes.len), @ptrCast(descriptor_writes.ptr), 0, null);
+        self.device.updateDescriptorSets(@intCast(descriptor_writes.len), @ptrCast(descriptor_writes.ptr), 0, null);
         self.update_list.clearRetainingCapacity();
     }
 };
 
 const IndexList = struct {
-    freed: std.ArrayList(u32) = .empty,
-    next: u32,
-    min: u32,
-    max: u32,
+    freed: std.ArrayList(u16) = .empty,
+    next: u16,
+    min: u16,
+    max: u16,
 
-    pub fn init(min: u32, max: u32) IndexList {
+    pub fn init(min: u16, max: u16) IndexList {
         return IndexList{
             .next = min,
             .min = min,
@@ -315,7 +328,7 @@ const IndexList = struct {
         self.freed.deinit(allocator);
     }
 
-    pub fn get(self: *IndexList) ?u32 {
+    pub fn get(self: *IndexList) ?u16 {
         if (self.freed.items.len > 0) {
             return self.freed.pop();
         } else if (self.next <= self.max) {
@@ -327,7 +340,7 @@ const IndexList = struct {
         }
     }
 
-    pub fn free(self: *IndexList, allocator: std.mem.Allocator, index: u32) void {
+    pub fn free(self: *IndexList, allocator: std.mem.Allocator, index: u16) void {
         if (index < self.min or index > self.max) return;
         self.freed.append(allocator, index) catch {}; // ignore OOM
     }

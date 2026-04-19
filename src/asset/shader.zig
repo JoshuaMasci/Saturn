@@ -3,6 +3,7 @@ const std = @import("std");
 const serde = @import("../serde.zig");
 
 pub const LoadSettings = struct {};
+pub const ATYPE: @import("type.zig").AssetType = .shader;
 
 pub const DirectoryMeta = struct {
     language: Language = .glsl,

@@ -2,252 +2,278 @@ const std = @import("std");
 
 const zm = @import("zmath");
 
+const AllocationError = std.mem.Allocator.Error;
+
+const containers = @import("containers.zig");
+const SlotMap = containers.SlotMap;
+const ArrayListSet = containers.ArrayListSet;
+const ComponentMap = containers.ComponentMap;
+
 const Transform = @import("transform.zig");
 
-const jolt = @import("physics");
-const rendering_scene = @import("rendering/scene.zig");
+pub const NodePool = SlotMap(Node);
+pub const NodeHandle = NodePool.Handle;
+pub const NodeHandleSet = ArrayListSet(NodeHandle, null);
 
-pub const Componets = struct {
-    mesh: ?rendering_scene.StaticMeshComponent = null,
-    rigid_body: ?RigidBodyComponent = null,
-    lua_script: ?void = null,
+pub const EntityMap = SlotMap(*Entity);
+pub const EntityHandle = EntityMap.Handle;
+pub const EntityHandleSet = ArrayListSet(EntityHandle, null);
+pub const EntityPool = std.heap.MemoryPool(Entity);
+
+pub const WorldMap = SlotMap(*World);
+pub const WorldHandle = WorldMap.Handle;
+pub const WorldPool = std.heap.MemoryPool(World);
+
+const EntityNodeHandle = struct { entity: EntityHandle, node: NodeHandle };
+
+pub const Node = struct {
+    handle: NodeHandle,
+
+    name: ?[:0]const u8 = null, //TODO: allocate in an per entity arena?
+
+    local_transform: Transform = .Identity,
+    root_transform: ?Transform = null,
+
+    parent: ?NodeHandle = null,
+    children: NodeHandleSet = .empty,
+
+    //Engine Components
+    components: struct {
+        static_mesh: ?@import("rendering/scene.zig").StaticMeshInstanceHandle = null,
+    } = .{},
+    //components: ComponentMap = .empty,
 };
 
 pub const Entity = struct {
-    const Self = @This();
+    handle: EntityHandle,
 
-    name: ?[]const u8 = null,
-    transform: Transform = .{},
-    components: Componets = .{},
-};
+    name: ?[:0]const u8 = null, //TODO: allocate in an per entity arena?
 
-pub const Systems = struct {
-    rendering: ?RenderingSystem = null,
-    physics: ?PhysicsSystem = null,
-    lua: ?LuaSystem = null,
-};
+    world: ?WorldHandle = null,
+    transform: Transform = .Identity,
 
-pub const World = struct {
-    const Self = @This();
+    nodes: SlotMap(Node) = .empty,
+    root_nodes: NodeHandleSet = .empty,
 
-    allocator: std.mem.Allocator,
-    name: []const u8,
-    entities: std.ArrayList(*Entity),
-    systems: Systems,
+    //Engine Components
+    components: struct {
+        static_mesh: ?@import("rendering/scene.zig").StaticMeshInstanceHandle = null,
+    } = .{},
+    //components: ComponentMap = .empty,
 
-    pub fn init(allocator: std.mem.Allocator, name: []const u8, systems: Systems) !Self {
-        return .{
-            .allocator = allocator,
-            .name = try allocator.dupe(u8, name),
-            .entities = .init(allocator),
-            .systems = systems,
-        };
+    pub fn deinit(self: *Entity, gpa: std.mem.Allocator) void {
+        var iter = self.nodes.iterator();
+        if (self.name) |name| gpa.free(name);
+        while (iter.nextValue()) |node| {
+            if (node.name) |name| gpa.free(name);
+            node.children.deinit(gpa);
+            //node.components.deinit(gpa);
+        }
+        self.nodes.deinit(gpa);
+        self.root_nodes.deinit(gpa);
+
+        //Component ptrs aren't freed, they should be stored in objects pools probably
+        //self.components.deinit(gpa);
     }
 
-    pub fn deinit(self: *Self) void {
-        self.allocator.free(self.name);
+    pub fn createNode(self: *Entity, gpa: std.mem.Allocator, name_opt: ?[]const u8, parent_handle: ?NodeHandle) AllocationError!NodeHandle {
+        const name: ?[:0]const u8 = if (name_opt) |n| try gpa.dupeZ(u8, n) else null;
+        errdefer if (name) |s| gpa.free(s);
 
-        for (self.entities.items) |entity| {
-            if (entity.name) |name| {
-                self.allocator.free(name);
+        const handle = try self.nodes.insert(gpa, .{
+            .handle = undefined,
+            .name = name,
+            .parent = parent_handle,
+        });
+        self.nodes.getPtr(handle).?.handle = handle;
+
+        if (parent_handle) |ph| {
+            const parent_node = self.nodes.getPtr(ph) orelse return handle;
+            _ = try parent_node.children.insert(gpa, handle);
+        } else {
+            _ = try self.root_nodes.insert(gpa, handle);
+        }
+
+        return handle;
+    }
+
+    pub fn destroyNode(self: *Entity, gpa: std.mem.Allocator, node_handle: NodeHandle, reparent_children: bool) void {
+        const node = self.nodes.getPtr(node_handle) orelse return;
+        const parent = node.parent;
+
+        if (reparent_children) {
+            const children_copy = node.children.slice();
+            for (children_copy) |child_handle| {
+                if (self.nodes.getPtr(child_handle)) |child| {
+                    child.parent = parent;
+                }
+                if (parent) |ph| {
+                    if (self.nodes.getPtr(ph)) |parent_node| {
+                        parent_node.children.insert(gpa, child_handle) catch {};
+                    }
+                } else {
+                    self.root_nodes.insert(gpa, child_handle) catch {};
+                }
             }
-        }
-        self.entities.deinit();
-
-        if (self.systems.rendering) |*rendering| {
-            rendering.deinit();
-        }
-
-        if (self.systems.physics) |*physics| {
-            physics.deinit();
-        }
-
-        if (self.systems.lua) |*lua| {
-            lua.deinit();
-        }
-    }
-
-    pub fn update(self: *Self, delta_time: f32) void {
-        if (self.systems.lua) |*lua| {
-            lua.update(self, delta_time);
-        }
-
-        if (self.systems.physics) |*physics| {
-            physics.update(self, delta_time);
-        }
-
-        if (self.systems.rendering) |*rendering| {
-            rendering.update(self, delta_time);
-        }
-    }
-};
-
-pub const RenderingSystem = struct {
-    const Self = @This();
-
-    scene: rendering_scene.RenderScene,
-
-    pub fn init(allocator: std.mem.Allocator) Self {
-        return .{
-            .scene = rendering_scene.RenderScene.init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.scene.deinit();
-    }
-
-    pub fn registerEntity(self: *Self, world: *World, entity: *Entity) void {
-        _ = world; // autofix
-        _ = entity; // autofixs
-        _ = self; // autofix
-    }
-
-    pub fn deregisterEntity(self: *Self, world: *World, entity: *Entity) void {
-        _ = world; // autofix
-        _ = entity; // autofix
-        _ = self; // autofix
-    }
-
-    pub fn update(self: *Self, world: *World, delta_time: f32) void {
-        _ = delta_time; // autofix
-
-        self.scene.clear();
-
-        for (world.entities.items) |entity| {
-            if (entity.components.mesh) |mesh| {
-                self.scene.static_meshes.append(.{
-                    .transform = entity.transform,
-                    .component = mesh,
-                }) catch |err| std.log.err("Failed to append mesh to scene {}", .{err});
-            }
-        }
-    }
-};
-
-pub const RigidBodyComponent = struct {
-    body: jolt.Body,
-    linear_velocity: zm.Vec = zm.splat(zm.Vec, 0.0),
-    angular_velocity: zm.Vec = zm.splat(zm.Vec, 0.0),
-};
-
-pub const Collider = struct {
-    collider: jolt.Shape,
-};
-
-pub const PhysicsSystem = struct {
-    const Self = @This();
-
-    allocator: std.mem.Allocator,
-    physics_world: jolt.World,
-    bodies: std.ArrayListUnmanaged(*Entity),
-
-    pub fn init(allocator: std.mem.Allocator) Self {
-        return .{
-            .allocator = allocator,
-            .physics_world = jolt.World.init(.{}),
-            .bodies = .{},
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.bodies.deinit(self.allocator);
-        self.physics_world.deinit();
-    }
-
-    pub fn registerEntity(self: *Self, world: *World, entity: *Entity) void {
-        _ = world; // autofixs
-
-        if (entity.components.rigid_body) |rigid_body| {
-            rigid_body.setTransform(&.{
-                .position = zm.vecToArr3(entity.transform.position),
-                .rotation = zm.vecToArr4(zm.normalize4(entity.transform.rotation)),
-            });
-            rigid_body.setVelocity(&.{
-                .linear = zm.vecToArr3(rigid_body.linear_velocity),
-                .angular = zm.vecToArr3(rigid_body.angular_velocity),
-            });
-            self.physics_world.addBody(rigid_body.body);
-            self.bodies.append(self.allocator, entity) catch |err| std.log.err("Failed to append mesh to physics body list {}", .{err});
-        }
-    }
-
-    pub fn deregisterEntity(self: *Self, world: *World, entity: *Entity) void {
-        _ = world; // autofix
-
-        if (entity.components.rigid_body) |rigid_body| {
-            self.physics_world.removeBody(rigid_body.body);
-
-            for (self.bodies.items, 0..) |item, i| {
-                if (item == entity) {
-                    _ = self.bodies.swapRemove(i);
-                    break;
+        } else {
+            const children_copy = node.children.slice();
+            var to_delete = std.ArrayList(NodeHandle).init(gpa);
+            defer to_delete.deinit();
+            collectChildren(self, children_copy, &to_delete) catch {};
+            for (to_delete.items) |h| {
+                if (self.nodes.remove(h)) |n| {
+                    var n_mut: Node = n;
+                    if (n_mut.name) |nm| gpa.free(nm);
+                    n_mut.children.deinit(gpa);
                 }
             }
         }
-    }
 
-    pub fn update(self: *Self, world: *World, delta_time: f32) void {
-        _ = world; // autofix
-
-        //Pre Physics
-        for (self.bodies.items) |entity| {
-            if (entity.components.rigid_body) |*rigid_body| {
-                rigid_body.body.setTransform(&.{
-                    .position = zm.vecToArr3(entity.transform.position),
-                    .rotation = zm.vecToArr4(zm.normalize4(entity.transform.rotation)),
-                });
-                rigid_body.body.setVelocity(&.{
-                    .linear = zm.vecToArr3(rigid_body.linear_velocity),
-                    .angular = zm.vecToArr3(rigid_body.angular_velocity),
-                });
+        if (parent) |ph| {
+            if (self.nodes.getPtr(ph)) |parent_node| {
+                _ = parent_node.children.remove(node_handle);
             }
+        } else {
+            _ = self.root_nodes.remove(node_handle);
         }
 
-        self.physics_world.update(delta_time, 1);
+        if (self.nodes.remove(node_handle)) |n| {
+            var n_mut: Node = n;
+            if (n_mut.name) |nm| gpa.free(nm);
+            n_mut.children.deinit(gpa);
+        }
+    }
 
-        //Post Physics
-        for (self.bodies.items) |entity| {
-            if (entity.components.rigid_body) |*rigid_body| {
-                const transform = rigid_body.body.getTransform();
-                entity.transform.position = zm.loadArr3(transform.position);
-                entity.transform.rotation = zm.normalize4(zm.loadArr4(transform.rotation));
-
-                const velocity = rigid_body.body.getVelocity();
-                rigid_body.linear_velocity = zm.loadArr3(velocity.linear);
-                rigid_body.angular_velocity = zm.loadArr3(velocity.angular);
+    fn collectChildren(self: *Entity, handles: []const NodeHandle, out: *std.ArrayList(NodeHandle)) AllocationError!void {
+        for (handles) |h| {
+            try out.append(h);
+            if (self.nodes.getPtr(h)) |n| {
+                try collectChildren(self, n.children.slice(), out);
             }
         }
     }
 };
 
-pub const LuaSystem = struct {
-    const Self = @This();
+pub const World = struct {
+    handle: WorldHandle,
 
-    pub fn init(allocator: std.mem.Allocator) Self {
-        _ = allocator; // autofix
-        return .{};
-    }
+    /// Name owned by the universe, cstring(null term) for convenience with ffi
+    name: ?[:0]const u8 = null,
 
-    pub fn deinit(self: *Self) void {
-        _ = self; // autofix
-    }
+    entities: EntityHandleSet = .empty,
 
-    pub fn registerEntity(self: *Self, world: *World, entity: *Entity) void {
-        _ = world; // autofix
-        _ = entity; // autofixs
-        _ = self; // autofix
-    }
+    //components: ComponentMap = .empty,
 
-    pub fn deregisterEntity(self: *Self, world: *World, entity: *Entity) void {
-        _ = world; // autofix
-        _ = entity; // autofix
-        _ = self; // autofix
-    }
+    pub fn deinit(self: *World, gpa: std.mem.Allocator) void {
+        self.entities.deinit(gpa);
 
-    pub fn update(self: *Self, world: *World, delta_time: f32) void {
-        _ = delta_time; // autofix
-        _ = self; // autofix
-        _ = world; // autofix
+        //Component ptrs aren't freed, they should be stored in objects pools probably
+        //self.components.deinit(gpa);
+
+        if (self.name) |name| gpa.free(name);
     }
 };
+
+// Universe type
+const Self = @This();
+
+gpa: std.mem.Allocator,
+entity_pool: EntityPool,
+world_pool: WorldPool,
+
+entities: EntityMap = .empty,
+worlds: WorldMap = .empty,
+
+pub fn init(allocator: std.mem.Allocator) Self {
+    return .{
+        .gpa = allocator,
+        .entity_pool = .init(allocator),
+        .world_pool = .init(allocator),
+    };
+}
+
+pub fn deinit(self: *Self) void {
+    var e_iter = self.entities.iterator();
+    while (e_iter.nextValue()) |entity| {
+        entity.*.deinit(self.gpa);
+    }
+    self.entities.deinit(self.gpa);
+    self.entity_pool.deinit();
+
+    var w_iter = self.worlds.iterator();
+    while (w_iter.nextValue()) |world| {
+        world.*.deinit(self.gpa);
+    }
+    self.worlds.deinit(self.gpa);
+    self.world_pool.deinit();
+}
+
+pub fn createWorld(self: *Self, name_opt: ?[]const u8) AllocationError!WorldHandle {
+    const world = try self.world_pool.create();
+    errdefer self.world_pool.destroy(world);
+
+    const handle = try self.worlds.insert(self.gpa, world);
+    errdefer _ = self.worlds.remove(handle);
+
+    const name: ?[:0]const u8 = try self.dupeName(name_opt);
+    errdefer if (name) |s| self.gpa.free(s);
+
+    world.* = .{
+        .handle = handle,
+        .name = name,
+    };
+
+    return handle;
+}
+
+pub fn destroyWorld(self: *Self, world_handle: WorldHandle, delete_entities: bool) void {
+    if (self.worlds.remove(world_handle)) |world| {
+        for (world.entities.slice()) |entity_handle| {
+            self.entities.get(entity_handle).?.world = null;
+            if (delete_entities) {
+                self.destroyEntity(entity_handle);
+            }
+        }
+        world.deinit(self.gpa);
+    }
+}
+
+pub fn createEntity(self: *Self, name_opt: ?[]const u8, world_opt: ?WorldHandle) AllocationError!*Entity {
+    const entity = try self.entity_pool.create();
+    errdefer self.entity_pool.destroy(entity);
+
+    const handle = try self.entities.insert(self.gpa, entity);
+    errdefer _ = self.entities.remove(handle);
+
+    const name: ?[:0]const u8 = try self.dupeName(name_opt);
+    errdefer if (name) |s| self.gpa.free(s);
+
+    if (world_opt) |world| {
+        const world_ptr = self.worlds.get(world).?;
+        _ = try world_ptr.entities.insert(self.gpa, handle);
+    }
+
+    entity.* = .{
+        .handle = handle,
+        .name = name,
+        .world = world_opt,
+    };
+
+    return entity;
+}
+
+pub fn destroyEntity(self: *Self, entity_handle: EntityHandle) void {
+    if (self.entities.remove(entity_handle)) |entity| {
+        if (entity.world) |world_handle| {
+            _ = self.worlds.get(world_handle).?.entities.remove(entity_handle);
+        }
+        entity.deinit(self.gpa);
+    }
+}
+
+fn dupeName(self: *Self, name_opt: ?[]const u8) AllocationError!?[:0]const u8 {
+    if (name_opt) |z_name| {
+        return try self.gpa.dupeZ(u8, z_name);
+    }
+    return null;
+}

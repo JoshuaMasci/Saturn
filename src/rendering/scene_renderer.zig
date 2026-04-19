@@ -1,750 +1,391 @@
 const std = @import("std");
 
-const vk = @import("vulkan");
 const zm = @import("zmath");
 
-const MeshAsset = @import("../asset/mesh.zig");
-const AssetRegistry = @import("../asset/registry.zig");
+const saturn = @import("../root.zig");
 const Transform = @import("../transform.zig");
-const SceneCamera = @import("camera.zig").SceneCamera;
-const CullData = @import("culling.zig").CullData;
-const RenderScene = @import("scene.zig");
-const Resources = @import("resources.zig");
-const Backend = @import("vulkan/backend.zig");
-const Image = @import("vulkan/image.zig");
-const Mesh = @import("vulkan/mesh.zig");
-const Pipeline = @import("vulkan/pipeline.zig");
-const rg = @import("vulkan/render_graph.zig");
-const utils = @import("vulkan/utils.zig");
-const Buffer = @import("vulkan/buffer.zig");
 
-const DrawPipelines = struct {
-    legacy: vk.Pipeline = .null_handle,
-    indirect: vk.Pipeline = .null_handle,
+const Scene = @import("scene.zig");
+const AssetPool = @import("asset_pool.zig");
+const Material = @import("material.zig");
+const culling = @import("culling.zig");
+const utils = @import("utils.zig");
+
+const AssetRegistry = @import("../asset/registry.zig");
+const MeshAsset = @import("../asset/mesh.zig");
+const ShaderAsset = @import("../asset/shader.zig");
+
+pub const Camera = struct {
+    camera: @import("../rendering/camera.zig").Camera,
+    transform: Transform,
+};
+
+pub const RenderTargetState = struct {
+    color_targets: []const saturn.TextureFormat = &.{},
+    depth_target: ?saturn.TextureFormat = null,
 };
 
 const Self = @This();
 
-allocator: std.mem.Allocator,
-device: *Backend,
+gpa: std.mem.Allocator,
+device: saturn.DeviceInterface,
+registry: *const AssetRegistry,
 
-build_indirect_pipeline: vk.Pipeline,
-opaque_pipelines: DrawPipelines,
-alpha_mask_pipelines: DrawPipelines,
-alpha_blend_pipelines: DrawPipelines,
+depth_format: ?saturn.TextureFormat,
 
-//Debug Values
-indirect: bool = true,
-culling: bool = true,
-locked_culling_info: ?SceneCamera = null,
+legacy: LegacyScenePass,
 
-pub fn init(
-    allocator: std.mem.Allocator,
-    registry: *const AssetRegistry,
-    device: *Backend,
-    color_format: vk.Format,
-    depth_format: vk.Format,
-    pipeline_layout: vk.PipelineLayout,
-) !Self {
-    const build_indirect_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/build_indirect.comp.asset"));
-    defer device.device.proxy.destroyShaderModule(build_indirect_shader, null);
-    const build_indirect_pipeline = try Pipeline.createComputePipeline(device.device.proxy, pipeline_layout, build_indirect_shader);
-
-    const bindings = [_]vk.VertexInputBindingDescription{
-        .{
-            .binding = 0,
-            .stride = @sizeOf(MeshAsset.Vertex),
-            .input_rate = .vertex,
-        },
-    };
-
-    const attributes = [_]vk.VertexInputAttributeDescription{
-        .{
-            .binding = 0,
-            .location = 0,
-            .format = .r32g32b32_sfloat,
-            .offset = @offsetOf(MeshAsset.Vertex, "position"),
-        },
-        .{
-            .binding = 0,
-            .location = 1,
-            .format = .r32g32b32_sfloat,
-            .offset = @offsetOf(MeshAsset.Vertex, "normal"),
-        },
-        .{
-            .binding = 0,
-            .location = 2,
-            .format = .r32g32b32a32_sfloat,
-            .offset = @offsetOf(MeshAsset.Vertex, "tangent"),
-        },
-        .{
-            .binding = 0,
-            .location = 3,
-            .format = .r32g32_sfloat,
-            .offset = @offsetOf(MeshAsset.Vertex, "uv0"),
-        },
-        .{
-            .binding = 0,
-            .location = 4,
-            .format = .r32g32_sfloat,
-            .offset = @offsetOf(MeshAsset.Vertex, "uv1"),
-        },
-    };
-
-    const pipeline_config: Pipeline.PipelineConfig = .{
-        .color_format = color_format,
-        .depth_format = depth_format,
-        .cull_mode = .{ .back_bit = true },
-    };
-
-    const legacy_vert_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/draw_legacy.vert.asset"));
-    defer device.device.proxy.destroyShaderModule(legacy_vert_shader, null);
-
-    const indirect_vert_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/draw_indirect.vert.asset"));
-    defer device.device.proxy.destroyShaderModule(indirect_vert_shader, null);
-
-    var opaque_pipelines: DrawPipelines = .{};
-    errdefer {
-        device.device.proxy.destroyPipeline(opaque_pipelines.legacy, null);
-        device.device.proxy.destroyPipeline(opaque_pipelines.indirect, null);
-    }
-    {
-        const legacy_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/opaque_legacy.frag.asset"));
-        defer device.device.proxy.destroyShaderModule(legacy_frag_shader, null);
-
-        const indirect_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/opaque_indirect.frag.asset"));
-        defer device.device.proxy.destroyShaderModule(indirect_frag_shader, null);
-
-        opaque_pipelines.legacy = try Pipeline.createGraphicsPipeline(
-            device.device.proxy,
-            pipeline_layout,
-            pipeline_config,
-            .{
-                .bindings = &bindings,
-                .attributes = &attributes,
-            },
-            legacy_vert_shader,
-            legacy_frag_shader,
-        );
-        device.device.setDebugName(.pipeline, opaque_pipelines.legacy, "opaque_pipeline_legacy");
-
-        opaque_pipelines.indirect = try Pipeline.createGraphicsPipeline(
-            device.device.proxy,
-            pipeline_layout,
-            pipeline_config,
-            .{
-                .bindings = &bindings,
-                .attributes = &attributes,
-            },
-            indirect_vert_shader,
-            indirect_frag_shader,
-        );
-        device.device.setDebugName(.pipeline, opaque_pipelines.indirect, "opaque_pipeline_indirect");
-    }
-
-    var alpha_mask_pipelines: DrawPipelines = .{};
-    errdefer {
-        device.device.proxy.destroyPipeline(alpha_mask_pipelines.legacy, null);
-        device.device.proxy.destroyPipeline(alpha_mask_pipelines.indirect, null);
-    }
-    {
-        const legacy_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/alpha_mask_legacy.frag.asset"));
-        defer device.device.proxy.destroyShaderModule(legacy_frag_shader, null);
-
-        const indirect_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/alpha_mask_indirect.frag.asset"));
-        defer device.device.proxy.destroyShaderModule(indirect_frag_shader, null);
-
-        alpha_mask_pipelines.legacy = try Pipeline.createGraphicsPipeline(
-            device.device.proxy,
-            pipeline_layout,
-            pipeline_config,
-            .{
-                .bindings = &bindings,
-                .attributes = &attributes,
-            },
-            legacy_vert_shader,
-            legacy_frag_shader,
-        );
-        device.device.setDebugName(.pipeline, alpha_mask_pipelines.legacy, "alpha_mask_pipeline_legacy");
-
-        alpha_mask_pipelines.indirect = try Pipeline.createGraphicsPipeline(
-            device.device.proxy,
-            pipeline_layout,
-            pipeline_config,
-            .{
-                .bindings = &bindings,
-                .attributes = &attributes,
-            },
-            indirect_vert_shader,
-            indirect_frag_shader,
-        );
-        device.device.setDebugName(.pipeline, alpha_mask_pipelines.indirect, "alpha_mask_pipeline_indirect");
-    }
-
-    var alpha_blend_pipelines: DrawPipelines = .{};
-    errdefer {
-        device.device.proxy.destroyPipeline(alpha_blend_pipelines.legacy, null);
-        device.device.proxy.destroyPipeline(alpha_blend_pipelines.indirect, null);
-    }
-    {
-        const legacy_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/opaque_legacy.frag.asset"));
-        defer device.device.proxy.destroyShaderModule(legacy_frag_shader, null);
-
-        const indirect_frag_shader = try utils.loadGraphicsShader(allocator, registry, device.device.proxy, .fromRepoPath("engine", "shaders/glsl/opaque_indirect.frag.asset"));
-        defer device.device.proxy.destroyShaderModule(indirect_frag_shader, null);
-
-        var blend_pipeline_config = pipeline_config;
-        blend_pipeline_config.enable_blending = true;
-
-        alpha_blend_pipelines.legacy = try Pipeline.createGraphicsPipeline(
-            device.device.proxy,
-            pipeline_layout,
-            blend_pipeline_config,
-            .{
-                .bindings = &bindings,
-                .attributes = &attributes,
-            },
-            legacy_vert_shader,
-            legacy_frag_shader,
-        );
-        device.device.setDebugName(.pipeline, alpha_blend_pipelines.legacy, "alpha_blend_pipeline_legacy");
-
-        alpha_blend_pipelines.indirect = try Pipeline.createGraphicsPipeline(
-            device.device.proxy,
-            pipeline_layout,
-            blend_pipeline_config,
-            .{
-                .bindings = &bindings,
-                .attributes = &attributes,
-            },
-            indirect_vert_shader,
-            indirect_frag_shader,
-        );
-        device.device.setDebugName(.pipeline, alpha_blend_pipelines.indirect, "alpha_blend_pipeline_indirect");
-    }
+pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: RenderTargetState) !Self {
+    const legacy: LegacyScenePass = try .init(gpa, device, registry, formats);
+    errdefer legacy.deinit(device);
 
     return .{
-        .allocator = allocator,
+        .gpa = gpa,
         .device = device,
+        .registry = registry,
 
-        .build_indirect_pipeline = build_indirect_pipeline,
-        .opaque_pipelines = opaque_pipelines,
-        .alpha_mask_pipelines = alpha_mask_pipelines,
-        .alpha_blend_pipelines = alpha_blend_pipelines,
+        .depth_format = formats.depth_target,
+        .legacy = legacy,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.device.device.proxy.destroyPipeline(self.build_indirect_pipeline, null);
-
-    self.device.device.proxy.destroyPipeline(self.opaque_pipelines.legacy, null);
-    self.device.device.proxy.destroyPipeline(self.opaque_pipelines.indirect, null);
-
-    self.device.device.proxy.destroyPipeline(self.alpha_mask_pipelines.legacy, null);
-    self.device.device.proxy.destroyPipeline(self.alpha_mask_pipelines.indirect, null);
-
-    self.device.device.proxy.destroyPipeline(self.alpha_blend_pipelines.legacy, null);
-    self.device.device.proxy.destroyPipeline(self.alpha_blend_pipelines.indirect, null);
+    self.legacy.deinit(self.device);
 }
 
-pub fn createRenderPass(
+pub fn rebuild(self: *Self, formats: RenderTargetState) saturn.Error!void {
+    self.legacy.deinit(self.device);
+    self.legacy = try LegacyScenePass.init(self.gpa, self.device, self.registry, formats);
+    try self.indirect.rebuild(formats);
+}
+
+pub fn addPasses(
     self: *Self,
-    temp_allocator: std.mem.Allocator,
-    color_target: rg.RenderGraphTextureHandle,
-    depth_target: rg.RenderGraphTextureHandle,
-    resources: *const Resources,
-    scene: *const RenderScene,
-    camera: SceneCamera,
-    render_graph: *rg.RenderGraph,
-) !void {
-    const material_info_buffer = try render_graph.importBuffer(resources.material_buffer.?);
-    const mesh_info_buffer = try render_graph.importBuffer(resources.meshes.mesh_info_buffer);
+    tpa: std.mem.Allocator,
+    target: saturn.RGTextureHandle,
+    render_graph: *saturn.RenderGraph,
+    scene: *const Scene,
+    camera: *const Camera,
+    asset_pool: *const AssetPool,
+) saturn.Error!void {
+    const depth_texture = try render_graph.createTransientTexture(.{
+        .extent = .{ .relative = target },
+        .format = self.depth_format.?,
+        .usage = .{
+            .attachment = true,
+        },
+        .memory = .gpu_only,
+    });
 
-    if (self.indirect) {
-        const scene_buffers = try SceneBuffers.init(scene, temp_allocator, resources, render_graph);
+    var render_buckets = try scene.createBuckets(tpa, asset_pool);
+    render_buckets.depthSort(camera.transform.position);
 
-        const build_data = try temp_allocator.create(DrawIndirect.Data);
-        build_data.* = .{
-            .camera = camera,
-            .culling = null,
-            .build_pipeline = self.build_indirect_pipeline,
-
-            .material_info_buffer = material_info_buffer,
-            .mesh_info_buffer = mesh_info_buffer,
-
-            .opaque_draw_pipeline = self.opaque_pipelines.indirect,
-            .alpha_mask_draw_pipeline = self.alpha_mask_pipelines.indirect,
-            .alpha_blend_pipeline = self.alpha_blend_pipelines.indirect,
-
-            .vertex_buffer = try render_graph.importBuffer(resources.meshes.vertex_buffer.buffer),
-            .index_buffer = try render_graph.importBuffer(resources.meshes.index_buffer.buffer),
-
-            .scene_buffers = scene_buffers,
-        };
-
-        if (self.culling) {
-            build_data.*.culling = .{
-                .camera = self.locked_culling_info orelse camera,
-                .target_texture = color_target,
-            };
-        }
-
-        {
-            var render_pass = try rg.RenderPass.init(temp_allocator, "Indirect Build Pass");
-            render_pass.addBuildFn(DrawIndirect.buildPass, build_data);
-            try render_graph.render_passes.append(render_graph.allocator, render_pass);
-        }
-
-        {
-            var render_pass = try rg.RenderPass.init(temp_allocator, "Indirect Draw Pass");
-            try render_pass.addColorAttachment(.{
-                .texture = color_target,
-                .clear = .{ .float_32 = .{ 0.25, 0.0, 0.25, 1.0 } },
-                .store = true,
-            });
-            render_pass.addDepthAttachment(.{
-                .texture = depth_target,
-                .clear = 1.0,
-                .store = true,
-            });
-
-            render_pass.addBuildFn(DrawIndirect.drawPass, build_data);
-            try render_graph.render_passes.append(render_graph.allocator, render_pass);
-        }
-    } else {
-        var render_pass = try rg.RenderPass.init(temp_allocator, "Legacy Draw Pass");
-        try render_pass.addColorAttachment(.{
-            .texture = color_target,
-            .clear = .{ .float_32 = .{ 0.0, 0.25, 0.25, 1.0 } },
-            .store = true,
-        });
-        render_pass.addDepthAttachment(.{
-            .texture = depth_target,
-            .clear = 1.0,
-            .store = true,
-        });
-
-        const build_data = try temp_allocator.create(DrawLegacy.Data);
-        build_data.* = .{
-            .camera = camera,
-
-            .opaque_pipeline = self.opaque_pipelines.legacy,
-            .alpha_mask_pipeline = self.alpha_mask_pipelines.legacy,
-            .alpha_blend_pipeline = self.alpha_blend_pipelines.legacy,
-
-            .material_info_buffer = material_info_buffer,
-
-            .resources = resources,
-            .scene = scene,
-        };
-        render_pass.addBuildFn(DrawLegacy.buildCommandBuffer, build_data);
-
-        try render_graph.render_passes.append(render_graph.allocator, render_pass);
-    }
-}
-
-pub const DrawLegacy = struct {
-    pub const Data = struct {
-        camera: SceneCamera,
-        opaque_pipeline: vk.Pipeline,
-        alpha_mask_pipeline: vk.Pipeline,
-        alpha_blend_pipeline: vk.Pipeline,
-        material_info_buffer: rg.RenderGraphBufferHandle,
-        resources: *const Resources,
-        scene: *const RenderScene,
+    const legacy_pass_data = try render_graph.alloc(LegacyPassData, 1);
+    legacy_pass_data[0] = .{
+        .legacy_pass = &self.legacy,
+        .scene = scene,
+        .camera = camera,
+        .asset_pool = asset_pool,
+        .render_buckets = render_buckets,
     };
 
+    _ = try render_graph.addGraphicsPass(
+        "Legacy Scene Pass",
+        .{
+            .color_attachments = &.{
+                .{ .texture = target, .clear = .{ 0.0, 0.0, 0.0, 1.0 } },
+            },
+            .depth_attachment = .{ .texture = depth_texture, .clear = 1.0 },
+        },
+        legacy_pass_data.ptr,
+        legacyGraphicsCallback,
+    );
+}
+
+const LegacyPassData = struct {
+    legacy_pass: *const LegacyScenePass,
+    scene: *const Scene,
+    camera: *const Camera,
+    asset_pool: *const AssetPool,
+    render_buckets: Scene.RenderBuckets,
+};
+
+fn legacyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
+    const data: *LegacyPassData = @ptrCast(@alignCast(ctx.?));
+    data.legacy_pass.render(cmd, data.render_buckets, data.camera, data.asset_pool, target_resolution);
+}
+
+pub const ClearBufferPass = struct {
+    buffer: saturn.RGBufferHandle,
+    data: u32,
+
+    pub fn addPass(
+        render_graph: *saturn.RenderGraph,
+        buffer: saturn.RGBufferHandle,
+        data: u32,
+    ) saturn.Error!void {
+        const ctx = try render_graph.dupe(ClearBufferPass, .{ .buffer = buffer, .data = data });
+        const pass = try render_graph.addTransferPass("Buffer Clear Pass", ctx, clearPassCallback);
+        try render_graph.addBufferUsage(pass, buffer, .transfer_write);
+    }
+
+    fn clearPassCallback(ctx: ?*anyopaque, cmd: saturn.TransferCommandEncoder) void {
+        const data: *ClearBufferPass = @ptrCast(@alignCast(ctx));
+        const dst: saturn.BufferArg = .from(data.buffer);
+        const info = cmd.getBufferInfo(dst).?;
+        cmd.writeBuffer(dst, 0, info.size, data.data);
+    }
+};
+
+const LegacyScenePass = struct {
     const PushConstants = extern struct {
         view_projection_matrix: zm.Mat,
         model_matrix: zm.Mat,
-        material_info_binding: u32,
+        texture_info_binding: u32,
+        material_instance_binding: u32,
         material_index: u32,
     };
 
-    fn buildCommandBuffer(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
-        const data: *Data = @ptrCast(@alignCast(build_data.?));
+    opaque_pipeline: saturn.GraphicsPipelineHandle,
+    alpha_mask_pipeline: saturn.GraphicsPipelineHandle,
+    alpha_blend_pipeline: saturn.GraphicsPipelineHandle,
 
-        const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
-        const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
-        const aspect_ratio: f32 = width_float / height_float;
-        const view_matrix = data.camera.transform.getViewMatrix();
-        var projection_matrix = data.camera.settings.getProjectionMatrix(aspect_ratio);
-        projection_matrix[1][1] *= -1.0;
-        const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
+    pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, registry: *const AssetRegistry, formats: RenderTargetState) !LegacyScenePass {
+        const vertex_shader = try utils.loadShader(gpa, device, registry, .fromRepoPath("engine", "shaders/glsl/draw_legacy.vert.asset"));
+        defer device.destroyShaderModule(vertex_shader);
 
-        const material_info_buffer = resources.getBuffer(data.material_info_buffer).?;
+        const opaque_frag_shader = try utils.loadShader(gpa, device, registry, .fromRepoPath("engine", "shaders/glsl/opaque_legacy.frag.asset"));
+        defer device.destroyShaderModule(opaque_frag_shader);
 
-        const vertex_buffer = device.buffers.get(data.resources.meshes.vertex_buffer.buffer).?.buffer.handle;
-        const index_buffer = device.buffers.get(data.resources.meshes.index_buffer.buffer).?.buffer.handle;
+        const alpha_mask_frag_shader = try utils.loadShader(gpa, device, registry, .fromRepoPath("engine", "shaders/glsl/alpha_mask_legacy.frag.asset"));
+        defer device.destroyShaderModule(alpha_mask_frag_shader);
 
-        const base_vertex_offset: u64 = 0;
-        command_buffer.bindVertexBuffers(0, 1, @ptrCast(&vertex_buffer), @ptrCast(&base_vertex_offset));
-        command_buffer.bindIndexBuffer(index_buffer, 0, .uint32);
+        const vertex_bindings = [_]saturn.VertexBinding{
+            .{
+                .binding = 0,
+                .stride = @sizeOf(MeshAsset.Vertex),
+                .input_rate = .vertex,
+            },
+        };
 
-        var instance_iter = data.scene.instances.iterator();
-        while (instance_iter.nextValue()) |instance| {
-            if (!instance.visable) {
-                continue;
-            }
+        const vertex_attributes = [_]saturn.VertexAttribute{
+            .{
+                .binding = 0,
+                .location = 0,
+                .format = .float3,
+                .offset = @offsetOf(MeshAsset.Vertex, "position"),
+            },
+            .{
+                .binding = 0,
+                .location = 1,
+                .format = .float3,
+                .offset = @offsetOf(MeshAsset.Vertex, "normal"),
+            },
+            .{
+                .binding = 0,
+                .location = 2,
+                .format = .float4,
+                .offset = @offsetOf(MeshAsset.Vertex, "tangent"),
+            },
+            .{
+                .binding = 0,
+                .location = 3,
+                .format = .float2,
+                .offset = @offsetOf(MeshAsset.Vertex, "uv0"),
+            },
+            .{
+                .binding = 0,
+                .location = 4,
+                .format = .float2,
+                .offset = @offsetOf(MeshAsset.Vertex, "uv1"),
+            },
+        };
 
-            const model_matrix = instance.transform.getModelMatrix();
+        const vertex_input_state: saturn.VertexInputState = .{
+            .bindings = &vertex_bindings,
+            .attributes = &vertex_attributes,
+        };
 
-            const mesh_asset = data.resources.meshes.map.get(instance.mesh) orelse continue;
-            const vertex_offset: u32 = @intCast(mesh_asset.vertices.offset);
-            const index_offset: u32 = @intCast(mesh_asset.indices.offset);
+        const raster_state: saturn.RasterizerState = .{
+            .fill_mode = .solid,
+            .cull_mode = .back,
+            .front_face = .counter_clockwise,
+            .depth_bias_enable = false,
+            .depth_bias_constant_factor = 0.0,
+            .depth_bias_clamp = 0.0,
+            .depth_bias_slope_factor = 0.0,
+        };
 
-            for (mesh_asset.cpu_primitives, instance.primitives.slice()) |primitive, primtive| {
-                const material_entry = data.resources.material_map.get(primtive.material_handle) orelse continue;
+        const depth_stencil_state: saturn.DepthStencilState = .{
+            .depth_test_enable = true,
+            .depth_write_enable = true,
+            .depth_compare_op = .less,
+        };
 
-                switch (material_entry.material.alpha_mode) {
-                    .@"opaque" => command_buffer.bindPipeline(.graphics, data.opaque_pipeline),
-                    .mask => command_buffer.bindPipeline(.graphics, data.alpha_mask_pipeline),
-                    .blend => command_buffer.bindPipeline(.graphics, data.alpha_blend_pipeline),
-                }
+        const render_target_info: saturn.RenderTargetState = .{
+            .color_targets = try gpa.alloc(saturn.ColorTargetState, formats.color_targets.len),
+            .depth_target = formats.depth_target,
+        };
+        defer gpa.free(render_target_info.color_targets);
 
-                const push_data: PushConstants = .{
-                    .view_projection_matrix = view_projection_matrix,
-                    .model_matrix = model_matrix,
-                    .material_info_binding = material_info_buffer.storage_binding.?,
-                    .material_index = material_entry.buffer_index.?,
-                };
-                command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(PushConstants), &push_data);
-                command_buffer.drawIndexed(
-                    primitive.index_count,
-                    1,
-                    index_offset + primitive.index_offset,
-                    @intCast(vertex_offset + primitive.vertex_offset),
-                    0,
-                );
-            }
+        for (render_target_info.color_targets, formats.color_targets) |*target, format| {
+            target.* = .{ .format = format };
         }
-    }
-};
 
-pub const SceneBuffers = struct {
-    pub const GpuInstance = extern struct {
-        model_matrix: zm.Mat,
-        normal_matrix: zm.Mat,
-        mesh_index: u32,
-        visable: u32,
-        pad0: u32 = 0,
-        pad1: u32 = 0,
-    };
-    pub const GpuPrimitiveInstance = extern struct {
-        instance_index: u32,
-        primitive_index: u32,
-        material_instance_index: u32,
-        pad0: u32 = 0,
-    };
+        const opaque_pipeline = try device.createGraphicsPipeline(&.{
+            .name = "Legacy Opaque Pipeline",
+            .vertex = vertex_shader,
+            .fragment = opaque_frag_shader,
+            .vertex_input_state = vertex_input_state,
+            .primitive_topology = .triangle_list,
+            .raster_state = raster_state,
+            .depth_stencil_state = depth_stencil_state,
+            .target_info = render_target_info,
+        });
+        errdefer device.destroyGraphicsPipeline(opaque_pipeline);
 
-    pub const DrawIndexedIndirectCommandInfo = extern struct {
-        indexCount: u32,
-        instanceCount: u32,
-        firstIndex: u32,
-        vertexOffset: i32,
-        firstInstance: u32,
-        instance_index: u32,
-        material_index: u32,
-    };
+        const alpha_mask_pipeline = try device.createGraphicsPipeline(&.{
+            .name = "Legacy Alpha Mask Pipeline",
+            .vertex = vertex_shader,
+            .fragment = alpha_mask_frag_shader,
+            .vertex_input_state = vertex_input_state,
+            .primitive_topology = .triangle_list,
+            .raster_state = raster_state,
+            .depth_stencil_state = depth_stencil_state,
+            .target_info = render_target_info,
+        });
+        errdefer device.destroyGraphicsPipeline(alpha_mask_pipeline);
 
-    const RenderSet = struct {
-        indirect_draw_count_index: u32,
-        primitves_count: u32,
-        primitves_buffer: rg.RenderGraphBufferHandle,
-        indirect_cmd_info: rg.RenderGraphBufferHandle,
-    };
+        //Add blending
+        for (render_target_info.color_targets) |*target| {
+            target.blend = .{
+                .color = .{
+                    .src = .src_alpha,
+                    .dst = .one_minus_src_alpha,
+                    .op = .add,
+                },
+                .alpha = .{
+                    .src = .one,
+                    .dst = .zero,
+                    .op = .add,
+                },
+            };
+        }
 
-    instance_buffer: rg.RenderGraphBufferHandle,
-    indirect_draw_counts_buffer: rg.RenderGraphBufferHandle,
-
-    opaque_set: ?RenderSet,
-    alpha_mask_set: ?RenderSet,
-    alpha_blend_set: ?RenderSet,
-
-    pub fn init(
-        scene: *const RenderScene,
-        temp_allocator: std.mem.Allocator,
-        resources: *const Resources,
-        render_graph: *rg.RenderGraph,
-    ) !@This() {
-        _ = temp_allocator; // autofix
-        _ = resources; // autofix
-        const opaque_primitive_count = scene.opaque_primitives_buffer.count();
-        const alpha_mask_primitive_count = scene.alpha_mask_primitives_buffer.count();
-        const alpha_blend_primitive_count = scene.alpha_blend_primitives_buffer.count();
+        const alpha_blend_pipeline = try device.createGraphicsPipeline(&.{
+            .name = "Legacy Alpha Blend Pipeline",
+            .vertex = vertex_shader,
+            .fragment = opaque_frag_shader,
+            .vertex_input_state = vertex_input_state,
+            .primitive_topology = .triangle_list,
+            .raster_state = raster_state,
+            .depth_stencil_state = depth_stencil_state,
+            .target_info = render_target_info,
+        });
+        errdefer device.destroyGraphicsPipeline(alpha_blend_pipeline);
 
         return .{
-            .instance_buffer = try render_graph.importBuffer(scene.scene_instance_buffer.gpu),
-            .indirect_draw_counts_buffer = try render_graph.createTransientBuffer(.{
-                .size = @sizeOf(u32) * 16,
-                .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
-            }),
-            .opaque_set = if (opaque_primitive_count > 0) .{
-                .indirect_draw_count_index = 0,
-                .primitves_count = @intCast(opaque_primitive_count),
-                .primitves_buffer = try render_graph.importBuffer(scene.opaque_primitives_buffer.gpu),
-                .indirect_cmd_info = try render_graph.createTransientBuffer(.{
-                    .size = @sizeOf(DrawIndexedIndirectCommandInfo) * opaque_primitive_count,
-                    .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
-                }),
-            } else null,
-            .alpha_mask_set = if (alpha_mask_primitive_count > 0) .{
-                .indirect_draw_count_index = 1,
-                .primitves_count = @intCast(alpha_mask_primitive_count),
-                .primitves_buffer = try render_graph.importBuffer(scene.alpha_mask_primitives_buffer.gpu),
-                .indirect_cmd_info = try render_graph.createTransientBuffer(.{
-                    .size = @sizeOf(DrawIndexedIndirectCommandInfo) * alpha_mask_primitive_count,
-                    .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
-                }),
-            } else null,
-            .alpha_blend_set = if (alpha_blend_primitive_count > 0) .{
-                .indirect_draw_count_index = 2,
-                .primitves_count = @intCast(alpha_blend_primitive_count),
-                .primitves_buffer = try render_graph.importBuffer(scene.alpha_blend_primitives_buffer.gpu),
-                .indirect_cmd_info = try render_graph.createTransientBuffer(.{
-                    .size = @sizeOf(DrawIndexedIndirectCommandInfo) * alpha_blend_primitive_count,
-                    .usage = .{ .indirect_buffer_bit = true, .shader_device_address_bit = true },
-                }),
-            } else null,
+            .opaque_pipeline = opaque_pipeline,
+            .alpha_mask_pipeline = alpha_mask_pipeline,
+            .alpha_blend_pipeline = alpha_blend_pipeline,
         };
     }
-};
 
-pub const DrawIndirect = struct {
-    pub const Data = struct {
-        camera: SceneCamera,
-        culling: ?struct {
-            camera: SceneCamera,
-            target_texture: rg.RenderGraphTextureHandle, //Needed to calc aspect ratio
-        },
-        build_pipeline: vk.Pipeline,
-        mesh_info_buffer: rg.RenderGraphBufferHandle,
-        material_info_buffer: rg.RenderGraphBufferHandle,
-
-        opaque_draw_pipeline: vk.Pipeline,
-        alpha_mask_draw_pipeline: vk.Pipeline,
-        alpha_blend_pipeline: vk.Pipeline,
-
-        vertex_buffer: rg.RenderGraphBufferHandle,
-        index_buffer: rg.RenderGraphBufferHandle,
-
-        scene_buffers: SceneBuffers,
-    };
-
-    pub const BuildPushData = extern struct {
-        indirect_draw_count_index: u32,
-        indirect_draw_counts_ptr: vk.DeviceAddress,
-
-        mesh_infos_ptr: vk.DeviceAddress,
-        scene_instances_ptr: vk.DeviceAddress,
-        scene_primitives_ptr: vk.DeviceAddress,
-
-        indirect_command_infos_ptr: vk.DeviceAddress,
-
-        culling: u32,
-        cull_data: CullData,
-    };
-
-    fn buildPass(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
-        _ = raster_pass_extent; // autofix
-        const data: *Data = @ptrCast(@alignCast(build_data.?));
-
-        var cull_data: ?CullData = null;
-        if (data.culling) |culling| {
-            const target_texture = resources.textures[culling.target_texture.index];
-            const target_width: f32 = @floatFromInt(target_texture.extent.width);
-            const target_height: f32 = @floatFromInt(target_texture.extent.height);
-            const aspect_ratio: f32 = target_width / target_height;
-            cull_data = .init(culling.camera, aspect_ratio);
-        }
-
-        const mesh_info_buffer = resources.getBuffer(data.mesh_info_buffer).?;
-        const instance_buffer = resources.getBuffer(data.scene_buffers.instance_buffer).?;
-        const indirect_draw_counts_buffer = resources.getBuffer(data.scene_buffers.indirect_draw_counts_buffer).?;
-
-        command_buffer.bindPipeline(.compute, data.build_pipeline);
-
-        if (data.scene_buffers.opaque_set) |*set| {
-            dispatchRenderSet(
-                device,
-                command_buffer,
-                resources,
-                indirect_draw_counts_buffer,
-                mesh_info_buffer,
-                instance_buffer,
-                cull_data,
-                set,
-            );
-        }
-
-        if (data.scene_buffers.alpha_mask_set) |*set| {
-            dispatchRenderSet(
-                device,
-                command_buffer,
-                resources,
-                indirect_draw_counts_buffer,
-                mesh_info_buffer,
-                instance_buffer,
-                cull_data,
-                set,
-            );
-        }
-
-        if (data.scene_buffers.alpha_blend_set) |*set| {
-            dispatchRenderSet(
-                device,
-                command_buffer,
-                resources,
-                indirect_draw_counts_buffer,
-                mesh_info_buffer,
-                instance_buffer,
-                cull_data,
-                set,
-            );
-        }
+    pub fn deinit(self: *const LegacyScenePass, device: saturn.DeviceInterface) void {
+        device.destroyGraphicsPipeline(self.opaque_pipeline);
+        device.destroyGraphicsPipeline(self.alpha_mask_pipeline);
+        device.destroyGraphicsPipeline(self.alpha_blend_pipeline);
     }
 
-    fn dispatchRenderSet(
-        device: *Backend,
-        command_buffer: vk.CommandBufferProxy,
-        resources: rg.Resources,
-        indirect_draw_counts_buffer: Buffer.Interface,
-        mesh_info_buffer: Buffer.Interface,
-        instance_buffer: Buffer.Interface,
-        cull_data: ?CullData,
-        set: *const SceneBuffers.RenderSet,
+    pub fn render(
+        self: *const LegacyScenePass,
+        cmd: saturn.GraphicsCommandEncoder,
+        render_buckets: Scene.RenderBuckets,
+        camera: *const Camera,
+        asset_pool: *const AssetPool,
+        target_resolution: [2]u32,
     ) void {
-        const opaque_primitves_buffer = resources.getBuffer(set.primitves_buffer).?;
-        const opaque_indirect_cmd_info = resources.getBuffer(set.indirect_cmd_info).?;
-
-        const push_data: BuildPushData = .{
-            .indirect_draw_count_index = set.indirect_draw_count_index,
-            .indirect_draw_counts_ptr = indirect_draw_counts_buffer.device_address.?,
-
-            .mesh_infos_ptr = mesh_info_buffer.device_address.?,
-            .scene_instances_ptr = instance_buffer.device_address.?,
-            .scene_primitives_ptr = opaque_primitves_buffer.device_address.?,
-
-            .indirect_command_infos_ptr = opaque_indirect_cmd_info.device_address.?,
-
-            .culling = if (cull_data != null) 1 else 0,
-            .cull_data = cull_data orelse undefined,
-        };
-        command_buffer.pushConstants(device.bindless_layout, device.device.all_stage_flags, 0, @sizeOf(BuildPushData), &push_data);
-
-        command_buffer.dispatch(set.primitves_count, 1, 1);
-    }
-
-    pub const DrawPushData = extern struct {
-        view_projection_matrix: zm.Mat,
-        scene_instances_ptr: vk.DeviceAddress,
-        indirect_command_infos_ptr: vk.DeviceAddress,
-        material_info_binding: u32,
-    };
-
-    fn drawPass(build_data: ?*anyopaque, device: *Backend, resources: rg.Resources, command_buffer: vk.CommandBufferProxy, raster_pass_extent: ?vk.Extent2D) void {
-        const data: *Data = @ptrCast(@alignCast(build_data.?));
-
-        const width_float: f32 = @floatFromInt(raster_pass_extent.?.width);
-        const height_float: f32 = @floatFromInt(raster_pass_extent.?.height);
+        const width_float: f32 = @floatFromInt(target_resolution[0]);
+        const height_float: f32 = @floatFromInt(target_resolution[1]);
         const aspect_ratio: f32 = width_float / height_float;
-        const view_matrix = data.camera.transform.getViewMatrix();
-        var projection_matrix = data.camera.settings.getProjectionMatrix(aspect_ratio);
-        projection_matrix[1][1] *= -1.0;
+
+        const view_matrix = camera.transform.getViewMatrix();
+        var projection_matrix = camera.camera.getProjectionMatrix(aspect_ratio);
+        projection_matrix[1][1] *= -1.0; //TODO: only do this for vulkan
         const view_projection_matrix = zm.mul(view_matrix, projection_matrix);
 
-        const material_info_buffer = resources.getBuffer(data.material_info_buffer).?;
-        const instance_buffer = resources.getBuffer(data.scene_buffers.instance_buffer).?;
-        const indirect_count_buffer = resources.getBuffer(data.scene_buffers.indirect_draw_counts_buffer).?;
+        const CULLING_ENABLED: bool = true;
+        const frustum_opt: ?culling.Frustum = if (CULLING_ENABLED) .fromViewProjectionMatrix(view_projection_matrix) else null;
 
-        command_buffer.bindPipeline(.graphics, data.opaque_draw_pipeline);
+        cmd.setVertexBuffer(0, .from(asset_pool.mesh_pool.vertex_buffer.buffer), 0);
+        cmd.setIndexBuffer(.from(asset_pool.mesh_pool.index_buffer.buffer), .u32, 0);
 
-        const vertex_buffer = resources.getBuffer(data.vertex_buffer).?;
-        const index_buffer = resources.getBuffer(data.index_buffer).?;
+        const texture_info_binding = asset_pool.texture_pool.info_buffer.storage_binding.?;
 
-        const base_vertex_offset: u64 = 0;
-        command_buffer.bindVertexBuffers(0, 1, @ptrCast(&vertex_buffer.handle), @ptrCast(&base_vertex_offset));
-        command_buffer.bindIndexBuffer(index_buffer.handle, 0, .uint32);
+        drawRenderBucket(
+            cmd,
+            self.opaque_pipeline,
+            view_projection_matrix,
+            texture_info_binding,
+            asset_pool.material_pool.opaque_material.instance_data.storage_binding.?,
+            render_buckets.opaque_instances.items,
+            frustum_opt,
+        );
 
-        if (data.scene_buffers.opaque_set) |*set| {
-            drawRenderSet(
-                device,
-                resources,
-                command_buffer,
-                set,
-                data.opaque_draw_pipeline,
-                view_projection_matrix,
-                instance_buffer,
-                material_info_buffer,
-                indirect_count_buffer,
-            );
-        }
+        drawRenderBucket(
+            cmd,
+            self.alpha_mask_pipeline,
+            view_projection_matrix,
+            texture_info_binding,
+            asset_pool.material_pool.alpha_mask_material.instance_data.storage_binding.?,
+            render_buckets.alpha_mask_instances.items,
+            frustum_opt,
+        );
 
-        if (data.scene_buffers.alpha_mask_set) |*set| {
-            drawRenderSet(
-                device,
-                resources,
-                command_buffer,
-                set,
-                data.alpha_mask_draw_pipeline,
-                view_projection_matrix,
-                instance_buffer,
-                material_info_buffer,
-                indirect_count_buffer,
-            );
-        }
-
-        if (data.scene_buffers.alpha_blend_set) |*set| {
-            drawRenderSet(
-                device,
-                resources,
-                command_buffer,
-                set,
-                data.alpha_blend_pipeline,
-                view_projection_matrix,
-                instance_buffer,
-                material_info_buffer,
-                indirect_count_buffer,
-            );
-        }
+        drawRenderBucket(
+            cmd,
+            self.alpha_blend_pipeline,
+            view_projection_matrix,
+            texture_info_binding,
+            asset_pool.material_pool.alpha_blend_material.instance_data.storage_binding.?,
+            render_buckets.alpha_blend_instances.items,
+            frustum_opt,
+        );
     }
 
-    fn drawRenderSet(
-        device: *Backend,
-        resources: rg.Resources,
-        command_buffer: vk.CommandBufferProxy,
-        render_set: *const SceneBuffers.RenderSet,
-        pipeline: vk.Pipeline,
+    fn drawRenderBucket(
+        cmd: saturn.GraphicsCommandEncoder,
+        pipeline: saturn.GraphicsPipelineHandle,
         view_projection_matrix: zm.Mat,
-        instance_buffer: Buffer.Interface,
-        material_info_buffer: Buffer.Interface,
-        indirect_count_buffer: Buffer.Interface,
+        texture_info_binding: u32,
+        mat_instance_binding: u32,
+        instances: []const Scene.InstanceDrawData,
+        frustum_opt: ?culling.Frustum,
     ) void {
-        command_buffer.bindPipeline(.graphics, pipeline);
+        cmd.setPipeline(pipeline);
+        for (instances) |instance| {
+            if (frustum_opt) |frustum| {
+                if (!frustum.intersects(culling.Sphere, instance.culling_sphere)) {
+                    continue;
+                }
+            }
 
-        const indirect_cmd_info_buffer = resources.getBuffer(render_set.indirect_cmd_info).?;
+            const push_constants = LegacyScenePass.PushConstants{
+                .view_projection_matrix = view_projection_matrix,
+                .model_matrix = instance.model_matrix,
+                .texture_info_binding = texture_info_binding,
+                .material_instance_binding = mat_instance_binding,
+                .material_index = instance.material_index,
+            };
+            cmd.pushConstants(LegacyScenePass.PushConstants, push_constants);
 
-        const push_data: DrawPushData = .{
-            .view_projection_matrix = view_projection_matrix,
-            .scene_instances_ptr = instance_buffer.device_address.?,
-            .indirect_command_infos_ptr = indirect_cmd_info_buffer.device_address.?,
-            .material_info_binding = material_info_buffer.storage_binding.?,
-        };
-        command_buffer.pushConstants(
-            device.bindless_layout,
-            device.device.all_stage_flags,
-            0,
-            @sizeOf(DrawPushData),
-            &push_data,
-        );
-
-        command_buffer.drawIndexedIndirectCount(
-            indirect_cmd_info_buffer.handle,
-            0,
-            indirect_count_buffer.handle,
-            @sizeOf(u32) * render_set.indirect_draw_count_index,
-            render_set.primitves_count,
-            @intCast(@sizeOf(SceneBuffers.DrawIndexedIndirectCommandInfo)),
-        );
+            cmd.drawIndexed(
+                instance.draw_data.index_count,
+                instance.draw_data.instance_count,
+                instance.draw_data.first_index,
+                instance.draw_data.vertex_offset,
+                instance.draw_data.first_instance,
+            );
+        }
     }
 };

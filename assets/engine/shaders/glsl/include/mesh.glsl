@@ -51,5 +51,5 @@ struct MeshInfo {
     MeshletVertices meshlet_vertices;
     MeshletTriangles meshlet_triangles;
     uint meshlet_loaded;
-    uint _pad0;
+    uint loaded;
 };

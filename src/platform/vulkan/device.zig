@@ -2,47 +2,42 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const GpuAllocator = @import("gpu_allocator.zig");
-const PhysicalDevice = @import("instance.zig").PhysicalDevice;
-const Queue = @import("queue.zig");
+const saturn = @import("../../root.zig");
 
-const Exetensions = struct {
-    mesh_shading: bool = false,
-    raytracing: bool = false,
-    host_image_copy: bool = false,
-    unified_image_layouts: bool = false,
-};
+const Instance = @import("instance.zig");
+const PhysicalDevice = Instance.PhysicalDevice;
+
+const GpuAllocator = @import("gpu_allocator.zig");
+const Queue = @import("queue.zig");
+const BindlessDescriptor = @import("bindless_descriptor.zig");
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 
+base: vk.BaseWrapper,
 instance: vk.InstanceProxy,
 proxy: vk.DeviceProxy,
+gpu_allocator: GpuAllocator,
+descriptor: BindlessDescriptor,
 
 physical_device: PhysicalDevice,
 graphics_queue: Queue, //Pretty much every device has a graphics queue (Graphics + Compute + Transfer)
 async_compute_queue: ?Queue,
 async_transfer_queue: ?Queue,
+extensions: saturn.DeviceFeatures,
 
-extensions: Exetensions,
-
-gpu_allocator: GpuAllocator,
 debug: bool = false,
 
 all_stage_flags: vk.ShaderStageFlags,
 
 pub fn init(
     allocator: std.mem.Allocator,
-    instance: vk.InstanceProxy,
+    instance: *Instance,
     physical_device: PhysicalDevice,
-    extentions: Exetensions,
+    features: saturn.DeviceFeatures,
     debug: bool,
 ) !Self {
-    if (physical_device.info.queues.graphics == null) {
-        return error.NoGraphicsQueue;
-    }
-
     const queue_priority = [_]f32{1.0};
     var queue_info_count: u32 = 0;
     var queue_info: [3]vk.DeviceQueueCreateInfo = undefined;
@@ -72,15 +67,15 @@ pub fn init(
     defer device_extentions.deinit(allocator);
     try device_extentions.append(allocator, "VK_KHR_swapchain");
 
-    if (extentions.mesh_shading) {
+    if (features.mesh_shading) {
         std.debug.assert(physical_device.info.extensions.mesh_shading);
         try device_extentions.append(allocator, "VK_EXT_mesh_shader");
         all_stage_flags.task_bit_ext = true;
         all_stage_flags.mesh_bit_ext = true;
     }
 
-    if (extentions.raytracing) {
-        std.debug.assert(physical_device.info.extensions.raytracing);
+    if (features.ray_tracing) {
+        std.debug.assert(physical_device.info.extensions.ray_tracing);
         try device_extentions.append(allocator, "VK_KHR_deferred_host_operations");
         try device_extentions.append(allocator, "VK_KHR_acceleration_structure");
         try device_extentions.append(allocator, "VK_KHR_ray_query");
@@ -91,17 +86,12 @@ pub fn init(
         // all_stage_flags.callable_bit_khr = true;
     }
 
-    if (extentions.host_image_copy) {
+    if (features.host_image_copy) {
         std.debug.assert(physical_device.info.extensions.host_image_copy);
         try device_extentions.append(allocator, "VK_EXT_host_image_copy");
     }
 
-    if (extentions.unified_image_layouts) {
-        std.debug.assert(physical_device.info.extensions.unified_image_layouts);
-        try device_extentions.append(allocator, "VK_KHR_unified_image_layouts");
-    }
-
-    var features = vk.PhysicalDeviceFeatures{
+    var features_1 = vk.PhysicalDeviceFeatures{
         .robust_buffer_access = .true,
         .fill_mode_non_solid = .true,
         .multi_draw_indirect = .true,
@@ -117,6 +107,7 @@ pub fn init(
     };
 
     var features_12 = vk.PhysicalDeviceVulkan12Features{
+        .buffer_device_address = if (features.buffer_device_address) .true else .false,
         .runtime_descriptor_array = .true,
         .descriptor_indexing = .true,
         .descriptor_binding_update_unused_while_pending = .true,
@@ -134,7 +125,6 @@ pub fn init(
 
         .draw_indirect_count = .true,
         //.scalar_block_layout = .true,
-        .buffer_device_address = .true,
     };
 
     var features_13 = vk.PhysicalDeviceVulkan13Features{
@@ -157,14 +147,14 @@ pub fn init(
         .p_queue_create_infos = &queue_info,
         .pp_enabled_extension_names = @ptrCast(device_extentions.items),
         .enabled_extension_count = @intCast(device_extentions.items.len),
-        .p_enabled_features = &features,
+        .p_enabled_features = &features_1,
     };
 
     if (physical_device.info.extensions.mesh_shading) {
         appendNextPtrChain(&create_info, &feature_mesh_shading);
     }
 
-    if (extentions.host_image_copy) {
+    if (features.host_image_copy) {
         appendNextPtrChain(&create_info, &features_host_image_copy);
     }
 
@@ -172,7 +162,7 @@ pub fn init(
     appendNextPtrChain(&create_info, &features_13);
     appendNextPtrChain(&create_info, &features_12);
 
-    const device_handle = try instance.createDevice(
+    const device_handle = try instance.proxy.createDevice(
         physical_device.handle,
         &create_info,
         null,
@@ -180,7 +170,7 @@ pub fn init(
 
     const device_wrapper = try allocator.create(vk.DeviceWrapper);
     errdefer allocator.destroy(device_wrapper);
-    device_wrapper.* = vk.DeviceWrapper.load(device_handle, instance.wrapper.dispatch.vkGetDeviceProcAddr.?);
+    device_wrapper.* = vk.DeviceWrapper.load(device_handle, instance.proxy.wrapper.dispatch.vkGetDeviceProcAddr.?);
 
     const proxy = vk.DeviceProxy.init(device_handle, device_wrapper);
 
@@ -201,22 +191,36 @@ pub fn init(
         async_transfer_queue = try .init(proxy, index);
     }
 
+    var gpu_allocator: GpuAllocator = try .init(physical_device.handle, instance.proxy, proxy, instance.base.dispatch.vkGetInstanceProcAddr.?, instance.proxy.wrapper.dispatch.vkGetDeviceProcAddr.?);
+    errdefer gpu_allocator.deinit();
+
     return .{
         .allocator = allocator,
-        .instance = instance,
+        .base = instance.base,
+        .instance = instance.proxy,
         .physical_device = physical_device,
         .proxy = proxy,
+        .gpu_allocator = gpu_allocator,
+        .descriptor = try .init(allocator, proxy, .{
+            .uniform_buffers = 1024,
+            .storage_buffers = 1024,
+            .sampled_images = 1024,
+            .storage_images = 1024,
+        }, all_stage_flags),
+
         .graphics_queue = graphics_queue,
         .async_compute_queue = async_compute_queue,
         .async_transfer_queue = async_transfer_queue,
-        .extensions = extentions,
-        .all_stage_flags = all_stage_flags,
-        .gpu_allocator = GpuAllocator.init(physical_device.handle, instance, proxy),
+        .extensions = features,
         .debug = debug,
+
+        .all_stage_flags = all_stage_flags,
     };
 }
 
-pub fn deinit(self: Self) void {
+pub fn deinit(self: *Self) void {
+    self.descriptor.deinit();
+
     self.gpu_allocator.deinit();
 
     self.graphics_queue.deinit(self.proxy);
@@ -252,4 +256,25 @@ pub fn setDebugName(self: Self, object_type: vk.ObjectType, handle: anytype, nam
 fn appendNextPtrChain(root: anytype, next_struct: anytype) void {
     next_struct.*.p_next = @constCast(root.*.p_next); //Don't care about the const since im only modifiying the p_next field
     root.*.p_next = next_struct;
+}
+
+fn loadGlobal(self: *const @This(), name: [*c]const u8) vk.PfnVoidFunction {
+    return self.base.getInstanceProcAddr(.null_handle, name);
+}
+
+fn loadInstance(self: *const @This(), name: [*c]const u8) vk.PfnVoidFunction {
+    return self.base.getInstanceProcAddr(self.instance.handle, name);
+}
+
+fn loadDevice(self: *@This(), name: [*c]const u8) vk.PfnVoidFunction {
+    return self.instance.wrapper.dispatch.vkGetDeviceProcAddr.?(self.proxy.handle, name);
+}
+
+pub fn getProcAddr(function_name: [*c]const u8, user_data: ?*anyopaque) callconv(std.builtin.CallingConvention.c) vk.PfnVoidFunction {
+    var self: *Self = @ptrCast(@alignCast(user_data));
+
+    if (self.loadGlobal(function_name)) |func| return func;
+    if (self.loadInstance(function_name)) |func| return func;
+    if (self.loadDevice(function_name)) |func| return func;
+    return null;
 }

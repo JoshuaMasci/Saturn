@@ -1,10 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn HandlePool(comptime T: type) type {
+pub fn SlotMap(comptime T: type) type {
     return struct {
-        const Self = @This();
-
         const ListEntry = struct {
             revision: u32,
             next_freed: ?u32,
@@ -29,36 +27,24 @@ pub fn HandlePool(comptime T: type) type {
             }
         };
 
-        allocator: Allocator,
-        list: std.ArrayList(ListEntry),
-        first_freed: ?u32,
+        pub const empty: Self = .{};
 
-        pub fn init(allocator: Allocator) Self {
+        const Self = @This();
+
+        list: std.ArrayList(ListEntry) = .empty,
+        first_freed: ?u32 = null,
+
+        pub fn initCapacity(gpa: Allocator, num: usize) std.mem.Allocator.Error!Self {
             return .{
-                .allocator = allocator,
-                .list = .empty,
-                .first_freed = null,
+                .list = try .initCapacity(gpa, num),
             };
         }
 
-        pub fn deinit(self: *Self) void {
-            self.list.deinit(self.allocator);
+        pub fn deinit(self: *Self, gpa: Allocator) void {
+            self.list.deinit(gpa);
         }
 
-        pub fn deinit_with_entries(self: *Self) void {
-            if (!comptime std.meta.hasFn(T, "deinit")) {
-                @compileError("deinit_with_entries on type that doesnt contain a deinit fn");
-            }
-
-            for (self.list.items) |*entry| {
-                if (entry.value) |*value| {
-                    value.deinit();
-                }
-            }
-            self.deinit();
-        }
-
-        pub fn insert(self: *Self, value: T) !Handle {
+        pub fn insert(self: *Self, gpa: Allocator, value: T) std.mem.Allocator.Error!Handle {
             var handle: Handle = undefined;
             if (self.first_freed) |index| {
                 var entry = &self.list.items[index];
@@ -73,7 +59,7 @@ pub fn HandlePool(comptime T: type) type {
             } else {
                 const index: u32 = @intCast(self.list.items.len);
                 const revision: u32 = 0;
-                try self.list.append(self.allocator, .{
+                try self.list.append(gpa, .{
                     .revision = revision,
                     .value = value,
                     .next_freed = null,
@@ -189,3 +175,98 @@ pub fn HandlePool(comptime T: type) type {
         };
     };
 }
+
+pub fn ArrayListSet(comptime T: type, eql_fn_opt: ?*const fn (a: T, b: T) bool) type {
+    return struct {
+        const Self = @This();
+        pub const empty: Self = .{};
+
+        items: std.ArrayList(T) = .empty,
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return .{ .items = .init(allocator) };
+        }
+
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            self.items.deinit(allocator);
+        }
+
+        pub fn insert(self: *Self, allocator: std.mem.Allocator, value: T) std.mem.Allocator.Error!bool {
+            if (self.contains(value)) return false;
+            try self.items.append(allocator, value);
+            return true;
+        }
+
+        pub fn remove(self: *Self, value: T) bool {
+            for (self.items.items, 0..) |item, i| {
+                if (eql(item, value)) {
+                    _ = self.items.swapRemove(i);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        pub fn contains(self: Self, value: T) bool {
+            for (self.items.items) |item| {
+                if (eql(item, value)) return true;
+            }
+            return false;
+        }
+
+        pub fn slice(self: Self) []const T {
+            return self.items.items;
+        }
+
+        pub fn count(self: Self) usize {
+            return self.items.items.len;
+        }
+
+        inline fn eql(a: T, b: T) bool {
+            if (comptime eql_fn_opt) |eql_fn| {
+                return eql_fn(a, b);
+            }
+            return std.meta.eql(a, b);
+        }
+    };
+}
+
+pub const ComponentMap = struct {
+    const type_id = @import("type_id.zig");
+
+    pub const empty: Self = .{};
+
+    const Self = @This();
+
+    map: std.AutoArrayHashMapUnmanaged(type_id.TypeId, *anyopaque) = .empty,
+
+    pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
+        self.map.deinit(gpa);
+    }
+
+    pub fn put(self: *Self, gpa: std.mem.Allocator, comptime T: type, value: *T) std.mem.Allocator.Error!void {
+        const t_id: type_id.TypeId = type_id.typeId(T);
+        try self.map.putNoClobber(gpa, t_id, value);
+    }
+
+    pub fn contains(self: Self, comptime T: type) bool {
+        const t_id: type_id.TypeId = type_id.typeId(T);
+        return self.map.contains(t_id);
+    }
+
+    pub fn get(self: Self, comptime T: type) ?*T {
+        const t_id: type_id.TypeId = type_id.typeId(T);
+        return if (self.map.get(t_id)) |ptr|
+            @ptrCast(@alignCast(ptr))
+        else
+            null;
+    }
+
+    pub fn remove(self: Self, comptime T: type) ?*T {
+        const t_id: type_id.TypeId = type_id.typeId(T);
+        return if (self.map.fetchSwapRemove(t_id)) |entry|
+            @ptrCast(@alignCast(entry.value))
+        else
+            null;
+    }
+};

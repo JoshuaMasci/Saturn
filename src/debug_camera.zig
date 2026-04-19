@@ -10,27 +10,34 @@ const Self = @This();
 camera: Camera = .Default,
 transform: Transform = .{},
 
-linear_speed: zm.Vec = zm.splat(zm.Vec, 5.0),
-angular_speed: zm.Vec = zm.splat(zm.Vec, std.math.pi),
+linear_speed: zm.Vec = @splat(5),
+angular_speed: zm.Vec = @splat(std.math.pi),
 
-const sdl3 = @import("platform/sdl3.zig");
-pub fn update(self: *Self, input: *sdl3.Input, delta_time: f32) void {
-    const x_axis_input = getControllerAxis(input, .left_x);
-    const y_axis_input = getControllerButtonAxis(input, .right_shoulder, .left_shoulder);
-    const z_axis_input = getControllerAxis(input, .left_y);
-    var linear_input: zm.Vec = .{ -x_axis_input, y_axis_input, -z_axis_input, 0 };
-    const linear_input_len = zm.length3(linear_input);
-    if (linear_input_len[0] < 0.25) {
-        linear_input = @splat(0.0);
-    }
+linear_input: zm.Vec = @splat(0),
+angular_input: zm.Vec = @splat(0),
 
-    const pitch_input = getControllerAxis(input, .right_y);
-    const yaw_input = getControllerAxis(input, .right_x);
-    var angular_input: zm.Vec = .{ pitch_input, -yaw_input, 0, 0 };
-    const angular_input_len = zm.length3(angular_input);
-    if (angular_input_len[0] < 0.25) {
-        angular_input = @splat(0.0);
-    }
+//Gamepad
+gamepad: struct {
+    id: ?u32 = null,
+    left_stick: [2]f32 = @splat(0),
+    right_stick: [2]f32 = @splat(0),
+    shoulder: [2]bool = @splat(false),
+} = .{},
+
+pub fn update(self: *Self, delta_time: f32) void {
+    const linear_input: zm.Vec = .{
+        axisDeadzone(-self.gamepad.left_stick[0]),
+        buttonAxis(self.gamepad.shoulder),
+        axisDeadzone(-self.gamepad.left_stick[1]),
+        0,
+    };
+
+    const angular_input: zm.Vec = .{
+        axisDeadzone(self.gamepad.right_stick[1]),
+        axisDeadzone(-self.gamepad.right_stick[0]),
+        0,
+        0,
+    };
 
     self.transform.position += zm.rotate(self.transform.rotation, linear_input * self.linear_speed * zm.f32x4s(delta_time));
 
@@ -51,37 +58,26 @@ pub fn update(self: *Self, input: *sdl3.Input, delta_time: f32) void {
     const max_angle: f32 = std.math.degreesToRadians(89.9);
     pitch_yaw = zm.loadArr2(.{ std.math.clamp(pitch_yaw[0], -max_angle, max_angle), @mod(pitch_yaw[1], pi_2) });
 
-    const pitch_quat = zm.quatFromAxisAngle(zm.f32x4(1, 0, 0, 0), pitch_yaw[0]);
-    const yaw_quat = zm.quatFromAxisAngle(zm.f32x4(0, 1, 0, 0), pitch_yaw[1]);
+    const pitch_quat = zm.quatFromAxisAngle(.{ 1, 0, 0, 0 }, pitch_yaw[0]);
+    const yaw_quat = zm.quatFromAxisAngle(.{ 0, 1, 0, 0 }, pitch_yaw[1]);
     self.transform.rotation = zm.normalize4(zm.qmul(pitch_quat, yaw_quat));
 }
 
-pub fn getControllerAxis(input: *sdl3.Input, axis: sdl3.Controller.Axis) f32 {
-    const controllers = input.controllers.values();
-    if (controllers.len > 0) {
-        const controller = controllers[0];
-        const value = controller.axis_state[@intFromEnum(axis)].value;
-        if (@abs(value) > 0.1) {
-            return value;
-        }
+fn axisDeadzone(value: f32) f32 {
+    if (@abs(value) > 0.1) {
+        return value;
     }
-
     return 0.0;
 }
 
-pub fn getControllerButtonAxis(input: *sdl3.Input, pos: sdl3.Controller.Button, neg: sdl3.Controller.Button) f32 {
-    const controllers = input.controllers.values();
-    if (controllers.len > 0) {
-        const controller = controllers[0];
-        const pos_state = controller.button_state[@intFromEnum(pos)].is_pressed;
-        const neg_state = controller.button_state[@intFromEnum(neg)].is_pressed;
-
-        if (pos_state and !neg_state) {
-            return 1.0;
-        } else if (!pos_state and neg_state) {
-            return -1.0;
-        }
-    }
-
-    return 0.0;
+// Truth Table
+// | B0 | B1 |  V |
+// | F  | F  |  0 |
+// | T  | F  | -1 |
+// | F  | T  |  1 |
+// | T  | T  |  0 |
+/// Turns 2 button into an -1 to 1 axis
+fn buttonAxis(values: [2]bool) f32 {
+    //Yes im being overly clever here
+    return @floatFromInt(@as(i8, @intFromBool(values[1])) - @as(i8, @intFromBool(values[0])));
 }

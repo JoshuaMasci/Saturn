@@ -2,8 +2,6 @@ const std = @import("std");
 
 const AssetHandle = @import("../asset/registry.zig").Handle;
 const Camera = @import("../rendering/camera.zig").Camera;
-const Resources = @import("../rendering/resources.zig");
-const RenderScene = @import("../rendering/scene.zig");
 const Transform = @import("../transform.zig");
 
 const Self = @This();
@@ -62,37 +60,15 @@ pub fn getNodeFromName(self: Self, name: []const u8) ?usize {
 }
 
 pub fn calcNodeGlobalTransform(self: Self, index: usize) Transform {
-    var node: *const Node = &self.nodes[index];
-    var transform: Transform = node.local_transform;
+    var node: usize = index;
+    var transform: Transform = self.nodes[node].local_transform;
 
-    while (node.parent) |parent| {
-        node = &self.nodes[parent];
-        transform = node.local_transform.applyTransform(&transform);
+    while (self.nodes[node].parent) |parent| {
+        // detect loops, cause this is apparently a problem
+        if (node == parent) break;
+        node = parent;
+        transform = self.nodes[node].local_transform.applyTransform(&transform);
     }
 
     return transform;
-}
-
-pub fn loadScene(self: Self, resources: *const Resources, render_scene: *RenderScene, root_transform: Transform) !void {
-    for (self.root_nodes) |index| {
-        try createRenderSceneNode(resources, self.nodes, index, &root_transform, render_scene);
-    }
-}
-
-fn createRenderSceneNode(resources: *const Resources, nodes: []const Node, node_index: usize, parent_transform: *const Transform, render_scene: *RenderScene) !void {
-    const node = &nodes[node_index];
-
-    const transform = parent_transform.applyTransform(&node.local_transform);
-
-    if (node.mesh) |mesh| {
-        _ = try render_scene.addInstance(resources, .{
-            .transform = transform,
-            .mesh = mesh.mesh,
-            .materials = mesh.materials,
-        });
-    }
-
-    for (node.children) |index| {
-        try createRenderSceneNode(resources, nodes, index, &transform, render_scene);
-    }
 }

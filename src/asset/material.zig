@@ -4,6 +4,7 @@ const serde = @import("../serde.zig");
 const AssetHandle = @import("registry.zig").Handle;
 
 pub const LoadSettings = struct {};
+pub const ATYPE: @import("type.zig").AssetType = .material;
 
 pub const AlphaMode = enum(u32) {
     @"opaque",
@@ -19,13 +20,13 @@ alpha_mode: AlphaMode = .@"opaque",
 alpha_cutoff: f32 = 0.0,
 
 base_color_texture: ?AssetHandle = null,
-base_color_factor: [4]f32 = [_]f32{1.0} ** 4,
+base_color_factor: [4]f32 = @splat(1.0),
 
 metallic_roughness_texture: ?AssetHandle = null,
 metallic_roughness_factor: [2]f32 = .{ 0.0, 1.0 },
 
 emissive_texture: ?AssetHandle = null,
-emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
+emissive_factor: [3]f32 = @splat(1.0),
 
 occlusion_texture: ?AssetHandle = null,
 normal_texture: ?AssetHandle = null,
@@ -102,13 +103,13 @@ pub const Json = struct {
     alpha_cutoff: f32 = 0.0,
 
     base_color_texture: ?[]const u8 = null,
-    base_color_factor: [4]f32 = [_]f32{1.0} ** 4,
+    base_color_factor: [4]f32 = @splat(1.0),
 
     metallic_roughness_texture: ?[]const u8 = null,
     metallic_roughness_factor: [2]f32 = .{ 0.0, 1.0 },
 
     emissive_texture: ?[]const u8 = null,
-    emissive_factor: [3]f32 = [_]f32{1.0} ** 3,
+    emissive_factor: [3]f32 = @splat(1.0),
 
     occlusion_texture: ?[]const u8 = null,
     normal_texture: ?[]const u8 = null,
@@ -126,50 +127,6 @@ pub const Json = struct {
             .sub_path = file_path,
             .data = json_string,
         });
-    }
-};
-
-// Gpu Material
-pub const Gpu = extern struct {
-    const ExpectedSize: usize = @sizeOf([4]f32) * 5;
-    comptime {
-        if (@sizeOf(Gpu) != ExpectedSize) {
-            @compileError("Material.Gpu is incorrect size");
-        }
-    }
-
-    // Block 1 (Vec4 size)
-    alpha_mode: i32,
-    alpha_cutoff: f32,
-    base_color_texture: u32,
-    metallic_roughness_texture: u32,
-
-    // Block 2 (Vec4 size)
-    emissive_texture: u32,
-    occlusion_texture: u32,
-    normal_texture: u32,
-    pad0: i32 = 0,
-
-    // Block 3 (3 * Vec4 size)
-    base_color_factor: [4]f32,
-    metallic_roughness_factor_pad2: [4]f32,
-    emissive_factor_pad: [4]f32,
-
-    pub fn pack(material: Self) Gpu {
-        return .{
-            .alpha_mode = @intCast(@intFromEnum(material.alpha_mode)),
-            .alpha_cutoff = material.alpha_cutoff,
-            .base_color_texture = 0,
-            .metallic_roughness_texture = 0,
-
-            .emissive_texture = 0,
-            .occlusion_texture = 0,
-            .normal_texture = 0,
-
-            .base_color_factor = material.base_color_factor,
-            .metallic_roughness_factor_pad2 = .{ material.metallic_roughness_factor[0], material.metallic_roughness_factor[1], 0.0, 0.0 },
-            .emissive_factor_pad = .{ material.emissive_factor[0], material.emissive_factor[1], material.emissive_factor[2], 0.0 },
-        };
     }
 };
 

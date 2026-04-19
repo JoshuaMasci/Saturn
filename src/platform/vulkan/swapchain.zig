@@ -2,22 +2,18 @@ const std = @import("std");
 
 const vk = @import("vulkan");
 
-const ImageInterface = @import("image.zig").Interface;
+const saturn = @import("../../root.zig");
+
+const Texture = @import("texture.zig");
 const Device = @import("device.zig");
 
 const MAX_IMAGE_COUNT: u32 = 8;
 
-pub const Settings = struct {
-    image_count: u32,
-    format: vk.Format,
-    vsync: bool,
-};
-
 pub const SwapchainImage = struct {
     swapchain: vk.SwapchainKHR,
     index: u32,
-    image: ImageInterface,
     present_semaphore: vk.Semaphore,
+    texture: Texture,
 };
 
 const Self = @This();
@@ -28,60 +24,51 @@ surface: vk.SurfaceKHR,
 handle: vk.SwapchainKHR,
 
 image_count: usize,
-images: [MAX_IMAGE_COUNT]ImageInterface,
-image_present_semaphores: [MAX_IMAGE_COUNT]vk.Semaphore,
+textures: [MAX_IMAGE_COUNT]Texture,
+present_semaphores: [MAX_IMAGE_COUNT]vk.Semaphore,
 
+//Info
 extent: vk.Extent2D,
-format: vk.Format,
+usage: saturn.TextureUsage,
+format: saturn.TextureFormat,
 color_space: vk.ColorSpaceKHR,
 transform: vk.SurfaceTransformFlagsKHR,
 composite_alpha: vk.CompositeAlphaFlagsKHR,
 present_mode: vk.PresentModeKHR,
 
-settings: Settings,
-
 pub fn init(
     device: *Device,
     surface: vk.SurfaceKHR,
     window_extent: vk.Extent2D,
-    settings: Settings,
+    image_count: u32,
+    usage: saturn.TextureUsage,
+    format: saturn.TextureFormat,
+    present_mode: vk.PresentModeKHR,
     old_swapchain: ?vk.SwapchainKHR,
 ) !Self {
+    const vk_format = Texture.getVkFormat(format);
+
     const surface_capabilities = try device.instance.getPhysicalDeviceSurfaceCapabilitiesKHR(device.physical_device.handle, surface);
 
-    const image_count = std.math.clamp(settings.image_count, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
+    const final_image_count = std.math.clamp(image_count, surface_capabilities.min_image_count, @max(surface_capabilities.max_image_count, MAX_IMAGE_COUNT));
     const extent: vk.Extent2D = .{
         .width = std.math.clamp(window_extent.width, surface_capabilities.min_image_extent.width, surface_capabilities.max_image_extent.width),
         .height = std.math.clamp(window_extent.height, surface_capabilities.min_image_extent.height, surface_capabilities.max_image_extent.height),
-    };
-    const usage = vk.ImageUsageFlags{
-        .transfer_src_bit = false,
-        .transfer_dst_bit = false,
-        .sampled_bit = true,
-        .color_attachment_bit = true,
     };
 
     const color_space = .srgb_nonlinear_khr;
     const transform = surface_capabilities.current_transform;
     const composite_alpha: vk.CompositeAlphaFlagsKHR = .{ .opaque_bit_khr = true };
 
-    //Default to fifo if the desired aren't available
-    var present_mode: vk.PresentModeKHR = .fifo_khr;
-    if (!settings.vsync) {
-        if (getFirstSupportedPresentMode(device, surface, &.{ .mailbox_khr, .immediate_khr })) |supported_mode| {
-            present_mode = supported_mode;
-        }
-    }
-
     const handle = try device.proxy.createSwapchainKHR(&.{
         .flags = .{},
         .surface = surface,
-        .min_image_count = image_count,
-        .image_format = settings.format,
+        .min_image_count = final_image_count,
+        .image_format = vk_format,
         .image_color_space = color_space,
         .image_extent = extent,
         .image_array_layers = 1,
-        .image_usage = usage,
+        .image_usage = Texture.getVkImageUsage(usage, true),
         .image_sharing_mode = .exclusive,
         .pre_transform = transform,
         .composite_alpha = composite_alpha,
@@ -100,14 +87,14 @@ pub fn init(
     var image_handles: [MAX_IMAGE_COUNT]vk.Image = undefined;
     _ = try device.proxy.getSwapchainImagesKHR(handle, &actual_image_count, &image_handles);
 
-    var images: [MAX_IMAGE_COUNT]ImageInterface = undefined;
-    var image_present_semaphores: [MAX_IMAGE_COUNT]vk.Semaphore = undefined;
+    var textures: [MAX_IMAGE_COUNT]Texture = undefined;
+    var present_semaphores: [MAX_IMAGE_COUNT]vk.Semaphore = undefined;
 
-    for (image_handles[0..actual_image_count], images[0..actual_image_count], image_present_semaphores[0..actual_image_count]) |image_handle, *swapchain_image, *semaphore| {
+    for (image_handles[0..actual_image_count], textures[0..actual_image_count], present_semaphores[0..actual_image_count]) |image_handle, *swapchain_image, *semaphore| {
         const view_handle = try device.proxy.createImageView(&.{
             .view_type = .@"2d",
             .image = image_handle,
-            .format = settings.format,
+            .format = vk_format,
             .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
             .subresource_range = .{
                 .aspect_mask = .{ .color_bit = true },
@@ -118,13 +105,14 @@ pub fn init(
             },
         }, null);
         swapchain_image.* = .{
-            .layout = .undefined,
-            .extent = extent,
-            .format = settings.format,
-            .usage = usage,
             .handle = image_handle,
             .view_handle = view_handle,
-            .sampled_binding = null, //TODO: bind swapchain if requested
+
+            .extent = .{ .width = extent.width, .height = extent.height, .depth = 1 },
+            .mip_levels = 1,
+            .format = format,
+            .usage = usage,
+            .memory = .gpu_only, //Swapchain images are not cpu accessable is any way
         };
         semaphore.* = try device.proxy.createSemaphore(&.{}, null);
     }
@@ -134,20 +122,20 @@ pub fn init(
         .surface = surface,
         .handle = handle,
         .image_count = actual_image_count,
-        .images = images,
-        .image_present_semaphores = image_present_semaphores,
+        .textures = textures,
+        .present_semaphores = present_semaphores,
         .extent = extent,
-        .format = settings.format,
+        .usage = usage,
+        .format = format,
         .color_space = color_space,
         .transform = transform,
         .composite_alpha = composite_alpha,
         .present_mode = present_mode,
-        .settings = settings,
     };
 }
 
 pub fn deinit(self: Self) void {
-    for (self.images[0..self.image_count], self.image_present_semaphores[0..self.image_count]) |image, semaphore| {
+    for (self.textures[0..self.image_count], self.present_semaphores[0..self.image_count]) |image, semaphore| {
         self.device.proxy.destroyImageView(image.view_handle, null);
         self.device.proxy.destroySemaphore(semaphore, null);
     }
@@ -155,12 +143,27 @@ pub fn deinit(self: Self) void {
     self.device.proxy.destroySwapchainKHR(self.handle, null);
 }
 
+pub fn rebuild(self: *Self, size: vk.Extent2D) !void {
+    const new: Self = try .init(
+        self.device,
+        self.surface,
+        size,
+        @intCast(self.image_count),
+        self.usage,
+        self.format,
+        self.present_mode,
+        self.handle,
+    );
+    self.deinit();
+    self.* = new;
+}
+
 pub fn acquireNextImage(
     self: *Self,
     timeout: ?u64,
     wait_semaphore: vk.Semaphore,
     wait_fence: vk.Fence,
-) vk.DeviceProxy.AcquireNextImageKHRError!SwapchainImage {
+) vk.DeviceProxy.AcquireNextImageKHRError!u32 {
     const result = try self.device.proxy.acquireNextImageKHR(
         self.handle,
         timeout orelse std.math.maxInt(u64),
@@ -173,12 +176,7 @@ pub fn acquireNextImage(
         self.out_of_date = true;
     }
 
-    return .{
-        .swapchain = self.handle,
-        .index = result.image_index,
-        .image = self.images[result.image_index],
-        .present_semaphore = self.image_present_semaphores[result.image_index],
-    };
+    return result.image_index;
 }
 
 pub fn queuePresent(
@@ -201,27 +199,19 @@ pub fn queuePresent(
     }
 }
 
-fn getFirstSupportedPresentMode(device: *Device, surface: vk.SurfaceKHR, desired_present_modes: []const vk.PresentModeKHR) ?vk.PresentModeKHR {
-    var supported_present_modes: [8]vk.PresentModeKHR = undefined;
-    var supported_present_mode_count: u32 = 0;
-
-    _ = device.instance.getPhysicalDeviceSurfacePresentModesKHR(device.physical_device.handle, surface, &supported_present_mode_count, null) catch |err| {
-        std.log.err("vkGetPhysicalDeviceSurfacePresentModesKHR Failed: {}", .{err});
-        return null;
+pub fn toVkPresentMode(mode: saturn.PresentMode) vk.PresentModeKHR {
+    return switch (mode) {
+        .fifo => .fifo_khr,
+        .immediate => .immediate_khr,
+        .mailbox => .mailbox_khr,
     };
-    supported_present_mode_count = @max(supported_present_mode_count, @as(u32, @intCast(supported_present_modes.len)));
-    _ = device.instance.getPhysicalDeviceSurfacePresentModesKHR(device.physical_device.handle, surface, &supported_present_mode_count, &supported_present_modes) catch |err| {
-        std.log.err("vkGetPhysicalDeviceSurfacePresentModesKHR Failed: {}", .{err});
-        return null;
+}
+
+pub fn fromVkPresentMode(mode: vk.PresentModeKHR) ?saturn.PresentMode {
+    return switch (mode) {
+        .fifo_khr => .fifo,
+        .immediate_khr => .immediate,
+        .mailbox_khr => .mailbox,
+        else => null,
     };
-
-    for (desired_present_modes) |desired_mode| {
-        for (supported_present_modes[0..supported_present_mode_count]) |supported_mode| {
-            if (desired_mode == supported_mode) {
-                return desired_mode;
-            }
-        }
-    }
-
-    return null;
 }

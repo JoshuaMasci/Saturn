@@ -4,6 +4,8 @@ const HashMethod = std.hash.Fnv1a_32.hash;
 const AssetType = @import("header.zig").AssetType;
 const HeaderV1 = @import("header.zig").HeaderV1;
 
+const AssetHeader = HeaderV1;
+
 const HashType = u32;
 
 const AssetExtension: []const u8 = ".asset";
@@ -143,12 +145,16 @@ pub fn loadAsset(
 ) !T {
     if (self.repositories.get(handle.repo_hash)) |repository| {
         if (repository.assets.get(handle.asset_hash)) |asset_info| {
-            const asset_buffer = try loadAssetBuffer(allocator, repository.dir, asset_info);
-            defer allocator.free(asset_buffer);
+            if (asset_info.atype == T.ATYPE) {
+                const asset_buffer = try loadAssetBuffer(allocator, repository.dir, asset_info);
+                defer allocator.free(asset_buffer);
 
-            var buffer_stream = std.io.fixedBufferStream(asset_buffer);
-            const buffer_stream_reader = buffer_stream.reader();
-            return try T.deserialzie(allocator, &buffer_stream_reader, settings);
+                var buffer_stream = std.io.fixedBufferStream(asset_buffer);
+                const buffer_stream_reader = buffer_stream.reader();
+                return try T.deserialzie(allocator, &buffer_stream_reader, settings);
+            } else {
+                return error.InvalidAssetType;
+            }
         } else {
             return error.InvalidAssetHash;
         }

@@ -18,7 +18,10 @@ pub const CommandBufferPool = struct {
             .objects = .empty,
             .next_free = 0,
             .device = device,
-            .command_pool = try device.proxy.createCommandPool(&.{ .flags = .{ .reset_command_buffer_bit = true }, .queue_family_index = queue.family_index }, null),
+            .command_pool = try device.proxy.createCommandPool(
+                &.{ .flags = .{}, .queue_family_index = queue.family_index },
+                null,
+            ),
             .allocator = allocator,
         };
     }
@@ -31,12 +34,10 @@ pub const CommandBufferPool = struct {
 
     pub fn get(self: *Self) !vk.CommandBuffer {
         if (self.next_free < self.objects.items.len) {
-            const cmd_buf = self.objects.items[self.next_free];
-            self.next_free += 1;
-
-            self.device.proxy.resetCommandBuffer(cmd_buf, .{}) catch {};
-
-            return cmd_buf;
+            // This is a stupid "clever" way to increment the index after getting the current freed index
+            // I write this comment cause I'm generally against the clever way of doing things as it is less readable
+            defer self.next_free += 1;
+            return self.objects.items[self.next_free];
         }
 
         // Need to allocate a new command buffers
@@ -56,7 +57,8 @@ pub const CommandBufferPool = struct {
         return cmd_buf;
     }
 
-    pub fn reset(self: *Self) void {
+    pub fn reset(self: *Self) error{PoolResetFailed}!void {
+        self.device.proxy.resetCommandPool(self.command_pool, .{}) catch return error.PoolResetFailed;
         self.next_free = 0;
     }
 
@@ -128,7 +130,10 @@ pub const FencePool = struct {
         return fence;
     }
 
-    pub fn reset(self: *Self) void {
+    pub fn reset(self: *Self) error{PoolResetFailed}!void {
+        if (self.objects.items.len != 0) {
+            self.device.proxy.resetFences(@intCast(self.objects.items.len), self.objects.items.ptr) catch return error.PoolResetFailed;
+        }
         self.next_free = 0;
     }
 

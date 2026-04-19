@@ -1,80 +1,56 @@
 const std = @import("std");
 
 const vk = @import("vulkan");
-pub const makeVersion = vk.makeApiVersion;
+
+const saturn = @import("../../root.zig");
 
 const PhysicalDeviceInfo = @import("physical_device.zig");
-const Device = @import("device.zig");
-
-pub const AppInfo = struct {
-    name: [:0]const u8,
-    version: vk.Version,
-};
 
 pub const PhysicalDevice = struct {
     handle: vk.PhysicalDevice,
     info: PhysicalDeviceInfo,
-
-    pub fn supportsSurface(self: PhysicalDevice, instance: vk.InstanceProxy, surface: vk.SurfaceKHR) bool {
-        var supports_present: vk.Bool32 = .false;
-
-        //Only supports present on graphics_queue
-        if (self.info.queues.graphics) |graphics_queue| {
-            supports_present = instance.getPhysicalDeviceSurfaceSupportKHR(self.handle, graphics_queue, surface);
-        }
-
-        return supports_present == .true;
-    }
 };
-
-pub const ScoreFn = *const fn (instance: *vk.InstanceProxy, physics_device: vk.PhysicalDevice) ?usize;
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 base: vk.BaseWrapper,
-instance: vk.InstanceProxy,
+proxy: vk.InstanceProxy,
 
-physical_devices: []PhysicalDevice,
+name_pool: std.heap.ArenaAllocator,
+physical_devices: []const PhysicalDevice,
+physical_devices_info: []const saturn.DeviceInfo,
 
 debug_messager: ?DebugMessenger,
 
 pub fn init(
     allocator: std.mem.Allocator,
     loader: vk.PfnGetInstanceProcAddr,
-    platform_extensions: []const [*c]const u8,
-    info: AppInfo,
+    extensions: []const [*c]const u8,
+    app_info: vk.ApplicationInfo,
     debug: bool,
 ) !Self {
     const base = vk.BaseWrapper.load(loader);
-
-    const app_info = vk.ApplicationInfo{
-        .p_application_name = info.name,
-        .application_version = @bitCast(info.version),
-        .p_engine_name = info.name,
-        .engine_version = @bitCast(info.version),
-        .api_version = @bitCast(vk.API_VERSION_1_3),
-    };
 
     var instance_layers: std.ArrayList([*c]const u8) = .empty;
     defer instance_layers.deinit(allocator);
 
     var instance_extentions: std.ArrayList([*c]const u8) = .empty;
     defer instance_extentions.deinit(allocator);
-    try instance_extentions.appendSlice(allocator, platform_extensions);
+    try instance_extentions.appendSlice(allocator, extensions);
 
     if (debug) {
         try instance_layers.append(allocator, "VK_LAYER_KHRONOS_validation");
         try instance_extentions.append(allocator, "VK_EXT_debug_utils");
     }
 
-    const instance_handle = try base.createInstance(&.{
+    const instance_handle = base.createInstance(&.{
         .p_application_info = &app_info,
         .pp_enabled_layer_names = @ptrCast(instance_layers.items.ptr),
         .enabled_layer_count = @intCast(instance_layers.items.len),
         .pp_enabled_extension_names = @ptrCast(instance_extentions.items.ptr),
         .enabled_extension_count = @intCast(instance_extentions.items.len),
-    }, null);
+    }, null) catch return error.FailedToInitBackend;
 
     const instance_wrapper = try allocator.create(vk.InstanceWrapper);
     errdefer allocator.destroy(instance_wrapper);
@@ -85,11 +61,52 @@ pub fn init(
     defer allocator.free(physical_device_handles);
 
     const physical_devices = try allocator.alloc(PhysicalDevice, physical_device_handles.len);
+    errdefer allocator.free(physical_devices);
 
-    for (physical_device_handles, 0..) |handle, i| {
-        physical_devices[i] = .{
+    const physical_devices_info = try allocator.alloc(saturn.DeviceInfo, physical_device_handles.len);
+    errdefer allocator.free(physical_devices_info);
+
+    var name_pool: std.heap.ArenaAllocator = .init(allocator);
+    errdefer name_pool.deinit();
+
+    for (physical_devices, physical_devices_info, physical_device_handles, 0..) |*physical_device, *info, handle, index| {
+        physical_device.* = .{
             .handle = handle,
-            .info = try .init(allocator, instance, handle),
+            .info = try .init(
+                allocator,
+                name_pool.allocator(),
+                instance,
+                handle,
+            ),
+        };
+        info.* = .{
+            .physical_device_index = @intCast(index),
+            .name = physical_device.info.name,
+            .device_id = physical_device.info.device_id,
+            .vendor_id = physical_device.info.vendor_id,
+            .driver_version = physical_device.info.driver_version,
+            .type = physical_device.info.type,
+            .backend = .vulkan,
+
+            .memory = .{
+                .device_local = physical_device.info.memory.device_local_bytes,
+                .device_local_host_visible = physical_device.info.memory.device_local_host_visible_bytes,
+                .host_local = physical_device.info.memory.host_local,
+                .unified_memory_access = physical_device.info.memory.unified_memory_access,
+            },
+            .queues = .{
+                .graphics = physical_device.info.queues.graphics != null,
+                .async_compute = physical_device.info.queues.async_compute != null,
+                .async_transfer = physical_device.info.queues.async_transfer != null,
+            },
+
+            .features = .{
+                .mesh_shading = physical_device.info.extensions.mesh_shading,
+                .ray_tracing = physical_device.info.extensions.ray_tracing,
+                .host_image_copy = physical_device.info.extensions.host_image_copy,
+                .unified_image_layouts = physical_device.info.extensions.unified_image_layouts,
+                .buffer_device_address = physical_device.info.extensions.buffer_device_address,
+            },
         };
     }
 
@@ -106,30 +123,27 @@ pub fn init(
     return .{
         .allocator = allocator,
         .base = base,
-        .instance = instance,
+        .proxy = instance,
+
+        .name_pool = name_pool,
         .physical_devices = physical_devices,
+        .physical_devices_info = physical_devices_info,
+
         .debug_messager = debug_messager,
     };
 }
 
-pub fn deinit(self: Self) void {
+pub fn deinit(self: *Self) void {
     if (self.debug_messager) |debug_messager| {
-        debug_messager.deinit(self.instance);
+        debug_messager.deinit(self.proxy);
     }
 
     self.allocator.free(self.physical_devices);
+    self.allocator.free(self.physical_devices_info);
+    self.name_pool.deinit();
 
-    self.instance.destroyInstance(null);
-    self.allocator.destroy(self.instance.wrapper);
-}
-
-pub fn createDevice(self: Self, device_index: usize) !Device {
-    return .init(
-        self.allocator,
-        self.instance,
-        self.physical_devices[device_index],
-        self.debug_messager != null,
-    );
+    self.proxy.destroyInstance(null);
+    self.allocator.destroy(self.proxy.wrapper);
 }
 
 const DebugMessenger = struct {

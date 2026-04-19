@@ -14,11 +14,7 @@ struct VkDrawIndirectCommand {
 };
 
 struct DrawIndexedIndirectCommandInfo {
-    uint indexCount;
-    uint instanceCount;
-    uint firstIndex;
-    int vertexOffset;
-    uint firstInstance;
+    VkDrawIndexedIndirectCommand cmd;
 
     uint instance_index;
     uint material_index;

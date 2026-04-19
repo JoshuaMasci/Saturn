@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
-    const build_sdl3 = b.option(bool, "build-sdl3", "Build and link sdl3 from source instead of using systemlib") orelse false;
+    const build_sdl3 = b.option(bool, "build-sdl3", "Build and link SDL3 from source instead of using system lib") orelse false;
     const no_assets = b.option(bool, "no-assets", "Don't compile asset pipeline") orelse false;
     const no_main = b.option(bool, "no-render", "Don't compile main sandbox") orelse false;
     const use_llvm = b.option(bool, "use-llvm", "Compile using llvm") orelse false;
@@ -71,7 +71,7 @@ fn buildAsset(
     exe_mod.linkSystemLibrary("glslang-default-resource-limits", .{});
 
     // meshoptimizer
-    // TODO: build from source
+    // TODO: build from source, probably will be easy
     exe_mod.linkSystemLibrary("meshoptimizer", .{});
 
     const exe = b.addExecutable(.{
@@ -89,30 +89,6 @@ fn buildAsset(
     inline for (ASSET_REGISTRIES) |registry_name| {
         run_assets_step.dependOn(buildAssetRegistry(b, exe, registry_name));
     }
-
-    // const build_engine_assets = b.addRunArtifact(exe);
-    // build_engine_assets.step.dependOn(b.getInstallStep());
-    // build_engine_assets.addArg("engine");
-    // build_engine_assets.addArg("assets/");
-    // build_engine_assets.addArg("zig-out/assets");
-
-    // //TODO: get this path from builder
-    // const run_engine_assets_step = b.step("engine-assets", "Process engine assets");
-    // run_engine_assets_step.dependOn(&build_engine_assets.step);
-
-    // const build_game_assets = b.addRunArtifact(exe);
-    // build_game_assets.step.dependOn(b.getInstallStep());
-    // build_game_assets.addArg("game");
-    // build_game_assets.addArg("game-assets/");
-    // build_game_assets.addArg("zig-out/game-assets");
-
-    // //TODO: get this path from builder
-    // const run_game_assets_step = b.step("game-assets", "Process game assets");
-    // run_game_assets_step.dependOn(&build_game_assets.step);
-
-    // const run_assets_step = b.step("assets", "Process all assets");
-    // run_assets_step.dependOn(&build_engine_assets.step);
-    // run_assets_step.dependOn(&build_game_assets.step);
 }
 
 fn buildAssetRegistry(
@@ -165,13 +141,53 @@ fn buildMain(
     }).module("vulkan-zig");
     exe_mod.addImport("vulkan", vulkan);
 
-    const cimgui = b.dependency("cimgui_zig", .{
-        .target = target,
-        .optimize = optimize,
-        .platform = .SDL3,
-        .renderer = .Vulkan,
-    });
-    exe_mod.linkLibrary(cimgui.artifact("cimgui"));
+    // vma
+    {
+        const vma_path = b.path("src/platform/vulkan/vma_include.h");
+
+        exe_mod.link_libcpp = true;
+        exe_mod.addCSourceFile(.{
+            .file = vma_path,
+            .flags = &.{
+                "-std=c++17",
+                "-Wall",
+                "-DVMA_IMPLEMENTATION",
+            },
+            .language = .cpp,
+        });
+
+        const vma_c = b.addTranslateC(.{
+            .root_source_file = vma_path,
+            .target = target,
+            .optimize = optimize,
+        });
+        exe_mod.addImport("vma", vma_c.createModule());
+    }
+
+    if (false) {
+        const cimgui = @import("cimgui");
+        const cimgui_conf = cimgui.getConfig(true);
+        const dep_cimgui = b.dependency("cimgui", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        exe_mod.addIncludePath(dep_cimgui.path(cimgui_conf.include_dir));
+        exe_mod.addImport(cimgui_conf.module_name, dep_cimgui.module(cimgui_conf.module_name));
+    } else {
+        const cimgui = @import("cimgui_zig");
+        const Renderer = cimgui.Renderer;
+        const Platform = cimgui.Platform;
+
+        const cimgui_dep = b.dependency("cimgui_zig", .{
+            .target = target,
+            .optimize = optimize,
+            .platforms = &[_]Platform{.SDL3},
+            .renderers = &[_]Renderer{.Vulkan},
+            .docking = true,
+        });
+        const cimgui_lib = cimgui_dep.artifact("cimgui");
+        exe_mod.linkLibrary(cimgui_lib);
+    }
 
     // zmath
     const zmath = b.dependency("zmath", .{});
@@ -185,10 +201,13 @@ fn buildMain(
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
+    run_cmd.setCwd(b.path("zig-out/"));
+
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
-    const run_step = b.step("run", "Run the render sandbox");
+    const run_step = b.step("run", "Run the saturn editor");
+
     run_step.dependOn(&run_cmd.step);
 }
