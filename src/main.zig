@@ -17,8 +17,7 @@ const SceneRenderer = @import("rendering/scene_renderer.zig");
 
 const imgui = @import("platform/imgui.zig");
 
-const Universe = @import("universe.zig");
-const Universe2 = @import("entity.zig");
+const Universe = @import("entity.zig");
 
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }).init;
@@ -111,8 +110,8 @@ const App = struct {
 
     scene_renderer: SceneRenderer,
 
-    universe: Universe,
-    universe2: Universe2,
+    universe2: Universe,
+    main_world: Universe.WorldHandle,
 
     camera: DebugCamera = .{},
     scene: Scene,
@@ -173,7 +172,7 @@ const App = struct {
         errdefer gpu_device.releaseWindow(window);
 
         // Wayland won't display a window until it has been drawn to
-        // So just draw a black window until everyting is loaded
+        // So just draw a black window until everything is loaded
         // Could be an engine splash screen in the future
         {
             var render_graph: saturn.RenderGraph = .init(allocator);
@@ -215,11 +214,11 @@ const App = struct {
         var scene: Scene = try .init(allocator, gpu_device, asset_pool, 4096);
         errdefer scene.deinit();
 
-        var universe: Universe = .init(allocator);
-        errdefer universe.deinit();
-
-        var universe2: Universe2 = .init(allocator);
+        var universe2: Universe = .init(allocator);
         errdefer universe2.deinit();
+
+        const main_world = try universe2.createWorld("Main World");
+        errdefer universe2.destroyWorld(main_world, true);
 
         return .{
             .allocator = allocator,
@@ -235,8 +234,8 @@ const App = struct {
             .scene_renderer = scene_renderer,
 
             .scene = scene,
-            .universe = universe,
             .universe2 = universe2,
+            .main_world = main_world,
 
             .temp_allocator = .init(allocator),
         };
@@ -248,7 +247,6 @@ const App = struct {
         self.temp_allocator.deinit();
 
         self.scene.deinit();
-        self.universe.deinit();
         self.universe2.deinit();
 
         self.scene_renderer.deinit();
@@ -302,11 +300,12 @@ const App = struct {
         // LAZY WAY TO UPDATE WORLD
         // Im still deciding on the design of the entity system so im going to be lazy till then
         {
-            var world_iter = self.universe.worlds.iterator();
+            var world_iter = self.universe2.worlds.iterator();
             while (world_iter.nextValue()) |world| {
-                for (world.entities.slice()) |root_entity| {
-                    self.updateEntity(root_entity, .{});
-                }
+                _ = world; // autofix
+                // for (world.entities.slice()) |root_entity| {
+                //     self.updateEntity(root_entity, .{});
+                // }
             }
         }
 
@@ -356,8 +355,8 @@ const App = struct {
 
             self.perf_win.draw(tpa);
             self.camera_win.draw(tpa, &self.camera, self.platform.getWindowSize(self.window));
-            self.scene_win.draw(tpa, &self.universe);
-            self.prop_win.draw(tpa, &self.universe, self.scene_win.selected_entity);
+            self.scene_win.draw(tpa, &self.universe2);
+            self.prop_win.draw(tpa, &self.universe2, self.scene_win.selected);
             self.demo_win.draw();
 
             self.platform.endImgui();
@@ -381,7 +380,6 @@ const App = struct {
                 &self.scene,
                 &.{ .camera = self.camera.camera, .transform = self.camera.transform },
                 self.asset_pool,
-                &self.camera_win.settings,
             );
         } else {
             _ = try render_graph.addGraphicsPass(
@@ -403,7 +401,7 @@ const App = struct {
         try self.gpu_device.submitRenderGraph(tpa, &render_graph);
     }
 
-    pub fn loadScene(self: *Self, scene_filepath: []const u8, update_camera: bool) !Universe.WorldHandle {
+    pub fn loadScene(self: *Self, scene_filepath: []const u8, update_camera: bool) !Universe.EntityHandle {
         const tpa = self.temp_allocator.allocator();
 
         var scene_json: std.json.Parsed(SceneAsset) = undefined;
@@ -417,50 +415,59 @@ const App = struct {
         }
         defer scene_json.deinit();
 
+        const scene = scene_json.value;
+
         if (update_camera) {
-            if (scene_json.value.getNodeFromName("Camera")) |camera_node| {
-                if (scene_json.value.nodes[camera_node].camera) |node_camera| {
+            if (findFirstNode(&scene, &.{ "Camera", "PhysCamera002" })) |camera_node| {
+                if (scene.nodes[camera_node].camera) |node_camera| {
                     self.camera.camera = node_camera;
+
+                    self.camera.transform = scene.calcNodeGlobalTransform(camera_node);
+                    self.camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), self.camera.transform.rotation);
+
+                    //Clamp near/far values
+                    self.camera.camera.perspective.far = @min(500, self.camera.camera.perspective.far orelse 500);
+                    self.camera.camera.perspective.near = @max(0.1, self.camera.camera.perspective.near);
                 }
-
-                self.camera.transform = scene_json.value.calcNodeGlobalTransform(camera_node);
-                self.camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), self.camera.transform.rotation);
-            }
-
-            if (scene_json.value.getNodeFromName("PhysCamera002")) |camera_node| {
-                if (scene_json.value.nodes[camera_node].camera) |node_camera| {
-                    self.camera.camera = node_camera;
-                }
-
-                self.camera.transform = scene_json.value.calcNodeGlobalTransform(camera_node);
-                self.camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), self.camera.transform.rotation);
             }
         }
 
-        const world_scene = try self.universe.createWorld(scene_json.value.name);
-        for (scene_json.value.root_nodes) |root_node| {
-            try self.loadSceneNode(&scene_json.value, world_scene, null, root_node);
+        const entity = try self.universe2.createEntity(scene.name, self.main_world);
+        errdefer self.universe2.destroyEntity(entity.handle);
+
+        entity.nodes = try .initCapacity(self.universe2.gpa, scene.nodes.len);
+        for (scene.root_nodes) |root_node| {
+            try self.loadNode(&scene, root_node, entity, null);
         }
 
         self.asset_pool.markAllForLoad();
 
-        return world_scene;
+        return entity.handle;
     }
 
-    fn loadSceneNode(self: *Self, scene: *const SceneAsset, world_handle: Universe.WorldHandle, parent_handle: ?Universe.EntityHandle, node_index: usize) !void {
-        const node = scene.nodes[node_index];
+    fn findFirstNode(scene: *const SceneAsset, names: []const []const u8) ?usize {
+        for (names) |name| {
+            if (scene.getNodeFromName(name)) |index| {
+                return index;
+            }
+        }
+        return null;
+    }
 
-        const node_entity = try self.universe.createEntity(node.name, world_handle, parent_handle, node.local_transform);
-        const entity = self.universe.entities.getPtr(node_entity).?;
+    fn loadNode(
+        self: *Self,
+        scene: *const SceneAsset,
+        node_index: usize,
+        entity: *Universe.Entity,
+        parent_node: ?Universe.NodeHandle,
+    ) !void {
+        const scene_node = scene.nodes[node_index];
 
-        const entity2_handle = try self.universe2.createEntity(node.name);
-        errdefer self.universe2.destroyEntity(entity2_handle);
-        const entity2 = self.universe2.entities.getPtr(entity2_handle).?;
+        const node_handle = try entity.createNode(self.universe2.gpa, scene_node.name, parent_node);
+        const node = entity.nodes.getPtr(node_handle).?;
+        node.local_transform = scene_node.local_transform;
 
-        const global_transform = scene.calcNodeGlobalTransform(node_index);
-        entity2.transform = global_transform;
-
-        if (node.mesh) |mesh| {
+        if (scene_node.mesh) |mesh| {
             const material_handles = try self.allocator.alloc(AssetPool.MaterialAssetHandle, mesh.materials.len);
             defer self.allocator.free(material_handles);
 
@@ -469,28 +476,28 @@ const App = struct {
                 material_handle.* = try self.asset_pool.getMaterialAsset(material);
             }
 
-            entity2.components.static_mesh = try self.scene.createStaticMeshInstance(true, global_transform, mesh_handle, material_handles);
-            entity.scene_instance = entity2.components.static_mesh;
+            const global_transform = scene.calcNodeGlobalTransform(node_index);
+            node.components.static_mesh = try self.scene.createStaticMeshInstance(true, global_transform, mesh_handle, material_handles);
         }
 
-        for (node.children) |child| {
-            try self.loadSceneNode(scene, world_handle, node_entity, child);
-        }
-    }
-
-    ///Lazy entity update, need to write a better system for this
-    fn updateEntity(self: *Self, entity_handle: Universe.EntityHandle, parent_transform: Transform) void {
-        const entity = self.universe.entities.getPtr(entity_handle).?;
-        const global_transform = parent_transform.applyTransform(&entity.local_transform);
-
-        if (entity.scene_instance) |scene_instance| {
-            self.scene.updateStaticMeshInstance(scene_instance, true, global_transform);
-        }
-
-        for (entity.children.slice()) |child| {
-            self.updateEntity(child, global_transform);
+        for (scene_node.children) |child| {
+            try self.loadNode(scene, child, entity, node_handle);
         }
     }
+
+    //Lazy entity update, need to write a better system for this
+    // fn updateEntity(self: *Self, entity_handle: Universe.EntityHandle, parent_transform: Transform) void {
+    //     const entity = self.universe.entities.getPtr(entity_handle).?;
+    //     const global_transform = parent_transform.applyTransform(&entity.local_transform);
+
+    //     if (entity.scene_instance) |scene_instance| {
+    //         self.scene.updateStaticMeshInstance(scene_instance, true, global_transform);
+    //     }
+
+    //     for (entity.children.slice()) |child| {
+    //         self.updateEntity(child, global_transform);
+    //     }
+    // }
 };
 
 const WindowFormatClass = enum {
@@ -621,20 +628,14 @@ pub const CameraWindow = struct {
     name: [:0]const u8 = "Camera",
     open: bool = true,
 
-    settings: SceneRenderer.Settings = .{},
-
     pub fn draw(self: *CameraWindow, tpa: std.mem.Allocator, camera: *DebugCamera, window_size: [2]u32) void {
+        _ = tpa; // autofix
         const width_float: f32 = @floatFromInt(window_size[0]);
         const height_float: f32 = @floatFromInt(window_size[1]);
         const aspect_ratio: f32 = width_float / height_float;
 
         if (self.open) {
             if (imgui.begin(self.name, &self.open, 0)) {
-                _ = imgui.checkbox("Culling", &self.settings.culling);
-                _ = imgui.checkbox("Indirect", &self.settings.indirect);
-                imgui.text(std.fmt.allocPrintSentinel(tpa, "Draw Count: {}", .{self.settings.draw_count}, 0) catch "");
-                imgui.text(std.fmt.allocPrintSentinel(tpa, "Cull Count: {}", .{self.settings.culled_count}, 0) catch "");
-
                 var linear_speed = camera.linear_speed[0];
                 if (imgui.sliderFloat("Move Speed", &linear_speed, 1, 15)) {
                     camera.linear_speed = @splat(linear_speed);
@@ -685,6 +686,11 @@ pub const CameraWindow = struct {
     }
 };
 
+const SelectedEntityNode = struct {
+    entity: Universe.EntityHandle,
+    node: ?Universe.NodeHandle = null,
+};
+
 pub const SceneWindow = struct {
     const EntityViewType = enum { hierarchy };
 
@@ -692,7 +698,7 @@ pub const SceneWindow = struct {
     open: bool = true,
 
     selected_world: ?Universe.WorldHandle = null,
-    selected_entity: ?Universe.EntityHandle = null,
+    selected: ?SelectedEntityNode = null,
 
     entity_view_type: EntityViewType = .hierarchy,
 
@@ -706,9 +712,9 @@ pub const SceneWindow = struct {
                         var count: u32 = 0;
                         while (iter.nextValue()) |world| {
                             count += 1;
-                            const is_selected: bool = if (self.selected_world) |sw| world.handle.toU64() == sw.toU64() else false;
-                            if (imgui.radioButton(world.name.?, is_selected)) {
-                                self.selected_world = if (is_selected) null else world.handle;
+                            const is_selected: bool = if (self.selected_world) |sw| world.*.handle.toU64() == sw.toU64() else false;
+                            if (imgui.radioButton(world.*.name.?, is_selected)) {
+                                self.selected_world = if (is_selected) null else world.*.handle;
                             }
                         }
 
@@ -756,64 +762,115 @@ pub const SceneWindow = struct {
         }
 
         if (self.selected_world) |selected_world| {
-            if (self.selected_entity) |selected_entity| {
-                if (universe.entities.get(selected_entity)) |entity| {
+            if (self.selected) |selected| {
+                if (universe.entities.get(selected.entity)) |entity| {
                     if (entity.world) |entity_world| {
                         if (entity_world.toU64() != selected_world.toU64()) {
-                            self.selected_entity = null;
+                            self.selected = null;
                         }
                     } else {
-                        self.selected_entity = null;
+                        self.selected = null;
                     }
                 }
             }
         } else {
-            self.selected_entity = null;
+            self.selected = null;
         }
     }
 
     fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, selected_world: Universe.WorldHandle) void {
-        if (universe.worlds.getPtr(selected_world)) |world| {
+        if (universe.worlds.get(selected_world)) |world| {
             for (world.entities.slice()) |entity_handle| {
-                self.drawEntityNode(tpa, universe, entity_handle);
+                self.drawEntity(tpa, universe, entity_handle);
             }
         }
     }
 
-    fn drawEntityNode(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, entity_handle: Universe.EntityHandle) void {
-        if (universe.entities.getPtr(entity_handle)) |entity| {
-            const is_selected: bool = if (self.selected_entity) |se| entity_handle.toU64() == se.toU64() else false;
+    fn drawEntity(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, entity_handle: Universe.EntityHandle) void {
+        const entity = universe.entities.get(entity_handle) orelse return;
 
-            var flags: i32 = imgui.c.ImGuiTreeNodeFlags_OpenOnDoubleClick | imgui.c.ImGuiTreeNodeFlags_OpenOnArrow;
+        var is_selected: bool = false;
+        if (self.selected) |selected| {
+            if (selected.entity.toU64() == entity.handle.toU64()) {
+                is_selected = selected.node == null;
+            }
+        }
+        var flags: i32 = imgui.c.ImGuiTreeNodeFlags_OpenOnDoubleClick | imgui.c.ImGuiTreeNodeFlags_OpenOnArrow;
 
+        if (is_selected) {
+            flags |= imgui.c.ImGuiTreeNodeFlags_Selected;
+        }
+
+        if (entity.root_nodes.count() == 0) {
+            flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
+        }
+
+        var entity_name = entity.name.?;
+        if (entity_name.len == 0) {
+            entity_name = " ";
+        }
+        const node_open = imgui.c.ImGui_TreeNodeEx(entity_name, flags);
+
+        if (imgui.c.ImGui_IsItemClicked()) {
             if (is_selected) {
-                flags |= imgui.c.ImGuiTreeNodeFlags_Selected;
+                self.selected = null;
+            } else {
+                self.selected = .{ .entity = entity_handle };
             }
+        }
 
-            if (entity.children.count() == 0) {
-                flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
+        if (node_open) {
+            for (entity.root_nodes.slice()) |child| {
+                self.drawEntityNode(tpa, universe, entity, child);
             }
+            imgui.c.ImGui_TreePop();
+        }
+    }
 
-            var entity_name = entity.name.?;
-            if (entity_name.len == 0) {
-                entity_name = " ";
-            }
-            const node_open = imgui.c.ImGui_TreeNodeEx(entity_name, flags);
-
-            if (imgui.c.ImGui_IsItemClicked()) {
-                if (is_selected) {
-                    self.selected_entity = null;
-                } else {
-                    self.selected_entity = entity_handle;
+    fn drawEntityNode(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, entity: *Universe.Entity, node_handle: Universe.NodeHandle) void {
+        var is_selected: bool = false;
+        if (self.selected) |selected| {
+            if (selected.entity.toU64() == entity.handle.toU64()) {
+                if (selected.node) |selected_node| {
+                    is_selected = selected_node.toU64() == node_handle.toU64();
                 }
             }
+        }
 
-            if (node_open) {
-                for (entity.children.slice()) |child| {
-                    self.drawEntityNode(tpa, universe, child);
-                }
-                imgui.c.ImGui_TreePop();
+        var flags: i32 = imgui.c.ImGuiTreeNodeFlags_OpenOnDoubleClick | imgui.c.ImGuiTreeNodeFlags_OpenOnArrow;
+
+        if (is_selected) {
+            flags |= imgui.c.ImGuiTreeNodeFlags_Selected;
+        }
+
+        const node = entity.nodes.get(node_handle).?;
+
+        if (node.children.count() == 0) {
+            flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
+        }
+
+        var node_name = node.name.?;
+        if (node_name.len == 0) {
+            node_name = " ";
+        }
+        const node_open = imgui.c.ImGui_TreeNodeEx(node_name, flags);
+
+        if (imgui.c.ImGui_IsItemClicked()) {
+            if (is_selected) {
+                self.selected = null;
+            } else {
+                self.selected = .{
+                    .entity = entity.handle,
+                    .node = node_handle,
+                };
             }
+        }
+
+        if (node_open) {
+            for (node.children.slice()) |child| {
+                self.drawEntityNode(tpa, universe, entity, child);
+            }
+            imgui.c.ImGui_TreePop();
         }
     }
 };
@@ -822,59 +879,68 @@ pub const PropertiesWindow = struct {
     name: [:0]const u8 = "Properties",
     open: bool = true,
 
-    pub fn draw(self: *PropertiesWindow, tpa: std.mem.Allocator, universe: *Universe, selected_entity: ?Universe.EntityHandle) void {
+    pub fn draw(
+        self: *PropertiesWindow,
+        tpa: std.mem.Allocator,
+        universe: *Universe,
+        selected_opt: ?SelectedEntityNode,
+    ) void {
         _ = tpa; // autofix
         if (self.open) {
             const flags: i32 = 0;
             if (imgui.begin(self.name, &self.open, flags)) {
-                if (selected_entity) |entity_handle| {
-                    if (universe.entities.getPtr(entity_handle)) |entity| {
-                        imgui.c.ImGui_SeparatorText("Entity");
+                if (selected_opt) |selected| {
+                    if (selected.node == null) {
+                        if (universe.entities.get(selected.entity)) |entity| {
+                            imgui.c.ImGui_SeparatorText("Entity");
 
-                        //Name Field
-                        {
-                            var name_buffer: [256]u8 = @splat(0);
-                            if (entity.name) |name| {
-                                @memcpy(name_buffer[0..name.len], name);
-                            }
-
-                            if (imgui.inputText("Name", &name_buffer)) {
-                                const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
-                                universe.updateEntityName(entity_handle, name_buffer[0..index_of]) catch @panic("Failed to update entity name");
-                            }
-                        }
-
-                        //Transform
-                        {
-                            const header_open = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
-                            if (header_open) {
-                                var position = zm.vecToArr3(entity.local_transform.position);
-                                if (imgui.c.ImGui_InputFloat3("Position", &position)) {
-                                    entity.local_transform.position = zm.loadArr3(position);
+                            //Name Field
+                            {
+                                var name_buffer: [256]u8 = @splat(0);
+                                if (entity.name) |name| {
+                                    @memcpy(name_buffer[0..name.len], name);
                                 }
 
-                                var rotation = zm.quatToRollPitchYaw(entity.local_transform.rotation);
-                                inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
-                                if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
+                                if (imgui.inputText("Name", &name_buffer)) {
+                                    const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
+                                    const new_name = name_buffer[0..index_of];
+                                    universe.gpa.free(entity.name orelse &.{});
+                                    entity.name = universe.gpa.dupeZ(u8, new_name) catch @panic("Failed to update entity name");
+                                }
+                            }
+
+                            //Transform
+                            {
+                                const header_open = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
+                                if (header_open) {
+                                    var position = zm.vecToArr3(entity.transform.position);
+                                    if (imgui.c.ImGui_InputFloat3("Position", &position)) {
+                                        entity.transform.position = zm.loadArr3(position);
+                                    }
+
+                                    var rotation = zm.quatToRollPitchYaw(entity.transform.rotation);
                                     inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
-                                    // Broken :(
-                                    //entity.local_transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
+                                    if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
+                                        inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
+                                        // Broken :(
+                                        //entity.transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
+                                    }
+
+                                    var scale = zm.vecToArr3(entity.transform.scale);
+                                    if (imgui.c.ImGui_InputFloat3("Scale", &scale)) {
+                                        entity.transform.scale = zm.loadArr3(scale);
+                                    }
                                 }
 
-                                var scale = zm.vecToArr3(entity.local_transform.scale);
-                                if (imgui.c.ImGui_InputFloat3("Scale", &scale)) {
-                                    entity.local_transform.scale = zm.loadArr3(scale);
+                                imgui.c.ImGui_SeparatorText("Components");
+
+                                if (imgui.c.ImGui_CollapsingHeader("Model Component", 0)) {
+                                    imgui.text("Still under construction 🚧");
                                 }
                             }
-
-                            imgui.c.ImGui_SeparatorText("Components");
-
-                            if (imgui.c.ImGui_CollapsingHeader("Model Component", 0)) {
-                                imgui.text("Still under construction 🚧");
-                            }
+                        } else {
+                            imgui.text("Invalid Entity Selected");
                         }
-                    } else {
-                        imgui.text("Invalid Entity Selected");
                     }
                 } else {
                     imgui.text("No Entity Selected");

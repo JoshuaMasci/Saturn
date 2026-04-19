@@ -356,6 +356,7 @@ pub const GamepadAxis = enum(u8) {
     right_trigger = 5,
 };
 
+//TODO: rework this, location should probably be inferred from BufferUsage/TextureUsage with flags like mapped_read/mapped_write
 pub const MemoryLocation = enum {
     gpu_only,
     cpu_to_gpu,

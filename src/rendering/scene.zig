@@ -69,59 +69,61 @@ asset_pool: *const AssetPool,
 
 static_mesh_instances: StaticMeshInstanceMap = .empty,
 
-gpu_instances: GpuPool(GpuInstance),
-primtive_instances: PrimitiveInstances,
+// gpu_instances: GpuPool(GpuInstance),
+// primtive_instances: PrimitiveInstances,
 
 pub fn init(gpa: std.mem.Allocator, device: saturn.DeviceInterface, asset_pool: *const AssetPool, instance_count: usize) saturn.Error!Self {
-    var gpu_instances: GpuPool(GpuInstance) = try .init(
-        gpa,
-        device,
-        "instance_data",
-        instance_count,
-        .{ .storage = true, .transfer_dst = true, .device_address = true },
-        .{},
-    );
-    errdefer gpu_instances.deinit();
+    _ = device; // autofix
+    _ = instance_count; // autofix
+    // var gpu_instances: GpuPool(GpuInstance) = try .init(
+    //     gpa,
+    //     device,
+    //     "instance_data",
+    //     instance_count,
+    //     .{ .storage = true, .transfer_dst = true, .device_address = true },
+    //     .{},
+    // );
+    // errdefer gpu_instances.deinit();
 
-    var opaque_primitives: GpuPool(GpuPrimitiveInstance) = try .init(
-        gpa,
-        device,
-        "opaque_primitives",
-        instance_count,
-        .{ .storage = true, .transfer_dst = true, .device_address = true },
-        .{},
-    );
-    errdefer opaque_primitives.deinit();
+    // var opaque_primitives: GpuPool(GpuPrimitiveInstance) = try .init(
+    //     gpa,
+    //     device,
+    //     "opaque_primitives",
+    //     instance_count,
+    //     .{ .storage = true, .transfer_dst = true, .device_address = true },
+    //     .{},
+    // );
+    // errdefer opaque_primitives.deinit();
 
-    var alpha_mask_primitives: GpuPool(GpuPrimitiveInstance) = try .init(
-        gpa,
-        device,
-        "alpha_mask_primitives",
-        instance_count,
-        .{ .storage = true, .transfer_dst = true, .device_address = true },
-        .{},
-    );
-    errdefer alpha_mask_primitives.deinit();
+    // var alpha_mask_primitives: GpuPool(GpuPrimitiveInstance) = try .init(
+    //     gpa,
+    //     device,
+    //     "alpha_mask_primitives",
+    //     instance_count,
+    //     .{ .storage = true, .transfer_dst = true, .device_address = true },
+    //     .{},
+    // );
+    // errdefer alpha_mask_primitives.deinit();
 
-    var alpha_blend_primitives: GpuPool(GpuPrimitiveInstance) = try .init(
-        gpa,
-        device,
-        "alpha_blend_primitives",
-        instance_count,
-        .{ .storage = true, .transfer_dst = true, .device_address = true },
-        .{},
-    );
-    errdefer alpha_blend_primitives.deinit();
+    // var alpha_blend_primitives: GpuPool(GpuPrimitiveInstance) = try .init(
+    //     gpa,
+    //     device,
+    //     "alpha_blend_primitives",
+    //     instance_count,
+    //     .{ .storage = true, .transfer_dst = true, .device_address = true },
+    //     .{},
+    // );
+    // errdefer alpha_blend_primitives.deinit();
 
     return Self{
         .gpa = gpa,
         .asset_pool = asset_pool,
-        .gpu_instances = gpu_instances,
-        .primtive_instances = .{
-            .opaque_primitives = opaque_primitives,
-            .alpha_mask_primitives = alpha_mask_primitives,
-            .alpha_blend_primitives = alpha_blend_primitives,
-        },
+        // .gpu_instances = gpu_instances,
+        // .primtive_instances = .{
+        //     .opaque_primitives = opaque_primitives,
+        //     .alpha_mask_primitives = alpha_mask_primitives,
+        //     .alpha_blend_primitives = alpha_blend_primitives,
+        // },
     };
 }
 
@@ -132,17 +134,19 @@ pub fn deinit(self: *Self) void {
     }
     self.static_mesh_instances.deinit(self.gpa);
 
-    self.gpu_instances.deinit();
-    self.primtive_instances.opaque_primitives.deinit();
-    self.primtive_instances.alpha_mask_primitives.deinit();
-    self.primtive_instances.alpha_blend_primitives.deinit();
+    // self.gpu_instances.deinit();
+    // self.primtive_instances.opaque_primitives.deinit();
+    // self.primtive_instances.alpha_mask_primitives.deinit();
+    // self.primtive_instances.alpha_blend_primitives.deinit();
 }
 
 pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
-    try self.gpu_instances.addTransfers(transfer_queue);
-    try self.primtive_instances.opaque_primitives.addTransfers(transfer_queue);
-    try self.primtive_instances.alpha_mask_primitives.addTransfers(transfer_queue);
-    try self.primtive_instances.alpha_blend_primitives.addTransfers(transfer_queue);
+    _ = self; // autofix
+    _ = transfer_queue; // autofix
+    // try self.gpu_instances.addTransfers(transfer_queue);
+    // try self.primtive_instances.opaque_primitives.addTransfers(transfer_queue);
+    // try self.primtive_instances.alpha_mask_primitives.addTransfers(transfer_queue);
+    // try self.primtive_instances.alpha_blend_primitives.addTransfers(transfer_queue);
 }
 
 pub fn createStaticMeshInstance(self: *Self, visible: bool, transform: Transform, mesh: AssetPool.MeshAssetHandle, materials: []const AssetPool.MaterialAssetHandle) error{OutOfMemory}!StaticMeshInstanceHandle {
@@ -150,8 +154,9 @@ pub fn createStaticMeshInstance(self: *Self, visible: bool, transform: Transform
     const cpu_mesh = mesh_asset.cpu.?; //IDK what to do if it isn't loaded yet
     std.debug.assert(cpu_mesh.primitives.len == materials.len);
 
-    const instance_index = try self.gpu_instances.alloc();
-    errdefer self.gpu_instances.free(instance_index);
+    // const instance_index = try self.gpu_instances.alloc();
+    // errdefer self.gpu_instances.free(instance_index);
+    const instance_index = 0;
 
     var static_mesh_instance: StaticMeshInstance = .{
         .visible = visible,
@@ -161,25 +166,29 @@ pub fn createStaticMeshInstance(self: *Self, visible: bool, transform: Transform
         .primitives = try .initCapacity(self.gpa, materials.len),
     };
     errdefer {
-        for (static_mesh_instance.primitives.items) |primitive| {
-            self.primtive_instances.getPool(primitive.alpha_mode).free(primitive.primitive_index);
-        }
+        // for (static_mesh_instance.primitives.items) |primitive| {
+        //     self.primtive_instances.getPool(primitive.alpha_mode).free(primitive.primitive_index);
+        // }
         static_mesh_instance.primitives.deinit(self.gpa);
     }
 
     for (materials, 0..) |material, i| {
+        _ = i; // autofix
         const material_asset = self.asset_pool.material_assets.get(material).?;
         const cpu_material = material_asset.cpu.?;
         const material_gpu = material_asset.gpu.?;
+        _ = material_gpu; // autofix
 
-        const pool = self.primtive_instances.getPool(cpu_material.alpha_mode);
+        // const pool = self.primtive_instances.getPool(cpu_material.alpha_mode);
 
-        const primitive_index = try pool.create(.{
-            .visible = 1,
-            .instance_index = instance_index,
-            .material_instance_index = material_gpu,
-            .primitive_index = @intCast(i),
-        });
+        // const primitive_index = try pool.create(.{
+        //     .visible = 1,
+        //     .instance_index = instance_index,
+        //     .material_instance_index = material_gpu,
+        //     .primitive_index = @intCast(i),
+        // });
+        const primitive_index = 0;
+
         static_mesh_instance.primitives.appendAssumeCapacity(.{
             .material = material,
             .alpha_mode = cpu_material.alpha_mode,
@@ -205,15 +214,17 @@ pub fn updateStaticMeshInstance(self: *Self, handle: StaticMeshInstanceHandle, v
 }
 
 fn updateStaticMeshGPU(self: *Self, handle: StaticMeshInstanceHandle) void {
-    const static_mesh_instance = self.static_mesh_instances.getPtr(handle).?;
-    const model_matrix = static_mesh_instance.transform.getModelMatrix();
-    const normal_matrix = static_mesh_instance.transform.getNormalMatrix();
-    self.gpu_instances.stage(static_mesh_instance.instance_index, .{
-        .model_matrix = model_matrix,
-        .normal_matrix = normal_matrix,
-        .visible = @intFromBool(static_mesh_instance.visible),
-        .mesh_index = static_mesh_instance.mesh,
-    });
+    _ = self; // autofix
+    _ = handle; // autofix
+    // const static_mesh_instance = self.static_mesh_instances.getPtr(handle).?;
+    // const model_matrix = static_mesh_instance.transform.getModelMatrix();
+    // const normal_matrix = static_mesh_instance.transform.getNormalMatrix();
+    // self.gpu_instances.stage(static_mesh_instance.instance_index, .{
+    //     .model_matrix = model_matrix,
+    //     .normal_matrix = normal_matrix,
+    //     .visible = @intFromBool(static_mesh_instance.visible),
+    //     .mesh_index = static_mesh_instance.mesh,
+    // });
 }
 
 //TODO: culling and depth sorting
@@ -274,7 +285,6 @@ pub const RenderBuckets = struct {
 
     pub fn depthSort(self: *RenderBuckets, camera_pos: zm.Vec) void {
         std.mem.sort(InstanceDrawData, self.alpha_blend_instances.items, camera_pos, compareInstances);
-        std.mem.sort(InstanceDrawData, self.alpha_mask_instances.items, camera_pos, compareInstances);
     }
 
     pub fn deinit(self: RenderBuckets) void {
