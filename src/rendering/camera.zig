@@ -79,7 +79,7 @@ pub const Camera = union(enum) {
     perspective: PerspectiveCamera,
     orthographic: OrthographicCamera,
 
-    pub const Default: Self = .{ .perspective = .{} };
+    pub const default: Self = .{ .perspective = .{} };
     pub fn getProjectionMatrix(self: Self, aspect_ratio: f32) zm.Mat {
         return switch (self) {
             .perspective => |perspective| perspective.getPerspectiveMatrix(aspect_ratio),
@@ -88,7 +88,7 @@ pub const Camera = union(enum) {
     }
 };
 
-pub const SceneCamera = struct {
-    settings: Camera = .Default,
+const SceneCamera = struct {
+    settings: Camera = .default,
     transform: Transform = .Identity,
 };

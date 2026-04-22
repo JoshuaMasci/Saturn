@@ -17,7 +17,7 @@ const SceneRenderer = @import("rendering/scene_renderer.zig");
 
 const imgui = @import("platform/imgui.zig");
 
-const Universe = @import("entity.zig");
+const GameWorld = @import("GameWorld.zig");
 
 pub fn main() !void {
     var debug_allocator = std.heap.DebugAllocator(.{ .enable_memory_limit = true }).init;
@@ -55,25 +55,32 @@ pub fn main() !void {
         const transparent_material_handle: AssetPool.MaterialAssetHandle = try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/transparent.asset"));
         app.asset_pool.markAllForLoad();
 
-        _ = try app.scene.createStaticMeshInstance(
+        const sphere_entity_handle = try app.game_world.createEntity("Sphere_Entity", .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } });
+        const sphere_entity = app.game_world.getEntity(sphere_entity_handle).?;
+        sphere_entity.components.static_mesh = try app.game_world.components.scene.?.createStaticMeshInstance(
             true,
-            .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } },
+            sphere_entity.transform,
             sphere_mesh_handle,
             &.{transparent_material_handle},
         );
 
-        _ = try app.scene.createStaticMeshInstance(
+        const cube_entity_handle = try app.game_world.createEntity("Cube_Entity", .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } });
+        const cube_entity = app.game_world.getEntity(cube_entity_handle).?;
+        cube_entity.components.static_mesh = try app.game_world.components.scene.?.createStaticMeshInstance(
             true,
-            .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } },
+            cube_entity.transform,
             cube_mesh_handle,
             &.{transparent_material_handle},
         );
 
-        app.camera.transform = .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } };
+        const player_handle = try app.game_world.createEntity("Player", .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } });
+        const player_entity = app.game_world.getEntity(player_handle).?;
+        player_entity.components.camera = .default;
+        app.player_entity = player_handle;
     }
 
-    app.scene_win.selected_world = try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json", true);
-    //app.scene_win.selected_world = try app.loadScene("assets/game/Bistro/scene.json", true);
+    //try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json");
+    try app.loadScene("assets/game/Bistro/scene.json");
 
     var last_frame_time_ns = std.time.nanoTimestamp();
     while (app.isRunning()) {
@@ -110,11 +117,11 @@ const App = struct {
 
     scene_renderer: SceneRenderer,
 
-    universe2: Universe,
-    main_world: Universe.WorldHandle,
+    free_camera: DebugCamera = .{},
+    game_world: GameWorld,
 
-    camera: DebugCamera = .{},
-    scene: Scene,
+    player_entity: ?GameWorld.EntityHandle = null,
+    gamepad: @import("Input.zig") = .{},
 
     temp_allocator: std.heap.ArenaAllocator,
 
@@ -126,7 +133,6 @@ const App = struct {
     perf_win: PerformanceWindow = .{},
     scene_win: SceneWindow = .{},
     prop_win: PropertiesWindow = .{},
-    camera_win: CameraWindow = .{},
     demo_win: DemoWindow = .{},
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
@@ -211,14 +217,9 @@ const App = struct {
         var scene_renderer: SceneRenderer = try .init(allocator, gpu_device, asset_registry, RenderTarget);
         errdefer scene_renderer.deinit();
 
-        var scene: Scene = try .init(allocator, gpu_device, asset_pool, 4096);
-        errdefer scene.deinit();
-
-        var universe2: Universe = .init(allocator);
-        errdefer universe2.deinit();
-
-        const main_world = try universe2.createWorld("Main World");
-        errdefer universe2.destroyWorld(main_world, true);
+        var game_world: GameWorld = .init(allocator);
+        errdefer game_world.deinit();
+        game_world.components.scene = try .init(allocator, gpu_device, asset_pool, 4096);
 
         return .{
             .allocator = allocator,
@@ -233,9 +234,7 @@ const App = struct {
 
             .scene_renderer = scene_renderer,
 
-            .scene = scene,
-            .universe2 = universe2,
-            .main_world = main_world,
+            .game_world = game_world,
 
             .temp_allocator = .init(allocator),
         };
@@ -246,8 +245,7 @@ const App = struct {
 
         self.temp_allocator.deinit();
 
-        self.scene.deinit();
-        self.universe2.deinit();
+        self.game_world.deinit();
 
         self.scene_renderer.deinit();
 
@@ -295,18 +293,10 @@ const App = struct {
             .gamepad_axis = gamepadAxisCallback,
         });
 
-        self.camera.update(delta_time);
-
-        // LAZY WAY TO UPDATE WORLD
-        // Im still deciding on the design of the entity system so im going to be lazy till then
-        {
-            var world_iter = self.universe2.worlds.iterator();
-            while (world_iter.nextValue()) |world| {
-                _ = world; // autofix
-                // for (world.entities.slice()) |root_entity| {
-                //     self.updateEntity(root_entity, .{});
-                // }
-            }
+        if (self.game_world.getEntity(self.player_entity orelse 0)) |player_entity| {
+            _ = player_entity; // autofix
+        } else {
+            self.free_camera.update(delta_time, &self.gamepad);
         }
 
         const IMGUI_ENABLED = true;
@@ -345,7 +335,6 @@ const App = struct {
                     _ = imgui.menuItemBool(self.perf_win.name, &self.perf_win.open, true);
                     _ = imgui.menuItemBool(self.scene_win.name, &self.scene_win.open, true);
                     _ = imgui.menuItemBool(self.prop_win.name, &self.prop_win.open, true);
-                    _ = imgui.menuItemBool(self.camera_win.name, &self.camera_win.open, true);
                     _ = imgui.menuItemBool(self.demo_win.name, &self.demo_win.open, true);
                     imgui.endMenu();
                 }
@@ -354,16 +343,19 @@ const App = struct {
             }
 
             self.perf_win.draw(tpa);
-            self.camera_win.draw(tpa, &self.camera, self.platform.getWindowSize(self.window));
-            self.scene_win.draw(tpa, &self.universe2);
-            self.prop_win.draw(tpa, &self.universe2, self.scene_win.selected);
+            self.scene_win.draw(tpa, &self.game_world);
+            self.prop_win.draw(tpa, &self.game_world, self.scene_win.selected);
             self.demo_win.draw();
 
             self.platform.endImgui();
         }
 
+        self.game_world.update(delta_time);
+
         try self.asset_pool.addTransfers(&self.transfer_queue);
-        try self.scene.addTransfers(&self.transfer_queue);
+        if (self.game_world.components.scene) |*scene| {
+            try scene.addTransfers(&self.transfer_queue);
+        }
 
         var render_graph: saturn.RenderGraph = .init(tpa);
         defer render_graph.deinit();
@@ -373,25 +365,28 @@ const App = struct {
         const swapchain_texture = try render_graph.acquireWindowTexture(self.window);
 
         if (true) {
+            var camera = self.free_camera.camera;
+            var camera_transform = self.free_camera.transform;
+
+            if (self.player_entity) |player_handle| {
+                const player_entity = self.game_world.getEntity(player_handle).?;
+                camera_transform = player_entity.transform;
+                if (player_entity.components.camera) |player_camera| {
+                    camera = player_camera;
+                }
+            }
+
+            const scene = &self.game_world.components.scene.?;
+
             try self.scene_renderer.addPasses(
                 tpa,
                 swapchain_texture,
                 &render_graph,
-                &self.scene,
-                &.{ .camera = self.camera.camera, .transform = self.camera.transform },
+                scene,
+                &.{ .camera = camera, .transform = camera_transform },
                 self.asset_pool,
             );
-        } else {
-            _ = try render_graph.addGraphicsPass(
-                "Empty Swapchain Pass",
-                .{ .color_attachments = &.{.{
-                    .texture = swapchain_texture,
-                    .clear = .{ 0.25, 0.0, 0.4, 1.0 },
-                }} },
-                null,
-                emptyGraphicsCallback,
-            );
-        }
+        } else {}
 
         if (IMGUI_ENABLED) {
             const imgui_pass_handle = self.gpu_device.createImguiPass(swapchain_texture, &render_graph);
@@ -401,7 +396,7 @@ const App = struct {
         try self.gpu_device.submitRenderGraph(tpa, &render_graph);
     }
 
-    pub fn loadScene(self: *Self, scene_filepath: []const u8, update_camera: bool) !Universe.EntityHandle {
+    pub fn loadScene(self: *Self, scene_filepath: []const u8) !void {
         const tpa = self.temp_allocator.allocator();
 
         var scene_json: std.json.Parsed(SceneAsset) = undefined;
@@ -417,55 +412,24 @@ const App = struct {
 
         const scene = scene_json.value;
 
-        if (update_camera) {
-            if (findFirstNode(&scene, &.{ "Camera", "PhysCamera002" })) |camera_node| {
-                if (scene.nodes[camera_node].camera) |node_camera| {
-                    self.camera.camera = node_camera;
-
-                    self.camera.transform = scene.calcNodeGlobalTransform(camera_node);
-                    self.camera.transform.rotation = zm.qmul(zm.quatFromRollPitchYaw(0.0, std.math.pi, 0.0), self.camera.transform.rotation);
-
-                    //Clamp near/far values
-                    self.camera.camera.perspective.far = @min(500, self.camera.camera.perspective.far orelse 500);
-                    self.camera.camera.perspective.near = @max(0.1, self.camera.camera.perspective.near);
-                }
-            }
-        }
-
-        const entity = try self.universe2.createEntity(scene.name, self.main_world);
-        errdefer self.universe2.destroyEntity(entity.handle);
-
-        entity.nodes = try .initCapacity(self.universe2.gpa, scene.nodes.len);
         for (scene.root_nodes) |root_node| {
-            try self.loadNode(&scene, root_node, entity, null);
+            try self.loadNode(&scene, root_node);
         }
 
         self.asset_pool.markAllForLoad();
-
-        return entity.handle;
-    }
-
-    fn findFirstNode(scene: *const SceneAsset, names: []const []const u8) ?usize {
-        for (names) |name| {
-            if (scene.getNodeFromName(name)) |index| {
-                return index;
-            }
-        }
-        return null;
     }
 
     fn loadNode(
         self: *Self,
         scene: *const SceneAsset,
         node_index: usize,
-        entity: *Universe.Entity,
-        parent_node: ?Universe.NodeHandle,
     ) !void {
         const scene_node = scene.nodes[node_index];
 
-        const node_handle = try entity.createNode(self.universe2.gpa, scene_node.name, parent_node);
-        const node = entity.nodes.getPtr(node_handle).?;
-        node.local_transform = scene_node.local_transform;
+        const global_transform = scene.calcNodeGlobalTransform(node_index);
+
+        const game_entity_handle = try self.game_world.createEntity(scene_node.name, global_transform);
+        const game_entity = self.game_world.getEntity(game_entity_handle).?;
 
         if (scene_node.mesh) |mesh| {
             const material_handles = try self.allocator.alloc(AssetPool.MaterialAssetHandle, mesh.materials.len);
@@ -476,28 +440,31 @@ const App = struct {
                 material_handle.* = try self.asset_pool.getMaterialAsset(material);
             }
 
-            const global_transform = scene.calcNodeGlobalTransform(node_index);
-            node.components.static_mesh = try self.scene.createStaticMeshInstance(true, global_transform, mesh_handle, material_handles);
+            game_entity.components.static_mesh = try self.game_world.components.scene.?.createStaticMeshInstance(
+                true,
+                global_transform,
+                mesh_handle,
+                material_handles,
+            );
+        }
+
+        if (scene_node.camera) |camera| {
+            game_entity.components.camera = camera;
+
+            switch (game_entity.components.camera.?) {
+                .perspective => |*perspective| {
+                    //Clamp near/far values
+                    perspective.far = @min(500, perspective.far orelse 500);
+                    perspective.near = @max(0.1, perspective.near);
+                },
+                .orthographic => {},
+            }
         }
 
         for (scene_node.children) |child| {
-            try self.loadNode(scene, child, entity, node_handle);
+            try self.loadNode(scene, child);
         }
     }
-
-    //Lazy entity update, need to write a better system for this
-    // fn updateEntity(self: *Self, entity_handle: Universe.EntityHandle, parent_transform: Transform) void {
-    //     const entity = self.universe.entities.getPtr(entity_handle).?;
-    //     const global_transform = parent_transform.applyTransform(&entity.local_transform);
-
-    //     if (entity.scene_instance) |scene_instance| {
-    //         self.scene.updateStaticMeshInstance(scene_instance, true, global_transform);
-    //     }
-
-    //     for (entity.children.slice()) |child| {
-    //         self.updateEntity(child, global_transform);
-    //     }
-    // }
 };
 
 const WindowFormatClass = enum {
@@ -559,8 +526,8 @@ fn gamepadButtonCallback(ctx: ?*anyopaque, gamepad_id: u32, button: saturn.Gamep
     const app: *App = @ptrCast(@alignCast(ctx.?));
 
     switch (button) {
-        .left_shoulder => app.camera.gamepad.shoulder[0] = state.isPressed(),
-        .right_shoulder => app.camera.gamepad.shoulder[1] = state.isPressed(),
+        .left_shoulder => app.gamepad.shoulder[0] = state.isPressed(),
+        .right_shoulder => app.gamepad.shoulder[1] = state.isPressed(),
         else => {},
     }
 }
@@ -571,10 +538,10 @@ fn gamepadAxisCallback(ctx: ?*anyopaque, gamepad_id: u32, axis: saturn.GamepadAx
     const app: *App = @ptrCast(@alignCast(ctx.?));
 
     switch (axis) {
-        .left_x => app.camera.gamepad.left_stick[0] = value,
-        .left_y => app.camera.gamepad.left_stick[1] = value,
-        .right_x => app.camera.gamepad.right_stick[0] = value,
-        .right_y => app.camera.gamepad.right_stick[1] = value,
+        .left_x => app.gamepad.left_stick[0] = value,
+        .left_y => app.gamepad.left_stick[1] = value,
+        .right_x => app.gamepad.right_stick[0] = value,
+        .right_y => app.gamepad.right_stick[1] = value,
         else => {},
     }
 }
@@ -586,7 +553,7 @@ fn sceneLoadCallback(userdata: ?*anyopaque, filelist: []const []const u8, filter
 
     const app: *App = @ptrCast(@alignCast(userdata.?));
     std.log.info("sceneLoad: {s}", .{filelist[0]});
-    _ = app.loadScene(filelist[0], false) catch |err| std.log.err("Failed to load scene {}", .{err});
+    app.loadScene(filelist[0]) catch |err| std.log.err("Failed to load scene {}", .{err});
 }
 
 fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
@@ -624,71 +591,8 @@ pub const PerformanceWindow = struct {
     }
 };
 
-pub const CameraWindow = struct {
-    name: [:0]const u8 = "Camera",
-    open: bool = true,
-
-    pub fn draw(self: *CameraWindow, tpa: std.mem.Allocator, camera: *DebugCamera, window_size: [2]u32) void {
-        _ = tpa; // autofix
-        const width_float: f32 = @floatFromInt(window_size[0]);
-        const height_float: f32 = @floatFromInt(window_size[1]);
-        const aspect_ratio: f32 = width_float / height_float;
-
-        if (self.open) {
-            if (imgui.begin(self.name, &self.open, 0)) {
-                var linear_speed = camera.linear_speed[0];
-                if (imgui.sliderFloat("Move Speed", &linear_speed, 1, 15)) {
-                    camera.linear_speed = @splat(linear_speed);
-                }
-
-                switch (camera.camera) {
-                    .perspective => |*perspective| {
-                        if (imgui.button("Flip Fov Axis")) {
-                            perspective.fov = perspective.fov.flip(aspect_ratio);
-                        }
-
-                        switch (perspective.fov) {
-                            .x => |*x| {
-                                _ = imgui.sliderFloat("Fov X", x, 30, 120);
-                            },
-                            .y => |*y| {
-                                _ = imgui.sliderFloat("Fov Y", y, 10, 80);
-                            },
-                        }
-
-                        // _ = imgui.sliderFloat("Z Near", &perspective.near, 0.0000000001, 1);
-                        // if (perspective.far) |*far| {
-                        //     _ = imgui.sliderFloat("Z Far", far, 10, 10000);
-                        // }
-                    },
-                    else => {
-                        imgui.text("Not implemented for other camera types");
-                    },
-                }
-
-                var position = zm.vecToArr3(camera.transform.position);
-                if (imgui.c.ImGui_InputFloat3("Position", &position)) {
-                    camera.transform.position = zm.loadArr3(position);
-                }
-
-                var rotation = zm.quatToRollPitchYaw(camera.transform.rotation);
-                inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
-                if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
-                    inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
-
-                    // Broken :(
-                    // camera.transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
-                }
-
-                imgui.end();
-            }
-        }
-    }
-};
-
 const SelectedEntityNode = struct {
-    entity: Universe.EntityHandle,
-    node: ?Universe.NodeHandle = null,
+    entity: GameWorld.EntityHandle,
 };
 
 pub const SceneWindow = struct {
@@ -697,31 +601,17 @@ pub const SceneWindow = struct {
     name: [:0]const u8 = "Scene",
     open: bool = true,
 
-    selected_world: ?Universe.WorldHandle = null,
-    selected: ?SelectedEntityNode = null,
+    selected: ?GameWorld.EntityHandle = null,
 
     entity_view_type: EntityViewType = .hierarchy,
 
-    pub fn draw(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe) void {
+    pub fn draw(self: *SceneWindow, tpa: std.mem.Allocator, world: *GameWorld) void {
         if (self.open) {
             const flags: i32 = imgui.c.ImGuiWindowFlags_MenuBar;
             if (imgui.begin(self.name, &self.open, flags)) {
                 if (imgui.beginMenuBar()) {
                     if (imgui.beginMenu("World")) {
-                        var iter = universe.worlds.iterator();
-                        var count: u32 = 0;
-                        while (iter.nextValue()) |world| {
-                            count += 1;
-                            const is_selected: bool = if (self.selected_world) |sw| world.*.handle.toU64() == sw.toU64() else false;
-                            if (imgui.radioButton(world.*.name.?, is_selected)) {
-                                self.selected_world = if (is_selected) null else world.*.handle;
-                            }
-                        }
-
-                        if (count == 0) {
-                            imgui.text("No Worlds");
-                        }
-
+                        _ = imgui.radioButton("GameWorld", true);
                         imgui.endMenu();
                     }
 
@@ -751,126 +641,53 @@ pub const SceneWindow = struct {
                     imgui.endMenuBar();
                 }
 
-                if (self.selected_world) |selected_world| {
-                    switch (self.entity_view_type) {
-                        .hierarchy => self.drawEntityHierarchy(tpa, universe, selected_world),
-                    }
+                switch (self.entity_view_type) {
+                    .hierarchy => self.drawEntityHierarchy(tpa, world),
                 }
 
                 imgui.end();
             }
         }
 
-        if (self.selected_world) |selected_world| {
-            if (self.selected) |selected| {
-                if (universe.entities.get(selected.entity)) |entity| {
-                    if (entity.world) |entity_world| {
-                        if (entity_world.toU64() != selected_world.toU64()) {
-                            self.selected = null;
-                        }
-                    } else {
-                        self.selected = null;
-                    }
+        if (self.selected) |selected| {
+            if (world.getEntity(selected) == null) {
+                self.selected = null;
+            }
+        }
+    }
+
+    fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, world: *const GameWorld) void {
+        for (world.entities.items) |entity| {
+            const is_selected: bool = if (self.selected) |selected| selected == entity.handle else false;
+
+            var name: [:0]const u8 = entity.name orelse std.fmt.allocPrintSentinel(tpa, "Unnamed Entity {}", .{entity.handle}, 0) catch "Unnamed Entity";
+
+            var flags: i32 = imgui.c.ImGuiTreeNodeFlags_OpenOnDoubleClick | imgui.c.ImGuiTreeNodeFlags_OpenOnArrow;
+
+            if (is_selected) {
+                flags |= imgui.c.ImGuiTreeNodeFlags_Selected;
+            }
+
+            if (true) {
+                flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
+            }
+
+            if (name.len == 0) {
+                name = " ";
+            }
+            const node_open = imgui.c.ImGui_TreeNodeEx(name, flags);
+
+            if (imgui.c.ImGui_IsItemClicked()) {
+                if (is_selected) {
+                    self.selected = null;
+                } else {
+                    self.selected = entity.handle;
                 }
             }
-        } else {
-            self.selected = null;
-        }
-    }
 
-    fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, selected_world: Universe.WorldHandle) void {
-        if (universe.worlds.get(selected_world)) |world| {
-            for (world.entities.slice()) |entity_handle| {
-                self.drawEntity(tpa, universe, entity_handle);
+            if (node_open) {
+                imgui.c.ImGui_TreePop();
             }
-        }
-    }
-
-    fn drawEntity(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, entity_handle: Universe.EntityHandle) void {
-        const entity = universe.entities.get(entity_handle) orelse return;
-
-        var is_selected: bool = false;
-        if (self.selected) |selected| {
-            if (selected.entity.toU64() == entity.handle.toU64()) {
-                is_selected = selected.node == null;
-            }
-        }
-        var flags: i32 = imgui.c.ImGuiTreeNodeFlags_OpenOnDoubleClick | imgui.c.ImGuiTreeNodeFlags_OpenOnArrow;
-
-        if (is_selected) {
-            flags |= imgui.c.ImGuiTreeNodeFlags_Selected;
-        }
-
-        if (entity.root_nodes.count() == 0) {
-            flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
-        }
-
-        var entity_name = entity.name.?;
-        if (entity_name.len == 0) {
-            entity_name = " ";
-        }
-        const node_open = imgui.c.ImGui_TreeNodeEx(entity_name, flags);
-
-        if (imgui.c.ImGui_IsItemClicked()) {
-            if (is_selected) {
-                self.selected = null;
-            } else {
-                self.selected = .{ .entity = entity_handle };
-            }
-        }
-
-        if (node_open) {
-            for (entity.root_nodes.slice()) |child| {
-                self.drawEntityNode(tpa, universe, entity, child);
-            }
-            imgui.c.ImGui_TreePop();
-        }
-    }
-
-    fn drawEntityNode(self: *SceneWindow, tpa: std.mem.Allocator, universe: *const Universe, entity: *Universe.Entity, node_handle: Universe.NodeHandle) void {
-        var is_selected: bool = false;
-        if (self.selected) |selected| {
-            if (selected.entity.toU64() == entity.handle.toU64()) {
-                if (selected.node) |selected_node| {
-                    is_selected = selected_node.toU64() == node_handle.toU64();
-                }
-            }
-        }
-
-        var flags: i32 = imgui.c.ImGuiTreeNodeFlags_OpenOnDoubleClick | imgui.c.ImGuiTreeNodeFlags_OpenOnArrow;
-
-        if (is_selected) {
-            flags |= imgui.c.ImGuiTreeNodeFlags_Selected;
-        }
-
-        const node = entity.nodes.get(node_handle).?;
-
-        if (node.children.count() == 0) {
-            flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
-        }
-
-        var node_name = node.name.?;
-        if (node_name.len == 0) {
-            node_name = " ";
-        }
-        const node_open = imgui.c.ImGui_TreeNodeEx(node_name, flags);
-
-        if (imgui.c.ImGui_IsItemClicked()) {
-            if (is_selected) {
-                self.selected = null;
-            } else {
-                self.selected = .{
-                    .entity = entity.handle,
-                    .node = node_handle,
-                };
-            }
-        }
-
-        if (node_open) {
-            for (node.children.slice()) |child| {
-                self.drawEntityNode(tpa, universe, entity, child);
-            }
-            imgui.c.ImGui_TreePop();
         }
     }
 };
@@ -882,65 +699,106 @@ pub const PropertiesWindow = struct {
     pub fn draw(
         self: *PropertiesWindow,
         tpa: std.mem.Allocator,
-        universe: *Universe,
-        selected_opt: ?SelectedEntityNode,
+        world: *GameWorld,
+        selected_opt: ?GameWorld.EntityHandle,
     ) void {
         _ = tpa; // autofix
         if (self.open) {
             const flags: i32 = 0;
             if (imgui.begin(self.name, &self.open, flags)) {
                 if (selected_opt) |selected| {
-                    if (selected.node == null) {
-                        if (universe.entities.get(selected.entity)) |entity| {
-                            imgui.c.ImGui_SeparatorText("Entity");
+                    if (world.getEntity(selected)) |entity| {
+                        imgui.c.ImGui_SeparatorText("Entity");
 
-                            //Name Field
-                            {
-                                var name_buffer: [256]u8 = @splat(0);
-                                if (entity.name) |name| {
-                                    @memcpy(name_buffer[0..name.len], name);
-                                }
-
-                                if (imgui.inputText("Name", &name_buffer)) {
-                                    const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
-                                    const new_name = name_buffer[0..index_of];
-                                    universe.gpa.free(entity.name orelse &.{});
-                                    entity.name = universe.gpa.dupeZ(u8, new_name) catch @panic("Failed to update entity name");
-                                }
+                        //Name Field
+                        {
+                            var name_buffer: [256]u8 = @splat(0);
+                            if (entity.name) |name| {
+                                @memcpy(name_buffer[0..name.len], name);
                             }
 
-                            //Transform
-                            {
-                                const header_open = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
-                                if (header_open) {
-                                    var position = zm.vecToArr3(entity.transform.position);
-                                    if (imgui.c.ImGui_InputFloat3("Position", &position)) {
-                                        entity.transform.position = zm.loadArr3(position);
-                                    }
-
-                                    var rotation = zm.quatToRollPitchYaw(entity.transform.rotation);
-                                    inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
-                                    if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
-                                        inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
-                                        // Broken :(
-                                        //entity.transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
-                                    }
-
-                                    var scale = zm.vecToArr3(entity.transform.scale);
-                                    if (imgui.c.ImGui_InputFloat3("Scale", &scale)) {
-                                        entity.transform.scale = zm.loadArr3(scale);
-                                    }
-                                }
-
-                                imgui.c.ImGui_SeparatorText("Components");
-
-                                if (imgui.c.ImGui_CollapsingHeader("Model Component", 0)) {
-                                    imgui.text("Still under construction 🚧");
-                                }
+                            if (imgui.inputText("Name", &name_buffer)) {
+                                const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
+                                const new_name = name_buffer[0..index_of];
+                                if (entity.name) |old| world.gpa.free(old);
+                                entity.name = world.gpa.dupeZ(u8, new_name) catch @panic("Failed to update entity name");
                             }
-                        } else {
-                            imgui.text("Invalid Entity Selected");
                         }
+
+                        //Transform
+                        {
+                            const header_open = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
+                            if (header_open) {
+                                var position = zm.vecToArr3(entity.transform.position);
+                                if (imgui.c.ImGui_InputFloat3("Position", &position)) {
+                                    entity.transform.position = zm.loadArr3(position);
+                                }
+
+                                var rotation = zm.quatToRollPitchYaw(entity.transform.rotation);
+                                inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
+                                if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
+                                    inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
+                                    // Broken :(
+                                    //entity.transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
+                                }
+
+                                var scale = zm.vecToArr3(entity.transform.scale);
+                                if (imgui.c.ImGui_InputFloat3("Scale", &scale)) {
+                                    entity.transform.scale = zm.loadArr3(scale);
+                                }
+                            }
+                        }
+
+                        imgui.c.ImGui_SeparatorText("Components");
+
+                        if (entity.components.static_mesh) |static_mesh| {
+                            _ = static_mesh; // autofix
+                            if (imgui.c.ImGui_CollapsingHeader("Model Component", 0)) {
+                                imgui.text("Still under construction 🚧");
+                            }
+                        }
+
+                        if (entity.components.camera) |*camera| {
+                            if (imgui.c.ImGui_CollapsingHeader("Camera Component", 0)) {
+                                switch (camera.*) {
+                                    .perspective => |*perspective| {
+                                        if (imgui.button("Flip Fov Axis")) {
+                                            const fake_aspect_ratio = 1.0;
+                                            perspective.fov = perspective.fov.flip(fake_aspect_ratio);
+                                        }
+                                        switch (perspective.fov) {
+                                            .x => |*v| {
+                                                const MIN = 30.0;
+                                                const MAX = 120.0;
+                                                _ = imgui.sliderFloat("Fov X", v, MIN, MAX);
+                                                v.* = std.math.clamp(v.*, MIN, MAX);
+                                            },
+                                            .y => |*v| {
+                                                const MIN = 10.0;
+                                                const MAX = 80.0;
+                                                _ = imgui.sliderFloat("Fov Y", v, MIN, MAX);
+                                                v.* = std.math.clamp(v.*, MIN, MAX);
+                                            },
+                                        }
+
+                                        _ = imgui.sliderFloat("Z Near", &perspective.near, 0.001, 1);
+                                        var infinite = perspective.far == null;
+                                        if (imgui.checkbox("Infinite Z Far", &infinite)) {
+                                            perspective.far = if (perspective.far == null) 100.0 else null;
+                                        }
+                                        if (perspective.far) |*far| {
+                                            _ = imgui.sliderFloat("Z Far", far, 100, 10000);
+                                        }
+                                    },
+                                    .orthographic => |*orthographic| {
+                                        _ = orthographic; // autofix
+                                        imgui.text("Not implemented for orthographic cameras yet");
+                                    },
+                                }
+                            }
+                        }
+                    } else {
+                        imgui.text("Invalid Entity Selected");
                     }
                 } else {
                     imgui.text("No Entity Selected");

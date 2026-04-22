@@ -7,7 +7,7 @@ const Transform = @import("transform.zig");
 
 const Self = @This();
 
-camera: Camera = .Default,
+camera: Camera = .default,
 transform: Transform = .{},
 
 linear_speed: zm.Vec = @splat(5),
@@ -16,25 +16,17 @@ angular_speed: zm.Vec = @splat(std.math.pi),
 linear_input: zm.Vec = @splat(0),
 angular_input: zm.Vec = @splat(0),
 
-//Gamepad
-gamepad: struct {
-    id: ?u32 = null,
-    left_stick: [2]f32 = @splat(0),
-    right_stick: [2]f32 = @splat(0),
-    shoulder: [2]bool = @splat(false),
-} = .{},
-
-pub fn update(self: *Self, delta_time: f32) void {
+pub fn update(self: *Self, delta_time: f32, gamepad: *const @import("Input.zig")) void {
     const linear_input: zm.Vec = .{
-        axisDeadzone(-self.gamepad.left_stick[0]),
-        buttonAxis(self.gamepad.shoulder),
-        axisDeadzone(-self.gamepad.left_stick[1]),
+        axisDeadzone(-gamepad.left_stick[0]),
+        buttonAxis(gamepad.shoulder),
+        axisDeadzone(-gamepad.left_stick[1]),
         0,
     };
 
     const angular_input: zm.Vec = .{
-        axisDeadzone(self.gamepad.right_stick[1]),
-        axisDeadzone(-self.gamepad.right_stick[0]),
+        axisDeadzone(gamepad.right_stick[1]),
+        axisDeadzone(-gamepad.right_stick[0]),
         0,
         0,
     };
