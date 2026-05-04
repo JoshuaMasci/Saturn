@@ -17,6 +17,10 @@ linear_input: zm.Vec = @splat(0),
 angular_input: zm.Vec = @splat(0),
 
 pub fn update(self: *Self, delta_time: f32, gamepad: *const @import("Input.zig")) void {
+    applyMovement(delta_time, &self.transform, gamepad, self.linear_speed, self.angular_speed);
+}
+
+pub fn applyMovement(delta_time: f32, transform: *Transform, gamepad: *const @import("Input.zig"), linear_speed: zm.Vec, angular_speed: zm.Vec) void {
     const linear_input: zm.Vec = .{
         axisDeadzone(-gamepad.left_stick[0]),
         buttonAxis(gamepad.shoulder),
@@ -31,11 +35,12 @@ pub fn update(self: *Self, delta_time: f32, gamepad: *const @import("Input.zig")
         0,
     };
 
-    self.transform.position += zm.rotate(self.transform.rotation, linear_input * self.linear_speed * zm.f32x4s(delta_time));
+    transform.position += zm.rotate(transform.rotation, linear_input * linear_speed * zm.f32x4s(delta_time));
 
-    const angular_rotation = angular_input * self.angular_speed * zm.f32x4s(delta_time);
+    const angular_rotation = angular_input * angular_speed * zm.f32x4s(delta_time);
 
-    const forward = self.transform.getForward();
+    const forward = transform.getForward();
+
     const x = forward[0];
     const y = forward[1];
     const z = forward[2];
@@ -45,14 +50,14 @@ pub fn update(self: *Self, delta_time: f32, gamepad: *const @import("Input.zig")
     const yaw = std.math.atan2(x, z);
     var pitch_yaw = zm.loadArr2(.{ pitch, yaw }) + angular_rotation;
 
-    // Clamp pitch and keep roation between 0->360 degrees
+    // Clamp pitch and keep rotation between 0->360 degrees
     const pi_2 = std.math.pi * 2.0;
     const max_angle: f32 = std.math.degreesToRadians(89.9);
     pitch_yaw = zm.loadArr2(.{ std.math.clamp(pitch_yaw[0], -max_angle, max_angle), @mod(pitch_yaw[1], pi_2) });
 
     const pitch_quat = zm.quatFromAxisAngle(.{ 1, 0, 0, 0 }, pitch_yaw[0]);
     const yaw_quat = zm.quatFromAxisAngle(.{ 0, 1, 0, 0 }, pitch_yaw[1]);
-    self.transform.rotation = zm.normalize4(zm.qmul(pitch_quat, yaw_quat));
+    transform.rotation = zm.normalize4(zm.qmul(pitch_quat, yaw_quat));
 }
 
 fn axisDeadzone(value: f32) f32 {

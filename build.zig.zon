@@ -35,6 +35,10 @@
             .url = "git+https://github.com/natecraddock/ziglua#31d1abd4c27a31d557d6feadb4520d661122afc6",
             .hash = "zlua-0.1.0-hGRpC0Q1BQAzutKvY4BcmRioElQE5bU2VUSt9boEq2pD",
         },
+        .zjolt = .{
+            .url = "git+https://github.com/JoshuaMasci/zjolt.git#06adb1b92191264698896e9228af606da9a61ce6",
+            .hash = "zjolt-0.0.1-1oaAX3q9CwKQC4BBsw97_61swum5D8tyE4zxmhlUK_Fz",
+        },
 
         //Assets
         .zgltf = .{

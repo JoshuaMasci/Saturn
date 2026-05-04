@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const zm = @import("zmath");
+const zjolt = @import("zjolt");
 
 const AssetRegistry = @import("asset/registry.zig");
 const SceneAsset = @import("asset/scene.zig");
@@ -25,10 +26,15 @@ pub fn main() !void {
         std.log.err("DebugAllocator has a memory leak!", .{});
     };
 
-    const allocator = switch (builtin.mode) {
-        .ReleaseFast, .ReleaseSmall => std.heap.smp_allocator,
-        .Debug, .ReleaseSafe => debug_allocator.allocator(),
-    };
+    const allocator = debug_allocator.allocator();
+    // const allocator = switch (builtin.mode) {
+    //      .ReleaseFast, .ReleaseSmall => std.heap.smp_allocator,
+    //      .Debug, .ReleaseSafe => debug_allocator.allocator(),
+    //  };
+
+    const @"10MB": usize = 1024 * 1024 * 10;
+    zjolt.init(allocator, @"10MB", 1);
+    defer zjolt.deinit();
 
     var app: App = try .init(allocator, .{
         .window_size = .maximized,
@@ -53,11 +59,27 @@ pub fn main() !void {
         const cube_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/cube.asset"));
         const sphere_mesh_handle: AssetPool.MeshAssetHandle = try app.asset_pool.getMeshAsset(.fromRepoPath("engine", "shapes/sphere.asset"));
         const transparent_material_handle: AssetPool.MaterialAssetHandle = try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/transparent.asset"));
+        const opaque_material_handles: []const AssetPool.MaterialAssetHandle = &.{
+            try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/olive.asset")),
+            try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/purple.asset")),
+            try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/teal.asset")),
+        };
+
         app.asset_pool.markAllForLoad();
+
+        for (0..3) |i| {
+            const float_i: f32 = @floatFromInt(i);
+            try app.createDynamicCube(
+                i,
+                .{ .position = .{ 0.0, 3.0 + float_i, 0.0, 0.0 }, .scale = @splat(0.25) },
+                cube_mesh_handle,
+                opaque_material_handles[@mod(i, opaque_material_handles.len)],
+            );
+        }
 
         const sphere_entity_handle = try app.game_world.createEntity("Sphere_Entity", .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } });
         const sphere_entity = app.game_world.getEntity(sphere_entity_handle).?;
-        sphere_entity.components.static_mesh = try app.game_world.components.scene.?.createStaticMeshInstance(
+        sphere_entity.components.static_mesh = try app.game_world.components.rendering.?.createStaticMeshInstance(
             true,
             sphere_entity.transform,
             sphere_mesh_handle,
@@ -66,21 +88,33 @@ pub fn main() !void {
 
         const cube_entity_handle = try app.game_world.createEntity("Cube_Entity", .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } });
         const cube_entity = app.game_world.getEntity(cube_entity_handle).?;
-        cube_entity.components.static_mesh = try app.game_world.components.scene.?.createStaticMeshInstance(
+        cube_entity.components.static_mesh = try app.game_world.components.rendering.?.createStaticMeshInstance(
             true,
             cube_entity.transform,
             cube_mesh_handle,
             &.{transparent_material_handle},
         );
 
+        const PLAYER_LAYERS: GameWorld.ObjectLayers = .{ .static = true, .dynamic = true, .player = true };
+        const player_shape = zjolt.Shape.initSphere(0.25, 1, 13);
+
         const player_handle = try app.game_world.createEntity("Player", .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } });
         const player_entity = app.game_world.getEntity(player_handle).?;
         player_entity.components.camera = .default;
+        player_entity.components.rigid_body = app.game_world.components.physics.?.createAndAddBody(&.{
+            .shape = player_shape,
+            .position = zm.vecToArr3(player_entity.transform.position),
+            .object_layer = PLAYER_LAYERS.toU16(),
+            .motion_type = .dynamic,
+            .allowed_dofs = .{ .translation_x = true, .translation_y = true, .translation_z = true },
+            .allow_sleep = true,
+            .gravity_factor = 0.0,
+        }, .activate);
         app.player_entity = player_handle;
     }
 
-    //try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json");
-    try app.loadScene("assets/game/Bistro/scene.json");
+    try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json");
+    //try app.loadScene("assets/game/Bistro/scene.json");
 
     var last_frame_time_ns = std.time.nanoTimestamp();
     while (app.isRunning()) {
@@ -219,7 +253,14 @@ const App = struct {
 
         var game_world: GameWorld = .init(allocator);
         errdefer game_world.deinit();
-        game_world.components.scene = try .init(allocator, gpu_device, asset_pool, 4096);
+        game_world.components.rendering = try .init(allocator, gpu_device, asset_pool, 4096);
+        game_world.components.physics = .init(.{
+            .max_bodies = 1024,
+            .num_body_mutexes = 0,
+            .max_body_pairs = 1024,
+            .max_contact_constraints = 1024,
+            .gravity = zjolt.DefaultGravity,
+        });
 
         return .{
             .allocator = allocator,
@@ -294,7 +335,19 @@ const App = struct {
         });
 
         if (self.game_world.getEntity(self.player_entity orelse 0)) |player_entity| {
-            _ = player_entity; // autofix
+            const linear_speed: zm.Vec = @splat(5);
+            const angular_speed: zm.Vec = @splat(std.math.pi);
+            const input = self.gamepad.getInput();
+
+            if (player_entity.components.rigid_body) |rigid_body| {
+                const linear_velocity = zm.rotate(player_entity.transform.rotation, zm.loadArr3(input.linear) * linear_speed);
+                self.game_world.components.physics.?.setBodyLinearVelocity(rigid_body, zm.vecToArr3(linear_velocity));
+            }
+
+            //Hijack the movement code from the free-camera for now
+            const prev_postion = player_entity.transform.position;
+            DebugCamera.applyMovement(delta_time, &player_entity.transform, &self.gamepad, linear_speed, angular_speed);
+            player_entity.transform.position = prev_postion; //Reset transform since it will be handled by velocity
         } else {
             self.free_camera.update(delta_time, &self.gamepad);
         }
@@ -350,10 +403,11 @@ const App = struct {
             self.platform.endImgui();
         }
 
+        // Game Code Update
         self.game_world.update(delta_time);
 
         try self.asset_pool.addTransfers(&self.transfer_queue);
-        if (self.game_world.components.scene) |*scene| {
+        if (self.game_world.components.rendering) |*scene| {
             try scene.addTransfers(&self.transfer_queue);
         }
 
@@ -376,7 +430,7 @@ const App = struct {
                 }
             }
 
-            const scene = &self.game_world.components.scene.?;
+            const scene = &self.game_world.components.rendering.?;
 
             try self.scene_renderer.addPasses(
                 tpa,
@@ -413,7 +467,7 @@ const App = struct {
         const scene = scene_json.value;
 
         for (scene.root_nodes) |root_node| {
-            try self.loadNode(&scene, root_node);
+            try self.loadNode(tpa, &scene, root_node);
         }
 
         self.asset_pool.markAllForLoad();
@@ -421,6 +475,7 @@ const App = struct {
 
     fn loadNode(
         self: *Self,
+        tpa: std.mem.Allocator,
         scene: *const SceneAsset,
         node_index: usize,
     ) !void {
@@ -440,12 +495,29 @@ const App = struct {
                 material_handle.* = try self.asset_pool.getMaterialAsset(material);
             }
 
-            game_entity.components.static_mesh = try self.game_world.components.scene.?.createStaticMeshInstance(
+            game_entity.components.static_mesh = try self.game_world.components.rendering.?.createStaticMeshInstance(
                 true,
                 global_transform,
                 mesh_handle,
                 material_handles,
             );
+
+            if (self.game_world.components.physics) |*world| {
+                const LEVEL_LAYERS: GameWorld.ObjectLayers = .{ .static = true };
+
+                const mesh_shape = try self.createMeshShape(tpa, mesh_handle, global_transform.scale);
+                //defer mesh_shape.deinit(); //Internally ref counted, can free here
+
+                const body_settings: zjolt.BodySettings = .{
+                    .shape = mesh_shape,
+                    .allow_sleep = true,
+                    .position = zm.vecToArr3(global_transform.position),
+                    .rotation = zm.vecToArr4(zm.normalize4(global_transform.rotation)), //TODO: correct quat order?
+                    .motion_type = .static,
+                    .object_layer = LEVEL_LAYERS.toU16(),
+                };
+                game_entity.components.rigid_body = world.createAndAddBody(&body_settings, .activate);
+            }
         }
 
         if (scene_node.camera) |camera| {
@@ -462,7 +534,76 @@ const App = struct {
         }
 
         for (scene_node.children) |child| {
-            try self.loadNode(scene, child);
+            try self.loadNode(tpa, scene, child);
+        }
+    }
+
+    fn createMeshShape(self: *const Self, gpa: std.mem.Allocator, mesh_asset: AssetPool.MeshAssetHandle, scale: zm.Vec) !zjolt.Shape {
+        const cpu_mesh = self.asset_pool.mesh_assets.get(mesh_asset).?.cpu.?;
+        const positions = try gpa.alloc([3]f32, cpu_mesh.vertices.len);
+        defer gpa.free(positions);
+
+        for (positions, cpu_mesh.vertices) |*pos, vert| {
+            pos.* = zm.vecToArr3(zm.loadArr3(vert.position) * scale);
+        }
+
+        if (cpu_mesh.primitives.len == 1) {
+            return zjolt.Shape.initMesh(positions, cpu_mesh.indices, 0);
+        }
+
+        const sub_shapes = try gpa.alloc(zjolt.SubShapeSettings, cpu_mesh.primitives.len);
+        defer {
+            for (sub_shapes) |sub_shape| sub_shape.shape.deinit();
+            gpa.free(sub_shapes);
+        }
+
+        for (sub_shapes, cpu_mesh.primitives, 0..) |*sub_shape, primitive, i| {
+            sub_shape.* = .{
+                .shape = zjolt.Shape.initMesh(
+                    positions[primitive.vertex_offset..(primitive.vertex_offset + primitive.vertex_count)],
+                    cpu_mesh.indices[primitive.index_offset..(primitive.index_offset + primitive.index_count)],
+                    0,
+                ),
+                .position = .{ 0, 0, 0 },
+                .rotation = .{ 0, 0, 0, 1 },
+                .user_data = i,
+            };
+        }
+
+        return zjolt.Shape.initCompound(sub_shapes, 0);
+    }
+
+    fn createDynamicCube(self: *Self, i: usize, transform: Transform, mesh: AssetPool.MeshAssetHandle, material: AssetPool.MaterialAssetHandle) !void {
+        const name = try std.fmt.allocPrint(self.allocator, "cube_{}", .{i});
+        defer self.allocator.free(name);
+
+        const game_entity_handle = try self.game_world.createEntity(name, transform);
+        const game_entity = self.game_world.getEntity(game_entity_handle).?;
+
+        if (self.game_world.components.rendering) |*rendering| {
+            game_entity.components.static_mesh = try rendering.createStaticMeshInstance(
+                true,
+                transform,
+                mesh,
+                &.{material},
+            );
+        }
+
+        if (self.game_world.components.physics) |*physics| {
+            const OBJECT_LAYERS: GameWorld.ObjectLayers = .{ .static = true, .dynamic = true };
+
+            const cube_shape = zjolt.Shape.initBox(zm.vecToArr3(transform.scale), 1.0, 0);
+            defer cube_shape.deinit(); //Internally ref counted, can free here
+
+            const body_settings: zjolt.BodySettings = .{
+                .shape = cube_shape,
+                .allow_sleep = false,
+                .position = zm.vecToArr3(transform.position),
+                .rotation = zm.vecToArr4(zm.normalize4(transform.rotation)), //TODO: correct quat order?
+                .motion_type = .dynamic,
+                .object_layer = OBJECT_LAYERS.toU16(),
+            };
+            game_entity.components.rigid_body = physics.createAndAddBody(&body_settings, .activate);
         }
     }
 };

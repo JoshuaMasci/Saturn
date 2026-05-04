@@ -2,9 +2,26 @@ const std = @import("std");
 
 const zm = @import("zmath");
 
+const zjolt = @import("zjolt");
+
 const Transform = @import("transform.zig");
 const Camera = @import("rendering/camera.zig").Camera;
 const RenderScene = @import("rendering/scene.zig");
+
+pub const ObjectLayers = packed struct(u16) {
+    static: bool = false,
+    dynamic: bool = false,
+    player: bool = false,
+    _pad0: u13 = 0,
+
+    pub fn toU16(self: ObjectLayers) u16 {
+        return @bitCast(self);
+    }
+
+    pub fn fromU16(value: u16) ObjectLayers {
+        return @bitCast(value);
+    }
+};
 
 pub const Entity = struct {
     handle: EntityHandle,
@@ -14,6 +31,7 @@ pub const Entity = struct {
 
     components: struct {
         static_mesh: ?RenderScene.StaticMeshInstanceHandle = null,
+        rigid_body: ?zjolt.BodyID = null,
         camera: ?Camera = null,
     } = .{},
 };
@@ -27,7 +45,8 @@ next_handle: EntityHandle = 1,
 entities: std.ArrayList(Entity) = .empty,
 
 components: struct {
-    scene: ?RenderScene = null,
+    rendering: ?RenderScene = null,
+    physics: ?zjolt.World = null,
 } = .{},
 
 pub fn init(gpa: std.mem.Allocator) Self {
@@ -43,15 +62,38 @@ pub fn deinit(self: *Self) void {
 
     self.entities.deinit(self.gpa);
 
-    if (self.components.scene) |*scene| scene.deinit();
+    if (self.components.rendering) |*scene| scene.deinit();
+    if (self.components.physics) |*world| world.deinit();
 }
 
 pub fn update(self: *Self, dt: f32) void {
-    _ = dt; // autofix
-    for (self.entities.items) |*entity| {
-        if (entity.components.static_mesh) |static_mesh| {
-            if (self.components.scene) |*scene| {
+    if (self.components.rendering) |*scene| {
+        for (self.entities.items) |*entity| {
+            if (entity.components.static_mesh) |static_mesh| {
                 scene.updateStaticMeshInstance(static_mesh, true, entity.transform);
+            }
+        }
+    }
+
+    if (self.components.physics) |*physics| {
+        for (self.entities.items) |*entity| {
+            if (entity.components.rigid_body) |rigid_body| {
+                physics.setBodyPositionAndRotationWhenChanged(rigid_body, &.{
+                    .position = zm.vecToArr3(entity.transform.position),
+                    .rotation = zm.vecToArr4(entity.transform.rotation),
+                }, .dont_activate);
+            }
+        }
+
+        physics.update(dt, 1) catch |err| std.log.err("Failed to update physics world {}", .{err});
+
+        for (self.entities.items) |*entity| {
+            if (entity.components.rigid_body) |rigid_body| {
+                if (physics.getBodyMotionType(rigid_body) == .dynamic) {
+                    const rigid_body_transform = physics.getBodyPositionAndRotation(rigid_body);
+                    entity.transform.position = zm.loadArr3(rigid_body_transform.position);
+                    entity.transform.rotation = zm.loadArr4(rigid_body_transform.rotation);
+                }
             }
         }
     }
@@ -86,9 +128,15 @@ pub fn removeEntity(self: *Self, handle: EntityHandle) void {
     if (entity.name) |name| self.gpa.free(name);
     if (entity.components.static_mesh) |static_mesh| {
         _ = static_mesh; // autofix
-        if (self.components.scene) |*scene| {
+        if (self.components.rendering) |*scene| {
             _ = scene; // autofix
             //scene.destroyStaticMesh(static_mesh);
+        }
+    }
+
+    if (entity.components.rigid_body) |body_id| {
+        if (self.components.physics) |*physics| {
+            physics.destroyBody(body_id);
         }
     }
 

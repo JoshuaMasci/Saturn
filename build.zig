@@ -193,6 +193,10 @@ fn buildMain(
     const zmath = b.dependency("zmath", .{});
     exe_mod.addImport("zmath", zmath.module("root"));
 
+    // zjolt
+    const zjolt = b.dependency("zjolt", .{ .target = target, .optimize = optimize });
+    exe_mod.addImport("zjolt", zjolt.module("zjolt"));
+
     const exe = b.addExecutable(.{
         .name = "saturn",
         .root_module = exe_mod,
