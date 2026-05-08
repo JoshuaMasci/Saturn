@@ -36,11 +36,30 @@ pub fn main() !void {
     zjolt.init(allocator, @"10MB", 1);
     defer zjolt.deinit();
 
-    var app: App = try .init(allocator, .{
-        .window_size = .maximized,
+    var config: App.Config = .{
+        .window_size = .{ .windowed = .{ 1920, 1080 } },
         .vsync = false,
         .power_level = .prefer_high_power,
-    });
+    };
+
+    //Super basic argument parsing
+    var args = std.process.args();
+    _ = args.next(); //Skip process
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--fullscreen")) {
+            config.window_size = .fullscreen;
+        } else if (std.mem.eql(u8, arg, "--maximized")) {
+            config.window_size = .maximized;
+        } else if (std.mem.eql(u8, arg, "--low-power")) {
+            config.power_level = .prefer_low_power;
+        } else if (std.mem.eql(u8, arg, "--vsync")) {
+            config.vsync = true;
+        } else {
+            std.log.warn("Unknown argument: {s}", .{arg});
+        }
+    }
+
+    var app: App = try .init(allocator, config);
     defer app.deinit();
 
     try app.platform.initImgui(app.gpu_device, app.window);
@@ -67,53 +86,66 @@ pub fn main() !void {
 
         app.asset_pool.markAllForLoad();
 
+        const game_world = try app.createWorld("game_world", zjolt.DefaultGravity);
+        const exterior_world = try app.createWorld("exterior_world", @splat(0.0));
+        _ = exterior_world; // autofix
+        const interior_world = try app.createWorld("interior_world", zjolt.DefaultGravity);
+        _ = interior_world; // autofix
+
         for (0..3) |i| {
             const float_i: f32 = @floatFromInt(i);
             try app.createDynamicCube(
                 i,
+                game_world,
                 .{ .position = .{ 0.0, 3.0 + float_i, 0.0, 0.0 }, .scale = @splat(0.25) },
                 cube_mesh_handle,
                 opaque_material_handles[@mod(i, opaque_material_handles.len)],
             );
         }
 
-        const sphere_entity_handle = try app.game_world.createEntity("Sphere_Entity", .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } });
-        const sphere_entity = app.game_world.getEntity(sphere_entity_handle).?;
-        sphere_entity.components.static_mesh = try app.game_world.components.rendering.?.createStaticMeshInstance(
-            true,
-            sphere_entity.transform,
-            sphere_mesh_handle,
-            &.{transparent_material_handle},
-        );
+        {
+            const world = &app.worlds.items[game_world];
 
-        const cube_entity_handle = try app.game_world.createEntity("Cube_Entity", .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } });
-        const cube_entity = app.game_world.getEntity(cube_entity_handle).?;
-        cube_entity.components.static_mesh = try app.game_world.components.rendering.?.createStaticMeshInstance(
-            true,
-            cube_entity.transform,
-            cube_mesh_handle,
-            &.{transparent_material_handle},
-        );
+            const sphere_entity_handle = try world.createEntity("Sphere_Entity", .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } });
+            const sphere_entity = world.getEntity(sphere_entity_handle).?;
+            sphere_entity.components.static_mesh = try world.components.rendering.?.createStaticMeshInstance(
+                true,
+                sphere_entity.transform,
+                sphere_mesh_handle,
+                &.{transparent_material_handle},
+            );
 
-        const PLAYER_LAYERS: GameWorld.ObjectLayers = .{ .static = true, .dynamic = true, .player = true };
-        const player_shape = zjolt.Shape.initSphere(0.25, 1, 13);
+            const cube_entity_handle = try world.createEntity("Cube_Entity", .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } });
+            const cube_entity = world.getEntity(cube_entity_handle).?;
+            cube_entity.components.static_mesh = try world.components.rendering.?.createStaticMeshInstance(
+                true,
+                cube_entity.transform,
+                cube_mesh_handle,
+                &.{transparent_material_handle},
+            );
 
-        const player_handle = try app.game_world.createEntity("Player", .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } });
-        const player_entity = app.game_world.getEntity(player_handle).?;
-        player_entity.components.camera = .default;
-        player_entity.components.rigid_body = app.game_world.components.physics.?.createAndAddBody(&.{
-            .shape = player_shape,
-            .position = zm.vecToArr3(player_entity.transform.position),
-            .object_layer = PLAYER_LAYERS.toU16(),
-            .motion_type = .dynamic,
-            .allowed_dofs = .{ .translation_x = true, .translation_y = true, .translation_z = true },
-            .allow_sleep = true,
-            .gravity_factor = 0.0,
-        }, .activate);
-        app.player_entity = player_handle;
+            const PLAYER_LAYERS: GameWorld.ObjectLayers = .{ .static = true, .dynamic = true, .player = true };
+            const player_shape = zjolt.Shape.initSphere(0.25, 1, 13);
+
+            const player_handle = try world.createEntity("Player", .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } });
+            const player_entity = world.getEntity(player_handle).?;
+            player_entity.components.camera = .default;
+            player_entity.components.rigid_body = world.components.physics.?.createAndAddBody(&.{
+                .shape = player_shape,
+                .position = zm.vecToArr3(player_entity.transform.position),
+                .object_layer = PLAYER_LAYERS.toU16(),
+                .motion_type = .dynamic,
+                .allowed_dofs = .{ .translation_x = true, .translation_y = true, .translation_z = true },
+                .allow_sleep = true,
+                .gravity_factor = 0.0,
+            }, .activate);
+            app.player_entity = .{ .world = game_world, .handle = player_handle };
+        }
+
+        app.editor_selected = .{ .world = game_world };
     }
 
-    try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json");
+    //try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json");
     //try app.loadScene("assets/game/Bistro/scene.json");
 
     var last_frame_time_ns = std.time.nanoTimestamp();
@@ -152,9 +184,14 @@ const App = struct {
     scene_renderer: SceneRenderer,
 
     free_camera: DebugCamera = .{},
-    game_world: GameWorld,
 
-    player_entity: ?GameWorld.EntityHandle = null,
+    worlds: std.ArrayList(GameWorld) = .empty,
+
+    player_entity: ?struct {
+        world: usize,
+        handle: GameWorld.EntityHandle,
+    } = null,
+
     gamepad: @import("Input.zig") = .{},
 
     temp_allocator: std.heap.ArenaAllocator,
@@ -164,6 +201,8 @@ const App = struct {
     average_dt: f32 = 0.0,
 
     //Editor Windows
+    editor_selected: SelectedEntityNode = .{},
+
     perf_win: PerformanceWindow = .{},
     scene_win: SceneWindow = .{},
     prop_win: PropertiesWindow = .{},
@@ -192,7 +231,7 @@ const App = struct {
         const window_caps = platform.getWindowCapabilities(allocator, info.physical_device_index, window).?; // orelse return error.WindowNotSupported;
         defer window_caps.deinit(allocator);
 
-        //Tries to select the prefered settings first, fallbacks to
+        //Tries to select the preferred settings first, fallbacks to
         const vsync = config.vsync;
         const usage: saturn.TextureUsage = .{ .attachment = true, .transfer_dst = true };
 
@@ -214,6 +253,7 @@ const App = struct {
         // Wayland won't display a window until it has been drawn to
         // So just draw a black window until everything is loaded
         // Could be an engine splash screen in the future
+        // Hopefully this avoids the flashbang white screen that some games do
         {
             var render_graph: saturn.RenderGraph = .init(allocator);
             defer render_graph.deinit();
@@ -251,17 +291,6 @@ const App = struct {
         var scene_renderer: SceneRenderer = try .init(allocator, gpu_device, asset_registry, RenderTarget);
         errdefer scene_renderer.deinit();
 
-        var game_world: GameWorld = .init(allocator);
-        errdefer game_world.deinit();
-        game_world.components.rendering = try .init(allocator, gpu_device, asset_pool, 4096);
-        game_world.components.physics = .init(.{
-            .max_bodies = 1024,
-            .num_body_mutexes = 0,
-            .max_body_pairs = 1024,
-            .max_contact_constraints = 1024,
-            .gravity = zjolt.DefaultGravity,
-        });
-
         return .{
             .allocator = allocator,
             .platform = platform,
@@ -275,8 +304,6 @@ const App = struct {
 
             .scene_renderer = scene_renderer,
 
-            .game_world = game_world,
-
             .temp_allocator = .init(allocator),
         };
     }
@@ -286,7 +313,8 @@ const App = struct {
 
         self.temp_allocator.deinit();
 
-        self.game_world.deinit();
+        for (self.worlds.items) |*world| world.deinit();
+        self.worlds.deinit(self.allocator);
 
         self.scene_renderer.deinit();
 
@@ -301,6 +329,21 @@ const App = struct {
         self.platform.destroyDevice(self.gpu_device);
         self.platform.destroyWindow(self.window);
         saturn.deinit();
+    }
+
+    pub fn createWorld(self: *Self, name: []const u8, gravity: zjolt.Vec3) !usize {
+        var world: GameWorld = try .init(self.allocator, name);
+        errdefer world.deinit();
+        world.components.rendering = try .init(self.allocator, self.gpu_device, self.asset_pool, 4096);
+        world.components.physics = .init(.{
+            .max_bodies = 1024,
+            .num_body_mutexes = 0,
+            .max_body_pairs = 1024,
+            .max_contact_constraints = 1024,
+            .gravity = gravity,
+        });
+        try self.worlds.append(self.allocator, world);
+        return self.worlds.items.len - 1;
     }
 
     pub fn isRunning(self: Self) bool {
@@ -334,22 +377,29 @@ const App = struct {
             .gamepad_axis = gamepadAxisCallback,
         });
 
-        if (self.game_world.getEntity(self.player_entity orelse 0)) |player_entity| {
-            const linear_speed: zm.Vec = @splat(5);
-            const angular_speed: zm.Vec = @splat(std.math.pi);
-            const input = self.gamepad.getInput();
+        if (self.player_entity) |player| {
+            if (self.editor_selected.world) |world| {
+                if (world == player.world) {
+                    const game_world = &self.worlds.items[player.world];
+                    if (game_world.getEntity(player.handle)) |player_entity| {
+                        const linear_speed: zm.Vec = @splat(5);
+                        const angular_speed: zm.Vec = @splat(std.math.pi);
+                        const input = self.gamepad.getInput();
 
-            if (player_entity.components.rigid_body) |rigid_body| {
-                const linear_velocity = zm.rotate(player_entity.transform.rotation, zm.loadArr3(input.linear) * linear_speed);
-                self.game_world.components.physics.?.setBodyLinearVelocity(rigid_body, zm.vecToArr3(linear_velocity));
+                        if (player_entity.components.rigid_body) |rigid_body| {
+                            const linear_velocity = zm.rotate(player_entity.transform.rotation, zm.loadArr3(input.linear) * linear_speed);
+                            game_world.components.physics.?.setBodyLinearVelocity(rigid_body, zm.vecToArr3(linear_velocity));
+                        }
+
+                        //Hijack the movement code from the free-camera for now
+                        const prev_postion = player_entity.transform.position;
+                        DebugCamera.applyMovement(delta_time, &player_entity.transform, &self.gamepad, linear_speed, angular_speed);
+                        player_entity.transform.position = prev_postion; //Reset transform since it will be handled by velocity
+                    } else {
+                        self.free_camera.update(delta_time, &self.gamepad);
+                    }
+                }
             }
-
-            //Hijack the movement code from the free-camera for now
-            const prev_postion = player_entity.transform.position;
-            DebugCamera.applyMovement(delta_time, &player_entity.transform, &self.gamepad, linear_speed, angular_speed);
-            player_entity.transform.position = prev_postion; //Reset transform since it will be handled by velocity
-        } else {
-            self.free_camera.update(delta_time, &self.gamepad);
         }
 
         const IMGUI_ENABLED = true;
@@ -396,20 +446,22 @@ const App = struct {
             }
 
             self.perf_win.draw(tpa);
-            self.scene_win.draw(tpa, &self.game_world);
-            self.prop_win.draw(tpa, &self.game_world, self.scene_win.selected);
+            self.scene_win.draw(tpa, self.worlds.items, &self.editor_selected);
+            self.prop_win.draw(tpa, self.worlds.items, &self.editor_selected);
             self.demo_win.draw();
 
             self.platform.endImgui();
         }
 
         // Game Code Update
-        self.game_world.update(delta_time);
+        for (self.worlds.items) |*world| {
+            world.update(delta_time);
+            if (world.components.rendering) |*scene| {
+                try scene.addTransfers(&self.transfer_queue);
+            }
+        }
 
         try self.asset_pool.addTransfers(&self.transfer_queue);
-        if (self.game_world.components.rendering) |*scene| {
-            try scene.addTransfers(&self.transfer_queue);
-        }
 
         var render_graph: saturn.RenderGraph = .init(tpa);
         defer render_graph.deinit();
@@ -418,19 +470,24 @@ const App = struct {
 
         const swapchain_texture = try render_graph.acquireWindowTexture(self.window);
 
-        if (true) {
+        if (self.editor_selected.world) |world_index| {
+            const game_world = &self.worlds.items[world_index];
+
             var camera = self.free_camera.camera;
             var camera_transform = self.free_camera.transform;
 
-            if (self.player_entity) |player_handle| {
-                const player_entity = self.game_world.getEntity(player_handle).?;
-                camera_transform = player_entity.transform;
-                if (player_entity.components.camera) |player_camera| {
-                    camera = player_camera;
+            if (self.player_entity) |player| {
+                if (world_index == player.world) {
+                    if (game_world.getEntity(player.handle)) |player_entity| {
+                        camera_transform = player_entity.transform;
+                        if (player_entity.components.camera) |player_camera| {
+                            camera = player_camera;
+                        }
+                    }
                 }
             }
 
-            const scene = &self.game_world.components.rendering.?;
+            const scene = &game_world.components.rendering.?;
 
             try self.scene_renderer.addPasses(
                 tpa,
@@ -440,7 +497,17 @@ const App = struct {
                 &.{ .camera = camera, .transform = camera_transform },
                 self.asset_pool,
             );
-        } else {}
+        } else {
+            _ = try render_graph.addGraphicsPass(
+                "Empty Swapchain Pass",
+                .{ .color_attachments = &.{.{
+                    .texture = swapchain_texture,
+                    .clear = @splat(0.0),
+                }} },
+                null,
+                emptyGraphicsCallback,
+            );
+        }
 
         if (IMGUI_ENABLED) {
             const imgui_pass_handle = self.gpu_device.createImguiPass(swapchain_texture, &render_graph);
@@ -450,7 +517,7 @@ const App = struct {
         try self.gpu_device.submitRenderGraph(tpa, &render_graph);
     }
 
-    pub fn loadScene(self: *Self, scene_filepath: []const u8) !void {
+    pub fn loadScene(self: *Self, world_index: usize, scene_filepath: []const u8) !void {
         const tpa = self.temp_allocator.allocator();
 
         var scene_json: std.json.Parsed(SceneAsset) = undefined;
@@ -467,7 +534,7 @@ const App = struct {
         const scene = scene_json.value;
 
         for (scene.root_nodes) |root_node| {
-            try self.loadNode(tpa, &scene, root_node);
+            try self.loadNode(tpa, world_index, &scene, root_node);
         }
 
         self.asset_pool.markAllForLoad();
@@ -476,15 +543,18 @@ const App = struct {
     fn loadNode(
         self: *Self,
         tpa: std.mem.Allocator,
+        world_index: usize,
         scene: *const SceneAsset,
         node_index: usize,
     ) !void {
+        const game_world = &self.worlds.items[world_index];
+
         const scene_node = scene.nodes[node_index];
 
         const global_transform = scene.calcNodeGlobalTransform(node_index);
 
-        const game_entity_handle = try self.game_world.createEntity(scene_node.name, global_transform);
-        const game_entity = self.game_world.getEntity(game_entity_handle).?;
+        const game_entity_handle = try game_world.createEntity(scene_node.name, global_transform);
+        const game_entity = game_world.getEntity(game_entity_handle).?;
 
         if (scene_node.mesh) |mesh| {
             const material_handles = try self.allocator.alloc(AssetPool.MaterialAssetHandle, mesh.materials.len);
@@ -495,14 +565,14 @@ const App = struct {
                 material_handle.* = try self.asset_pool.getMaterialAsset(material);
             }
 
-            game_entity.components.static_mesh = try self.game_world.components.rendering.?.createStaticMeshInstance(
+            game_entity.components.static_mesh = try game_world.components.rendering.?.createStaticMeshInstance(
                 true,
                 global_transform,
                 mesh_handle,
                 material_handles,
             );
 
-            if (self.game_world.components.physics) |*world| {
+            if (game_world.components.physics) |*world| {
                 const LEVEL_LAYERS: GameWorld.ObjectLayers = .{ .static = true };
 
                 const mesh_shape = try self.createMeshShape(tpa, mesh_handle, global_transform.scale);
@@ -534,7 +604,7 @@ const App = struct {
         }
 
         for (scene_node.children) |child| {
-            try self.loadNode(tpa, scene, child);
+            try self.loadNode(tpa, world_index, scene, child);
         }
     }
 
@@ -573,14 +643,16 @@ const App = struct {
         return zjolt.Shape.initCompound(sub_shapes, 0);
     }
 
-    fn createDynamicCube(self: *Self, i: usize, transform: Transform, mesh: AssetPool.MeshAssetHandle, material: AssetPool.MaterialAssetHandle) !void {
+    fn createDynamicCube(self: *Self, i: usize, world_index: usize, transform: Transform, mesh: AssetPool.MeshAssetHandle, material: AssetPool.MaterialAssetHandle) !void {
         const name = try std.fmt.allocPrint(self.allocator, "cube_{}", .{i});
         defer self.allocator.free(name);
 
-        const game_entity_handle = try self.game_world.createEntity(name, transform);
-        const game_entity = self.game_world.getEntity(game_entity_handle).?;
+        const world = &self.worlds.items[world_index];
 
-        if (self.game_world.components.rendering) |*rendering| {
+        const game_entity_handle = try world.createEntity(name, transform);
+        const game_entity = world.getEntity(game_entity_handle).?;
+
+        if (world.components.rendering) |*rendering| {
             game_entity.components.static_mesh = try rendering.createStaticMeshInstance(
                 true,
                 transform,
@@ -589,7 +661,7 @@ const App = struct {
             );
         }
 
-        if (self.game_world.components.physics) |*physics| {
+        if (world.components.physics) |*physics| {
             const OBJECT_LAYERS: GameWorld.ObjectLayers = .{ .static = true, .dynamic = true };
 
             const cube_shape = zjolt.Shape.initBox(zm.vecToArr3(transform.scale), 1.0, 0);
@@ -694,7 +766,11 @@ fn sceneLoadCallback(userdata: ?*anyopaque, filelist: []const []const u8, filter
 
     const app: *App = @ptrCast(@alignCast(userdata.?));
     std.log.info("sceneLoad: {s}", .{filelist[0]});
-    app.loadScene(filelist[0]) catch |err| std.log.err("Failed to load scene {}", .{err});
+    if (app.editor_selected.world) |world_index| {
+        app.loadScene(world_index, filelist[0]) catch |err| std.log.err("Failed to load scene {}", .{err});
+    } else {
+        std.log.warn("Failed to load scene, no world selected", .{});
+    }
 }
 
 fn emptyGraphicsCallback(ctx: ?*anyopaque, cmd: saturn.GraphicsCommandEncoder, target_resolution: [2]u32) void {
@@ -733,7 +809,8 @@ pub const PerformanceWindow = struct {
 };
 
 const SelectedEntityNode = struct {
-    entity: GameWorld.EntityHandle,
+    world: ?usize = null,
+    entity: ?GameWorld.EntityHandle = null,
 };
 
 pub const SceneWindow = struct {
@@ -742,17 +819,24 @@ pub const SceneWindow = struct {
     name: [:0]const u8 = "Scene",
     open: bool = true,
 
-    selected: ?GameWorld.EntityHandle = null,
-
     entity_view_type: EntityViewType = .hierarchy,
 
-    pub fn draw(self: *SceneWindow, tpa: std.mem.Allocator, world: *GameWorld) void {
+    pub fn draw(self: *SceneWindow, tpa: std.mem.Allocator, worlds: []GameWorld, selected: *SelectedEntityNode) void {
         if (self.open) {
             const flags: i32 = imgui.c.ImGuiWindowFlags_MenuBar;
             if (imgui.begin(self.name, &self.open, flags)) {
                 if (imgui.beginMenuBar()) {
                     if (imgui.beginMenu("World")) {
-                        _ = imgui.radioButton("GameWorld", true);
+                        for (worlds, 0..) |*world, i| {
+                            const is_selected = if (selected.world) |w_index| w_index == i else false;
+                            if (imgui.radioButton(world.name, is_selected)) {
+                                if (is_selected) {
+                                    selected.* = .{};
+                                } else {
+                                    selected.* = .{ .world = i };
+                                }
+                            }
+                        }
                         imgui.endMenu();
                     }
 
@@ -782,24 +866,29 @@ pub const SceneWindow = struct {
                     imgui.endMenuBar();
                 }
 
-                switch (self.entity_view_type) {
-                    .hierarchy => self.drawEntityHierarchy(tpa, world),
+                if (selected.world) |w_index| {
+                    const world = &worlds[w_index];
+
+                    switch (self.entity_view_type) {
+                        .hierarchy => self.drawEntityHierarchy(tpa, world, selected),
+                    }
+
+                    if (selected.entity) |selected_entity| {
+                        if (world.getEntity(selected_entity) == null) {
+                            selected.entity = null;
+                        }
+                    }
                 }
 
                 imgui.end();
             }
         }
-
-        if (self.selected) |selected| {
-            if (world.getEntity(selected) == null) {
-                self.selected = null;
-            }
-        }
     }
 
-    fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, world: *const GameWorld) void {
+    fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, world: *const GameWorld, selected: *SelectedEntityNode) void {
+        _ = self; // autofix
         for (world.entities.items) |entity| {
-            const is_selected: bool = if (self.selected) |selected| selected == entity.handle else false;
+            const is_selected: bool = if (selected.entity) |selected_entity| selected_entity == entity.handle else false;
 
             var name: [:0]const u8 = entity.name orelse std.fmt.allocPrintSentinel(tpa, "Unnamed Entity {}", .{entity.handle}, 0) catch "Unnamed Entity";
 
@@ -820,9 +909,9 @@ pub const SceneWindow = struct {
 
             if (imgui.c.ImGui_IsItemClicked()) {
                 if (is_selected) {
-                    self.selected = null;
+                    selected.entity = null;
                 } else {
-                    self.selected = entity.handle;
+                    selected.entity = entity.handle;
                 }
             }
 
@@ -837,112 +926,112 @@ pub const PropertiesWindow = struct {
     name: [:0]const u8 = "Properties",
     open: bool = true,
 
-    pub fn draw(
-        self: *PropertiesWindow,
-        tpa: std.mem.Allocator,
-        world: *GameWorld,
-        selected_opt: ?GameWorld.EntityHandle,
-    ) void {
+    pub fn draw(self: *PropertiesWindow, tpa: std.mem.Allocator, worlds: []GameWorld, selected: *SelectedEntityNode) void {
         _ = tpa; // autofix
         if (self.open) {
             const flags: i32 = 0;
             if (imgui.begin(self.name, &self.open, flags)) {
-                if (selected_opt) |selected| {
-                    if (world.getEntity(selected)) |entity| {
-                        imgui.c.ImGui_SeparatorText("Entity");
+                if (selected.world) |w_index| {
+                    var world = &worlds[w_index];
+                    if (selected.entity) |entity_handle| {
+                        if (world.getEntity(entity_handle)) |entity| {
+                            imgui.c.ImGui_SeparatorText("Entity");
 
-                        //Name Field
-                        {
-                            var name_buffer: [256]u8 = @splat(0);
-                            if (entity.name) |name| {
-                                @memcpy(name_buffer[0..name.len], name);
-                            }
-
-                            if (imgui.inputText("Name", &name_buffer)) {
-                                const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
-                                const new_name = name_buffer[0..index_of];
-                                if (entity.name) |old| world.gpa.free(old);
-                                entity.name = world.gpa.dupeZ(u8, new_name) catch @panic("Failed to update entity name");
-                            }
-                        }
-
-                        //Transform
-                        {
-                            const header_open = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
-                            if (header_open) {
-                                var position = zm.vecToArr3(entity.transform.position);
-                                if (imgui.c.ImGui_InputFloat3("Position", &position)) {
-                                    entity.transform.position = zm.loadArr3(position);
+                            //Name Field
+                            {
+                                var name_buffer: [256]u8 = @splat(0);
+                                if (entity.name) |name| {
+                                    @memcpy(name_buffer[0..name.len], name);
                                 }
 
-                                var rotation = zm.quatToRollPitchYaw(entity.transform.rotation);
-                                inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
-                                if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
+                                if (imgui.inputText("Name", &name_buffer)) {
+                                    const index_of = std.mem.indexOfScalar(u8, &name_buffer, 0).?;
+                                    const new_name = name_buffer[0..index_of];
+                                    if (entity.name) |old| world.gpa.free(old);
+                                    entity.name = world.gpa.dupeZ(u8, new_name) catch @panic("Failed to update entity name");
+                                }
+                            }
+
+                            //Transform
+                            {
+                                const header_open = imgui.c.ImGui_CollapsingHeader("Local Transform", imgui.c.ImGuiTreeNodeFlags_DefaultOpen);
+                                if (header_open) {
+                                    var position = zm.vecToArr3(entity.transform.position);
+                                    if (imgui.c.ImGui_InputFloat3("Position", &position)) {
+                                        entity.transform.position = zm.loadArr3(position);
+                                    }
+
+                                    var rotation = zm.quatToRollPitchYaw(entity.transform.rotation);
                                     inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
-                                    // Broken :(
-                                    //entity.transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
-                                }
+                                    if (imgui.c.ImGui_InputFloat3("Rotation", &rotation)) {
+                                        inline for (&rotation) |*float| float.* = std.math.radiansToDegrees(float.*);
+                                        // Broken :(
+                                        //entity.transform.rotation = zm.quatFromRollPitchYaw(rotation[0], rotation[1], rotation[2]);
+                                    }
 
-                                var scale = zm.vecToArr3(entity.transform.scale);
-                                if (imgui.c.ImGui_InputFloat3("Scale", &scale)) {
-                                    entity.transform.scale = zm.loadArr3(scale);
-                                }
-                            }
-                        }
-
-                        imgui.c.ImGui_SeparatorText("Components");
-
-                        if (entity.components.static_mesh) |static_mesh| {
-                            _ = static_mesh; // autofix
-                            if (imgui.c.ImGui_CollapsingHeader("Model Component", 0)) {
-                                imgui.text("Still under construction 🚧");
-                            }
-                        }
-
-                        if (entity.components.camera) |*camera| {
-                            if (imgui.c.ImGui_CollapsingHeader("Camera Component", 0)) {
-                                switch (camera.*) {
-                                    .perspective => |*perspective| {
-                                        if (imgui.button("Flip Fov Axis")) {
-                                            const fake_aspect_ratio = 1.0;
-                                            perspective.fov = perspective.fov.flip(fake_aspect_ratio);
-                                        }
-                                        switch (perspective.fov) {
-                                            .x => |*v| {
-                                                const MIN = 30.0;
-                                                const MAX = 120.0;
-                                                _ = imgui.sliderFloat("Fov X", v, MIN, MAX);
-                                                v.* = std.math.clamp(v.*, MIN, MAX);
-                                            },
-                                            .y => |*v| {
-                                                const MIN = 10.0;
-                                                const MAX = 80.0;
-                                                _ = imgui.sliderFloat("Fov Y", v, MIN, MAX);
-                                                v.* = std.math.clamp(v.*, MIN, MAX);
-                                            },
-                                        }
-
-                                        _ = imgui.sliderFloat("Z Near", &perspective.near, 0.001, 1);
-                                        var infinite = perspective.far == null;
-                                        if (imgui.checkbox("Infinite Z Far", &infinite)) {
-                                            perspective.far = if (perspective.far == null) 100.0 else null;
-                                        }
-                                        if (perspective.far) |*far| {
-                                            _ = imgui.sliderFloat("Z Far", far, 100, 10000);
-                                        }
-                                    },
-                                    .orthographic => |*orthographic| {
-                                        _ = orthographic; // autofix
-                                        imgui.text("Not implemented for orthographic cameras yet");
-                                    },
+                                    var scale = zm.vecToArr3(entity.transform.scale);
+                                    if (imgui.c.ImGui_InputFloat3("Scale", &scale)) {
+                                        entity.transform.scale = zm.loadArr3(scale);
+                                    }
                                 }
                             }
+
+                            imgui.c.ImGui_SeparatorText("Components");
+
+                            if (entity.components.static_mesh) |static_mesh| {
+                                _ = static_mesh; // autofix
+                                if (imgui.c.ImGui_CollapsingHeader("Model Component", 0)) {
+                                    imgui.text("Still under construction 🚧");
+                                }
+                            }
+
+                            if (entity.components.camera) |*camera| {
+                                if (imgui.c.ImGui_CollapsingHeader("Camera Component", 0)) {
+                                    switch (camera.*) {
+                                        .perspective => |*perspective| {
+                                            if (imgui.button("Flip Fov Axis")) {
+                                                const fake_aspect_ratio = 1.0;
+                                                perspective.fov = perspective.fov.flip(fake_aspect_ratio);
+                                            }
+                                            switch (perspective.fov) {
+                                                .x => |*v| {
+                                                    const MIN = 30.0;
+                                                    const MAX = 120.0;
+                                                    _ = imgui.sliderFloat("Fov X", v, MIN, MAX);
+                                                    v.* = std.math.clamp(v.*, MIN, MAX);
+                                                },
+                                                .y => |*v| {
+                                                    const MIN = 10.0;
+                                                    const MAX = 80.0;
+                                                    _ = imgui.sliderFloat("Fov Y", v, MIN, MAX);
+                                                    v.* = std.math.clamp(v.*, MIN, MAX);
+                                                },
+                                            }
+
+                                            _ = imgui.sliderFloat("Z Near", &perspective.near, 0.001, 1);
+                                            var infinite = perspective.far == null;
+                                            if (imgui.checkbox("Infinite Z Far", &infinite)) {
+                                                perspective.far = if (perspective.far == null) 100.0 else null;
+                                            }
+                                            if (perspective.far) |*far| {
+                                                _ = imgui.sliderFloat("Z Far", far, 100, 10000);
+                                            }
+                                        },
+                                        .orthographic => |*orthographic| {
+                                            _ = orthographic; // autofix
+                                            imgui.text("Not implemented for orthographic cameras yet");
+                                        },
+                                    }
+                                }
+                            }
+                        } else {
+                            imgui.text("Invalid Entity Selected");
                         }
                     } else {
-                        imgui.text("Invalid Entity Selected");
+                        imgui.text("No Entity Selected");
                     }
                 } else {
-                    imgui.text("No Entity Selected");
+                    imgui.text("No World Selected");
                 }
 
                 imgui.end();

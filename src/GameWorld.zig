@@ -41,6 +41,8 @@ const Self = @This();
 
 gpa: std.mem.Allocator,
 
+name: [:0]const u8,
+
 next_handle: EntityHandle = 1,
 entities: std.ArrayList(Entity) = .empty,
 
@@ -49,13 +51,16 @@ components: struct {
     physics: ?zjolt.World = null,
 } = .{},
 
-pub fn init(gpa: std.mem.Allocator) Self {
+pub fn init(gpa: std.mem.Allocator, name: []const u8) !Self {
     return .{
         .gpa = gpa,
+        .name = try gpa.dupeZ(u8, name),
     };
 }
 
 pub fn deinit(self: *Self) void {
+    self.gpa.free(self.name);
+
     for (self.entities.items) |*entity| {
         if (entity.name) |name| self.gpa.free(name);
     }
