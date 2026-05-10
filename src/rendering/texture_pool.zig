@@ -54,6 +54,8 @@ pub fn init(
     var info_buffer: GpuPool(TextureInfo.Gpu) = try .init(gpa, device, "texture_info_buffer", max_texture_count, .{ .storage = true, .transfer_dst = true, .device_address = true }, .{});
     errdefer info_buffer.deinit();
 
+    std.debug.assert(try info_buffer.alloc() == 0); //Slot zero is the null value;
+
     return .{
         .gpa = gpa,
         .device = device,

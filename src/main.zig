@@ -84,8 +84,6 @@ pub fn main() !void {
             try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/teal.asset")),
         };
 
-        app.asset_pool.markAllForLoad();
-
         const game_world = try app.createWorld("game_world", zjolt.DefaultGravity);
         const exterior_world = try app.createWorld("exterior_world", @splat(0.0));
         _ = exterior_world; // autofix
@@ -536,8 +534,6 @@ const App = struct {
         for (scene.root_nodes) |root_node| {
             try self.loadNode(tpa, world_index, &scene, root_node);
         }
-
-        self.asset_pool.markAllForLoad();
     }
 
     fn loadNode(

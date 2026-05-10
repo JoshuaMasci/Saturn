@@ -83,6 +83,7 @@ pub fn addTransfers(self: *Self, transfer_queue: *TransferQueue) !void {
 
 pub fn add(self: *Self, mat: CpuMaterial) ?u32 {
     const gpu_mat: GpuMaterial = .{
+        .loaded = 1,
         .alpha_mode = @intCast(@intFromEnum(mat.alpha_mode)),
         .alpha_cutoff = mat.alpha_cutoff,
         .base_color_texture = mat.base_color_texture orelse 0,
