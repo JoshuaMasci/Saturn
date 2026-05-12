@@ -12,10 +12,10 @@ A game framework written in Zig with focus on performance and simplicity.
 
 ## Requirements
 
-- Zig 0.14.0
+- Zig 0.15.1
 - Vulkan SDK (for graphics)
 - System dependencies:
-  - Linux: libDXC,
+  - Linux: meshoptimizer, glslang
   - Windows: Not Supported Yet
   - macOS: Not Supported Yet
 
@@ -40,19 +40,9 @@ zig build engine-assets
 zig build game-assets
 
 # Builds and runs the game test project
-zig build run-game
-
-# Builds and runs the render test project
-zig build run-render
+zig build run
 
 ```
-
-## Project Structure
-
-- `src/` - Core framework source code
-- `libs/` - Third-party libraries (Jolt Physics, etc.)
-- `assets/` - Engine asset source files
-- `game-assets/` - Untracked asset source files
 
 ## License
 
