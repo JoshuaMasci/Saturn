@@ -126,26 +126,31 @@ pub fn createEntity(self: *Self, name_opt: ?[]const u8, transform: Transform) er
 }
 
 pub fn removeEntity(self: *Self, handle: EntityHandle) void {
-    const index_of = self.getEntity(handle) orelse return;
+    var index_of_opt: ?usize = 0;
+    for (self.entities.items, 0..) |entity, i| {
+        if (entity.handle == handle) {
+            index_of_opt = i;
+        }
+    }
+    const index_of = index_of_opt orelse return;
 
     const entity: *Entity = &self.entities.items[index_of];
     //Delete stuff here
     if (entity.name) |name| self.gpa.free(name);
     if (entity.components.static_mesh) |static_mesh| {
-        _ = static_mesh; // autofix
         if (self.components.rendering) |*scene| {
-            _ = scene; // autofix
-            //scene.destroyStaticMesh(static_mesh);
+            scene.destroyStaticMeshInstance(static_mesh);
         }
     }
 
     if (entity.components.rigid_body) |body_id| {
         if (self.components.physics) |*physics| {
+            physics.removeBody(body_id);
             physics.destroyBody(body_id);
         }
     }
 
-    self.entities.swapRemove(index_of);
+    _ = self.entities.swapRemove(index_of);
 }
 
 pub fn getEntity(self: *Self, handle: EntityHandle) ?*Entity {

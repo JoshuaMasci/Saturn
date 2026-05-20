@@ -203,6 +203,12 @@ pub fn createStaticMeshInstance(self: *Self, visible: bool, transform: Transform
     return handle;
 }
 
+pub fn destroyStaticMeshInstance(self: *Self, handle: StaticMeshInstanceHandle) void {
+    if (self.static_mesh_instances.remove(handle)) |static_mesh_instance| {
+        self.gpa.free(static_mesh_instance.primitives.items);
+    }
+}
+
 pub fn updateStaticMeshInstance(self: *Self, handle: StaticMeshInstanceHandle, visible: bool, transform: Transform) void {
     if (self.static_mesh_instances.getPtr(handle)) |static_mesh_instance| {
         if ((!static_mesh_instance.transform.eql(&transform)) or (static_mesh_instance.visible != visible)) {

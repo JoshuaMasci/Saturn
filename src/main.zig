@@ -36,11 +36,7 @@ pub fn main() !void {
     zjolt.init(allocator, @"10MB", 1);
     defer zjolt.deinit();
 
-    var config: App.Config = .{
-        .window_size = .{ .windowed = .{ 1920, 1080 } },
-        .vsync = false,
-        .power_level = .prefer_high_power,
-    };
+    var config: App.Config = .{};
 
     //Super basic argument parsing
     var args = std.process.args();
@@ -84,27 +80,28 @@ pub fn main() !void {
             try app.asset_pool.getMaterialAsset(.fromRepoPath("engine", "materials/teal.asset")),
         };
 
-        const game_world = try app.createWorld("game_world", zjolt.DefaultGravity);
+        //const game_world = try app.createWorld("game_world", zjolt.DefaultGravity);
         const exterior_world = try app.createWorld("exterior_world", @splat(0.0));
-        _ = exterior_world; // autofix
         const interior_world = try app.createWorld("interior_world", zjolt.DefaultGravity);
-        _ = interior_world; // autofix
+
+        try app.loadScene(exterior_world, "assets/game/CargoHull/scene.json");
+        try app.loadScene(interior_world, "assets/game/CargoHull/scene.json");
 
         for (0..3) |i| {
             const float_i: f32 = @floatFromInt(i);
             try app.createDynamicCube(
                 i,
-                game_world,
-                .{ .position = .{ 0.0, 3.0 + float_i, 0.0, 0.0 }, .scale = @splat(0.25) },
+                interior_world,
+                .{ .position = .{ 0.0, 3.0 + float_i, 5.0, 0.0 }, .scale = @splat(0.25) },
                 cube_mesh_handle,
                 opaque_material_handles[@mod(i, opaque_material_handles.len)],
             );
         }
 
         {
-            const world = &app.worlds.items[game_world];
+            const world = &app.worlds.items[interior_world];
 
-            const sphere_entity_handle = try world.createEntity("Sphere_Entity", .{ .position = .{ -4.0, 3.0, 0.0, 0.0 } });
+            const sphere_entity_handle = try world.createEntity("Sphere_Entity", .{ .position = .{ -1.0, 0.0, 0.0, 0.0 } });
             const sphere_entity = world.getEntity(sphere_entity_handle).?;
             sphere_entity.components.static_mesh = try world.components.rendering.?.createStaticMeshInstance(
                 true,
@@ -113,7 +110,7 @@ pub fn main() !void {
                 &.{transparent_material_handle},
             );
 
-            const cube_entity_handle = try world.createEntity("Cube_Entity", .{ .position = .{ -4.0, 3.0, 2.0, 0.0 } });
+            const cube_entity_handle = try world.createEntity("Cube_Entity", .{ .position = .{ -1.0, 0.0, 2.0, 0.0 } });
             const cube_entity = world.getEntity(cube_entity_handle).?;
             cube_entity.components.static_mesh = try world.components.rendering.?.createStaticMeshInstance(
                 true,
@@ -125,7 +122,7 @@ pub fn main() !void {
             const PLAYER_LAYERS: GameWorld.ObjectLayers = .{ .static = true, .dynamic = true, .player = true };
             const player_shape = zjolt.Shape.initSphere(0.25, 1, 13);
 
-            const player_handle = try world.createEntity("Player", .{ .position = .{ -4.0, 3.0, -5.0, 0.0 } });
+            const player_handle = try world.createEntity("Player", .{ .position = .{ -1.0, 0.0, -5.0, 0.0 } });
             const player_entity = world.getEntity(player_handle).?;
             player_entity.components.camera = .default;
             player_entity.components.rigid_body = world.components.physics.?.createAndAddBody(&.{
@@ -137,10 +134,10 @@ pub fn main() !void {
                 .allow_sleep = true,
                 .gravity_factor = 0.0,
             }, .activate);
-            app.player_entity = .{ .world = game_world, .handle = player_handle };
+            app.player_entity = .{ .world = interior_world, .handle = player_handle };
         }
 
-        app.editor_selected = .{ .world = game_world };
+        app.editor_selected = .{ .world = interior_world };
     }
 
     //try app.loadScene("assets/game/Sponza/NewSponza_Main_glTF_002/scene.json");
@@ -159,9 +156,9 @@ pub fn main() !void {
 
 const App = struct {
     const Config = struct {
-        window_size: saturn.WindowSize,
-        vsync: bool,
-        power_level: saturn.DevicePowerPreference,
+        window_size: saturn.WindowSize = .{ .windowed = .{ 1920, 1080 } },
+        vsync: bool = false,
+        power_level: saturn.DevicePowerPreference = .prefer_high_power,
     };
 
     const Self = @This();
@@ -864,9 +861,23 @@ pub const SceneWindow = struct {
 
                 if (selected.world) |w_index| {
                     const world = &worlds[w_index];
+                    const entities = tpa.dupe(GameWorld.Entity, world.entities.items) catch @panic("Failed to create an entity");
 
                     switch (self.entity_view_type) {
-                        .hierarchy => self.drawEntityHierarchy(tpa, world, selected),
+                        .hierarchy => self.drawEntityHierarchy(tpa, world, entities, selected),
+                    }
+
+                    var im_remaining_space = imgui.c.ImGui_GetContentRegionAvail();
+                    im_remaining_space.y = @max(im_remaining_space.y, 50);
+                    _ = imgui.c.ImGui_InvisibleButton("Invisible_Drop_Target", im_remaining_space, 0);
+                    imgui.c.ImGui_OpenPopupOnItemClick("Create_Entity_Popup", imgui.c.ImGuiPopupFlags_MouseButtonRight);
+
+                    if (imgui.c.ImGui_BeginPopup("Create_Entity_Popup", 0)) {
+                        if (imgui.menuItem("Create Empty")) {
+                            selected.entity = world.createEntity("Empty Entity", .{}) catch @panic("Failed to create an entity");
+                        }
+
+                        imgui.c.ImGui_EndPopup();
                     }
 
                     if (selected.entity) |selected_entity| {
@@ -881,9 +892,9 @@ pub const SceneWindow = struct {
         }
     }
 
-    fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, world: *const GameWorld, selected: *SelectedEntityNode) void {
+    fn drawEntityHierarchy(self: *SceneWindow, tpa: std.mem.Allocator, world: *GameWorld, entities: []const GameWorld.Entity, selected: *SelectedEntityNode) void {
         _ = self; // autofix
-        for (world.entities.items) |entity| {
+        for (entities) |entity| {
             const is_selected: bool = if (selected.entity) |selected_entity| selected_entity == entity.handle else false;
 
             var name: [:0]const u8 = entity.name orelse std.fmt.allocPrintSentinel(tpa, "Unnamed Entity {}", .{entity.handle}, 0) catch "Unnamed Entity";
@@ -898,6 +909,9 @@ pub const SceneWindow = struct {
                 flags |= imgui.c.ImGuiTreeNodeFlags_Leaf;
             }
 
+            imgui.c.ImGui_PushIDPtr(@ptrFromInt(entity.handle));
+            defer imgui.c.ImGui_PopID();
+
             if (name.len == 0) {
                 name = " ";
             }
@@ -909,6 +923,14 @@ pub const SceneWindow = struct {
                 } else {
                     selected.entity = entity.handle;
                 }
+            }
+
+            if (imgui.c.ImGui_BeginPopupContextItemEx(name, imgui.c.ImGuiPopupFlags_MouseButtonRight)) {
+                if (imgui.menuItem("Delete Empty")) {
+                    world.removeEntity(entity.handle);
+                }
+
+                imgui.c.ImGui_EndPopup();
             }
 
             if (node_open) {
